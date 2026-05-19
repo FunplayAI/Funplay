@@ -1,0 +1,42 @@
+# macOS
+.DS_Store
+
+# Dependencies
+node_modules/
+
+# Build outputs
+out/
+release/
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local environment and app state
+.env
+.env.*
+!.env.example
+*.local
+.claude/
+*.db
+*.sqlite
+*.sqlite3
+
+# Editor metadata
+.idea/
+.vscode/
+
+# Temporary files
+.tmp/
+tmp/
+coverage/
+
+# Bundled document-preview runtimes are large local artifacts.
+resources/runtime/*
+!resources/runtime/.gitkeep
+!resources/runtime/README.md

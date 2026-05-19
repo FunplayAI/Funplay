@@ -1,0 +1,32 @@
+{
+  "id": "native-agent-smoke",
+  "title": "Native agent project smoke benchmark",
+  "description": "Creates a minimal project workspace and verifies the acceptance script can prove a deterministic project change.",
+  "mode": "verification-only",
+  "timeoutMs": 30000,
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"funplay-agent-e2e-smoke\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node acceptance/smoke.test.mjs\"\n  }\n}\n"
+      },
+      {
+        "path": "src/agent-output.json",
+        "content": "{\n  \"project\": \"smoke\",\n  \"features\": [\"task-definition\", \"acceptance-script\", \"result-report\"],\n  \"ready\": true\n}\n"
+      },
+      {
+        "path": "acceptance/smoke.test.mjs",
+        "content": "import assert from 'node:assert/strict';\nimport { readFile } from 'node:fs/promises';\n\nconst output = JSON.parse(await readFile(new URL('../src/agent-output.json', import.meta.url), 'utf8'));\nassert.equal(output.ready, true);\nassert.deepEqual(output.features, ['task-definition', 'acceptance-script', 'result-report']);\nconsole.log('native-agent-smoke acceptance passed');\n"
+      }
+    ]
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-npm-test",
+      "kind": "test",
+      "command": "npm test",
+      "required": true,
+      "timeoutMs": 15000
+    }
+  ]
+}

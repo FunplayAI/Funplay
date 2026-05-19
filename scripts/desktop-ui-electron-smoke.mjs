@@ -1,0 +1,627 @@
+import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { app, BrowserWindow } from 'electron';
+
+const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const rendererEntry = resolve(repoRoot, 'out/renderer/index.html');
+const reportDir = resolve(repoRoot, 'out/desktop-ui-electron-smoke');
+const reportPath = resolve(reportDir, 'latest-report.md');
+const artifactDir = resolve(reportDir, 'artifacts');
+const preloadPath = join(tmpdir(), `funplay-ui-smoke-preload-${Date.now()}.cjs`);
+const rendererMessages = [];
+
+if (!existsSync(rendererEntry)) {
+  console.error('Built renderer not found. Run `npm run build` before `npm run ui:electron-smoke`.');
+  app.exit(1);
+}
+
+const now = new Date().toISOString();
+const project = {
+  id: 'ui_smoke_project',
+  name: 'Rogue UI Smoke',
+  templateId: 'generic-workspace',
+  artStyle: 'test',
+  pitch: 'UI regression fixture',
+  status: 'active',
+  engine: {
+    platform: 'web',
+    setupMode: 'import',
+    projectPath: '/tmp/funplay-ui-smoke',
+    dimension: 'unknown'
+  },
+  runtimeState: {
+    checkedAt: now,
+    projectExists: true,
+    unityProjectValid: false,
+    projectOpen: false,
+    bridgeInstalled: false,
+    bridgeHealth: {
+      status: 'offline',
+      message: 'UI smoke fixture'
+    }
+  },
+  agentPolicy: {
+    permissionMode: 'full-access',
+    skills: []
+  },
+  mcpBindings: {},
+  createdAt: now,
+  updatedAt: now,
+  blueprint: {
+    premise: '',
+    playerFantasy: '',
+    targetAudience: '',
+    artDirection: '',
+    coreLoop: [],
+    pillars: [],
+    differentiators: []
+  },
+  tasks: [],
+  assets: [],
+  sessions: [{
+    id: 'ui_smoke_session',
+    title: '主会话',
+    autoTitle: false,
+    createdAt: now,
+    updatedAt: now,
+    runtimeOverrides: {
+      runtimeId: 'native',
+      providerId: 'provider_mimo',
+      model: 'mimo-v2.5-pro',
+      permissionMode: 'full-access',
+      effort: 'auto'
+    },
+    chat: []
+  }],
+  activeSessionId: 'ui_smoke_session',
+  chat: [],
+  activity: [],
+  snapshots: [],
+  memory: {
+    designDirectives: [],
+    artDirectives: [],
+    technicalConstraints: [],
+    openQuestions: [],
+    updatedAt: now
+  },
+  contextSummary: {
+    projectBrief: 'UI smoke fixture',
+    currentGoal: 'Verify desktop UI routes',
+    recentDecisions: [],
+    activeTasks: [],
+    recentActivity: [],
+    compressedFrom: 0,
+    updatedAt: now
+  }
+};
+
+const provider = {
+  id: 'provider_mimo',
+  name: 'Xiaomi MiMo',
+  protocol: 'openai-compatible',
+  apiMode: 'chat',
+  authStyle: 'api_key',
+  baseUrl: 'https://token-plan-cn.xiaomimimo.com/v1',
+  apiKey: '',
+  hasStoredApiKey: true,
+  model: 'mimo-v2.5-pro',
+  enabled: true,
+  isDefault: true,
+  createdAt: now,
+  updatedAt: now
+};
+
+const updateSnapshot = {
+  status: 'idle',
+  currentVersion: '0.0.0',
+  canCheck: false,
+  canDownload: false,
+  canInstall: false,
+  isPackaged: false,
+  feedSource: 'none',
+  autoDownload: false
+};
+
+const providerDoctorResult = {
+  overallSeverity: 'ok',
+  generatedAt: now,
+  durationMs: 12,
+  providerId: provider.id,
+  runtimeId: 'native',
+  repairs: [],
+  probes: [{
+    id: 'native-openai-compatible',
+    title: 'Native OpenAI Compatible',
+    severity: 'ok',
+    durationMs: 12,
+    findings: [{
+      severity: 'ok',
+      code: 'provider_config_ok',
+      summary: 'Provider fixture is configured for UI smoke.'
+    }]
+  }]
+};
+
+const bootstrapPayload = {
+  settings: {
+    baseUrl: 'http://127.0.0.1:8765/',
+    profile: 'core',
+    lastStatus: 'idle',
+    lastCreatedProjectDirectory: '/tmp',
+    lastAssignedMcpPort: 8765
+  },
+  aiSettings: {
+    defaultProviderId: provider.id,
+    fallbackToLocalPlanner: false,
+    webSearch: {
+      provider: 'auto',
+      cacheTtlMs: 300000,
+      browserFallbackEnabled: true,
+      telemetryEnabled: true
+    }
+  },
+  agentSettings: {
+    permissionMode: 'full-access',
+    runtimeStrategy: 'native'
+  },
+  providers: [provider],
+  mcpSettings: {
+    baseUrl: 'http://127.0.0.1:8765/',
+    profile: 'core'
+  },
+  mcpPlugins: [],
+  projects: [project]
+};
+
+const projectFiles = [
+  {
+    id: 'dir_assets',
+    name: 'assets',
+    path: 'assets',
+    type: 'directory',
+    size: 0,
+    modifiedAt: now
+  },
+  {
+    id: 'dir_images',
+    name: 'images',
+    path: 'assets/images',
+    type: 'directory',
+    size: 0,
+    modifiedAt: now
+  },
+  {
+    id: 'dir_audio',
+    name: 'audio',
+    path: 'assets/audio',
+    type: 'directory',
+    size: 0,
+    modifiedAt: now
+  },
+  {
+    id: 'file_player',
+    name: 'player.png',
+    path: 'assets/images/player.png',
+    type: 'file',
+    size: 68,
+    modifiedAt: now
+  },
+  {
+    id: 'file_index',
+    name: 'index.html',
+    path: 'index.html',
+    type: 'file',
+    size: 128,
+    modifiedAt: now
+  }
+];
+
+function serializeForPreload(value) {
+  return JSON.stringify(value).replace(/</g, '\\u003c');
+}
+
+async function writePreload() {
+  const preloadSource = `
+    const { contextBridge } = require('electron');
+    const bootstrapPayload = ${serializeForPreload(bootstrapPayload)};
+    const project = ${serializeForPreload(project)};
+    const projectFiles = ${serializeForPreload(projectFiles)};
+    const updateSnapshot = ${serializeForPreload(updateSnapshot)};
+    const success = async () => ({ success: true });
+    const noSubscription = () => () => {};
+    contextBridge.exposeInMainWorld('funplay', {
+      bootstrap: async () => bootstrapPayload,
+      openExternal: success,
+      openLocalPath: success,
+      revealLocalPath: success,
+      diagnoseEnvironment: async () => ({ ready: false, checks: [] }),
+      runEnvironmentAction: async () => ({ success: true, message: 'ok' }),
+      listEnvironmentTasks: async () => [],
+      listInstalledUnityEditors: async () => [],
+      pickProjectFolder: async () => ({ canceled: true }),
+      createProject: async () => project,
+      deleteProject: async () => ({ deletedProjectId: project.id, remainingProjects: [], deletedSourceFiles: false }),
+      listProjectFiles: async () => projectFiles,
+      readProjectFile: async (_projectId, filePath) => {
+        const name = filePath.split('/').pop() || filePath;
+        if (filePath.endsWith('.png')) {
+          return {
+            id: filePath,
+            name,
+            path: filePath,
+            size: 68,
+            content: '',
+            isBinary: true,
+            truncated: false,
+            mimeType: 'image/png',
+            previewDataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p94AAAAASUVORK5CYII='
+          };
+        }
+        return {
+          id: filePath,
+          name,
+          path: filePath,
+          size: 38,
+          content: '<!doctype html><html><body>Smoke</body></html>',
+          isBinary: false,
+          truncated: false,
+          mimeType: filePath.endsWith('.html') ? 'text/html' : 'text/plain'
+        };
+      },
+      writeProjectFile: async (_projectId, filePath, content) => ({
+        id: filePath,
+        name: filePath.split('/').pop() || filePath,
+        path: filePath,
+        size: content.length,
+        content,
+        isBinary: false,
+        truncated: false,
+        mimeType: 'text/plain'
+      }),
+      openProjectFile: success,
+      revealProjectFile: success,
+      refreshProjectRuntimeState: async () => project,
+      createProjectSession: async () => project,
+      renameProjectSession: async () => project,
+      deleteProjectSession: async () => project,
+      setActiveProjectSession: async () => project,
+      updateProjectAgentPolicy: async () => project,
+      listAgentSkillCatalog: async () => ({ skills: [], repositories: [] }),
+      updateProjectSessionRuntime: async () => project,
+      sendPrompt: async () => project,
+      startPromptStream: async () => ({ streamId: 'ui_smoke_stream' }),
+      cancelPromptStream: success,
+      respondPromptPermission: success,
+      respondPromptUserInput: success,
+      onPromptStreamEvent: noSubscription,
+      onProjectFileTreeChanged: noSubscription,
+      onAppNotification: noSubscription,
+      onAppUpdateStatus: noSubscription,
+      drainAppNotifications: async () => [],
+      getUpdateStatus: async () => updateSnapshot,
+      checkForUpdates: async () => updateSnapshot,
+      downloadUpdate: async () => updateSnapshot,
+      installUpdate: async () => updateSnapshot,
+      listNotificationTasks: async () => [],
+      cancelNotificationTask: success,
+      listProjectMemoryFiles: async () => [],
+      readProjectMemoryFile: async () => ({ path: 'memory.md', title: 'memory.md', kind: 'note', memoryKinds: [], tags: [], excerpt: '', size: 0, lineCount: 0, updatedAt: new Date().toISOString(), content: '' }),
+      saveProjectMemoryFile: async (_projectId, filePath, content) => ({ path: filePath, title: filePath, kind: 'note', memoryKinds: [], tags: [], excerpt: content.slice(0, 80), size: content.length, lineCount: content.split('\\n').length, updatedAt: new Date().toISOString(), content }),
+      clearProjectMemory: async () => [],
+      detectClaudeRuntime: async () => ({ hasClaude: false, hasSdk: false, claudePath: '', claudeVersion: '', otherInstalls: [], loginHint: '' }),
+      runClaudeLogin: success,
+      listClaudeCliSessions: async () => [],
+      importClaudeCliSession: async () => ({ imported: false }),
+      pickPromptAttachments: async () => [],
+      listAgentRuntimeCapabilities: async () => [],
+      getAgentRuntimeStatus: async () => [],
+      interruptAgentRun: success,
+      resumeAgentRun: async () => ({ streamId: 'ui_smoke_resume' }),
+      exportAgentRunLog: async () => ({ run: null }),
+      createSnapshot: async () => project,
+      previewSessionCheckpoint: async () => ({ snapshotId: 'snapshot', sessionId: 'ui_smoke_session', checkpointNote: 'smoke', checkpointCreatedAt: new Date().toISOString(), currentMessageCount: 0, checkpointMessageCount: 0, addedMessages: 0, removedMessages: 0, fileChanges: [] }),
+      restoreSessionCheckpoint: async () => project,
+      executeProjectPlan: async () => project,
+      updateSettings: async (settings) => ({ ...bootstrapPayload.settings, ...settings }),
+      updateProvider: async () => undefined,
+      createProvider: async () => undefined,
+      deleteProvider: async () => undefined,
+      testProvider: async (providerId) => ({ providerId, status: 'success', message: 'ok', testedAt: new Date().toISOString() }),
+      setDefaultProvider: async () => undefined,
+      runProviderDoctor: async () => (${serializeForPreload(providerDoctorResult)}),
+      repairProviderDiagnostic: success,
+      exportRuntimeDiagnostics: async () => JSON.stringify(${serializeForPreload(providerDoctorResult)}, null, 2),
+      updateAgentSettings: async (settings) => ({ ...bootstrapPayload.agentSettings, ...settings }),
+      updateWebSearchSettings: async (settings) => ({ ...bootstrapPayload.aiSettings, webSearch: { ...bootstrapPayload.aiSettings.webSearch, ...settings } }),
+      getWebResearchMetrics: async () => ({ generatedAt: new Date().toISOString(), queries: 0, cacheHits: 0, providerCalls: 0, browserFallbacks: 0, failures: 0 }),
+      resetWebResearchMetrics: async () => ({ generatedAt: new Date().toISOString(), queries: 0, cacheHits: 0, providerCalls: 0, browserFallbacks: 0, failures: 0 }),
+      runWebSearchQualityEval: async () => ({ generatedAt: new Date().toISOString(), cases: [], passed: 0, failed: 0 }),
+      createMcpPlugin: async (input) => ({ id: 'mcp_fixture', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...input }),
+      updateMcpPlugin: async (pluginId, input) => ({ id: pluginId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...input }),
+      deleteMcpPlugin: success,
+      setActiveMcpPlugin: async () => bootstrapPayload.mcpSettings,
+      checkMcpHealth: async () => ({ ok: false, status: 'offline', message: 'UI smoke fixture' }),
+      getMcpServerInfo: async () => ({ name: 'UI Smoke MCP', version: '0.0.0', capabilities: {} }),
+      listMcpTools: async () => [],
+      callMcpTool: async () => ({ content: [] }),
+      listMcpResources: async () => [],
+      readMcpResource: async () => ({ content: [] }),
+      checkUnityHealth: async () => ({ ok: false, status: 'offline', message: 'UI smoke fixture' }),
+      getUnityServerInfo: async () => ({ name: 'UI Smoke Unity', version: '0.0.0', capabilities: {} }),
+      listUnityTools: async () => [],
+      callUnityTool: async () => ({ content: [] }),
+      listUnityResources: async () => [],
+      readUnityResource: async () => ({ content: [] }),
+      updateProjectMcpConfig: async () => project
+    });
+  `;
+  await writeFile(preloadPath, preloadSource);
+}
+
+async function waitFor(webContents, predicateSource, label, timeoutMs = 5000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const result = await webContents.executeJavaScript(`Boolean((${predicateSource})())`);
+    if (result) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  }
+  const debug = await webContents.executeJavaScript(`
+    (() => ({
+      url: window.location.href,
+      readyState: document.readyState,
+      section: document.querySelector('[data-workspace-section]')?.getAttribute('data-workspace-section') || '',
+      text: document.body.textContent.replace(/\\s+/g, ' ').trim().slice(0, 500),
+      rootHtml: document.getElementById('root')?.innerHTML.slice(0, 500) || '',
+      messages: ${JSON.stringify(rendererMessages.slice(-10))}
+    }))()
+  `).catch((error) => ({ error: error instanceof Error ? error.message : String(error) }));
+  throw new Error(`Timed out waiting for ${label}: ${JSON.stringify(debug)}`);
+}
+
+async function clickByText(webContents, text) {
+  const clicked = await webContents.executeJavaScript(`
+    (() => {
+      const candidates = [...document.querySelectorAll('button')];
+      const target = candidates.find((button) => button.textContent && button.textContent.includes(${JSON.stringify(text)}));
+      if (!target) return false;
+      target.click();
+      return true;
+    })()
+  `);
+  assert.equal(clicked, true, `Expected button containing "${text}"`);
+}
+
+async function clickByAriaLabel(webContents, label) {
+  const clicked = await webContents.executeJavaScript(`
+    (() => {
+      const target = document.querySelector(${JSON.stringify(`button[aria-label="${label}"]`)});
+      if (!target) return false;
+      target.click();
+      return true;
+    })()
+  `);
+  assert.equal(clicked, true, `Expected button with aria-label "${label}"`);
+}
+
+async function capture(window, name) {
+  const image = await window.webContents.capturePage();
+  const path = resolve(artifactDir, `${name}.png`);
+  await writeFile(path, image.toPNG());
+  return path;
+}
+
+async function snapshot(webContents) {
+  return webContents.executeJavaScript(`
+    (() => {
+      const main = document.querySelector('[data-workspace-section]');
+      const activeWorkspaceNav = document.querySelector('.workspace-sidebar-nav-item[aria-current="page"]');
+      const activeSettingsNav = document.querySelector('.project-settings-nav-item[aria-current="page"]');
+      const modal = document.querySelector('[role="dialog"][aria-modal="true"]');
+      const appSettingsLayout = document.querySelector('.app-settings-layout');
+      const projectSettingsNav = document.querySelector('.project-settings-nav');
+      return {
+        section: main?.getAttribute('data-workspace-section') || '',
+        mainLabel: main?.getAttribute('aria-label') || '',
+        activeWorkspaceNav: activeWorkspaceNav?.textContent?.replace(/\\s+/g, ' ').trim() || '',
+        activeSettingsNav: activeSettingsNav?.textContent?.replace(/\\s+/g, ' ').trim() || '',
+        modalOpen: Boolean(modal),
+        modalText: modal?.textContent?.replace(/\\s+/g, ' ').trim().slice(0, 1200) || '',
+        appSettingsColumns: appSettingsLayout ? getComputedStyle(appSettingsLayout).gridTemplateColumns : '',
+        activeProviderPreset: document.querySelector('.provider-preset-card.active strong')?.textContent?.trim() || '',
+        providerEditorBaseUrl: [...document.querySelectorAll('.provider-core-config label')].find((label) => /Base URL/.test(label.textContent || ''))?.querySelector('input')?.value || '',
+        providerEditorModel: [...document.querySelectorAll('.provider-core-config label')].find((label) => /默认模型|Default Model/.test(label.textContent || ''))?.querySelector('input')?.value || '',
+        providerAdvancedOpen: Boolean(document.querySelector('.provider-advanced-section')?.hasAttribute('open')),
+        inspectorPath: document.querySelector('.file-inspector-path')?.textContent?.trim() || '',
+        inspectorText: document.querySelector('.file-inspector-panel')?.textContent?.replace(/\\s+/g, ' ').trim().slice(0, 400) || '',
+        assetCardCount: document.querySelectorAll('.asset-library-card').length,
+        projectSettingsColumns: document.querySelector('.project-settings-page') ? getComputedStyle(document.querySelector('.project-settings-page')).gridTemplateColumns : '',
+        projectSettingsNavOverflowX: projectSettingsNav ? getComputedStyle(projectSettingsNav).overflowX : '',
+        composerVisible: Boolean(document.querySelector('.agent-composer-shell') && document.querySelector('.agent-composer-textarea')),
+        composerClipped: (() => {
+          const composer = document.querySelector('.agent-composer-shell');
+          if (!composer) return true;
+          const rect = composer.getBoundingClientRect();
+          return rect.left < 0 || rect.right > window.innerWidth || rect.top < 0 || rect.bottom > window.innerHeight;
+        })(),
+        projectSettingsNavDisplay: projectSettingsNav ? getComputedStyle(projectSettingsNav).display : '',
+        bodyText: document.body.textContent.replace(/\\s+/g, ' ').trim().slice(0, 600)
+      };
+    })()
+  `);
+}
+
+function buildReport(rows) {
+  const generatedAt = new Date().toISOString();
+  return [
+    '# Desktop UI Electron Smoke Report',
+    '',
+    `Generated: ${generatedAt}`,
+    '',
+    'This smoke uses a controlled preload API and app-scoped `BrowserWindow.capturePage()` screenshots only. It does not use whole-desktop screenshots.',
+    '',
+    '| State | Section | Modal | Screenshot |',
+    '|---|---:|---:|---|',
+    ...rows.map((row) => `| ${row.state} | ${row.detail.section || '-'} | ${row.detail.modalOpen ? 'open' : 'closed'} | ${row.screenshot} |`),
+    '',
+    '## Checked States',
+    '',
+    ...rows.map((row) => [
+      `### ${row.state}`,
+      '',
+      `- Main label: ${row.detail.mainLabel || '-'}`,
+      `- Active workspace nav: ${row.detail.activeWorkspaceNav || '-'}`,
+      `- Active settings nav: ${row.detail.activeSettingsNav || '-'}`,
+      `- App settings columns: ${row.detail.appSettingsColumns || '-'}`,
+      `- Project settings nav display: ${row.detail.projectSettingsNavDisplay || '-'}`,
+      ''
+    ].join('\n'))
+  ].join('\n');
+}
+
+async function main() {
+  await writePreload();
+  await mkdir(artifactDir, { recursive: true });
+  await app.whenReady();
+
+  const win = new BrowserWindow({
+    width: 1280,
+    height: 820,
+    show: false,
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+
+  const rows = [];
+  try {
+    win.webContents.on('console-message', (details) => {
+      const payload = typeof details === 'object' && details !== null
+        ? {
+            level: details.level,
+            message: details.message,
+            line: details.lineNumber,
+            sourceId: details.sourceId
+          }
+        : {
+            level: 'unknown',
+            message: String(details),
+            line: 0,
+            sourceId: ''
+          };
+      rendererMessages.push(payload);
+      if (rendererMessages.length > 40) {
+        rendererMessages.shift();
+      }
+    });
+    win.webContents.on('render-process-gone', (_event, details) => {
+      rendererMessages.push({ level: 'gone', message: details.reason, line: 0, sourceId: '' });
+    });
+    await win.loadFile(rendererEntry);
+    await waitFor(win.webContents, "() => document.querySelector('[data-workspace-section=\"agent\"]') && /继续完成项目|Continue Project/.test(document.body.textContent)", 'Agent workspace');
+    const agent = await snapshot(win.webContents);
+    assert.equal(agent.section, 'agent');
+    assert.match(agent.bodyText, /继续完成项目|Continue Project/);
+    rows.push({ state: 'Agent', screenshot: await capture(win, 'agent'), detail: agent });
+
+    await clickByText(win.webContents, '项目设置');
+    await waitFor(win.webContents, "() => document.querySelector('[data-workspace-section=\"settings\"]')", 'Project Settings route');
+    const settings = await snapshot(win.webContents);
+    assert.equal(settings.section, 'settings');
+    assert.match(settings.activeWorkspaceNav, /项目设置|Project Settings/);
+    assert.match(settings.bodyText, /引擎项目|Engine Project/);
+    rows.push({ state: 'Project Settings', screenshot: await capture(win, 'project-settings'), detail: settings });
+
+    await clickByText(win.webContents, '素材库');
+    await waitFor(win.webContents, "() => document.querySelector('[data-workspace-section=\"assets\"]')", 'Assets route');
+    const assets = await snapshot(win.webContents);
+    assert.equal(assets.section, 'assets');
+    assert.match(assets.activeWorkspaceNav, /素材库|Assets/);
+    assert.match(assets.bodyText, /player\.png|assets\/images\/player\.png/);
+    assert.equal(assets.assetCardCount, 1);
+    rows.push({ state: 'Assets', screenshot: await capture(win, 'assets'), detail: assets });
+
+    await clickByText(win.webContents, 'player.png');
+    await waitFor(win.webContents, "() => document.querySelector('.file-inspector-path')?.textContent.includes('assets/images/player.png')", 'Asset inspector handoff');
+    const assetInspector = await snapshot(win.webContents);
+    assert.equal(assetInspector.inspectorPath, 'assets/images/player.png');
+    assert.match(assetInspector.inspectorText, /Rogue UI Smoke/);
+    assert.match(assetInspector.inspectorText, /只读|Read only|预览模式|Preview mode/);
+    rows.push({ state: 'Asset Inspector Handoff', screenshot: await capture(win, 'asset-inspector-handoff'), detail: assetInspector });
+
+    await clickByAriaLabel(win.webContents, '打开应用设置');
+    await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]')", 'App Settings modal');
+    await clickByText(win.webContents, 'AI Provider');
+    await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"]')?.textContent.includes('Xiaomi MiMo')", 'Provider settings modal');
+    const providerModal = await snapshot(win.webContents);
+    assert.equal(providerModal.modalOpen, true);
+    assert.match(providerModal.modalText, /AI Provider/);
+    assert.match(providerModal.modalText, /Xiaomi MiMo/);
+    assert.match(providerModal.modalText, /默认：Xiaomi MiMo|Default: Xiaomi MiMo/);
+    assert.match(providerModal.modalText, /诊断|Doctor/);
+    rows.push({ state: 'App Settings Provider', screenshot: await capture(win, 'app-settings-provider'), detail: providerModal });
+
+    await clickByText(win.webContents, '添加 Provider');
+    await waitFor(win.webContents, "() => document.querySelector('.app-settings-inline-editor')?.textContent.includes('服务商预设')", 'Provider editor');
+    await clickByText(win.webContents, 'Xiaomi MiMo');
+    await waitFor(win.webContents, "() => document.querySelector('.provider-preset-card.active strong')?.textContent.trim() === 'Xiaomi MiMo'", 'Xiaomi MiMo provider preset');
+    const providerEditor = await snapshot(win.webContents);
+    assert.equal(providerEditor.modalOpen, true);
+    assert.equal(providerEditor.activeProviderPreset, 'Xiaomi MiMo');
+    assert.equal(providerEditor.providerEditorBaseUrl, 'https://api.xiaomimimo.com/v1');
+    assert.equal(providerEditor.providerEditorModel, 'mimo-v2.5-pro');
+    assert.equal(providerEditor.providerAdvancedOpen, false);
+    assert.match(providerEditor.modalText, /核心配置|Core Configuration/);
+    assert.match(providerEditor.modalText, /高级协议配置|Advanced Protocol Configuration/);
+    rows.push({ state: 'Provider Editor Preset', screenshot: await capture(win, 'provider-editor-preset'), detail: providerEditor });
+
+    win.setSize(840, 640);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const compact = await snapshot(win.webContents);
+    assert.equal(compact.modalOpen, true);
+    assert.equal(compact.providerAdvancedOpen, false);
+    assert.match(compact.appSettingsColumns, /^[0-9.]+px$/);
+    rows.push({ state: 'Compact App Settings', screenshot: await capture(win, 'compact-app-settings-provider'), detail: compact });
+
+    await clickByAriaLabel(win.webContents, 'Close');
+    await waitFor(win.webContents, "() => !document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]')", 'App Settings close');
+    await clickByText(win.webContents, '项目设置');
+    await waitFor(win.webContents, "() => document.querySelector('[data-workspace-section=\"settings\"]')", 'Compact Project Settings route');
+    const compactSettings = await snapshot(win.webContents);
+    assert.equal(compactSettings.section, 'settings');
+    assert.equal(compactSettings.projectSettingsNavDisplay, 'flex');
+    assert.match(compactSettings.projectSettingsColumns, /^[0-9.]+px$/);
+    assert.match(compactSettings.projectSettingsNavOverflowX, /auto|scroll/);
+    rows.push({ state: 'Compact Project Settings', screenshot: await capture(win, 'compact-project-settings'), detail: compactSettings });
+
+    await clickByText(win.webContents, '主会话');
+    await waitFor(win.webContents, "() => document.querySelector('[data-workspace-section=\"agent\"]') && document.querySelector('.agent-composer-textarea')", 'Compact Agent composer');
+    const compactAgent = await snapshot(win.webContents);
+    assert.equal(compactAgent.section, 'agent');
+    assert.equal(compactAgent.composerVisible, true);
+    assert.equal(compactAgent.composerClipped, false);
+    rows.push({ state: 'Compact Agent Composer', screenshot: await capture(win, 'compact-agent-composer'), detail: compactAgent });
+    await writeFile(reportPath, buildReport(rows));
+    console.log(`Desktop UI Electron smoke passed: ${reportPath}`);
+  } finally {
+    win.destroy();
+    await rm(preloadPath, { force: true });
+  }
+}
+
+main()
+  .then(() => app.quit())
+  .catch(async (error) => {
+    console.error(error);
+    await rm(preloadPath, { force: true }).catch(() => {});
+    app.exit(1);
+    process.exitCode = 1;
+  });

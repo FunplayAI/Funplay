@@ -1,0 +1,465 @@
+import { useState, type JSX } from 'react';
+import type { AiProvider, AiTestResult, RuntimeDoctorFinding, RuntimeDoctorResult, RuntimeRepairAction } from '../../../shared/types';
+import { resolveProviderTokenLimits } from '../../../shared/provider-catalog';
+import { localize, useUiLanguage, type UiLanguage } from '../../i18n';
+import { ModalShell } from '../settings-modals';
+
+export function ProviderSettingsPage(props: {
+  providers: AiProvider[];
+  providerTests: Record<string, AiTestResult>;
+  selectedProjectId?: string;
+  onAddProvider: () => void;
+  onEditProvider: (provider: AiProvider) => void;
+  onDeleteProvider: (providerId: string) => void;
+  onTestProvider: (providerId: string) => void;
+  onSetDefaultProvider: (providerId: string) => void;
+  embedded?: boolean;
+}): JSX.Element {
+  const language = useUiLanguage();
+  const t = (zh: string, en: string): string => localize(language, zh, en);
+  const defaultProvider = props.providers.find((provider) => provider.isDefault) ?? null;
+  const [doctorProvider, setDoctorProvider] = useState<AiProvider | null>(null);
+  const [doctorResult, setDoctorResult] = useState<RuntimeDoctorResult | null>(null);
+  const [doctorLoading, setDoctorLoading] = useState(false);
+  const [doctorError, setDoctorError] = useState('');
+  const [doctorExport, setDoctorExport] = useState('');
+
+  async function runDoctor(provider: AiProvider, live = false): Promise<void> {
+    setDoctorProvider(provider);
+    setDoctorLoading(true);
+    setDoctorError('');
+    setDoctorExport('');
+    try {
+      const result = await window.funplay.runProviderDoctor(provider.id, {
+        projectId: props.selectedProjectId,
+        live
+      });
+      setDoctorResult(result);
+    } catch (error) {
+      setDoctorError(error instanceof Error ? error.message : t('诊断失败。', 'Doctor failed.'));
+    } finally {
+      setDoctorLoading(false);
+    }
+  }
+
+  async function repairDoctor(action: RuntimeRepairAction): Promise<void> {
+    if (!doctorProvider) {
+      return;
+    }
+    setDoctorLoading(true);
+    setDoctorError('');
+    try {
+      await window.funplay.repairProviderDiagnostic({
+        actionId: action.id,
+        providerId: action.params?.providerId ?? doctorProvider.id,
+        projectId: action.params?.projectId ?? props.selectedProjectId,
+        sessionId: action.params?.sessionId,
+        authStyle: action.params?.authStyle as Parameters<typeof window.funplay.repairProviderDiagnostic>[0]['authStyle']
+      });
+      await runDoctor(doctorProvider, false);
+    } catch (error) {
+      setDoctorError(error instanceof Error ? error.message : t('修复失败。', 'Repair failed.'));
+      setDoctorLoading(false);
+    }
+  }
+
+  async function exportDoctor(): Promise<void> {
+    if (!doctorProvider) {
+      return;
+    }
+    setDoctorLoading(true);
+    setDoctorError('');
+    try {
+      const json = await window.funplay.exportRuntimeDiagnostics({
+        providerId: doctorProvider.id,
+        projectId: props.selectedProjectId
+      });
+      setDoctorExport(json);
+    } catch (error) {
+      setDoctorError(error instanceof Error ? error.message : t('导出失败。', 'Export failed.'));
+    } finally {
+      setDoctorLoading(false);
+    }
+  }
+
+  return (
+    <div className={`provider-settings-page ${props.embedded ? 'embedded' : ''}`}>
+      <div className={`settings-header ${props.embedded ? 'embedded' : ''}`}>
+        <div>
+          <h2>AI Provider</h2>
+          <p>{t('集中配置模型服务、默认模型与测试连接。这些设置会持久化保存，并应用到所有项目。', 'Configure model services, default models, and connection tests here. These settings are persisted and shared across all projects.')}</p>
+          <div className="provider-settings-meta">
+            <span>{t(`已配置 ${props.providers.length} 个 Provider`, `${props.providers.length} providers configured`)}</span>
+            <span>{defaultProvider ? t(`默认：${defaultProvider.name}`, `Default: ${defaultProvider.name}`) : t('未设置默认 Provider', 'No default provider')}</span>
+          </div>
+        </div>
+        <button className="prototype-primary" onClick={props.onAddProvider}>
+          {t('添加 Provider', 'Add Provider')}
+        </button>
+      </div>
+      <div className="provider-channel-grid">
+        {props.providers.length === 0 ? <div className="empty-note">{t('暂无 Provider，请先添加。', 'No providers yet. Add one first.')}</div> : null}
+        {props.providers.map((provider) => {
+          const tokenLimits = resolveProviderTokenLimits(provider);
+          return (
+            <div key={provider.id} className="provider-channel-card">
+            <div className="provider-channel-top">
+              <div>
+                <strong>{provider.name}</strong>
+                <div className="provider-channel-subtitle">
+                  <span>{formatProviderProtocol(provider, language)}</span>
+                  {provider.protocol === 'openai-compatible' ? <span>{formatProviderApiMode(provider, language)}</span> : null}
+                </div>
+              </div>
+              <span className={`status-dot ${provider.enabled ? 'green' : 'gray'}`} />
+            </div>
+            <div className="provider-channel-summary">
+              <div>
+                <span>{t('默认模型', 'Default Model')}</span>
+                <strong>{provider.model || t('未配置', 'Not Configured')}</strong>
+              </div>
+              <div>
+                <span>Base URL</span>
+                <strong>{provider.baseUrl || t('未配置', 'Not Configured')}</strong>
+              </div>
+              <div>
+                <span>API Key</span>
+                <strong>{provider.hasStoredApiKey ? t('已保存', 'Saved') : t('未配置', 'Missing')}</strong>
+              </div>
+              <div>
+                <span>{t('上下文窗口', 'Context Window')}</span>
+                <strong>{formatEffectiveTokenLimit(tokenLimits.effectiveContextWindowTokens, tokenLimits.configuredContextWindowTokens, language)}</strong>
+              </div>
+              <div>
+                <span>{t('输出上限', 'Max Output')}</span>
+                <strong>{formatEffectiveTokenLimit(tokenLimits.effectiveMaxOutputTokens, tokenLimits.configuredMaxOutputTokens, language)}</strong>
+              </div>
+            </div>
+            <div className="tag-row provider-channel-tags">
+              <span>{provider.authStyle ?? 'api_key'}</span>
+              <span>{provider.enabled ? t('启用', 'Enabled') : t('停用', 'Disabled')}</span>
+              {provider.isDefault ? <span>{t('默认', 'Default')}</span> : null}
+            </div>
+            <div className="ghost-pill-group wrap">
+              <button className="prototype-secondary small" onClick={() => props.onEditProvider(provider)}>
+                {t('编辑', 'Edit')}
+              </button>
+              <button className="prototype-secondary small" onClick={() => props.onTestProvider(provider.id)}>
+                {t('测试', 'Test')}
+              </button>
+              <button className="prototype-secondary small" onClick={() => void runDoctor(provider)}>
+                {t('诊断', 'Doctor')}
+              </button>
+              {!provider.isDefault ? (
+                <button className="prototype-secondary small" onClick={() => props.onSetDefaultProvider(provider.id)}>
+                  {t('设默认', 'Set Default')}
+                </button>
+              ) : null}
+              <button className="prototype-danger small" onClick={() => props.onDeleteProvider(provider.id)}>
+                {t('删除', 'Delete')}
+              </button>
+            </div>
+            {tokenLimits.modelId ? (
+              <div className="helper-copy">
+                {t(`模型预设：${tokenLimits.displayName || tokenLimits.modelId}`, `Model preset: ${tokenLimits.displayName || tokenLimits.modelId}`)}
+              </div>
+            ) : null}
+            {props.providerTests[provider.id] ? <div className="helper-copy">{props.providerTests[provider.id].message}</div> : null}
+            </div>
+          );
+        })}
+      </div>
+      {doctorProvider ? (
+        <RuntimeDoctorDialog
+          provider={doctorProvider}
+          result={doctorResult}
+          loading={doctorLoading}
+          error={doctorError}
+          exportedJson={doctorExport}
+          onRunDry={() => void runDoctor(doctorProvider, false)}
+          onRunLive={() => void runDoctor(doctorProvider, true)}
+          onRepair={(action) => void repairDoctor(action)}
+          onExport={() => void exportDoctor()}
+          onClose={() => {
+            setDoctorProvider(null);
+            setDoctorResult(null);
+            setDoctorError('');
+            setDoctorExport('');
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function formatProviderProtocol(provider: AiProvider, language: UiLanguage): string {
+  const labels: Record<AiProvider['protocol'], string> = {
+    'openai-compatible': localize(language, 'OpenAI 兼容', 'OpenAI Compatible'),
+    anthropic: 'Anthropic',
+    google: 'Google',
+    bedrock: 'Bedrock',
+    vertex: 'Vertex'
+  };
+  return labels[provider.protocol];
+}
+
+function formatProviderApiMode(provider: AiProvider, language: UiLanguage): string {
+  return provider.apiMode === 'responses'
+    ? localize(language, 'Responses API', 'Responses API')
+    : localize(language, 'Chat Completions', 'Chat Completions');
+}
+
+function formatTokenLimit(value: number | undefined, language: UiLanguage): string {
+  if (!value) {
+    return localize(language, '按预设', 'Preset');
+  }
+  if (value >= 1_000_000) {
+    return `${Math.round(value / 100_000) / 10}M`;
+  }
+  if (value >= 1_000) {
+    return `${Math.round(value / 100) / 10}K`;
+  }
+  return String(value);
+}
+
+function formatEffectiveTokenLimit(value: number | undefined, configuredValue: number | undefined, language: UiLanguage): string {
+  if (!value) {
+    return localize(language, '未知', 'Unknown');
+  }
+  const formatted = formatTokenLimit(value, language);
+  return configuredValue
+    ? localize(language, `${formatted} · 自定义`, `${formatted} · custom`)
+    : localize(language, `${formatted} · 预设`, `${formatted} · preset`);
+}
+
+interface ProviderRepairGuidance {
+  key: string;
+  severity: RuntimeDoctorFinding['severity'];
+  title: string;
+  detail: string;
+  action: string;
+}
+
+function buildProviderRepairGuidance(result: RuntimeDoctorResult | null, provider: AiProvider, language: UiLanguage): ProviderRepairGuidance[] {
+  if (!result) {
+    return [];
+  }
+
+  const items = new Map<string, ProviderRepairGuidance>();
+  for (const finding of result.probes.flatMap((probe) => probe.findings)) {
+    if (finding.severity === 'ok') {
+      continue;
+    }
+    const guidance = mapProviderFindingToGuidance(finding, provider, language);
+    const existing = items.get(guidance.key);
+    if (!existing || severityRank(guidance.severity) > severityRank(existing.severity)) {
+      items.set(guidance.key, guidance);
+    }
+  }
+
+  return [...items.values()]
+    .sort((left, right) => severityRank(right.severity) - severityRank(left.severity))
+    .slice(0, 4);
+}
+
+function severityRank(severity: RuntimeDoctorFinding['severity']): number {
+  if (severity === 'error') return 2;
+  if (severity === 'warn') return 1;
+  return 0;
+}
+
+function mapProviderFindingToGuidance(finding: RuntimeDoctorFinding, provider: AiProvider, language: UiLanguage): ProviderRepairGuidance {
+  const code = finding.code;
+  if ([
+    'provider_auth_missing',
+    'native_auth_failed',
+    'native_auth_style_mismatch',
+    'provider_custom_header_missing',
+    'auth_ambiguous_env'
+  ].includes(code)) {
+    return {
+      key: 'auth',
+      severity: finding.severity,
+      title: localize(language, '补全认证配置', 'Fix Authentication'),
+      detail: localize(language, `${provider.name} 需要有效 API Key、Token 或正确的认证方式。`, `${provider.name} needs a valid API key, token, or matching auth style.`),
+      action: finding.suggestedAction ?? localize(language, '在 Provider 设置中保存密钥后重新诊断。', 'Save credentials in Provider settings, then run doctor again.')
+    };
+  }
+  if ([
+    'native_api_mode_unsupported',
+    'native_provider_api_mode_unsupported',
+    'native_empty_response'
+  ].includes(code)) {
+    return {
+      key: 'api-mode',
+      severity: finding.severity,
+      title: localize(language, '切换 API Mode', 'Switch API Mode'),
+      detail: localize(language, 'OpenAI 官方优先 Responses；多数国内兼容通道优先 Chat Completions。', 'Official OpenAI usually prefers Responses; most domestic compatible gateways prefer Chat Completions.'),
+      action: finding.suggestedAction ?? localize(language, '切换 Chat Completions / Responses 后重试。', 'Switch Chat Completions / Responses, then retry.')
+    };
+  }
+  if (['provider_model_missing', 'native_model_invalid'].includes(code)) {
+    return {
+      key: 'model',
+      severity: finding.severity,
+      title: localize(language, '校正模型 ID', 'Fix Model ID'),
+      detail: localize(language, `当前模型：${provider.model || '未配置'}`, `Current model: ${provider.model || 'not configured'}`),
+      action: finding.suggestedAction ?? localize(language, '填写服务商真实支持的 model 或 upstreamModel。', 'Use a model or upstreamModel actually supported by the provider.')
+    };
+  }
+  if ([
+    'provider_base_url_invalid',
+    'native_base_url_invalid',
+    'network_provider_unreachable',
+    'native_network_error'
+  ].includes(code)) {
+    return {
+      key: 'network',
+      severity: finding.severity,
+      title: localize(language, '检查 Base URL 与网络', 'Check Base URL And Network'),
+      detail: localize(language, `当前地址：${provider.baseUrl || '未配置'}`, `Current URL: ${provider.baseUrl || 'not configured'}`),
+      action: finding.suggestedAction ?? localize(language, '确认 URL 包含 /v1 等服务商要求路径，并检查代理或服务商状态。', 'Confirm the URL includes required paths such as /v1, then check proxy or provider status.')
+    };
+  }
+  if ([
+    'native_tool_schema_invalid',
+    'native_malformed_tool_arguments',
+    'native_tool_loop_failed'
+  ].includes(code)) {
+    return {
+      key: 'tools',
+      severity: finding.severity,
+      title: localize(language, '调整工具调用兼容性', 'Adjust Tool-Calling Compatibility'),
+      detail: localize(language, '模型或通道没有稳定接受当前工具 schema。', 'The model or gateway is not reliably accepting the current tool schema.'),
+      action: finding.suggestedAction ?? localize(language, '优先使用已验证 Provider 预设，或切换工具调用更稳定的模型。', 'Prefer a verified provider preset, or switch to a model with more stable tool calling.')
+    };
+  }
+  if (['native_rate_limited', 'native_overloaded', 'provider_rate_limit_or_overload'].includes(code)) {
+    return {
+      key: 'capacity',
+      severity: finding.severity,
+      title: localize(language, '检查额度与限速', 'Check Quota And Rate Limits'),
+      detail: localize(language, '服务商返回限速、过载或额度相关信号。', 'The provider returned rate-limit, overload, or quota signals.'),
+      action: finding.suggestedAction ?? localize(language, '稍后重试，或检查服务商控制台额度。', 'Retry later, or check quota in the provider console.')
+    };
+  }
+  if (code === 'provider_default_missing') {
+    return {
+      key: 'default-provider',
+      severity: finding.severity,
+      title: localize(language, '设置默认 Provider', 'Set Default Provider'),
+      detail: localize(language, '当前默认 Provider 不可用或已停用。', 'The current default provider is unavailable or disabled.'),
+      action: finding.suggestedAction ?? localize(language, '选择一个启用的 Provider 作为默认。', 'Choose an enabled provider as default.')
+    };
+  }
+  return {
+    key: code,
+    severity: finding.severity,
+    title: finding.summary,
+    detail: finding.detail?.split('\n')[0] ?? code,
+    action: finding.suggestedAction ?? localize(language, '根据诊断详情修复后重新运行诊断。', 'Fix according to the diagnostic details, then run doctor again.')
+  };
+}
+
+export function RuntimeDoctorDialog(props: {
+  provider: AiProvider;
+  result: RuntimeDoctorResult | null;
+  loading: boolean;
+  error: string;
+  exportedJson: string;
+  onRunDry: () => void;
+  onRunLive: () => void;
+  onRepair: (action: RuntimeRepairAction) => void;
+  onExport: () => void;
+  onClose: () => void;
+}): JSX.Element {
+  const language = useUiLanguage();
+  const t = (zh: string, en: string): string => localize(language, zh, en);
+  const severityLabel = (severity: RuntimeDoctorResult['overallSeverity']): string => {
+    switch (severity) {
+      case 'error':
+        return t('错误', 'Error');
+      case 'warn':
+        return t('警告', 'Warning');
+      default:
+        return 'OK';
+    }
+  };
+  const repairGuidance = buildProviderRepairGuidance(props.result, props.provider, language);
+  return (
+    <ModalShell
+      title={t('Claude Runtime 诊断', 'Claude Runtime Doctor')}
+      subtitle={`${props.provider.name} · ${props.provider.protocol} · ${props.provider.model}`}
+      className="runtime-doctor-modal"
+      onClose={props.onClose}
+    >
+      <div className="runtime-doctor-toolbar">
+        <button className="prototype-secondary small" disabled={props.loading} onClick={props.onRunDry}>
+          {t('重新诊断', 'Run Doctor')}
+        </button>
+        <button className="prototype-secondary small" disabled={props.loading} onClick={props.onRunLive}>
+          Live Probe
+        </button>
+        <button className="prototype-secondary small" disabled={props.loading || !props.result} onClick={props.onExport}>
+          {t('导出 JSON', 'Export JSON')}
+        </button>
+        {props.result ? <span className={`status-pill ${props.result.overallSeverity}`}>{severityLabel(props.result.overallSeverity)}</span> : null}
+      </div>
+      {props.loading ? <div className="helper-copy">{t('诊断中…', 'Running diagnostics...')}</div> : null}
+      {props.error ? <div className="error-text">{props.error}</div> : null}
+      {repairGuidance.length > 0 ? (
+        <div className="runtime-doctor-guidance">
+          <strong>{t('建议修复顺序', 'Suggested Repair Order')}</strong>
+          <div className="runtime-doctor-guidance-list">
+            {repairGuidance.map((item) => (
+              <section key={item.key} className={`runtime-doctor-guidance-item ${item.severity}`}>
+                <div>
+                  <strong>{item.title}</strong>
+                  <span>{item.detail}</span>
+                </div>
+                <em>{item.action}</em>
+              </section>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {props.result ? (
+        <div className="runtime-doctor-probes">
+          {props.result.probes.map((probe) => (
+            <section key={probe.id} className={`runtime-doctor-probe ${probe.severity}`}>
+              <div className="runtime-doctor-probe-header">
+                <strong>{probe.title}</strong>
+                <span>{severityLabel(probe.severity)} · {probe.durationMs}ms</span>
+              </div>
+              {probe.findings.map((finding) => (
+                <div key={`${probe.id}-${finding.code}-${finding.summary}`} className={`runtime-doctor-finding ${finding.severity}`}>
+                  <div>
+                    <strong>{finding.code}</strong>
+                    <span>{finding.summary}</span>
+                  </div>
+                  {finding.detail ? <pre>{finding.detail}</pre> : null}
+                  {finding.suggestedAction ? <em>{finding.suggestedAction}</em> : null}
+                </div>
+              ))}
+            </section>
+          ))}
+        </div>
+      ) : null}
+      {props.result?.repairs.length ? (
+        <div className="runtime-doctor-repairs">
+          <strong>{t('可执行修复', 'Repair Actions')}</strong>
+          <div className="ghost-pill-group wrap">
+            {props.result.repairs.map((action) => (
+              <button key={action.id} className="prototype-secondary small" disabled={props.loading} onClick={() => props.onRepair(action)} title={action.description}>
+                {action.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {props.exportedJson ? (
+        <textarea className="runtime-doctor-export" readOnly value={props.exportedJson} />
+      ) : null}
+    </ModalShell>
+  );
+}

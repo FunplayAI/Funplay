@@ -1,0 +1,536 @@
+import {
+  appendProjectConversationTurn,
+  ensureProjectSessions,
+  getActiveProjectSession,
+  replaceProjectSession,
+  syncProjectChatFromActiveSession
+} from '../../../shared/project-sessions';
+import type { AgentSkillActivation, GameAgentRun, GameAgentStep, McpPlugin, Project, RuntimeUsage } from '../../../shared/types';
+import { makeId, nowIso } from '../../../shared/utils';
+import { getAgentSettings } from '../store';
+import { hasSessionWritePermission, listSessionMcpToolPermissionKeys, listSessionWritePermissionTools } from './permission-session-store';
+import { buildGenericWorkspaceContext } from './context';
+import { resolveGenericAgentRuntime } from './runtime-registry';
+import { supportsGenericAgentRuntimeCapability } from './runtime-capabilities';
+import { accumulateUsage, emptyUsageTotals } from './usage';
+import type { GenericAgentBootstrapTask, GenericAgentConversationTask, GenericAgentExecutePlanTask, GenericAgentRuntimeResult, GenericAgentTask } from './types';
+import { acquireAgentSessionLock, releaseAgentSessionLock } from './session-run-lock';
+import { buildClaudeContextSummaryForSessionWithProvider, resetClaudeContextCompressionState } from './claude/runtime';
+import { prepareNativeContextHandoff, resetNativeContextCompressionState } from './native/context-handoff';
+import { chatContentBlocksToAgentCoreParts } from '../../../shared/agent-core-v2';
+import type { AgentCoreMessagePart } from '../../../shared/types/agent-core';
+import { recordActiveRunLifecycleHook, recordActiveRunSkillActivation } from './run-registry';
+import { loadAgentLifecycleHookConfigForProject } from './agent-hooks';
+
+function createStep(kind: GameAgentStep['kind'], title: string, detail: string, status: GameAgentStep['status']): GameAgentStep {
+  return {
+    id: makeId('step'),
+    kind,
+    title,
+    detail,
+    status
+  };
+}
+
+function activateTargetSession(project: Project, targetSessionId?: string): Project {
+  const ensured = ensureProjectSessions(project);
+  if (!targetSessionId) {
+    return ensured;
+  }
+
+  if (!ensured.sessions.some((session) => session.id === targetSessionId)) {
+    throw new Error('Session not found.');
+  }
+
+  return syncProjectChatFromActiveSession({
+    ...ensured,
+    activeSessionId: targetSessionId
+  });
+}
+
+function collectPlugins(task: { mcpPlugins?: McpPlugin[]; enginePlugin?: McpPlugin; assetPlugin?: McpPlugin; qaPlugin?: McpPlugin; customPlugin?: McpPlugin }): McpPlugin[] {
+  const plugins = [
+    ...(task.mcpPlugins ?? []),
+    task.enginePlugin,
+    task.assetPlugin,
+    task.qaPlugin,
+    task.customPlugin
+  ].filter(Boolean) as McpPlugin[];
+  return [...new Map(plugins.map((plugin) => [plugin.id, plugin])).values()];
+}
+
+function isManualCompactPrompt(message: string): boolean {
+  return message.trim() === '/compact';
+}
+
+function buildDefaultAgentCoreParts(
+  result: GenericAgentRuntimeResult,
+  options: { turnId?: string; createdAt: string; activeSkills?: AgentSkillActivation[] }
+): AgentCoreMessagePart[] | undefined {
+  const skillParts = buildSkillActivationAgentCoreParts(options.activeSkills ?? [], {
+    turnId: options.turnId,
+    createdAt: options.createdAt
+  });
+  if (result.assistantMetadata?.agentCoreParts?.length) {
+    return mergeAgentCoreParts(skillParts, result.assistantMetadata.agentCoreParts);
+  }
+
+  if (result.assistantIntent !== 'chat') {
+    return skillParts.length ? skillParts : undefined;
+  }
+
+  const contentBlocks = result.assistantContentBlocks?.length
+    ? result.assistantContentBlocks
+    : result.assistantMessage.trim()
+      ? [{ type: 'text' as const, text: result.assistantMessage.trim() }]
+      : [];
+  const parts = chatContentBlocksToAgentCoreParts(contentBlocks, {
+    turnId: options.turnId,
+    createdAt: options.createdAt
+  });
+  const merged = mergeAgentCoreParts(skillParts, parts);
+  return merged.length > 0 ? merged : undefined;
+}
+
+function buildSkillActivationAgentCoreParts(
+  skills: AgentSkillActivation[],
+  options: { turnId?: string; createdAt: string }
+): AgentCoreMessagePart[] {
+  return skills.map((skill, index) => ({
+    id: `skill_activation:${skill.id}`,
+    kind: 'system_event',
+    turnId: options.turnId,
+    createdAt: options.createdAt,
+    sequence: index,
+    title: `Skill activated: ${skill.name}`,
+    summary: [
+      `Reason: ${skill.activationReason}`,
+      `Trust: ${skill.trustLevel}`,
+      `Permission: ${skill.permissionPolicy}`
+    ].join(' · '),
+    metadata: {
+      type: 'skill_activation',
+      skillId: skill.id,
+      skillName: skill.name,
+      activationReason: skill.activationReason,
+      source: skill.source,
+      sourcePath: skill.sourcePath,
+      trustLevel: skill.trustLevel,
+      verificationStatus: skill.verificationStatus,
+      permissionPolicy: skill.permissionPolicy,
+      scriptPolicy: skill.scriptPolicy
+    }
+  }));
+}
+
+function mergeAgentCoreParts(prefix: AgentCoreMessagePart[], parts: AgentCoreMessagePart[]): AgentCoreMessagePart[] {
+  if (!prefix.length) {
+    return parts;
+  }
+  return [
+    ...prefix,
+    ...parts.map((part) => ({
+      ...part,
+      sequence: part.sequence + prefix.length
+    }))
+  ];
+}
+
+export async function executeGenericBootstrap(task: GenericAgentBootstrapTask): Promise<{ project: Project; run: GameAgentRun }> {
+  const startedAt = nowIso();
+  const plugins = collectPlugins(task);
+  const steps = [
+    createStep('context', '建立通用项目上下文', '已创建项目并初始化通用 Agent 工作区。', 'completed'),
+    createStep('context', '记录可用插件配置', `已识别 ${plugins.length} 个项目插件配置。`, 'completed')
+  ];
+
+  const run: GameAgentRun = {
+    id: makeId('run'),
+    mode: 'bootstrap',
+    input: task.input.pitch,
+    status: task.provider ? 'completed' : 'fallback',
+    usedProviderId: task.provider?.id,
+    usedModel: task.provider?.model,
+    startedAt,
+    finishedAt: nowIso(),
+    steps,
+    pluginReports: [],
+    executionPlan: task.project.currentExecutionPlan,
+    operationLog: []
+  };
+
+  const project = {
+    ...ensureProjectSessions(task.project),
+    lastAgentRun: run,
+    updatedAt: run.finishedAt,
+    activity: [
+      {
+        id: makeId('act'),
+        kind: 'planning' as const,
+        title: 'Generic Agent Platform 已初始化',
+        detail: '项目已接入通用 Agent 平台。',
+        createdAt: run.finishedAt
+      },
+      ...task.project.activity
+    ]
+  };
+
+  return { project, run };
+}
+
+export async function executeGenericConversation(task: GenericAgentConversationTask): Promise<{ project: Project; run: GameAgentRun }> {
+  const startedAt = nowIso();
+  const currentProject = activateTargetSession(task.project, task.sessionId);
+  const activeSession = getActiveProjectSession(currentProject);
+  const lockToken = acquireAgentSessionLock(activeSession.id, 'conversation');
+  if (!lockToken) {
+    task.onStage?.({
+      stageId: 'stage:session_busy',
+      phase: 'session_busy',
+      title: '会话正在处理请求',
+      target: 'stage:session_busy',
+      status: 'failed',
+      summary: '当前会话已有一个 Agent 请求在运行。'
+    });
+    throw new Error('SESSION_BUSY: This session already has an active agent run.');
+  }
+
+  try {
+  const plugins = collectPlugins(task);
+  const context = buildGenericWorkspaceContext(currentProject, plugins, activeSession.id, task.message);
+  const lifecycleHooks = loadAgentLifecycleHookConfigForProject(currentProject, {
+    includeUser: false
+  });
+  for (const skill of context.toolContext.activeSkills) {
+    if (task.activeRunId) {
+      recordActiveRunSkillActivation(task.activeRunId, skill);
+    }
+  }
+  const agentSettings = getAgentSettings();
+  const runtime = resolveGenericAgentRuntime({
+    runtimeId: activeSession.runtimeOverrides?.runtimeId,
+    provider: task.provider,
+    runtimeStrategy: agentSettings.runtimeStrategy
+  });
+  if (!supportsGenericAgentRuntimeCapability(runtime, 'conversation') || !runtime.executeTurn) {
+    throw new Error(`Runtime ${runtime.id} does not support conversation turns.`);
+  }
+  const runtimeGrantId = runtime.id === 'native' || runtime.id === 'claude-code-sdk' ? runtime.id : undefined;
+  const permissionGrantContext = {
+    runtimeId: runtimeGrantId,
+    cwd: currentProject.engine?.projectPath
+  };
+  const sessionWriteTools = listSessionWritePermissionTools(activeSession.id, permissionGrantContext);
+  const sessionMcpTools = listSessionMcpToolPermissionKeys(activeSession.id, permissionGrantContext);
+  const permissionMode = activeSession.runtimeOverrides?.permissionMode ?? currentProject.agentPolicy?.permissionMode ?? agentSettings.permissionMode;
+  task.onStage?.({
+    stageId: 'stage:runtime_resolved',
+    phase: 'runtime_resolved',
+    title: '选择 Agent runtime',
+    target: 'stage:runtime_resolved',
+    status: 'completed',
+    summary: `${runtime.displayName} / ${task.provider?.name ?? 'no provider'} / ${task.provider?.model ?? 'default model'}`,
+    runtimeId: runtimeGrantId,
+    providerId: task.provider?.id,
+    model: task.provider?.model,
+    input: {
+      runtimeId: runtime.id,
+      runtimeStrategy: agentSettings.runtimeStrategy,
+      sessionRuntimeId: activeSession.runtimeOverrides?.runtimeId,
+      providerId: task.provider?.id,
+      model: task.provider?.model
+    }
+  });
+
+  if (isManualCompactPrompt(task.message)) {
+    if (runtime.id === 'native') {
+      const summaryResult = prepareNativeContextHandoff({
+        project: currentProject,
+        sessionId: activeSession.id,
+        provider: task.provider,
+        currentPrompt: task.message,
+        force: true
+      });
+      const updatedAt = nowIso();
+      let nextProject = currentProject;
+      const steps: GameAgentStep[] = [];
+
+      if (summaryResult?.summary.trim()) {
+        resetNativeContextCompressionState(activeSession.id);
+        task.onStatus?.('thinking', '已压缩 Native runtime 上下文。');
+        task.onStage?.({
+          stageId: 'stage:native_context_compressed',
+          phase: 'context_compressed',
+          title: '压缩 Native runtime 上下文',
+          target: 'stage:native_context_compressed',
+          status: 'completed',
+          summary: '已生成上下文摘要，下一轮 native runtime 将以摘要加未覆盖消息继续。',
+          runtimeId: 'native',
+          providerId: task.provider?.id,
+          model: task.provider?.model,
+          input: {
+            contextSummary: summaryResult.summary,
+            contextSummaryCoverage: summaryResult.coverage,
+            boundaryRowId: summaryResult.coverage.boundaryRowId,
+            boundaryOrdinal: summaryResult.coverage.boundaryOrdinal,
+            coveredMessageCount: summaryResult.coverage.coveredMessageCount ?? summaryResult.coverage.messageCount
+          }
+        });
+        steps.push(createStep('memory', '压缩 Native runtime 上下文', '已生成摘要并更新 Native 上下文边界。', 'completed'));
+        nextProject = replaceProjectSession(
+          currentProject,
+          {
+            ...activeSession,
+            updatedAt,
+            runtimeOverrides: {
+              ...activeSession.runtimeOverrides,
+              ...summaryResult.patch
+            }
+          },
+          activeSession.id
+        );
+      } else {
+        task.onStatus?.('thinking', '当前会话还不需要压缩。');
+        steps.push(createStep('memory', '跳过 Native runtime 上下文压缩', '当前会话未达到压缩阈值或没有可压缩的新消息。', 'skipped'));
+      }
+
+      const run: GameAgentRun = {
+        id: makeId('run'),
+        mode: 'update',
+        input: task.message,
+        status: 'completed',
+        usedProviderId: task.provider?.id,
+        usedModel: task.provider?.model,
+        startedAt,
+        finishedAt: updatedAt,
+        steps,
+        pluginReports: [],
+        executionPlan: nextProject.currentExecutionPlan,
+        operationLog: []
+      };
+
+      nextProject = {
+        ...nextProject,
+        activeSessionId: activeSession.id,
+        lastAgentRun: run,
+        updatedAt
+      };
+
+      return { project: nextProject, run };
+    }
+
+    const summaryResult = await buildClaudeContextSummaryForSessionWithProvider(activeSession);
+    const updatedAt = nowIso();
+    let nextProject = currentProject;
+    const steps: GameAgentStep[] = [];
+
+    if (summaryResult.summary.trim()) {
+      resetClaudeContextCompressionState(activeSession.id);
+      task.onStatus?.('thinking', '已压缩 Claude runtime 上下文。');
+      task.onStage?.({
+        stageId: 'stage:context_compressed',
+        phase: 'context_compressed',
+        title: '压缩 Claude runtime 上下文',
+        target: 'stage:context_compressed',
+        status: 'completed',
+        summary: '已生成上下文摘要，下一轮将以摘要加未覆盖消息启动新 Claude 会话。',
+        input: {
+          contextSummary: summaryResult.summary,
+          contextSummaryCoverage: summaryResult.coverage,
+          boundaryOrdinal: summaryResult.coverage?.boundaryOrdinal,
+          coveredMessageCount: summaryResult.coverage?.coveredMessageCount ?? summaryResult.coverage?.messageCount
+        }
+      });
+      steps.push(createStep('memory', '压缩 Claude runtime 上下文', '已生成摘要并清空 Claude resume 会话。', 'completed'));
+      nextProject = replaceProjectSession(
+        currentProject,
+        {
+          ...activeSession,
+          updatedAt,
+          runtimeOverrides: {
+            ...activeSession.runtimeOverrides,
+            claudeCodeSessionId: '',
+            claudeCodeSessionCwd: currentProject.engine?.projectPath,
+            claudeContextSummary: summaryResult.summary,
+            claudeContextSummaryUpdatedAt: updatedAt,
+            claudeContextSummaryCoverage: summaryResult.coverage,
+            claudeContextSummaryTurnCount: summaryResult.coverage?.turnCount ?? activeSession.runtimeOverrides?.claudeContextSummaryTurnCount
+          }
+        },
+        activeSession.id
+      );
+    } else {
+      task.onStatus?.('thinking', '当前会话还不需要压缩。');
+      steps.push(createStep('memory', '跳过 Claude runtime 上下文压缩', '当前会话未达到压缩阈值或没有可压缩的新消息。', 'skipped'));
+    }
+
+    const run: GameAgentRun = {
+      id: makeId('run'),
+      mode: 'update',
+      input: task.message,
+      status: 'completed',
+      usedProviderId: task.provider?.id,
+      usedModel: task.provider?.model,
+      startedAt,
+      finishedAt: updatedAt,
+      steps,
+      pluginReports: [],
+      executionPlan: nextProject.currentExecutionPlan,
+      operationLog: []
+    };
+
+    nextProject = {
+      ...nextProject,
+      activeSessionId: activeSession.id,
+      lastAgentRun: run,
+      updatedAt
+    };
+
+    return { project: nextProject, run };
+  }
+
+  let tokenUsage = emptyUsageTotals();
+  let hasTokenUsage = false;
+  const onUsage = (usage: RuntimeUsage): void => {
+    tokenUsage = accumulateUsage(tokenUsage, usage);
+    hasTokenUsage = true;
+    task.onUsage?.(usage);
+  };
+
+  const result = await runtime.executeTurn({
+    project: currentProject,
+    message: task.message,
+    attachments: task.attachments,
+    provider: task.provider,
+    plugins,
+    context,
+    resumeContext: task.resumeContext,
+    checkpointSnapshotId: task.checkpointSnapshotId,
+    permission: {
+      mode: permissionMode,
+      allowWriteTools: permissionMode === 'full-access',
+      allowSessionWriteTools: hasSessionWritePermission(activeSession.id, undefined, permissionGrantContext),
+      allowedWriteTools: permissionMode === 'full-access' ? ['*'] : sessionWriteTools,
+      allowedMcpTools: sessionMcpTools
+    },
+    activeRunId: task.activeRunId,
+    lifecycleHooks,
+    abortSignal: task.abortSignal,
+    onStatus: task.onStatus,
+    onTextDelta: task.onTextDelta,
+    onThinkingDelta: task.onThinkingDelta,
+    onToolUse: task.onToolUse,
+    onToolResult: task.onToolResult,
+    onStage: task.onStage,
+    onPermissionRequest: task.onPermissionRequest,
+    requestPermission: task.requestPermission,
+    onUserInputRequest: task.onUserInputRequest,
+    requestUserInput: task.requestUserInput,
+    onUsage,
+    onLifecycleHook: (hook) => {
+      if (task.activeRunId) {
+        recordActiveRunLifecycleHook(task.activeRunId, hook);
+      }
+    }
+  });
+
+  const updatedAt = nowIso();
+  const agentCoreParts = buildDefaultAgentCoreParts(result, {
+    turnId: task.userMessageId,
+    createdAt: updatedAt,
+    activeSkills: context.toolContext.activeSkills
+  });
+  let nextProject = appendProjectConversationTurn(currentProject, {
+    userMessageId: task.userMessageId,
+    userMessage: task.message,
+    assistantMessage: result.assistantMessage,
+    assistantContentBlocks: result.assistantContentBlocks,
+    assistantMetadata: {
+      ...result.assistantMetadata,
+      agentCoreParts,
+      intent: result.assistantIntent,
+      agentStartedAt: startedAt,
+      agentFinishedAt: updatedAt,
+      operationLog: result.operationLog,
+      tokenUsage: hasTokenUsage ? tokenUsage : undefined,
+      diagnosticCode: result.diagnosticCode,
+      severity: result.severity,
+      suggestedAction: result.suggestedAction,
+      recoveryActions: result.recoveryActions,
+      activitySummary:
+        result.assistantIntent === 'fallback'
+          ? [result.usedProviderId, result.usedModel].filter(Boolean).join(' / ') || 'fallback'
+          : undefined,
+      executionSummary: result.assistantIntent === 'fallback' ? result.fallbackDetail : undefined
+    },
+    updatedAt,
+    activityTitle: result.status === 'completed' ? '通用 Agent 已回复' : '通用 Agent 已回退回复',
+    activityDetail: result.status === 'completed' ? `已围绕“${task.message}”完成回复。` : '本轮使用 fallback 回复。'
+  });
+
+  if (result.sessionRuntimePatch && Object.keys(result.sessionRuntimePatch).length > 0) {
+    const ensured = ensureProjectSessions(nextProject);
+    const sessionToPatch = ensured.sessions.find((session) => session.id === activeSession.id);
+    if (sessionToPatch) {
+      nextProject = replaceProjectSession(
+        ensured,
+        {
+          ...sessionToPatch,
+          runtimeOverrides: {
+            ...sessionToPatch.runtimeOverrides,
+            ...result.sessionRuntimePatch
+          }
+        },
+        activeSession.id
+      );
+    }
+  }
+
+  const run: GameAgentRun = {
+    id: makeId('run'),
+    mode: 'update',
+    input: task.message,
+    status: result.status,
+    usedProviderId: result.usedProviderId,
+    usedModel: result.usedModel,
+    startedAt,
+    finishedAt: updatedAt,
+    steps: result.steps,
+    pluginReports: [],
+    executionPlan: nextProject.currentExecutionPlan,
+    operationLog: result.operationLog ?? []
+  };
+
+  nextProject = {
+    ...nextProject,
+    activeSessionId: activeSession.id,
+    lastAgentRun: run,
+    updatedAt
+  };
+
+  return { project: nextProject, run };
+  } finally {
+    releaseAgentSessionLock(activeSession.id, lockToken);
+  }
+}
+
+export async function executeGenericExecutePlan(task: GenericAgentExecutePlanTask): Promise<{ project: Project; run: GameAgentRun }> {
+  const runtime = resolveGenericAgentRuntime('execute-plan');
+  if (!supportsGenericAgentRuntimeCapability(runtime, 'executePlan') || !runtime.executePlan) {
+    throw new Error('Execution plan runtime is not available.');
+  }
+  return runtime.executePlan(task);
+}
+
+export async function executeGenericAgentTask(task: GenericAgentTask): Promise<{ project: Project; run: GameAgentRun }> {
+  switch (task.kind) {
+    case 'bootstrap':
+      return executeGenericBootstrap(task);
+    case 'conversation':
+      return executeGenericConversation(task);
+    case 'execute-plan':
+      return executeGenericExecutePlan(task);
+    default:
+      throw new Error('Unsupported generic agent task.');
+  }
+}

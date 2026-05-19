@@ -1,0 +1,130 @@
+{
+  "name": "funplay",
+  "version": "0.2.0",
+  "private": true,
+  "description": "AI game creation desktop workspace for macOS + Unity.",
+  "type": "module",
+  "main": "out/main/index.js",
+  "scripts": {
+    "postinstall": "electron-builder install-app-deps",
+    "dev": "npm run rebuild:native:force && electron-vite dev",
+    "test": "npm run test:runtime",
+    "test:runtime": "sh -c 'npm rebuild better-sqlite3 && node --experimental-strip-types --import ./tests/register-ts-loader.mjs --test tests/runtime/*.test.ts; code=$?; npm run rebuild:native:force; exit $code'",
+    "lint": "eslint 'electron/**/*.ts' 'shared/**/*.ts' 'src/**/*.ts' 'src/**/*.tsx' 'tests/**/*.ts'",
+    "format": "prettier --write 'electron/**/*.ts' 'shared/**/*.ts' 'src/**/*.ts' 'src/**/*.tsx' 'tests/**/*.ts'",
+    "format:check": "prettier --check 'electron/**/*.ts' 'shared/**/*.ts' 'src/**/*.ts' 'src/**/*.tsx' 'tests/**/*.ts'",
+    "agent:e2e": "node scripts/agent-e2e.mjs",
+    "agent:e2e:claude-live": "node scripts/agent-e2e-claude-live.mjs",
+    "agent:benchmark": "node scripts/agent-benchmark.mjs",
+    "agent:core-v2-benchmark": "node scripts/agent-core-v2-benchmark.mjs",
+    "agent:platform-v3-benchmark": "node scripts/agent-platform-v3-benchmark.mjs",
+    "agent:skills-v2-benchmark": "node scripts/agent-skills-v2-benchmark.mjs",
+    "agent:mcp-compatibility": "node --experimental-strip-types --import ./tests/register-ts-loader.mjs --test --test-name-pattern \"unity mcp client reuses initialization|mcp connection manager reconnects|unity mcp client exposes prompt|unity mcp optional capability|mcp tool elicitation|mcp compatibility matrix|mcp stdio transport|mcp stdio lifecycle|mcp stdio crash|mcp streamable http transport|mcp sse transport\" tests/runtime/unity-onboarding.test.ts",
+    "agent:roadmap-audit": "node scripts/agent-roadmap-audit.mjs",
+    "agent:browser-smoke": "sh -c 'NODE_OPTIONS=\"--experimental-strip-types --import ./tests/register-ts-loader.mjs\" electron scripts/agent-browser-smoke.mjs'",
+    "ui:smoke": "node scripts/desktop-ui-smoke.mjs",
+    "ui:electron-smoke": "electron scripts/desktop-ui-electron-smoke.mjs",
+    "runtime:maturity-gate": "node scripts/runtime-maturity-gate.mjs",
+    "runtime:maturity-gate:live": "node scripts/runtime-maturity-gate.mjs --require-live",
+    "release:gate": "node scripts/release-gate.mjs",
+    "runtime:pptx:check": "node scripts/prepare-pptx-runtime.mjs --check",
+    "runtime:pptx:prepare": "node scripts/prepare-pptx-runtime.mjs",
+    "ensure:claude-sdk:darwin-x64": "node scripts/ensure-claude-sdk-darwin-x64.mjs",
+    "build": "npm run rebuild:native && tsc --noEmit && electron-vite build",
+    "predist": "npm run rebuild:native",
+    "dist": "npm run dist:mac:universal",
+    "dist:mac": "npm run dist:mac:universal",
+    "dist:mac:universal": "npm run ensure:claude-sdk:darwin-x64 && npm run build && electron-builder --mac --universal",
+    "dist:mac:arm64": "npm run build && electron-builder --mac --arm64",
+    "dist:mac:x64": "npm run build && electron-builder --mac --x64",
+    "dist:mac:intel": "npm run dist:mac:x64",
+    "dist:win": "npm run dist:win:x64",
+    "dist:win:x64": "npm run build && electron-builder --win --x64",
+    "check:native": "node scripts/ensure-electron-native.mjs",
+    "rebuild:native": "node scripts/ensure-electron-native.mjs",
+    "rebuild:native:force": "node scripts/ensure-electron-native.mjs --force"
+  },
+  "build": {
+    "appId": "ai.funplay.desktop",
+    "productName": "Funplay",
+    "directories": {
+      "output": "release"
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://color-button-sort-puzzle.oss-us-west-1.aliyuncs.com/CDN/funplay-updates/"
+      }
+    ],
+    "icon": "resources/icon",
+    "files": [
+      "out/**/*",
+      "package.json",
+      "resources/**/*",
+      "node_modules/@anthropic-ai/claude-agent-sdk/**/*",
+      "node_modules/@anthropic-ai/claude-agent-sdk-*/**/*",
+      "!resources/runtime/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/@anthropic-ai/claude-agent-sdk-*/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "resources/icon.icns",
+      "notarize": true,
+      "x64ArchFiles": "**/node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/claude",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "icon": "resources/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "dependencies": {
+    "@ai-sdk/amazon-bedrock": "^4.0.97",
+    "@ai-sdk/anthropic": "3.0.69",
+    "@ai-sdk/google": "3.0.62",
+    "@ai-sdk/google-vertex": "^4.0.113",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.119",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "ai": "6.0.158",
+    "better-sqlite3": "^12.9.0",
+    "electron-updater": "^6.8.3",
+    "react": "19.2.5",
+    "react-dom": "19.2.5",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/node": "25.6.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "4.7.0",
+    "electron": "41.2.0",
+    "electron-builder": "26.8.1",
+    "electron-vite": "5.0.0",
+    "eslint": "^10.3.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.3",
+    "typescript": "6.0.2",
+    "typescript-eslint": "^8.59.2",
+    "vite": "7.3.2"
+  }
+}

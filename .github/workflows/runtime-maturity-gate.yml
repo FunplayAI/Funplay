@@ -1,0 +1,108 @@
+name: Runtime Maturity Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_live:
+        description: 'Run required live Claude SDK E2E'
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  lint:
+    name: Lint and typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+  dry-maturity:
+    name: Dry maturity gate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run maturity gate without required live credentials
+        run: npm run runtime:maturity-gate
+
+      - name: Upload maturity reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-maturity-${{ matrix.os }}
+          if-no-files-found: warn
+          path: |
+            out/maturity-gate/**
+            out/agent-e2e/**
+
+  live-claude:
+    name: Required live Claude SDK E2E
+    if: inputs.run_live
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      FUNPLAY_E2E_CLAUDE_API_KEY: ${{ secrets.FUNPLAY_E2E_CLAUDE_API_KEY }}
+      FUNPLAY_E2E_CLAUDE_MODEL: ${{ secrets.FUNPLAY_E2E_CLAUDE_MODEL }}
+      FUNPLAY_E2E_CLAUDE_BASE_URL: ${{ secrets.FUNPLAY_E2E_CLAUDE_BASE_URL }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run required live maturity gate
+        run: npm run runtime:maturity-gate:live
+
+      - name: Upload live maturity reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-maturity-live-claude
+          if-no-files-found: warn
+          path: |
+            out/maturity-gate/**
+            out/agent-e2e/**

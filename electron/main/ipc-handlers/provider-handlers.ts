@@ -1,0 +1,185 @@
+import type { IpcMain } from 'electron';
+import type { HandlerContext } from './types';
+import {
+  aiProviderInputSchema,
+  providerIdSchema,
+  runtimeDoctorInputSchema,
+  runtimeRepairInputSchema,
+  validateIpcInput
+} from '../ipc-validation';
+import { createProvider, deleteProvider, setDefaultProvider, updateProvider } from '../provider-service';
+import { testProviderConnection } from '../text-generator';
+import { resolveProviderTokenLimits } from '../../../shared/provider-catalog';
+import {
+  classifyClaudeRuntimeError,
+  redactClaudeRuntimeErrorDetail,
+  testClaudeCodeSdkProviderRuntime
+} from '../agent-platform/claude/runtime';
+import { resolveProviderForRuntime } from '../agent-platform/provider-resolver';
+import { sanitizeProviderForRenderer } from '../provider-secret-store';
+import { runRuntimeDoctor, repairRuntimeDoctor } from '../runtime-doctor-service';
+import { getAgentSettings } from '../store';
+
+function formatTokenLimit(value: number | undefined): string {
+  if (!value) {
+    return 'unknown';
+  }
+  if (value >= 1_000_000) {
+    return `${Math.round(value / 100_000) / 10}M`;
+  }
+  if (value >= 1_000) {
+    return `${Math.round(value / 100) / 10}K`;
+  }
+  return String(value);
+}
+
+export function registerProviderHandlers(ipcMain: IpcMain, ctx: HandlerContext): void {
+  ipcMain.handle('providers:create', async (_, input: unknown) => {
+    const state = ctx.getState();
+    const provider = await createProvider(state, validateIpcInput(aiProviderInputSchema, input, 'providers:create'));
+    await ctx.setState({ ...state });
+    return sanitizeProviderForRenderer(provider);
+  });
+
+  ipcMain.handle('providers:update', async (_, providerId: unknown, input: unknown) => {
+    const state = ctx.getState();
+    const provider = await updateProvider(
+      state,
+      validateIpcInput(providerIdSchema, providerId, 'providers:update(providerId)'),
+      validateIpcInput(aiProviderInputSchema, input, 'providers:update(input)')
+    );
+    await ctx.setState({ ...state });
+    return sanitizeProviderForRenderer(provider);
+  });
+
+  ipcMain.handle('providers:delete', async (_, providerId: unknown) => {
+    const state = ctx.getState();
+    await deleteProvider(state, validateIpcInput(providerIdSchema, providerId, 'providers:delete'));
+    await ctx.setState({ ...state });
+    return { success: true as const };
+  });
+
+  ipcMain.handle('providers:setDefault', async (_, providerId: unknown) => {
+    const state = ctx.getState();
+    const aiSettings = setDefaultProvider(state, validateIpcInput(providerIdSchema, providerId, 'providers:setDefault'));
+    await ctx.setState({ ...state });
+    return aiSettings;
+  });
+
+  ipcMain.handle('providers:test', async (_, providerId: unknown) => {
+    const state = ctx.getState();
+    const validatedProviderId = validateIpcInput(providerIdSchema, providerId, 'providers:test');
+    const provider = state.providers.find((item) => item.id === validatedProviderId);
+    if (!provider) {
+      throw new Error('Provider not found.');
+    }
+
+    const testedAt = new Date().toISOString();
+
+    try {
+      const runtimeStrategy = getAgentSettings().runtimeStrategy;
+      const resolved = resolveProviderForRuntime({ state, explicitProvider: provider });
+      const tokenLimits = resolveProviderTokenLimits(provider);
+      const modelPresetLabel = tokenLimits.displayName || tokenLimits.modelId;
+      if (runtimeStrategy !== 'native' && resolved.canUseClaudeCode) {
+        try {
+          const probe = await testClaudeCodeSdkProviderRuntime(provider);
+          return {
+            providerId: validatedProviderId,
+            status: 'success' as const,
+            message: [
+              `Claude SDK runtime 探针成功：${probe.responsePreview || 'OK'}`,
+              `Runtime: ${probe.runtimeId}`,
+              `CLI: ${probe.executableSource ?? 'unknown'} ${probe.executablePath ? `(${probe.executablePath})` : ''}`.trim(),
+              `Protocol: ${probe.providerProtocol ?? provider.protocol}`,
+              `Base URL: ${probe.baseUrl || provider.baseUrl || '(default)'}`,
+              `Model: ${probe.model || resolved.upstreamModel || provider.model}`,
+              modelPresetLabel ? `Model preset: ${modelPresetLabel}` : '',
+              `Context window: ${formatTokenLimit(tokenLimits.effectiveContextWindowTokens)}`,
+              `Max output: ${formatTokenLimit(tokenLimits.effectiveMaxOutputTokens)}`,
+              `Runtime strategy: ${runtimeStrategy}`
+            ].filter(Boolean).join('\n'),
+            testedAt
+          };
+        } catch (probeError) {
+          const diagnostic = classifyClaudeRuntimeError({ error: probeError, provider });
+          return {
+            providerId: validatedProviderId,
+            status: 'error' as const,
+            message: [
+              'Claude SDK runtime 探针失败；该测试已按当前 runtime/provider 真实链路执行。',
+              diagnostic.summary,
+              diagnostic.suggestedAction,
+              probeError instanceof Error ? redactClaudeRuntimeErrorDetail(probeError.message, provider) : 'Unknown Claude SDK runtime error',
+              `Provider: ${provider.name}`,
+              `Protocol: ${provider.protocol}`,
+              `Base URL: ${provider.baseUrl || '(default)'}`,
+              `Model: ${resolved.upstreamModel || provider.model}`,
+              modelPresetLabel ? `Model preset: ${modelPresetLabel}` : '',
+              `Context window: ${formatTokenLimit(tokenLimits.effectiveContextWindowTokens)}`,
+              `Max output: ${formatTokenLimit(tokenLimits.effectiveMaxOutputTokens)}`,
+              `Runtime strategy: ${runtimeStrategy}`
+            ].filter(Boolean).join('\n'),
+            testedAt
+          };
+        }
+      }
+      if (resolved.sdkProxyOnly) {
+        throw new Error('Provider is marked sdkProxyOnly; set runtime strategy to auto or claude-code-sdk before testing.');
+      }
+      const text = await testProviderConnection(provider);
+      return {
+        providerId: validatedProviderId,
+        status: 'success' as const,
+        message: [
+          `Native provider 探针成功，模型返回：${text.slice(0, 80) || 'OK'}`,
+          `Protocol: ${resolved.protocol}`,
+          `Model: ${resolved.upstreamModel || resolved.model || provider.model}`,
+          modelPresetLabel ? `Model preset: ${modelPresetLabel}` : '',
+          `Context window: ${formatTokenLimit(tokenLimits.effectiveContextWindowTokens)}`,
+          `Max output: ${formatTokenLimit(tokenLimits.effectiveMaxOutputTokens)}`,
+          `Runtime strategy: ${runtimeStrategy}`
+        ].filter(Boolean).join('\n'),
+        testedAt
+      };
+    } catch (error) {
+      const tokenLimits = resolveProviderTokenLimits(provider);
+      const modelPresetLabel = tokenLimits.displayName || tokenLimits.modelId;
+      return {
+        providerId: validatedProviderId,
+        status: 'error' as const,
+        message: [
+          error instanceof Error ? error.message : 'Unknown error',
+          `Provider: ${provider.name}`,
+          `Protocol: ${provider.protocol}`,
+          `Base URL: ${provider.baseUrl || '(default)'}`,
+          `Model: ${provider.model}`,
+          modelPresetLabel ? `Model preset: ${modelPresetLabel}` : '',
+          `Context window: ${formatTokenLimit(tokenLimits.effectiveContextWindowTokens)}`,
+          `Max output: ${formatTokenLimit(tokenLimits.effectiveMaxOutputTokens)}`,
+          `Runtime strategy: ${getAgentSettings().runtimeStrategy}`
+        ].filter(Boolean).join('\n'),
+        testedAt
+      };
+    }
+  });
+
+  ipcMain.handle('providers:doctor', async (_, providerId: unknown, input: unknown) => {
+    const validatedProviderId = validateIpcInput(providerIdSchema, providerId, 'providers:doctor(providerId)');
+    const options = validateIpcInput(
+      runtimeDoctorInputSchema,
+      { ...(input && typeof input === 'object' ? input : {}), providerId: validatedProviderId },
+      'providers:doctor(input)'
+    );
+    return runRuntimeDoctor(ctx.getState(), options);
+  });
+
+  ipcMain.handle('providers:repair', async (_, input: unknown) => {
+    const state = ctx.getState();
+    const result = repairRuntimeDoctor(state, validateIpcInput(runtimeRepairInputSchema, input, 'providers:repair'));
+    if (result.stateChanged) {
+      await ctx.setState({ ...state });
+    }
+    return result;
+  });
+}
