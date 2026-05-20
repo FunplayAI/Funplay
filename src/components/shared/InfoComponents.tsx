@@ -1,17 +1,18 @@
 import { type JSX, type ReactNode } from 'react';
+import { Surface } from '../ui/index';
 
 export function Card(props: { title: string; children: ReactNode }): JSX.Element {
   return (
-    <section className="prototype-card">
-      <div className="prototype-card-title">{props.title}</div>
-      <div className="prototype-card-body">{props.children}</div>
-    </section>
+    <Surface className="fp-info-card">
+      <div className="fp-info-card-title">{props.title}</div>
+      <div className="fp-info-card-body">{props.children}</div>
+    </Surface>
   );
 }
 
 export function List(props: { items: string[] }): JSX.Element {
   return (
-    <ul className="prototype-list">
+    <ul className="fp-info-list">
       {props.items.map((item) => (
         <li key={item}>{item}</li>
       ))}

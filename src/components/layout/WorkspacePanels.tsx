@@ -1,4 +1,5 @@
 import { useMemo, useState, type JSX } from 'react';
+import { Code2, Eye, RotateCcw, Save, Search, X } from 'lucide-react';
 import type { Project, ProjectFileContent, ProjectFileEntry, ProjectSession } from '../../../shared/types';
 import type { HtmlProjectPreviewMode } from '../../../shared/html-preview-protocol';
 import { localize, useUiLanguage } from '../../i18n';
@@ -7,6 +8,7 @@ import { getFileIconInfo, FolderTreeIcon, FileTypeIcon } from './file-icons';
 import { highlightSourceLine, type CodeToken } from './source-highlighter';
 import { isHtmlFile, isPreviewableFile } from './file-type-detection';
 import { BinaryPreviewFallback, formatBytes, renderFilePreview, type ProjectFileItem } from './file-preview-components';
+import { Button, IconButton, TextAreaField, TextField } from '../ui/index';
 
 export type { ProjectFileItem } from './file-preview-components';
 
@@ -69,15 +71,16 @@ export function SidebarPanel(props: {
     <aside className="workspace-sidebar" style={{ width: props.width, flexBasis: props.width }}>
       <nav className="workspace-sidebar-nav" aria-label={localize(language, '项目导航', 'Project navigation')}>
         {props.navItems.map((item) => (
-          <button
+          <Button
             key={item.id}
+            variant="ghost"
             className={`workspace-sidebar-nav-item ${props.activeNavId === item.id ? 'active' : ''}`}
             aria-current={props.activeNavId === item.id ? 'page' : undefined}
             onClick={() => props.onSelectNav(item.id)}
           >
             <span className="workspace-sidebar-nav-icon">{item.icon}</span>
             <span>{item.label}</span>
-          </button>
+          </Button>
         ))}
       </nav>
 
@@ -97,19 +100,21 @@ export function SidebarPanel(props: {
 
       <div className="sidebar-section-row">
         <div className="sidebar-section-label">{localize(language, '项目文件', 'Project files')}</div>
-        <button
+        <IconButton
           className={`sidebar-tool-icon ${searchVisible ? 'active' : ''}`}
+          icon={<Search size={14} aria-hidden="true" />}
+          label={searchVisible ? localize(language, '隐藏文件搜索', 'Hide file search') : localize(language, '显示文件搜索', 'Show file search')}
           onClick={() => setSearchVisible((current) => !current)}
-          aria-label={searchVisible ? localize(language, '隐藏文件搜索', 'Hide file search') : localize(language, '显示文件搜索', 'Show file search')}
-          title={searchVisible ? localize(language, '隐藏文件搜索', 'Hide file search') : localize(language, '显示文件搜索', 'Show file search')}
-        >
-          ⌕
-        </button>
+        />
       </div>
       {searchVisible ? (
-        <label className="sidebar-search">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={localize(language, '搜索文件…', 'Search files…')} />
-        </label>
+        <TextField
+          className="sidebar-search"
+          label={localize(language, '文件搜索', 'File search')}
+          value={query}
+          onValueChange={setQuery}
+          placeholder={localize(language, '搜索文件…', 'Search files…')}
+        />
       ) : null}
       <div className="file-tree">
         <FileTreeView
@@ -173,54 +178,59 @@ export function FileInspectorPanel(props: {
           <div className="file-inspector-actions">
             {props.file ? <span className={`file-inspector-status ${props.isDirty ? 'dirty' : ''}`}>{statusLabel}</span> : null}
             {props.file && canEdit && props.isDirty ? (
-              <button className="prototype-secondary small" onClick={props.onReset} disabled={props.isSaving}>
+              <Button size="sm" variant="secondary" leadingIcon={<RotateCcw size={13} aria-hidden="true" />} onClick={props.onReset} disabled={props.isSaving}>
                 {localize(language, '还原', 'Reset')}
-              </button>
+              </Button>
             ) : null}
             {props.file && canEdit ? (
-              <button className="prototype-primary small" onClick={props.onSave} disabled={!props.isDirty || props.isSaving}>
+              <Button size="sm" variant="primary" leadingIcon={<Save size={13} aria-hidden="true" />} onClick={props.onSave} disabled={!props.isDirty || props.isSaving} loading={props.isSaving}>
                 {props.isSaving ? localize(language, '保存中…', 'Saving…') : localize(language, '保存', 'Save')}
-              </button>
+              </Button>
             ) : null}
-            <button
+            <IconButton
               className="file-inspector-close"
+              icon={<X size={15} aria-hidden="true" />}
+              label={localize(language, '关闭文件面板', 'Close file panel')}
               onClick={props.onClose}
-              aria-label={localize(language, '关闭文件面板', 'Close file panel')}
-              title={localize(language, '关闭文件面板', 'Close file panel')}
-            >
-              ×
-            </button>
+            />
           </div>
         </div>
 
         {props.file ? (
           <div className="file-inspector-toolbar">
             <div className="file-inspector-tabs">
-              <button className={`file-mode-button ${props.mode === 'edit' ? 'active' : ''}`} onClick={() => props.onModeChange('edit')}>
+              <Button className={`file-mode-button ${props.mode === 'edit' ? 'active' : ''}`} size="compact" variant="secondary" leadingIcon={<Code2 size={13} aria-hidden="true" />} onClick={() => props.onModeChange('edit')}>
                 {localize(language, '源码', 'Source')}
-              </button>
+              </Button>
               {previewable ? (
-                <button
+                <Button
                   className={`file-mode-button ${props.mode === 'preview' ? 'active' : ''}`}
+                  size="compact"
+                  variant="secondary"
+                  leadingIcon={<Eye size={13} aria-hidden="true" />}
                   onClick={() => props.onModeChange('preview')}
                 >
                   {localize(language, '预览', 'Preview')}
-                </button>
+                </Button>
               ) : null}
               {showHtmlPreviewMode ? (
                 <div className="html-preview-mode-group inline" role="group" aria-label={localize(language, 'HTML 预览模式', 'HTML preview mode')}>
-                  <button
+                  <Button
                     className={`html-preview-mode-button ${htmlPreviewMode === 'fit' ? 'active' : ''}`}
+                    size="compact"
+                    variant="ghost"
                     onClick={() => setHtmlPreviewMode('fit')}
                   >
                     {localize(language, '适应窗口', 'Fit')}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     className={`html-preview-mode-button ${htmlPreviewMode === 'actual' ? 'active' : ''}`}
+                    size="compact"
+                    variant="ghost"
                     onClick={() => setHtmlPreviewMode('actual')}
                   >
                     {localize(language, '真实尺寸', 'Actual')}
-                  </button>
+                  </Button>
                 </div>
               ) : null}
             </div>
@@ -285,15 +295,17 @@ function FileTreeView(props: {
         const fileIcon = node.type === 'file' ? getFileIconInfo(node.path) : null;
         return node.type === 'folder' ? (
           <div key={node.id} className="file-tree-node">
-            <button
+            <Button
               className={`file-tree-folder-label ${collapsed ? 'collapsed' : 'expanded'}`}
+              variant="ghost"
+              size="compact"
               style={{ paddingLeft: `${depth * 14 + 10}px` }}
               onClick={() => props.onToggleFolder(node.id)}
             >
               <span className="file-tree-folder-caret">›</span>
               <FolderTreeIcon />
               <span className="file-item-label">{node.name}</span>
-            </button>
+            </Button>
             {!collapsed && node.children.length > 0 ? (
               <FileTreeView
                 nodes={node.children}
@@ -307,16 +319,18 @@ function FileTreeView(props: {
             ) : null}
           </div>
         ) : (
-          <button
+          <Button
             key={node.id}
             className={`file-item tree ${props.selectedFileId === node.fileId ? 'active' : ''}`}
+            variant="ghost"
+            size="compact"
             onClick={() => node.fileId && props.onOpenFile(node.fileId)}
             style={{ paddingLeft: `${depth * 14 + 28}px` }}
           >
             {fileIcon ? <FileTypeIcon kind={fileIcon.kind} /> : null}
             <span className="file-item-label">{node.name}</span>
             {node.badge ? <span className="file-badge">{node.badge}</span> : null}
-          </button>
+          </Button>
         );
       })}
     </div>
@@ -432,12 +446,14 @@ function SourceEditor(props: {
             </span>
           ))}
         </pre>
-        <textarea
-          className="file-editor-textarea"
+        <TextAreaField
+          className="file-editor-field"
+          textareaClassName="file-editor-textarea"
+          label="Source editor"
           spellCheck={false}
           wrap="off"
           value={props.value}
-          onChange={(event) => props.onChange(event.target.value)}
+          onValueChange={props.onChange}
           onScroll={(event) => {
             setScroll({
               left: event.currentTarget.scrollLeft,

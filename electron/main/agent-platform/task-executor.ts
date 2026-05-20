@@ -404,6 +404,8 @@ export async function executeGenericConversation(task: GenericAgentConversationT
     provider: task.provider,
     plugins,
     context,
+    appState: task.appState,
+    persistAppState: task.persistAppState,
     resumeContext: task.resumeContext,
     checkpointSnapshotId: task.checkpointSnapshotId,
     permission: {

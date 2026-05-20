@@ -1,4 +1,23 @@
 import { useEffect, useMemo, useState, type JSX } from 'react';
+import {
+  Bell,
+  Bot,
+  Cloud,
+  Database,
+  Download,
+  Info,
+  Languages,
+  LogIn,
+  Monitor,
+  Plug,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Search,
+  Terminal,
+  Trash2,
+  type LucideIcon
+} from 'lucide-react';
 import type {
   AgentPermissionMode,
   AgentRuntimeStrategy,
@@ -43,6 +62,7 @@ import { InfoRow } from '../shared/InfoComponents';
 import { ProviderSettingsPage } from '../pages/ProviderSettingsPage';
 import { McpRegistrySettingsPage } from '../pages/McpRegistrySettingsPage';
 import { WebSearchSettingsPage } from '../pages/WebSearchSettingsPage';
+import { Button, SwitchField, TextAreaField, TextField } from '../ui/index';
 
 export function AppSettingsModal(props: {
   initialTab: AppSettingsTab;
@@ -241,6 +261,18 @@ export function AppSettingsModal(props: {
     });
   }, [memoryKindFilter, memoryQuery, memoryTagFilter, props.memoryFiles]);
   const memoryDirty = !!props.selectedMemoryFile && props.memoryDraft !== props.selectedMemoryFile.content;
+  const navItems: Array<{ id: AppSettingsTab; label: string; desc: string; Icon: LucideIcon }> = [
+    { id: 'appearance', label: t('外观', 'Appearance'), desc: t('主题与界面外观', 'Theme and window appearance'), Icon: Monitor },
+    { id: 'language', label: t('语言', 'Language'), desc: t('界面语言与文案', 'Interface language and copy'), Icon: Languages },
+    { id: 'agent', label: t('Agent', 'Agent'), desc: t('权限模式与开发者模式', 'Permission and developer mode'), Icon: Bot },
+    { id: 'provider', label: 'AI Provider', desc: t('模型服务与默认渠道', 'Model services and default providers'), Icon: Cloud },
+    { id: 'mcp', label: 'MCP', desc: t('全局 MCP Registry', 'Global MCP Registry'), Icon: Plug },
+    { id: 'web-search', label: 'Web Search', desc: t('搜索来源、抽取与评测', 'Sources, extraction, and evaluation'), Icon: Search },
+    { id: 'claude', label: 'Claude Code', desc: t('安装、登录与历史会话', 'Install, login, and CLI sessions'), Icon: Terminal },
+    { id: 'memory', label: 'Memory', desc: t('浏览、编辑与清理项目记忆', 'Browse, edit, and clear project memory'), Icon: Database },
+    { id: 'notifications', label: t('通知', 'Notifications'), desc: t('提醒任务与系统通知', 'Reminder tasks and system alerts'), Icon: Bell },
+    { id: 'about', label: t('关于', 'About'), desc: t('产品信息与说明', 'Product info and notes'), Icon: Info }
+  ];
   return (
     <ModalShell
       title={t('应用设置', 'App Settings')}
@@ -251,27 +283,22 @@ export function AppSettingsModal(props: {
       <div className="app-settings-layout">
         <aside className="app-settings-sidebar">
           <div className="app-settings-sidebar-title">{t('设置分类', 'Settings')}</div>
-          {([
-            ['appearance', t('外观', 'Appearance'), t('主题与界面外观', 'Theme and window appearance')],
-            ['language', t('语言', 'Language'), t('界面语言与文案', 'Interface language and copy')],
-            ['agent', t('Agent', 'Agent'), t('权限模式与开发者模式', 'Permission and developer mode')],
-            ['provider', 'AI Provider', t('模型服务与默认渠道', 'Model services and default providers')],
-            ['mcp', 'MCP', t('全局 MCP Registry', 'Global MCP Registry')],
-            ['web-search', 'Web Search', t('搜索来源、抽取与评测', 'Sources, extraction, and evaluation')],
-            ['claude', 'Claude Code', t('安装、登录与历史会话', 'Install, login, and CLI sessions')],
-            ['memory', 'Memory', t('浏览、编辑与清理项目记忆', 'Browse, edit, and clear project memory')],
-            ['notifications', t('通知', 'Notifications'), t('提醒任务与系统通知', 'Reminder tasks and system alerts')],
-            ['about', t('关于', 'About'), t('产品信息与说明', 'Product info and notes')]
-          ] as Array<[typeof tab, string, string]>).map(([id, label, desc]) => (
-            <button
+          {navItems.map(({ id, label, desc, Icon }) => (
+            <Button
               key={id}
+              variant="ghost"
               className={`app-settings-nav-item ${tab === id ? 'active' : ''}`}
               aria-current={tab === id ? 'page' : undefined}
               onClick={() => setTab(id)}
             >
-              <strong>{label}</strong>
-              <span>{desc}</span>
-            </button>
+              <span className="app-settings-nav-icon" aria-hidden="true">
+                <Icon size={15} />
+              </span>
+              <span className="app-settings-nav-copy">
+                <strong>{label}</strong>
+                <span>{desc}</span>
+              </span>
+            </Button>
           ))}
         </aside>
 
@@ -288,9 +315,9 @@ export function AppSettingsModal(props: {
                   ['light', t('浅色', 'Light')],
                   ['dark', t('深色', 'Dark')]
                 ] as Array<[ThemePreference, string]>).map(([theme, label]) => (
-                  <button key={theme} className={props.theme === theme ? 'active' : ''} onClick={() => props.onChangeTheme(theme)}>
+                  <Button key={theme} size="sm" variant="secondary" className={`settings-choice-button ${props.theme === theme ? 'active' : ''}`} onClick={() => props.onChangeTheme(theme)}>
                     {label}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </section>
@@ -307,9 +334,9 @@ export function AppSettingsModal(props: {
                   ['zh-CN', t('简体中文', 'Simplified Chinese')],
                   ['en-US', 'English']
                 ] as Array<[LanguagePreference, string]>).map(([nextLanguage, label]) => (
-                  <button key={nextLanguage} className={props.language === nextLanguage ? 'active' : ''} onClick={() => props.onChangeLanguage(nextLanguage)}>
+                  <Button key={nextLanguage} size="sm" variant="secondary" className={`settings-choice-button ${props.language === nextLanguage ? 'active' : ''}`} onClick={() => props.onChangeLanguage(nextLanguage)}>
                     {label}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </section>
@@ -342,9 +369,9 @@ export function AppSettingsModal(props: {
                   ['full-access', t('Build', 'Build')],
                   ['read-only', t('Plan', 'Plan')]
                 ] as Array<[AgentPermissionMode, string]>).map(([mode, label]) => (
-                  <button key={mode} className={props.permissionMode === mode ? 'active' : ''} onClick={() => props.onChangePermissionMode(mode)}>
+                  <Button key={mode} size="sm" variant="secondary" className={`settings-choice-button ${props.permissionMode === mode ? 'active' : ''}`} onClick={() => props.onChangePermissionMode(mode)}>
                     {label}
-                  </button>
+                  </Button>
                 ))}
               </div>
               <div className="helper-copy">
@@ -363,23 +390,18 @@ export function AppSettingsModal(props: {
                   ['auto', 'Auto'],
                   ['claude-code-sdk', 'Claude Code']
                 ] as Array<[AgentRuntimeStrategy, string]>).map(([strategy, label]) => (
-                  <button key={strategy} className={props.runtimeStrategy === strategy ? 'active' : ''} onClick={() => props.onChangeRuntimeStrategy(strategy)}>
+                  <Button key={strategy} size="sm" variant="secondary" className={`settings-choice-button ${props.runtimeStrategy === strategy ? 'active' : ''}`} onClick={() => props.onChangeRuntimeStrategy(strategy)}>
                     {label}
-                  </button>
+                  </Button>
                 ))}
               </div>
               <div className="app-settings-divider" />
-              <label className="app-settings-check-row">
-                <input
-                  type="checkbox"
-                  checked={props.developerMode}
-                  onChange={(event) => props.onChangeDeveloperMode(event.currentTarget.checked)}
-                />
-                <span>
-                  <strong>{t('开发者模式', 'Developer Mode')}</strong>
-                  <em>{t('显示 Claude runtime、SDK 阶段、工具边界等调试级运行细节。默认关闭。', 'Show debug-level runtime details such as Claude runtime, SDK stages, and tool-boundary events. Off by default.')}</em>
-                </span>
-              </label>
+              <SwitchField
+                checked={props.developerMode}
+                onCheckedChange={props.onChangeDeveloperMode}
+                label={t('开发者模式', 'Developer Mode')}
+                description={t('显示 Claude runtime、SDK 阶段、工具边界等调试级运行细节。默认关闭。', 'Show debug-level runtime details such as Claude runtime, SDK stages, and tool-boundary events. Off by default.')}
+              />
             </section>
           ) : null}
 
@@ -476,12 +498,12 @@ export function AppSettingsModal(props: {
                   <div className="helper-copy">{t('检测本机 Claude CLI、启动登录，并把 Claude CLI 历史会话导入当前项目。', 'Detect local Claude CLI, start login, and import Claude CLI history into the current project.')}</div>
                 </div>
                 <div className="modal-actions compact">
-                  <button className="prototype-secondary small" onClick={() => void refreshClaudeStatus()} disabled={claudeLoading}>
+                  <Button size="sm" variant="secondary" leadingIcon={<RefreshCw size={14} aria-hidden="true" />} loading={claudeLoading} onClick={() => void refreshClaudeStatus()}>
                     {claudeLoading ? t('检测中…', 'Checking…') : t('重新检测', 'Refresh')}
-                  </button>
-                  <button className="prototype-primary small" onClick={() => void handleClaudeLogin()} disabled={claudeLoading || !claudeStatus?.hasClaude}>
+                  </Button>
+                  <Button size="sm" variant="primary" leadingIcon={<LogIn size={14} aria-hidden="true" />} onClick={() => void handleClaudeLogin()} disabled={claudeLoading || !claudeStatus?.hasClaude}>
                     {t('登录 Claude', 'Login Claude')}
-                  </button>
+                  </Button>
                 </div>
               </div>
 
@@ -523,13 +545,15 @@ export function AppSettingsModal(props: {
                           <span>{session.preview || session.cwd || session.sessionId}</span>
                           <em>{[session.updatedAt ? formatAbsoluteTime(session.updatedAt) : '', session.cwd].filter(Boolean).join(' · ')}</em>
                         </div>
-                        <button
-                          className="prototype-secondary small"
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          leadingIcon={<Download size={14} aria-hidden="true" />}
                           onClick={() => void handleImportClaudeSession(session.sessionId)}
                           disabled={!props.selectedProjectId || importingClaudeSessionId === session.sessionId}
                         >
                           {importingClaudeSessionId === session.sessionId ? t('导入中…', 'Importing…') : t('导入', 'Import')}
-                        </button>
+                        </Button>
                       </div>
                     ))}
                   </div>
@@ -557,43 +581,48 @@ export function AppSettingsModal(props: {
                   </div>
                 </div>
                 <div className="modal-actions compact">
-                  <button className="prototype-secondary small" onClick={() => void props.onRefreshMemoryFiles()} disabled={props.isLoadingMemory}>
+                  <Button size="sm" variant="secondary" leadingIcon={<RefreshCw size={14} aria-hidden="true" />} loading={props.isLoadingMemory} onClick={() => void props.onRefreshMemoryFiles()}>
                     {props.isLoadingMemory ? t('刷新中…', 'Refreshing…') : t('刷新', 'Refresh')}
-                  </button>
-                  <button
-                    className="prototype-primary small"
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    leadingIcon={<Save size={14} aria-hidden="true" />}
                     onClick={() => void props.onSaveMemoryFile()}
                     disabled={!memoryDirty || props.isSavingMemory || props.isLoadingMemory}
+                    loading={props.isSavingMemory}
                   >
                     {props.isSavingMemory ? t('保存中…', 'Saving…') : t('保存', 'Save')}
-                  </button>
+                  </Button>
                 </div>
               </div>
 
               <div className="memory-center-toolbar">
-                <input
+                <TextField
+                  className="memory-search-field"
+                  label={t('搜索 Memory', 'Search Memory')}
                   value={memoryQuery}
-                  onChange={(event) => setMemoryQuery(event.target.value)}
+                  onValueChange={setMemoryQuery}
                   placeholder={t('搜索标题、路径、内容摘要或标签', 'Search title, path, excerpt, or tags')}
                 />
                 <div className="memory-kind-filter" aria-label="Memory kind filter">
-                  <button className={!memoryKindFilter ? 'active' : ''} onClick={() => setMemoryKindFilter('')}>
+                  <Button size="compact" variant="ghost" className={!memoryKindFilter ? 'active' : ''} onClick={() => setMemoryKindFilter('')}>
                     {t('全部分类', 'All Kinds')}
-                  </button>
+                  </Button>
                   {allMemoryKinds.map((kind) => (
-                    <button key={kind} className={memoryKindFilter === kind ? 'active' : ''} onClick={() => setMemoryKindFilter(kind)}>
+                    <Button key={kind} size="compact" variant="ghost" className={memoryKindFilter === kind ? 'active' : ''} onClick={() => setMemoryKindFilter(kind)}>
                       {formatMemoryEntryKindLabel(kind, language)}
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 <div className="memory-tag-filter" aria-label="Memory tag filter">
-                  <button className={!memoryTagFilter ? 'active' : ''} onClick={() => setMemoryTagFilter('')}>
+                  <Button size="compact" variant="ghost" className={!memoryTagFilter ? 'active' : ''} onClick={() => setMemoryTagFilter('')}>
                     {t('全部', 'All')}
-                  </button>
+                  </Button>
                   {allMemoryTags.slice(0, 16).map((tag) => (
-                    <button key={tag} className={memoryTagFilter === tag ? 'active' : ''} onClick={() => setMemoryTagFilter(tag)}>
+                    <Button key={tag} size="compact" variant="ghost" className={memoryTagFilter === tag ? 'active' : ''} onClick={() => setMemoryTagFilter(tag)}>
                       #{tag}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>
@@ -602,8 +631,10 @@ export function AppSettingsModal(props: {
                 <div className="memory-file-list" aria-label="Memory files">
                   {filteredMemoryFiles.length > 0 ? (
                     filteredMemoryFiles.map((file) => (
-                      <button
+                      <Button
                         key={file.path}
+                        size="compact"
+                        variant="ghost"
                         className={`memory-file-row ${props.selectedMemoryPath === file.path ? 'active' : ''}`}
                         onClick={() => void props.onSelectMemoryFile(file.path)}
                       >
@@ -617,7 +648,7 @@ export function AppSettingsModal(props: {
                         <span>{file.path}</span>
                         {file.excerpt ? <em>{file.excerpt}</em> : null}
                         <small>{[formatFileSize(file.size), `${file.lineCount} lines`, formatAbsoluteTime(file.updatedAt)].join(' · ')}</small>
-                      </button>
+                      </Button>
                     ))
                   ) : (
                     <div className="memory-empty-state">
@@ -642,21 +673,29 @@ export function AppSettingsModal(props: {
                         </div>
                         <div className="memory-editor-tags">
                           {props.selectedMemoryFile.tags.length > 0
-                            ? props.selectedMemoryFile.tags.map((tag) => <button key={tag} onClick={() => setMemoryTagFilter(tag)}>#{tag}</button>)
+                            ? props.selectedMemoryFile.tags.map((tag) => (
+                              <Button key={tag} size="compact" variant="ghost" onClick={() => setMemoryTagFilter(tag)}>
+                                #{tag}
+                              </Button>
+                            ))
                             : <span>{t('无标签', 'No tags')}</span>}
                         </div>
                       </div>
 
-                      <textarea
-                        className="memory-editor-textarea"
+                      <TextAreaField
+                        label={t('内容', 'Content')}
+                        className="memory-editor-field"
+                        textareaClassName="memory-editor-textarea"
                         value={props.memoryDraft}
-                        onChange={(event) => props.onChangeMemoryDraft(event.target.value)}
+                        onValueChange={props.onChangeMemoryDraft}
                         spellCheck={false}
                       />
 
                       <div className="memory-editor-actions">
-                        <button
-                          className="prototype-secondary small"
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          leadingIcon={<RotateCcw size={14} aria-hidden="true" />}
                           onClick={() => {
                             if (window.confirm(t('清空当前 Memory 文件？', 'Clear the current memory file?'))) {
                               void props.onClearMemory('file', props.selectedMemoryFile?.path);
@@ -665,9 +704,11 @@ export function AppSettingsModal(props: {
                           disabled={props.isSavingMemory || props.isLoadingMemory}
                         >
                           {t('清空当前', 'Clear File')}
-                        </button>
-                        <button
-                          className="prototype-secondary small"
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          leadingIcon={<RotateCcw size={14} aria-hidden="true" />}
                           onClick={() => {
                             if (window.confirm(t('清空所有 daily Memory？', 'Clear all daily memory?'))) {
                               void props.onClearMemory('daily');
@@ -676,9 +717,11 @@ export function AppSettingsModal(props: {
                           disabled={props.isSavingMemory || props.isLoadingMemory}
                         >
                           {t('清空 Daily', 'Clear Daily')}
-                        </button>
-                        <button
-                          className="prototype-danger small"
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          leadingIcon={<Trash2 size={14} aria-hidden="true" />}
                           onClick={() => {
                             if (window.confirm(t('清空全部 Memory？', 'Clear all memory?'))) {
                               void props.onClearMemory('all');
@@ -687,7 +730,7 @@ export function AppSettingsModal(props: {
                           disabled={props.isSavingMemory || props.isLoadingMemory}
                         >
                           {t('清空全部', 'Clear All')}
-                        </button>
+                        </Button>
                       </div>
                     </>
                   ) : (
@@ -707,9 +750,9 @@ export function AppSettingsModal(props: {
                   <strong>{t('通知与提醒', 'Notifications and Reminders')}</strong>
                   <div className="helper-copy">{t('这里显示 Agent 通过内置通知工具创建的提醒任务。', 'Shows reminder tasks created by the built-in notification tools.')}</div>
                 </div>
-                <button className="prototype-secondary small" onClick={() => void props.onRefreshNotificationTasks()} disabled={props.isLoadingNotificationTasks}>
+                <Button size="sm" variant="secondary" leadingIcon={<RefreshCw size={14} aria-hidden="true" />} loading={props.isLoadingNotificationTasks} onClick={() => void props.onRefreshNotificationTasks()}>
                   {props.isLoadingNotificationTasks ? t('刷新中…', 'Refreshing…') : t('刷新', 'Refresh')}
-                </button>
+                </Button>
               </div>
 
               <div className="notification-task-list">
@@ -727,13 +770,14 @@ export function AppSettingsModal(props: {
                           ].filter(Boolean).join(' · ')}
                         </em>
                       </div>
-                      <button
-                        className="prototype-secondary small"
+                      <Button
+                        size="sm"
+                        variant="secondary"
                         onClick={() => void props.onCancelNotificationTask(task.id)}
                         disabled={task.status !== 'active'}
                       >
                         {t('取消', 'Cancel')}
-                      </button>
+                      </Button>
                     </div>
                   ))
                 ) : (
@@ -812,27 +856,36 @@ export function AppSettingsModal(props: {
                 {updateActionMessage ? <div className="agent-composer-error neutral">{updateActionMessage}</div> : null}
 
                 <div className="modal-actions compact">
-                  <button
-                    className="prototype-secondary small"
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    leadingIcon={<RefreshCw size={14} aria-hidden="true" />}
                     onClick={() => void runUpdateAction('check')}
                     disabled={Boolean(updateAction) || !props.appUpdateStatus?.canCheck || props.appUpdateStatus?.status === 'checking' || props.appUpdateStatus?.status === 'downloading'}
+                    loading={updateAction === 'check' || props.appUpdateStatus?.status === 'checking'}
                   >
                     {updateAction === 'check' || props.appUpdateStatus?.status === 'checking' ? t('检查中…', 'Checking…') : t('检查更新', 'Check for Updates')}
-                  </button>
-                  <button
-                    className="prototype-primary small"
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    leadingIcon={<Download size={14} aria-hidden="true" />}
                     onClick={() => void runUpdateAction('download')}
                     disabled={Boolean(updateAction) || !props.appUpdateStatus?.canDownload}
+                    loading={updateAction === 'download' || props.appUpdateStatus?.status === 'downloading'}
                   >
                     {updateAction === 'download' || props.appUpdateStatus?.status === 'downloading' ? t('下载中…', 'Downloading…') : t('下载更新', 'Download Update')}
-                  </button>
-                  <button
-                    className="prototype-primary small"
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    leadingIcon={<Download size={14} aria-hidden="true" />}
                     onClick={() => void runUpdateAction('install')}
                     disabled={Boolean(updateAction) || !props.appUpdateStatus?.canInstall}
+                    loading={updateAction === 'install' || props.appUpdateStatus?.status === 'installing'}
                   >
                     {updateAction === 'install' || props.appUpdateStatus?.status === 'installing' ? t('准备重启…', 'Restarting…') : t('重启并安装', 'Restart and Install')}
-                  </button>
+                  </Button>
                 </div>
 
                 {props.appUpdateStatus?.feedSource === 'none' ? (

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type JSX, type PointerEvent } from 'react';
+import { ArrowUp, Paperclip, Square, X } from 'lucide-react';
 import type { AgentPermissionImpact, AgentPermissionMode, AgentUserInputOption, AgentUserInputResponse, AiProvider, PlatformChoice, PromptAttachment } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
+import { Button, IconButton, TextAreaControl } from '../ui/index';
 import type { RuntimeTaskStatus, RuntimeTaskSummary } from './runtime-task-summary';
 
 export interface QueuedPromptItem {
@@ -77,6 +79,7 @@ export function ChatComposer(props: {
   onRemoveQueuedPrompt: (id: string) => void;
   onOpenAppSettings: () => void;
   onOpenProjectAgentSettings: () => void;
+  onOpenEngineStatus?: () => void;
 }): JSX.Element {
   const language = useUiLanguage();
   const [slashPopoverOpen, setSlashPopoverOpen] = useState(false);
@@ -203,7 +206,7 @@ export function ChatComposer(props: {
     const target = event.target as HTMLElement;
     if (
       target.closest(
-        '.agent-plus-menu, .agent-agent-menu, .agent-runtime-menu, .agent-composer-icon-button, .agent-permission-trigger, .agent-combo-trigger'
+        '.agent-plus-menu, .agent-agent-menu, .agent-runtime-menu, .agent-composer-icon-button, .agent-permission-trigger, .agent-combo-trigger, .agent-engine-connection-indicator'
       )
     ) {
       return;
@@ -214,7 +217,9 @@ export function ChatComposer(props: {
   return (
     <div className={`agent-input-shell ${runtimeMenuOpen ? 'menu-open' : ''}`}>
       {runtimeMenuOpen ? (
-        <button
+        <Button
+          size="compact"
+          variant="ghost"
           className="agent-menu-dismiss-layer"
           onClick={() => setRuntimeMenuOpen(null)}
           aria-label={localize(language, '关闭菜单', 'Close menu')}
@@ -230,9 +235,12 @@ export function ChatComposer(props: {
                   <strong>{localize(language, `排队消息 ${index + 1}`, `Queued ${index + 1}`)}</strong>
                   <span>{item.content}</span>
                 </div>
-                <button className="agent-queue-remove" onClick={() => props.onRemoveQueuedPrompt(item.id)}>
-                  ×
-                </button>
+                <IconButton
+                  className="agent-queue-remove"
+                  icon={<X size={13} aria-hidden="true" />}
+                  label={localize(language, '移除排队消息', 'Remove queued prompt')}
+                  onClick={() => props.onRemoveQueuedPrompt(item.id)}
+                />
               </div>
             ))}
           </div>
@@ -264,15 +272,15 @@ export function ChatComposer(props: {
               <PermissionImpactSummary impact={props.pendingPermission.impact} />
             </div>
             <div className="agent-permission-actions">
-              <button className="prototype-secondary small" onClick={() => props.onRespondPermission('deny')}>
+              <Button size="sm" variant="danger" onClick={() => props.onRespondPermission('deny')}>
                 {localize(language, '拒绝', 'Deny')}
-              </button>
-              <button className="prototype-secondary small" onClick={() => props.onRespondPermission('allow_session')}>
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => props.onRespondPermission('allow_session')}>
                 {localize(language, '允许本会话', 'Allow Session')}
-              </button>
-              <button className="prototype-primary small" onClick={() => props.onRespondPermission('allow')}>
+              </Button>
+              <Button size="sm" variant="primary" onClick={() => props.onRespondPermission('allow')}>
                 {localize(language, '允许本次', 'Allow Once')}
-              </button>
+              </Button>
             </div>
           </div>
         ) : null}
@@ -288,22 +296,24 @@ export function ChatComposer(props: {
               {props.pendingUserInput.options?.length ? (
                 <div className="agent-user-input-options">
                   {props.pendingUserInput.options.map((option) => (
-                    <button
+                    <Button
                       key={option.id}
+                      variant="secondary"
+                      size="sm"
                       className={selectedUserInputOptionIds.includes(option.id) ? 'selected' : ''}
                       onClick={() => toggleUserInputOption(option.id)}
                     >
                       <strong>{option.label}</strong>
                       {option.description ? <span>{option.description}</span> : null}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               ) : null}
               {props.pendingUserInput.allowFreeText !== false ? (
-                <textarea
+                <TextAreaControl
                   className="agent-user-input-textarea"
                   value={userInputDraft}
-                  onChange={(event) => setUserInputDraft(event.target.value)}
+                  onValueChange={setUserInputDraft}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
                       event.preventDefault();
@@ -315,16 +325,17 @@ export function ChatComposer(props: {
               ) : null}
             </div>
             <div className="agent-permission-actions agent-user-input-actions">
-              <button className="prototype-secondary small" onClick={() => submitUserInput(true)}>
+              <Button size="sm" variant="secondary" onClick={() => submitUserInput(true)}>
                 {localize(language, '取消', 'Cancel')}
-              </button>
-              <button
-                className="prototype-primary small"
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
                 onClick={() => submitUserInput()}
                 disabled={!userInputDraft.trim() && selectedUserInputOptionIds.length === 0}
               >
                 {localize(language, '提交回答', 'Submit Answer')}
-              </button>
+              </Button>
             </div>
           </div>
         ) : null}
@@ -335,10 +346,10 @@ export function ChatComposer(props: {
       {showSlashCommands ? (
         <div className="agent-command-popover">
           {slashCommands.map((command) => (
-            <button key={command.command} onClick={() => applySlashCommand(command.prompt)}>
+            <Button key={command.command} size="compact" variant="ghost" onClick={() => applySlashCommand(command.prompt)}>
               <strong>{command.command}</strong>
               <span>{command.title}</span>
-            </button>
+            </Button>
           ))}
         </div>
       ) : null}
@@ -347,20 +358,20 @@ export function ChatComposer(props: {
         {props.attachments.length > 0 ? (
           <div className="agent-composer-attachment-stack">
             {props.attachments.map((attachment) => (
-              <button key={attachment.id} className={`agent-file-chip ${attachment.kind}`} onClick={() => props.onRemoveAttachment(attachment.id)}>
+              <Button key={attachment.id} size="compact" variant="ghost" className={`agent-file-chip ${attachment.kind}`} onClick={() => props.onRemoveAttachment(attachment.id)}>
                 {attachment.previewDataUrl ? <img src={attachment.previewDataUrl} alt="" /> : null}
                 <span>{attachment.name}</span>
                 <em>×</em>
-              </button>
+              </Button>
             ))}
           </div>
         ) : null}
 
         <div className="agent-composer-main">
-          <textarea
+          <TextAreaControl
             className="agent-composer-textarea"
             value={props.draft}
-            onChange={(event) => props.onDraftChange(event.target.value)}
+            onValueChange={props.onDraftChange}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
@@ -374,43 +385,55 @@ export function ChatComposer(props: {
         <div className="agent-composer-footer">
           <div className="agent-composer-left-controls">
             <div className="agent-plus-control">
-              <button
+              <IconButton
                 className="agent-composer-icon-button"
+                icon={<Paperclip size={17} aria-hidden="true" />}
+                label={localize(language, '添加附件', 'Add attachments')}
                 onClick={() => toggleRuntimeMenu('plus')}
-                aria-label={localize(language, '添加附件', 'Add attachments')}
-              >
-                <PlusIcon className="agent-plus-icon" />
-              </button>
+              />
               {runtimeMenuOpen === 'plus' ? (
                 <div className="agent-plus-menu">
                   <div className="agent-context-picker-panel">
                     <div className="agent-menu-section-title">{localize(language, '附件', 'Attachments')}</div>
-                    <button className="agent-context-upload-button" onClick={props.onPickAttachments}>
+                    <Button className="agent-context-upload-button" variant="ghost" onClick={props.onPickAttachments}>
                       <strong>{localize(language, '选择文件或图片', 'Choose files or images')}</strong>
                       <span>{localize(language, '随本轮请求一起发送', 'Send with this request')}</span>
-                    </button>
+                    </Button>
                   </div>
                 </div>
               ) : null}
             </div>
 
             <div className="agent-permission-control">
-              <button className={`agent-permission-trigger ${props.permissionMode}`} onClick={() => toggleRuntimeMenu('permission')}>
-                <strong>{activePermissionLabel}</strong>
-                <ChevronDownIcon className="agent-chevron-icon" />
-              </button>
+              <Button
+                className={`agent-permission-trigger ${props.permissionMode}`}
+                variant="ghost"
+                size="sm"
+                trailingIcon={<ChevronDownIcon className="agent-chevron-icon" />}
+                onClick={() => toggleRuntimeMenu('permission')}
+              >
+                {activePermissionLabel}
+              </Button>
               {runtimeMenuOpen === 'permission' ? (
                 <div className="agent-runtime-menu permission-menu">
                   {permissionOptions.map((option) => (
-                    <button key={option.value} className={props.permissionMode === option.value ? 'selected' : ''} onClick={() => selectPermission(option.value)}>
+                    <Button key={option.value} variant="ghost" className={props.permissionMode === option.value ? 'selected' : ''} onClick={() => selectPermission(option.value)}>
                       <strong>{option.label}</strong>
-                    </button>
+                    </Button>
                   ))}
                 </div>
               ) : null}
             </div>
 
-            {props.engineConnection ? <EngineConnectionIndicator connection={props.engineConnection} /> : null}
+            {props.engineConnection ? (
+              <EngineConnectionIndicator
+                connection={props.engineConnection}
+                onOpen={() => {
+                  setRuntimeMenuOpen(null);
+                  props.onOpenEngineStatus?.();
+                }}
+              />
+            ) : null}
           </div>
 
           <div className="agent-composer-right-controls">
@@ -450,42 +473,42 @@ export function ChatComposer(props: {
               </div>
             </div>
             <div className="agent-combo-control">
-              <button className="agent-combo-trigger" onClick={() => toggleRuntimeMenu('agent')}>
+              <Button className="agent-combo-trigger" variant="secondary" onClick={() => toggleRuntimeMenu('agent')}>
                 <strong>{providerDisplayLabel}</strong>
                 <em>Provider</em>
                 <ChevronDownIcon className="agent-combo-chevron" />
-              </button>
+              </Button>
               {runtimeMenuOpen === 'agent' ? (
                 <div className="agent-agent-menu">
                   <div className="agent-menu-section">
                     <div className="agent-menu-section-title">Provider</div>
                     <div className="agent-menu-option-list">
-                      <button onClick={props.onOpenAppSettings}>
+                      <Button variant="ghost" onClick={props.onOpenAppSettings}>
                         <strong>{localize(language, '管理 Provider', 'Manage providers')}</strong>
                         <span>{localize(language, '配置模型服务和默认模型', 'Configure model services and defaults')}</span>
-                      </button>
-                      <button onClick={props.onOpenProjectAgentSettings}>
+                      </Button>
+                      <Button variant="ghost" onClick={props.onOpenProjectAgentSettings}>
                         <strong>{localize(language, '会话运行设置', 'Session runtime settings')}</strong>
                         <span>{localize(language, '模型、Runtime、模式', 'Model, runtime, mode')}</span>
-                      </button>
-                      <button className={!providerSelectValue ? 'selected' : ''} onClick={() => selectProvider('')}>
+                      </Button>
+                      <Button variant="ghost" className={!providerSelectValue ? 'selected' : ''} onClick={() => selectProvider('')}>
                         <strong>{localize(language, '跟随默认', 'Use Default')}</strong>
                         <span>{props.activeProviderLabel}</span>
-                      </button>
+                      </Button>
                       {overrideProviderOptions.map((provider) => (
-                        <button key={provider.id} className={providerSelectValue === provider.id ? 'selected' : ''} onClick={() => selectProvider(provider.id)}>
+                        <Button key={provider.id} variant="ghost" className={providerSelectValue === provider.id ? 'selected' : ''} onClick={() => selectProvider(provider.id)}>
                           <strong>{provider.name}</strong>
                           <span>{provider.model}</span>
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </div>
                 </div>
               ) : null}
             </div>
-            <button className="send-button agent-send-button" onClick={props.onSubmit} disabled={!canSubmit}>
-              {props.isSending ? '+' : '↑'}
-            </button>
+            <Button className="send-button agent-send-button" variant="primary" onClick={props.onSubmit} disabled={!canSubmit} aria-label={localize(language, '发送消息', 'Send message')}>
+              {props.isSending ? <Square size={14} aria-hidden="true" /> : <ArrowUp size={18} aria-hidden="true" />}
+            </Button>
           </div>
         </div>
       </div>
@@ -493,17 +516,18 @@ export function ChatComposer(props: {
   );
 }
 
-function EngineConnectionIndicator(props: { connection: EngineConnectionSummary }): JSX.Element {
+function EngineConnectionIndicator(props: { connection: EngineConnectionSummary; onOpen?: () => void }): JSX.Element {
   return (
-    <span
+    <button
+      type="button"
       className={`agent-engine-connection-indicator ${props.connection.platform} ${props.connection.status}`}
       title={props.connection.label}
       aria-label={props.connection.label}
-      role="status"
+      onClick={props.onOpen}
     >
       <EngineIcon platform={props.connection.platform} />
       <span className={`agent-engine-connection-dot ${props.connection.status}`} aria-hidden="true" />
-    </span>
+    </button>
   );
 }
 
@@ -583,9 +607,9 @@ function AgentLiveStatus(props: {
           <i />
         </span>
         {props.onCancel ? (
-          <button className="prototype-secondary small" onClick={props.onCancel}>
+          <Button size="sm" variant="secondary" leadingIcon={<Square size={12} aria-hidden="true" />} onClick={props.onCancel}>
             {localize(language, '停止', 'Stop')}
-          </button>
+          </Button>
         ) : null}
       </div>
       {taskSummary && visibleTaskItems.length > 0 ? (
@@ -670,14 +694,6 @@ function ChevronDownIcon(props: { className: string }): JSX.Element {
   return (
     <svg className={props.className} viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false">
       <path d="M5.5 7.75L10 12.25L14.5 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function PlusIcon(props: { className: string }): JSX.Element {
-  return (
-    <svg className={props.className} viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false">
-      <path d="M10 4.75V15.25M4.75 10H15.25" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }

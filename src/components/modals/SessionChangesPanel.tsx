@@ -1,10 +1,11 @@
 import { type JSX } from 'react';
+import { RotateCcw, X } from 'lucide-react';
 import type { SessionCheckpointPreview } from '../../../shared/types';
 import { localize, useUiLanguage, type UiLanguage } from '../../i18n';
 import { formatAbsoluteTime } from '../../lib/app-helpers';
 import { ModalShell } from '../settings-modals';
 import { InfoRow } from '../shared/InfoComponents';
-import { CloseIcon } from '../shared/CloseIcon';
+import { Button, IconButton } from '../ui/index';
 
 export function SessionChangesPanel(props: {
   preview: SessionCheckpointPreview | null;
@@ -31,19 +32,21 @@ export function SessionChangesPanel(props: {
         </div>
         <div className="session-changes-actions">
           {props.preview ? (
-            <button className="prototype-secondary compact" onClick={() => props.onRestore(props.preview!.snapshotId)}>
+            <Button
+              size="compact"
+              variant="secondary"
+              leadingIcon={<RotateCcw size={12} aria-hidden="true" />}
+              onClick={() => props.onRestore(props.preview!.snapshotId)}
+            >
               {localize(language, '恢复', 'Restore')}
-            </button>
+            </Button>
           ) : null}
-          <button
-            type="button"
+          <IconButton
             className="session-changes-icon-button"
+            icon={<X size={15} aria-hidden="true" />}
+            label={localize(language, '关闭本轮变更', 'Close current run changes')}
             onClick={props.onClose}
-            aria-label={localize(language, '关闭本轮变更', 'Close current run changes')}
-            title={localize(language, '关闭本轮变更', 'Close current run changes')}
-          >
-            <CloseIcon />
-          </button>
+          />
         </div>
       </div>
 
@@ -164,12 +167,17 @@ export function RestoreCheckpointModal(props: {
         ) : null}
 
         <div className="modal-actions">
-          <button className="prototype-secondary" onClick={props.onClose} disabled={props.isRestoring}>
+          <Button variant="secondary" onClick={props.onClose} disabled={props.isRestoring}>
             {localize(language, '取消', 'Cancel')}
-          </button>
-          <button className="prototype-primary" onClick={props.onConfirm} disabled={props.isRestoring}>
+          </Button>
+          <Button
+            variant="primary"
+            loading={props.isRestoring}
+            leadingIcon={<RotateCcw size={14} aria-hidden="true" />}
+            onClick={props.onConfirm}
+          >
             {props.isRestoring ? localize(language, '恢复中…', 'Restoring…') : localize(language, '确认恢复', 'Confirm Restore')}
-          </button>
+          </Button>
         </div>
       </div>
     </ModalShell>

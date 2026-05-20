@@ -1,7 +1,9 @@
 import { useState, type JSX } from 'react';
+import { ExternalLink, FolderOpen, Play, Square } from 'lucide-react';
 import type { Project, ProjectDocumentPreview } from '../../../shared/types';
 import { buildHtmlProjectPreviewUrl, type HtmlProjectPreviewMode } from '../../../shared/html-preview-protocol';
 import { localize, useUiLanguage } from '../../i18n';
+import { Button } from '../ui/index';
 import {
   isAudioFile,
   isHtmlFile,
@@ -158,17 +160,20 @@ function HtmlPreviewFrame(props: {
                   )}
             </span>
           </div>
-          <button
-            className="prototype-secondary small"
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon={devPreview.status === 'ready' ? <Square size={13} aria-hidden="true" /> : <Play size={13} aria-hidden="true" />}
             onClick={devPreview.status === 'ready' ? stopDevPreview : startDevPreview}
             disabled={!props.project || devPreview.status === 'starting'}
+            loading={devPreview.status === 'starting'}
           >
             {devPreview.status === 'starting'
               ? localize(language, '处理中…', 'Working…')
               : devPreview.status === 'ready'
                 ? localize(language, '停止预览', 'Stop preview')
                 : localize(language, '启动预览', 'Start preview')}
-          </button>
+          </Button>
         </div>
       ) : null}
       <iframe
@@ -197,12 +202,12 @@ function PdfPreviewFrame(props: { file: ProjectFileItem; project: Project | null
           <span>{localize(language, 'PDF 预览', 'PDF preview')}</span>
         </div>
         <div className="pptx-preview-actions">
-          <button className="prototype-secondary small" onClick={() => openProjectFile(props.project, props.file)}>
+          <Button size="sm" variant="secondary" leadingIcon={<ExternalLink size={13} aria-hidden="true" />} onClick={() => openProjectFile(props.project, props.file)}>
             {localize(language, '打开 PDF', 'Open PDF')}
-          </button>
-          <button className="prototype-secondary small" onClick={() => revealProjectFile(props.project, props.file)}>
+          </Button>
+          <Button size="sm" variant="secondary" leadingIcon={<FolderOpen size={13} aria-hidden="true" />} onClick={() => revealProjectFile(props.project, props.file)}>
             {localize(language, '显示位置', 'Show in Finder')}
-          </button>
+          </Button>
         </div>
       </div>
       <iframe className="pdf-preview-frame" src={props.file.previewDataUrl} title={props.file.path} />
@@ -232,12 +237,12 @@ function DocumentPreview(props: { file: ProjectFileItem; project: Project | null
           <span>{previewLabel}</span>
         </div>
         <div className="pptx-preview-actions">
-          <button className="prototype-secondary small" onClick={() => openProjectFile(props.project, props.file)}>
+          <Button size="sm" variant="secondary" leadingIcon={<ExternalLink size={13} aria-hidden="true" />} onClick={() => openProjectFile(props.project, props.file)}>
             {openLabel}
-          </button>
-          <button className="prototype-secondary small" onClick={() => revealProjectFile(props.project, props.file)}>
+          </Button>
+          <Button size="sm" variant="secondary" leadingIcon={<FolderOpen size={13} aria-hidden="true" />} onClick={() => revealProjectFile(props.project, props.file)}>
             {localize(language, '显示位置', 'Show in Finder')}
-          </button>
+          </Button>
         </div>
       </div>
       {props.preview.warning ? <div className="pptx-preview-warning">{props.preview.warning}</div> : null}
@@ -301,12 +306,12 @@ export function BinaryPreviewFallback(props: { file: ProjectFileItem; project: P
       <span>{props.file.mimeType || localize(language, '未知类型', 'Unknown type')}</span>
       {props.file.size ? <span>{formatBytes(props.file.size)}</span> : null}
       <div className="binary-preview-actions">
-        <button className="prototype-secondary small" onClick={() => openProjectFile(props.project, props.file)}>
+        <Button size="sm" variant="secondary" leadingIcon={<ExternalLink size={13} aria-hidden="true" />} onClick={() => openProjectFile(props.project, props.file)}>
           {localize(language, '打开文件', 'Open file')}
-        </button>
-        <button className="prototype-secondary small" onClick={() => revealProjectFile(props.project, props.file)}>
+        </Button>
+        <Button size="sm" variant="secondary" leadingIcon={<FolderOpen size={13} aria-hidden="true" />} onClick={() => revealProjectFile(props.project, props.file)}>
           {localize(language, '显示位置', 'Show in Finder')}
-        </button>
+        </Button>
       </div>
     </div>
   );

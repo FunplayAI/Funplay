@@ -20,6 +20,17 @@ if (!existsSync(rendererEntry)) {
 }
 
 const now = new Date().toISOString();
+const smokeChatMessages = Array.from({ length: 36 }, (_item, index) => {
+  const ordinal = index + 1;
+  const role = index % 2 === 0 ? 'user' : 'assistant';
+  return {
+    id: `ui_smoke_message_${ordinal}`,
+    role,
+    content: `${role === 'user' ? 'UI smoke user message' : 'UI smoke assistant message'} ${String(ordinal).padStart(2, '0')}: ${'This long transcript fixture verifies the chat scroll container keeps working after UI platform migrations. '.repeat(5)}`,
+    createdAt: new Date(Date.now() - (36 - ordinal) * 60_000).toISOString(),
+    ordinal
+  };
+});
 const project = {
   id: 'ui_smoke_project',
   name: 'Rogue UI Smoke',
@@ -76,9 +87,23 @@ const project = {
       effort: 'auto'
     },
     chat: []
+  }, {
+    id: 'ui_smoke_empty_session',
+    title: '空会话',
+    autoTitle: false,
+    createdAt: now,
+    updatedAt: new Date(Date.now() - 120_000).toISOString(),
+    runtimeOverrides: {
+      runtimeId: 'native',
+      providerId: 'provider_mimo',
+      model: 'mimo-v2.5-pro',
+      permissionMode: 'full-access',
+      effort: 'auto'
+    },
+    chat: []
   }],
   activeSessionId: 'ui_smoke_session',
-  chat: [],
+  chat: smokeChatMessages,
   activity: [],
   snapshots: [],
   memory: {
@@ -176,6 +201,8 @@ const bootstrapPayload = {
   mcpPlugins: [],
   projects: [project]
 };
+
+project.sessions[0].chat = smokeChatMessages;
 
 const projectFiles = [
   {
@@ -288,7 +315,14 @@ async function writePreload() {
       createProjectSession: async () => project,
       renameProjectSession: async () => project,
       deleteProjectSession: async () => project,
-      setActiveProjectSession: async () => project,
+      setActiveProjectSession: async (_projectId, sessionId) => {
+        const session = project.sessions.find((item) => item.id === sessionId);
+        if (session) {
+          project.activeSessionId = sessionId;
+          project.chat = [...session.chat];
+        }
+        return project;
+      },
       updateProjectAgentPolicy: async () => project,
       listAgentSkillCatalog: async () => ({ skills: [], repositories: [] }),
       updateProjectSessionRuntime: async () => project,
@@ -409,6 +443,61 @@ async function clickByAriaLabel(webContents, label) {
   assert.equal(clicked, true, `Expected button with aria-label "${label}"`);
 }
 
+async function pressKey(webContents, keyCode) {
+  webContents.sendInputEvent({ type: 'keyDown', keyCode });
+  webContents.sendInputEvent({ type: 'keyUp', keyCode });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+}
+
+async function pressCommandPaletteShortcut(webContents) {
+  webContents.sendInputEvent({ type: 'keyDown', keyCode: 'K', modifiers: ['meta'] });
+  webContents.sendInputEvent({ type: 'keyUp', keyCode: 'K', modifiers: ['meta'] });
+  await new Promise((resolve) => setTimeout(resolve, 120));
+}
+
+async function clickCommandPaletteItem(webContents, commandId) {
+  const clicked = await webContents.executeJavaScript(`
+    (() => {
+      const target = document.querySelector(${JSON.stringify(`[data-command-id="${commandId}"]`)});
+      if (!target) return false;
+      target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      target.click();
+      return true;
+    })()
+  `);
+  assert.equal(clicked, true, `Expected command palette item "${commandId}"`);
+  await new Promise((resolve) => setTimeout(resolve, 120));
+}
+
+async function withTimeout(promise, timeoutMs, label) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function emulateAccessibilityMedia(webContents) {
+  await withTimeout((async () => {
+    if (!webContents.debugger.isAttached()) {
+      webContents.debugger.attach('1.3');
+    }
+    await webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
+      features: [
+        { name: 'prefers-reduced-motion', value: 'reduce' },
+        { name: 'forced-colors', value: 'active' }
+      ]
+    });
+  })(), 3000, 'Accessibility media emulation');
+}
+
 async function capture(window, name) {
   const image = await window.webContents.capturePage();
   const path = resolve(artifactDir, `${name}.png`);
@@ -423,6 +512,8 @@ async function snapshot(webContents) {
       const activeWorkspaceNav = document.querySelector('.workspace-sidebar-nav-item[aria-current="page"]');
       const activeSettingsNav = document.querySelector('.project-settings-nav-item[aria-current="page"]');
       const modal = document.querySelector('[role="dialog"][aria-modal="true"]');
+      const commandPalette = document.querySelector('.command-palette-dialog');
+      const commandPaletteStyle = commandPalette ? getComputedStyle(commandPalette) : null;
       const appSettingsLayout = document.querySelector('.app-settings-layout');
       const projectSettingsNav = document.querySelector('.project-settings-nav');
       return {
@@ -431,7 +522,19 @@ async function snapshot(webContents) {
         activeWorkspaceNav: activeWorkspaceNav?.textContent?.replace(/\\s+/g, ' ').trim() || '',
         activeSettingsNav: activeSettingsNav?.textContent?.replace(/\\s+/g, ' ').trim() || '',
         modalOpen: Boolean(modal),
-        modalText: modal?.textContent?.replace(/\\s+/g, ' ').trim().slice(0, 1200) || '',
+        activeElementInsideModal: modal ? modal.contains(document.activeElement) : false,
+        commandPaletteOpen: Boolean(commandPalette),
+        commandPaletteText: commandPalette?.textContent?.replace(/\\s+/g, ' ').trim().slice(0, 1600) || '',
+        activeElementInsideCommandPalette: commandPalette ? commandPalette.contains(document.activeElement) : false,
+        commandPaletteInputFocused: document.activeElement?.classList?.contains('command-palette-input') || false,
+        reducedMotionMatches: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+        forcedColorsMatches: window.matchMedia('(forced-colors: active)').matches,
+        commandPaletteAnimationName: commandPaletteStyle?.animationName || '',
+        commandPaletteTransitionDuration: commandPaletteStyle?.transitionDuration || '',
+        commandPaletteBorderColor: commandPaletteStyle?.borderTopColor || '',
+        commandPaletteBackgroundColor: commandPaletteStyle?.backgroundColor || '',
+        activeElementLabel: document.activeElement?.getAttribute('aria-label') || document.activeElement?.textContent?.replace(/\\s+/g, ' ').trim().slice(0, 80) || document.activeElement?.tagName || '',
+        modalText: modal?.textContent?.replace(/\\s+/g, ' ').trim().slice(0, 2400) || '',
         appSettingsColumns: appSettingsLayout ? getComputedStyle(appSettingsLayout).gridTemplateColumns : '',
         activeProviderPreset: document.querySelector('.provider-preset-card.active strong')?.textContent?.trim() || '',
         providerEditorBaseUrl: [...document.querySelectorAll('.provider-core-config label')].find((label) => /Base URL/.test(label.textContent || ''))?.querySelector('input')?.value || '',
@@ -443,6 +546,29 @@ async function snapshot(webContents) {
         projectSettingsColumns: document.querySelector('.project-settings-page') ? getComputedStyle(document.querySelector('.project-settings-page')).gridTemplateColumns : '',
         projectSettingsNavOverflowX: projectSettingsNav ? getComputedStyle(projectSettingsNav).overflowX : '',
         composerVisible: Boolean(document.querySelector('.agent-composer-shell') && document.querySelector('.agent-composer-textarea')),
+        composerBottomGapToShell: (() => {
+          const shell = document.querySelector('.agent-chat-shell');
+          const composer = document.querySelector('.agent-composer-shell');
+          if (!shell || !composer) return -1;
+          return Math.round(shell.getBoundingClientRect().bottom - composer.getBoundingClientRect().bottom);
+        })(),
+        composerViewportBottomGap: (() => {
+          const composer = document.querySelector('.agent-composer-shell');
+          if (!composer) return -1;
+          return Math.round(window.innerHeight - composer.getBoundingClientRect().bottom);
+        })(),
+        composerTop: Math.round(document.querySelector('.agent-composer-shell')?.getBoundingClientRect().top || 0),
+        composerHeight: Math.round(document.querySelector('.agent-composer-shell')?.getBoundingClientRect().height || 0),
+        chatShellHeight: Math.round(document.querySelector('.agent-chat-shell')?.getBoundingClientRect().height || 0),
+        sidebarSessionTitleText: document.querySelector('.sidebar-session-title')?.textContent?.trim() || '',
+        sidebarSessionSummaryText: document.querySelector('.sidebar-session-summary')?.textContent?.trim() || '',
+        sidebarSessionTitleWidth: Math.round(document.querySelector('.sidebar-session-title')?.getBoundingClientRect().width || 0),
+        sidebarSessionMainWidth: Math.round(document.querySelector('.sidebar-session-main')?.getBoundingClientRect().width || 0),
+        sidebarSessionLabelWidth: Math.round(document.querySelector('.sidebar-session-main .fp-button-label')?.getBoundingClientRect().width || 0),
+        sidebarSessionBodyWidth: Math.round(document.querySelector('.sidebar-session-body')?.getBoundingClientRect().width || 0),
+        sidebarSessionHeadWidth: Math.round(document.querySelector('.sidebar-session-head')?.getBoundingClientRect().width || 0),
+        sidebarSessionTimeWidth: Math.round(document.querySelector('.sidebar-session-time')?.getBoundingClientRect().width || 0),
+        sidebarSessionTitleColor: document.querySelector('.sidebar-session-title') ? getComputedStyle(document.querySelector('.sidebar-session-title')).color : '',
         composerClipped: (() => {
           const composer = document.querySelector('.agent-composer-shell');
           if (!composer) return true;
@@ -456,7 +582,268 @@ async function snapshot(webContents) {
   `);
 }
 
-function buildReport(rows) {
+async function verifyAgentChatScroll(webContents) {
+  const metrics = await webContents.executeJavaScript(`
+    (() => {
+      const node = document.querySelector('.agent-scroll-region');
+      if (!node) {
+        return { exists: false };
+      }
+      const before = node.scrollTop;
+      node.scrollTop = 0;
+      const topAfterReset = node.scrollTop;
+      node.scrollTo({ top: 240, behavior: 'auto' });
+      return {
+        exists: true,
+        before,
+        topAfterReset,
+        afterScroll: node.scrollTop,
+        scrollHeight: node.scrollHeight,
+        clientHeight: node.clientHeight,
+        overflowY: getComputedStyle(node).overflowY,
+        recentMessageVisible: Boolean([...node.querySelectorAll('.chat-transcript-row')].find((row) => /UI smoke assistant message 36/.test(row.textContent || '')))
+      };
+    })()
+  `);
+  assert.equal(metrics.exists, true, 'Expected chat scroll region to exist');
+  assert.ok(metrics.scrollHeight > metrics.clientHeight + 120, `Expected long chat transcript to overflow: ${JSON.stringify(metrics)}`);
+  assert.ok(metrics.afterScroll > metrics.topAfterReset, `Expected chat scrollTop to change: ${JSON.stringify(metrics)}`);
+  assert.equal(metrics.overflowY, 'auto');
+  assert.equal(metrics.recentMessageVisible, true);
+  return metrics;
+}
+
+async function verifyComposerBottomAnchoring(webContents, state) {
+  const metrics = await webContents.executeJavaScript(`
+    (() => {
+      const shell = document.querySelector('.agent-chat-shell');
+      const composer = document.querySelector('.agent-composer-shell');
+      const scrollLayer = document.querySelector('.agent-chat-scroll-layer');
+      if (!shell || !composer || !scrollLayer) {
+        return { exists: false };
+      }
+      const shellRect = shell.getBoundingClientRect();
+      const composerRect = composer.getBoundingClientRect();
+      const scrollLayerRect = scrollLayer.getBoundingClientRect();
+      return {
+        exists: true,
+        shellTop: Math.round(shellRect.top),
+        shellBottom: Math.round(shellRect.bottom),
+        shellHeight: Math.round(shellRect.height),
+        scrollLayerHeight: Math.round(scrollLayerRect.height),
+        composerTop: Math.round(composerRect.top),
+        composerBottom: Math.round(composerRect.bottom),
+        composerHeight: Math.round(composerRect.height),
+        composerBottomGapToShell: Math.round(shellRect.bottom - composerRect.bottom),
+        viewportBottomGap: Math.round(window.innerHeight - composerRect.bottom),
+        shellDisplay: getComputedStyle(shell).display,
+        shellRows: getComputedStyle(shell).gridTemplateRows,
+        paneOverflow: getComputedStyle(document.querySelector('.chat-primary-column')).overflow
+      };
+    })()
+  `);
+  assert.equal(metrics.exists, true, `Expected composer and chat shell to exist in ${state}`);
+  assert.equal(metrics.shellDisplay, 'grid', `Expected deterministic chat shell grid in ${state}: ${JSON.stringify(metrics)}`);
+  assert.ok(metrics.shellHeight > metrics.composerHeight + 120, `Expected chat shell to reserve transcript space in ${state}: ${JSON.stringify(metrics)}`);
+  assert.ok(metrics.scrollLayerHeight > 120, `Expected scroll layer to occupy remaining chat height in ${state}: ${JSON.stringify(metrics)}`);
+  assert.ok(
+    metrics.composerBottomGapToShell >= 0 && metrics.composerBottomGapToShell <= 90,
+    `Expected composer to stay anchored near chat bottom in ${state}: ${JSON.stringify(metrics)}`
+  );
+  return metrics;
+}
+
+async function collectAccessibilityIssues(webContents, state) {
+  return webContents.executeJavaScript(`
+    (() => {
+      const state = ${JSON.stringify(state)};
+      const controls = new Set();
+      const selectors = [
+        'button',
+        'a[href]',
+        'input:not([type="hidden"])',
+        'textarea',
+        'select',
+        '[role="button"]',
+        '[role="checkbox"]',
+        '[role="combobox"]',
+        '[role="menuitem"]',
+        '[role="option"]',
+        '[role="switch"]',
+        '[role="tab"]',
+        '[role="textbox"]',
+        '[tabindex]:not([tabindex="-1"])'
+      ];
+      for (const selector of selectors) {
+        for (const element of document.querySelectorAll(selector)) {
+          controls.add(element);
+        }
+      }
+      const normalizedText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const isVisible = (element) => {
+        if (element.closest('[hidden], [aria-hidden="true"]')) {
+          return false;
+        }
+        const style = window.getComputedStyle(element);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+          return false;
+        }
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      };
+      const labelText = (element) => {
+        const labelledBy = element.getAttribute('aria-labelledby');
+        if (labelledBy) {
+          const text = labelledBy
+            .split(/\\s+/)
+            .map((id) => document.getElementById(id)?.textContent || '')
+            .join(' ');
+          if (normalizedText(text)) {
+            return normalizedText(text);
+          }
+        }
+        const directLabel = element.getAttribute('aria-label');
+        if (normalizedText(directLabel)) {
+          return normalizedText(directLabel);
+        }
+        const title = element.getAttribute('title');
+        if (normalizedText(title)) {
+          return normalizedText(title);
+        }
+        const closestLabel = element.closest('label');
+        if (closestLabel && normalizedText(closestLabel.textContent)) {
+          return normalizedText(closestLabel.textContent);
+        }
+        if ('labels' in element && element.labels?.length) {
+          const text = [...element.labels].map((label) => label.textContent || '').join(' ');
+          if (normalizedText(text)) {
+            return normalizedText(text);
+          }
+        }
+        const placeholder = element.getAttribute('placeholder');
+        if (normalizedText(placeholder)) {
+          return normalizedText(placeholder);
+        }
+        const text = normalizedText(element.textContent);
+        if (text) {
+          return text;
+        }
+        return '';
+      };
+      return [...controls]
+        .filter((element) => isVisible(element))
+        .map((element) => ({
+          state,
+          tag: element.tagName.toLowerCase(),
+          role: element.getAttribute('role') || '',
+          className: String(element.getAttribute('class') || ''),
+          ariaLabel: element.getAttribute('aria-label') || '',
+          text: normalizedText(element.textContent).slice(0, 80),
+          name: labelText(element)
+        }))
+        .filter((entry) => !entry.name)
+        .map((entry) => ({
+          state: entry.state,
+          selector: [entry.tag, entry.role ? '[role="' + entry.role + '"]' : '', entry.className ? '.' + entry.className.split(/\\s+/).filter(Boolean).slice(0, 3).join('.') : ''].join(''),
+          text: entry.text,
+          ariaLabel: entry.ariaLabel
+        }));
+    })()
+  `);
+}
+
+async function auditAccessibility(webContents, state, audits) {
+  const issues = await collectAccessibilityIssues(webContents, state);
+  audits.push({ state, issueCount: issues.length, issues });
+  assert.deepEqual(issues, [], `Visible interactive controls without accessible names in ${state}`);
+}
+
+async function collectLayoutIssues(webContents, state) {
+  return webContents.executeJavaScript(`
+    (() => {
+      const state = ${JSON.stringify(state)};
+      const issues = [];
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const normalizedText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+      const isVisible = (element) => {
+        if (element.closest('[hidden], [aria-hidden="true"]')) {
+          return false;
+        }
+        const style = window.getComputedStyle(element);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+          return false;
+        }
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      };
+      const rootScrollWidth = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth);
+      if (rootScrollWidth > viewportWidth + 2) {
+        issues.push({
+          state,
+          type: 'page-horizontal-overflow',
+          detail: rootScrollWidth + 'px > ' + viewportWidth + 'px'
+        });
+      }
+      for (const selector of ['.command-palette-dialog', '[role="dialog"][aria-modal="true"]', '.agent-composer-shell']) {
+        for (const element of document.querySelectorAll(selector)) {
+          if (!isVisible(element)) {
+            continue;
+          }
+          const rect = element.getBoundingClientRect();
+          if (rect.left < -1 || rect.right > viewportWidth + 1 || rect.top < -1 || rect.bottom > viewportHeight + 1) {
+            issues.push({
+              state,
+              type: 'critical-surface-clipped',
+              selector,
+              detail: JSON.stringify({
+                left: Math.round(rect.left),
+                right: Math.round(rect.right),
+                top: Math.round(rect.top),
+                bottom: Math.round(rect.bottom),
+                viewportWidth,
+                viewportHeight
+              })
+            });
+          }
+        }
+      }
+      for (const label of document.querySelectorAll('button .fp-button-label')) {
+        if (!isVisible(label)) {
+          continue;
+        }
+        const button = label.closest('button');
+        if (!button || !isVisible(button)) {
+          continue;
+        }
+        const labelRect = label.getBoundingClientRect();
+        const buttonRect = button.getBoundingClientRect();
+        if (labelRect.left < buttonRect.left - 1 || labelRect.right > buttonRect.right + 1 || labelRect.top < buttonRect.top - 1 || labelRect.bottom > buttonRect.bottom + 1) {
+          issues.push({
+            state,
+            type: 'button-label-overflow',
+            selector: button.getAttribute('aria-label') || normalizedText(button.textContent).slice(0, 80) || button.className,
+            detail: JSON.stringify({
+              labelRight: Math.round(labelRect.right),
+              buttonRight: Math.round(buttonRect.right),
+              labelBottom: Math.round(labelRect.bottom),
+              buttonBottom: Math.round(buttonRect.bottom)
+            })
+          });
+        }
+      }
+      return issues;
+    })()
+  `);
+}
+
+async function auditLayout(webContents, state, audits) {
+  const issues = await collectLayoutIssues(webContents, state);
+  audits.push({ state, issueCount: issues.length, issues });
+  assert.deepEqual(issues, [], `Visible desktop UI layout overflow in ${state}`);
+}
+
+function buildReport(rows, accessibilityAudits, layoutAudits) {
   const generatedAt = new Date().toISOString();
   return [
     '# Desktop UI Electron Smoke Report',
@@ -479,8 +866,19 @@ function buildReport(rows) {
       `- Active settings nav: ${row.detail.activeSettingsNav || '-'}`,
       `- App settings columns: ${row.detail.appSettingsColumns || '-'}`,
       `- Project settings nav display: ${row.detail.projectSettingsNavDisplay || '-'}`,
+      `- Active element inside modal: ${row.detail.modalOpen ? String(row.detail.activeElementInsideModal) : '-'}`,
+      `- Command palette open: ${row.detail.commandPaletteOpen ? 'true' : 'false'}`,
+      `- Reduced motion emulated: ${row.detail.reducedMotionMatches ? 'true' : 'false'}`,
+      `- Forced colors emulated: ${row.detail.forcedColorsMatches ? 'true' : 'false'}`,
       ''
-    ].join('\n'))
+    ].join('\n')),
+    '## Accessibility Audit',
+    '',
+    ...accessibilityAudits.map((audit) => `- ${audit.state}: ${audit.issueCount} unnamed visible interactive controls`),
+    '',
+    '## Layout Stability Audit',
+    '',
+    ...layoutAudits.map((audit) => `- ${audit.state}: ${audit.issueCount} overflow or clipping issues`)
   ].join('\n');
 }
 
@@ -502,6 +900,8 @@ async function main() {
   });
 
   const rows = [];
+  const accessibilityAudits = [];
+  const layoutAudits = [];
   try {
     win.webContents.on('console-message', (details) => {
       const payload = typeof details === 'object' && details !== null
@@ -526,11 +926,55 @@ async function main() {
       rendererMessages.push({ level: 'gone', message: details.reason, line: 0, sourceId: '' });
     });
     await win.loadFile(rendererEntry);
-    await waitFor(win.webContents, "() => document.querySelector('[data-workspace-section=\"agent\"]') && /继续完成项目|Continue Project/.test(document.body.textContent)", 'Agent workspace');
+    await waitFor(win.webContents, "() => document.querySelector('[data-workspace-section=\"agent\"]') && /UI smoke assistant message 36/.test(document.body.textContent)", 'Agent workspace');
+    await emulateAccessibilityMedia(win.webContents);
+    await waitFor(win.webContents, "() => window.matchMedia('(prefers-reduced-motion: reduce)').matches", 'Reduced motion emulation');
+    await waitFor(win.webContents, "() => window.matchMedia('(forced-colors: active)').matches", 'Forced colors emulation');
     const agent = await snapshot(win.webContents);
     assert.equal(agent.section, 'agent');
-    assert.match(agent.bodyText, /继续完成项目|Continue Project/);
-    rows.push({ state: 'Agent', screenshot: await capture(win, 'agent'), detail: agent });
+    assert.match(agent.bodyText, /UI smoke/);
+    assert.equal(agent.sidebarSessionTitleText, '主会话');
+    assert.match(agent.sidebarSessionSummaryText, /UI smoke assistant message 36/);
+    assert.ok(agent.sidebarSessionTitleWidth > 40, `Expected visible sidebar session title width: ${JSON.stringify(agent)}`);
+    assert.notEqual(agent.sidebarSessionTitleColor, 'rgba(0, 0, 0, 0)');
+    const agentScrollMetrics = await verifyAgentChatScroll(win.webContents);
+    const agentComposerMetrics = await verifyComposerBottomAnchoring(win.webContents, 'Agent');
+    await auditAccessibility(win.webContents, 'Agent', accessibilityAudits);
+    await auditLayout(win.webContents, 'Agent', layoutAudits);
+    rows.push({ state: 'Agent', screenshot: await capture(win, 'agent'), detail: { ...agent, agentScrollMetrics, agentComposerMetrics } });
+
+    await pressCommandPaletteShortcut(win.webContents);
+    await waitFor(win.webContents, "() => document.querySelector('.command-palette-dialog')", 'Command palette shortcut');
+    const commandPalette = await snapshot(win.webContents);
+    assert.equal(commandPalette.commandPaletteOpen, true);
+    assert.equal(commandPalette.activeElementInsideCommandPalette, true);
+    assert.equal(commandPalette.commandPaletteInputFocused, true);
+    assert.equal(commandPalette.reducedMotionMatches, true);
+    assert.equal(commandPalette.forcedColorsMatches, true);
+    assert.equal(commandPalette.commandPaletteAnimationName, 'none');
+    assert.match(commandPalette.commandPaletteTransitionDuration, /^0(?:s|ms)|0\.001ms$/);
+    assert.notEqual(commandPalette.commandPaletteBorderColor, '');
+    assert.notEqual(commandPalette.commandPaletteBackgroundColor, '');
+    assert.match(commandPalette.commandPaletteText, /Agent 工作区|Agent workspace/);
+    assert.match(commandPalette.commandPaletteText, /项目设置|Project settings/);
+    assert.match(commandPalette.commandPaletteText, /素材库|Assets/);
+    await auditAccessibility(win.webContents, 'Command Palette', accessibilityAudits);
+    await auditLayout(win.webContents, 'Command Palette', layoutAudits);
+    rows.push({ state: 'Command Palette', screenshot: await capture(win, 'command-palette'), detail: commandPalette });
+    await pressKey(win.webContents, 'Tab');
+    const commandPaletteAfterTab = await snapshot(win.webContents);
+    assert.equal(commandPaletteAfterTab.commandPaletteOpen, true);
+    assert.equal(commandPaletteAfterTab.activeElementInsideCommandPalette, true);
+
+    await clickCommandPaletteItem(win.webContents, 'open-assets');
+    await waitFor(win.webContents, "() => document.querySelector('[data-workspace-section=\"assets\"]') && !document.querySelector('.command-palette-dialog')", 'Command palette assets route');
+    const commandAssets = await snapshot(win.webContents);
+    assert.equal(commandAssets.section, 'assets');
+    assert.equal(commandAssets.commandPaletteOpen, false);
+    assert.match(commandAssets.bodyText, /player\.png|assets\/images\/player\.png/);
+    await auditAccessibility(win.webContents, 'Command Palette Assets Route', accessibilityAudits);
+    await auditLayout(win.webContents, 'Command Palette Assets Route', layoutAudits);
+    rows.push({ state: 'Command Palette Assets Route', screenshot: await capture(win, 'command-palette-assets-route'), detail: commandAssets });
 
     await clickByText(win.webContents, '项目设置');
     await waitFor(win.webContents, "() => document.querySelector('[data-workspace-section=\"settings\"]')", 'Project Settings route');
@@ -538,6 +982,8 @@ async function main() {
     assert.equal(settings.section, 'settings');
     assert.match(settings.activeWorkspaceNav, /项目设置|Project Settings/);
     assert.match(settings.bodyText, /引擎项目|Engine Project/);
+    await auditAccessibility(win.webContents, 'Project Settings', accessibilityAudits);
+    await auditLayout(win.webContents, 'Project Settings', layoutAudits);
     rows.push({ state: 'Project Settings', screenshot: await capture(win, 'project-settings'), detail: settings });
 
     await clickByText(win.webContents, '素材库');
@@ -547,6 +993,8 @@ async function main() {
     assert.match(assets.activeWorkspaceNav, /素材库|Assets/);
     assert.match(assets.bodyText, /player\.png|assets\/images\/player\.png/);
     assert.equal(assets.assetCardCount, 1);
+    await auditAccessibility(win.webContents, 'Assets', accessibilityAudits);
+    await auditLayout(win.webContents, 'Assets', layoutAudits);
     rows.push({ state: 'Assets', screenshot: await capture(win, 'assets'), detail: assets });
 
     await clickByText(win.webContents, 'player.png');
@@ -555,6 +1003,8 @@ async function main() {
     assert.equal(assetInspector.inspectorPath, 'assets/images/player.png');
     assert.match(assetInspector.inspectorText, /Rogue UI Smoke/);
     assert.match(assetInspector.inspectorText, /只读|Read only|预览模式|Preview mode/);
+    await auditAccessibility(win.webContents, 'Asset Inspector Handoff', accessibilityAudits);
+    await auditLayout(win.webContents, 'Asset Inspector Handoff', layoutAudits);
     rows.push({ state: 'Asset Inspector Handoff', screenshot: await capture(win, 'asset-inspector-handoff'), detail: assetInspector });
 
     await clickByAriaLabel(win.webContents, '打开应用设置');
@@ -563,11 +1013,18 @@ async function main() {
     await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"]')?.textContent.includes('Xiaomi MiMo')", 'Provider settings modal');
     const providerModal = await snapshot(win.webContents);
     assert.equal(providerModal.modalOpen, true);
+    assert.equal(providerModal.activeElementInsideModal, true);
     assert.match(providerModal.modalText, /AI Provider/);
     assert.match(providerModal.modalText, /Xiaomi MiMo/);
     assert.match(providerModal.modalText, /默认：Xiaomi MiMo|Default: Xiaomi MiMo/);
     assert.match(providerModal.modalText, /诊断|Doctor/);
+    await auditAccessibility(win.webContents, 'App Settings Provider', accessibilityAudits);
+    await auditLayout(win.webContents, 'App Settings Provider', layoutAudits);
     rows.push({ state: 'App Settings Provider', screenshot: await capture(win, 'app-settings-provider'), detail: providerModal });
+    await pressKey(win.webContents, 'Tab');
+    const providerModalAfterTab = await snapshot(win.webContents);
+    assert.equal(providerModalAfterTab.modalOpen, true);
+    assert.equal(providerModalAfterTab.activeElementInsideModal, true);
 
     await clickByText(win.webContents, '添加 Provider');
     await waitFor(win.webContents, "() => document.querySelector('.app-settings-inline-editor')?.textContent.includes('服务商预设')", 'Provider editor');
@@ -581,17 +1038,22 @@ async function main() {
     assert.equal(providerEditor.providerAdvancedOpen, false);
     assert.match(providerEditor.modalText, /核心配置|Core Configuration/);
     assert.match(providerEditor.modalText, /高级协议配置|Advanced Protocol Configuration/);
+    await auditAccessibility(win.webContents, 'Provider Editor Preset', accessibilityAudits);
+    await auditLayout(win.webContents, 'Provider Editor Preset', layoutAudits);
     rows.push({ state: 'Provider Editor Preset', screenshot: await capture(win, 'provider-editor-preset'), detail: providerEditor });
 
     win.setSize(840, 640);
     await new Promise((resolve) => setTimeout(resolve, 200));
     const compact = await snapshot(win.webContents);
     assert.equal(compact.modalOpen, true);
+    assert.equal(compact.activeElementInsideModal, true);
     assert.equal(compact.providerAdvancedOpen, false);
     assert.match(compact.appSettingsColumns, /^[0-9.]+px$/);
+    await auditAccessibility(win.webContents, 'Compact App Settings', accessibilityAudits);
+    await auditLayout(win.webContents, 'Compact App Settings', layoutAudits);
     rows.push({ state: 'Compact App Settings', screenshot: await capture(win, 'compact-app-settings-provider'), detail: compact });
 
-    await clickByAriaLabel(win.webContents, 'Close');
+    await pressKey(win.webContents, 'Escape');
     await waitFor(win.webContents, "() => !document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]')", 'App Settings close');
     await clickByText(win.webContents, '项目设置');
     await waitFor(win.webContents, "() => document.querySelector('[data-workspace-section=\"settings\"]')", 'Compact Project Settings route');
@@ -600,6 +1062,8 @@ async function main() {
     assert.equal(compactSettings.projectSettingsNavDisplay, 'flex');
     assert.match(compactSettings.projectSettingsColumns, /^[0-9.]+px$/);
     assert.match(compactSettings.projectSettingsNavOverflowX, /auto|scroll/);
+    await auditAccessibility(win.webContents, 'Compact Project Settings', accessibilityAudits);
+    await auditLayout(win.webContents, 'Compact Project Settings', layoutAudits);
     rows.push({ state: 'Compact Project Settings', screenshot: await capture(win, 'compact-project-settings'), detail: compactSettings });
 
     await clickByText(win.webContents, '主会话');
@@ -608,10 +1072,28 @@ async function main() {
     assert.equal(compactAgent.section, 'agent');
     assert.equal(compactAgent.composerVisible, true);
     assert.equal(compactAgent.composerClipped, false);
-    rows.push({ state: 'Compact Agent Composer', screenshot: await capture(win, 'compact-agent-composer'), detail: compactAgent });
-    await writeFile(reportPath, buildReport(rows));
+    const compactComposerMetrics = await verifyComposerBottomAnchoring(win.webContents, 'Compact Agent Composer');
+    await auditAccessibility(win.webContents, 'Compact Agent Composer', accessibilityAudits);
+    await auditLayout(win.webContents, 'Compact Agent Composer', layoutAudits);
+    rows.push({ state: 'Compact Agent Composer', screenshot: await capture(win, 'compact-agent-composer'), detail: { ...compactAgent, compactComposerMetrics } });
+
+    await clickByText(win.webContents, '空会话');
+    await waitFor(win.webContents, "() => document.querySelector('[data-workspace-section=\"agent\"]') && /开始一个新对话|Start a new conversation/.test(document.body.textContent)", 'Empty Agent composer');
+    const emptyAgent = await snapshot(win.webContents);
+    assert.equal(emptyAgent.section, 'agent');
+    assert.equal(emptyAgent.composerVisible, true);
+    assert.equal(emptyAgent.composerClipped, false);
+    assert.match(emptyAgent.bodyText, /开始一个新对话|Start a new conversation/);
+    const emptyComposerMetrics = await verifyComposerBottomAnchoring(win.webContents, 'Empty Agent Composer');
+    await auditAccessibility(win.webContents, 'Empty Agent Composer', accessibilityAudits);
+    await auditLayout(win.webContents, 'Empty Agent Composer', layoutAudits);
+    rows.push({ state: 'Empty Agent Composer', screenshot: await capture(win, 'empty-agent-composer'), detail: { ...emptyAgent, emptyComposerMetrics } });
+    await writeFile(reportPath, buildReport(rows, accessibilityAudits, layoutAudits));
     console.log(`Desktop UI Electron smoke passed: ${reportPath}`);
   } finally {
+    if (win.webContents.debugger.isAttached()) {
+      win.webContents.debugger.detach();
+    }
     win.destroy();
     await rm(preloadPath, { force: true });
   }
@@ -622,6 +1104,7 @@ main()
   .catch(async (error) => {
     console.error(error);
     await rm(preloadPath, { force: true }).catch(() => {});
-    app.exit(1);
     process.exitCode = 1;
+    app.exit(1);
+    process.exit(1);
   });

@@ -53,40 +53,71 @@ function resolveMcpEndpoint(ctx: HandlerContext, pluginId?: string): McpPlugin |
   return resolveMcpPlugin(ctx, pluginId) ?? ctx.requirePluginBaseUrl();
 }
 
-async function checkMcpPluginHealth(plugin: McpPlugin | string): Promise<UnityHealthResult> {
+function describeMcpHealthEndpoint(plugin: McpPlugin | string): string {
   if (typeof plugin === 'string') {
-    return checkUnityHealth(plugin, {
-      bypassCache: true
-    });
+    return plugin;
   }
-  if (plugin.transport === 'http') {
-    return checkUnityHealth(plugin.baseUrl, {
-      bypassCache: true
-    });
+  return plugin.transport === 'stdio'
+    ? `stdio://${plugin.name || plugin.id}`
+    : plugin.baseUrl;
+}
+
+function formatMcpHealthError(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return String(error);
   }
-  const serverInfo = await initializeUnityMcp(plugin);
+  const cause = error.cause instanceof Error ? error.cause.message : '';
+  return cause ? `${error.message}: ${cause}` : error.message;
+}
+
+function makeOfflineMcpHealthResult(plugin: McpPlugin | string, error: unknown): UnityHealthResult {
   return {
-    status: 'online',
+    status: 'offline',
     checkedAt: new Date().toISOString(),
-    url: `stdio://${plugin.name || plugin.id}`,
-    message: `MCP stdio 已连通：${serverInfo.name} ${serverInfo.version}。`
+    url: describeMcpHealthEndpoint(plugin),
+    message: `MCP 连接失败：${formatMcpHealthError(error)}`
   };
 }
 
-async function reconnectMcpPlugin(plugin: McpPlugin | string): Promise<UnityHealthResult> {
-  if (typeof plugin === 'string') {
-    return reconnectUnityHealth(plugin);
-  }
-  if (plugin.transport === 'http') {
-    return reconnectUnityHealth(plugin.baseUrl);
-  }
-  const serverInfo = await reconnectMcpConnection(plugin);
+function makeOnlineMcpHealthResult(plugin: McpPlugin, serverInfo: Awaited<ReturnType<typeof initializeUnityMcp>>): UnityHealthResult {
   return {
     status: 'online',
     checkedAt: new Date().toISOString(),
-    url: `stdio://${plugin.name || plugin.id}`,
-    message: `MCP stdio 已重新连接：${serverInfo.name} ${serverInfo.version}。`
+    url: describeMcpHealthEndpoint(plugin),
+    message: `MCP 已连通：${serverInfo.name} ${serverInfo.version}。`
   };
+}
+
+async function checkMcpPluginHealth(plugin: McpPlugin | string): Promise<UnityHealthResult> {
+  try {
+    if (typeof plugin === 'string') {
+      return checkUnityHealth(plugin, {
+        bypassCache: true
+      });
+    }
+    return makeOnlineMcpHealthResult(plugin, await initializeUnityMcp(plugin));
+  } catch (error) {
+    return makeOfflineMcpHealthResult(plugin, error);
+  }
+}
+
+async function reconnectMcpPlugin(plugin: McpPlugin | string): Promise<UnityHealthResult> {
+  try {
+    if (typeof plugin === 'string') {
+      return reconnectUnityHealth(plugin);
+    }
+    const serverInfo = plugin.transport === 'http'
+      ? await reconnectMcpConnection(plugin.baseUrl)
+      : await reconnectMcpConnection(plugin);
+    return {
+      status: 'online',
+      checkedAt: new Date().toISOString(),
+      url: describeMcpHealthEndpoint(plugin),
+      message: `MCP 已重新连接：${serverInfo.name} ${serverInfo.version}。`
+    };
+  } catch (error) {
+    return makeOfflineMcpHealthResult(plugin, error);
+  }
 }
 
 function hasMcpLaunchConfigChanged(before: McpPlugin, after: McpPlugin): boolean {

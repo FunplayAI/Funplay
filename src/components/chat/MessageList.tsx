@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import type { AgentCoreMessagePart, AgentPermissionImpact, AgentToolArtifact, AgentToolBrowserResult, AgentToolChangedFile, AgentToolEditMetrics, AgentToolMcpResult, AgentUserInputOption, ChatMediaBlock, ChatMessage, ProjectSessionRuntimeId, RuntimeRecoveryAction } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
+import { Button } from '../ui/index';
 import { ChatTranscriptMessage, StreamingTranscriptMessage, getMessagePlainText } from './ConversationMessage';
 
 const BOTTOM_STICKINESS_PX = 48;
@@ -303,10 +304,10 @@ export function MessageList(props: {
             {props.emptyActions?.length ? (
               <div className="agent-empty-suggestions" aria-label={localize(language, '常用任务起点', 'Common task starters')}>
                 {props.emptyActions.map((action) => (
-                  <button key={action.id} type="button" className="agent-empty-suggestion" onClick={() => props.onSelectEmptyAction?.(action.prompt)}>
+                  <Button key={action.id} size="compact" variant="ghost" className="agent-empty-suggestion" onClick={() => props.onSelectEmptyAction?.(action.prompt)}>
                     <strong>{action.label}</strong>
                     <span>{action.description}</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             ) : null}
@@ -329,13 +330,13 @@ export function MessageList(props: {
               <div className="agent-search-empty">{localize(language, '没有找到匹配消息。', 'No matching messages found.')}</div>
             ) : null}
             {hiddenMessageCount > 0 ? (
-              <button type="button" className="agent-hidden-history-button" onClick={loadEarlierMessages}>
+              <Button size="compact" variant="ghost" className="agent-hidden-history-button" onClick={loadEarlierMessages}>
                 {localize(
                   language,
                   `已隐藏 ${hiddenMessageCount} 条更早消息，点击加载`,
                   `${hiddenMessageCount} earlier message(s) hidden. Click to load`
                 )}
-              </button>
+              </Button>
             ) : null}
             {visibleMessages.map((message) => (
               <ChatTranscriptMessage
@@ -372,9 +373,9 @@ export function MessageList(props: {
         )}
       </div>
       {!stickToBottom && (props.messages.length > 0 || hasVisibleStream) ? (
-        <button className="agent-scroll-anchor-button" onClick={scrollToBottom}>
+        <Button size="compact" variant="ghost" className="agent-scroll-anchor-button" onClick={scrollToBottom}>
           {localize(language, '回到底部', 'Scroll to bottom')}
-        </button>
+        </Button>
       ) : null}
     </div>
   );

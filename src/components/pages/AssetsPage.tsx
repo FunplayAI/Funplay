@@ -17,6 +17,7 @@ import {
   slugifyAssetName,
   summarizeProjectAssetFile
 } from '../../lib/app-helpers';
+import { Button } from '../ui/index';
 
 export function AssetLibraryPreview(props: { asset: AssetLibraryFileItem; preview?: ProjectFileItem }): JSX.Element {
   const language = useUiLanguage();
@@ -141,14 +142,16 @@ export function AssetsPage(props: {
         <h2>{t('素材库', 'Assets')}</h2>
         <div className="asset-category-tabs">
           {categoryTabs.map((category) => (
-            <button
+            <Button
               key={category.id}
+              variant="secondary"
+              size="sm"
               className={activeAssetCategory === category.id ? 'active' : ''}
               onClick={() => setActiveAssetCategory(category.id)}
             >
               <span>{category.label}</span>
               <strong>{category.count}</strong>
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -195,8 +198,10 @@ export function AssetsPage(props: {
             </div>
             <div className="asset-card-list">
               {category.items.map((asset) => (
-                <button
+                <Button
                   key={asset.id}
+                  variant="ghost"
+                  size="compact"
                   className="asset-library-card"
                   onClick={() => {
                     if (asset.source === 'generated') {
@@ -216,7 +221,7 @@ export function AssetsPage(props: {
                     <span>{asset.path}</span>
                     <span>{asset.meta}</span>
                   </div>
-                </button>
+                </Button>
               ))}
             </div>
           </section>

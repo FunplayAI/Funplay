@@ -1,0 +1,140 @@
+/* desktop container layout */
+html,
+body,
+#root {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body {
+  overflow: hidden;
+}
+
+.fp-app-shell {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-sidebar {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.file-tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.workspace-grid,
+.settings-page,
+.skills-page,
+.assets-page,
+.cli-page {
+  height: 100%;
+  min-height: 0;
+}
+
+.workspace-grid {
+  align-items: stretch;
+  grid-auto-rows: minmax(0, 1fr);
+}
+
+.agent-column,
+.settings-list-panel,
+.settings-detail-panel,
+.skills-page,
+.placeholder-page {
+  min-height: 0;
+}
+
+.agent-column {
+  height: 100%;
+}
+
+.agent-body,
+.code-overlay-agent,
+.event-content,
+.settings-list-panel,
+.settings-detail-panel,
+.skills-page,
+.assets-page,
+.cli-page {
+  overflow: auto;
+}
+
+.diff-column {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.config-grid {
+  min-height: 0;
+  overflow: auto;
+  align-content: start;
+  padding-right: 2px;
+}
+
+.diff-panel {
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.diff-viewer {
+  min-height: 0;
+  height: 100%;
+}
+
+.asset-overview-grid,
+.cli-content-grid,
+.asset-type-grid {
+  align-content: start;
+}
+
+.agent-body,
+.settings-list-panel,
+.settings-detail-panel,
+.assets-page,
+.cli-page,
+.event-content,
+.diff-viewer,
+.file-tree,
+.welcome-content,
+.onboarding-body,
+.modal-stack {
+  overscroll-behavior: contain;
+}
+
+.assets-page,
+.cli-page {
+  padding-right: 4px;
+}
+
+@media (max-width: 1280px) {
+  .workspace-grid,
+  .settings-page,
+  .provider-channel-grid,
+  .skill-grid,
+  .asset-overview-grid,
+  .cli-content-grid,
+  .welcome-content,
+  .code-overlay-shell {
+    height: auto;
+  }
+
+.settings-list-panel,
+.settings-detail-panel,
+.skills-page,
+.assets-page,
+.cli-page {
+    overflow: auto;
+  }
+}

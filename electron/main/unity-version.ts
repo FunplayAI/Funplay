@@ -1,13 +1,25 @@
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import type { EngineProjectDimension, InstalledUnityEditorOption, UnityReleaseChannel } from '../../shared/types';
 
 type UnityProjectTemplateKind = '2d-urp' | '3d-urp';
 
-interface InstalledUnityEditor {
+export interface InstalledUnityEditor {
   version: string;
   appPath: string;
+}
+
+export interface UnityProjectEditorVersion {
+  version: string;
+  raw: string;
+  path: string;
+}
+
+export interface UnityProjectEditorSelection {
+  projectVersion?: UnityProjectEditorVersion;
+  editor?: InstalledUnityEditor;
+  missingExactVersion?: string;
 }
 
 interface UnityProjectTemplate {
@@ -80,6 +92,10 @@ function getUnityReleaseChannel(version: string): UnityReleaseChannel {
 function isStableUnityRelease(version: string): boolean {
   const channel = getUnityReleaseChannel(version);
   return channel === 'stable' || channel === 'patch';
+}
+
+function normalizeProjectPath(projectPath: string): string {
+  return projectPath.trim().replace(/^~/, process.env.HOME ?? '~');
 }
 
 function getTemplateKindFromDimension(dimension: EngineProjectDimension): UnityProjectTemplateKind | null {
@@ -244,6 +260,54 @@ export function listInstalledUnityEditors(): InstalledUnityEditor[] {
   }
 
   return editors.sort((left, right) => compareUnityVersions(right.version, left.version));
+}
+
+export function readUnityProjectVersion(projectPath: string): UnityProjectEditorVersion | null {
+  const versionPath = join(normalizeProjectPath(projectPath), 'ProjectSettings', 'ProjectVersion.txt');
+  if (!existsSync(versionPath)) {
+    return null;
+  }
+
+  try {
+    const raw = readFileSync(versionPath, 'utf8');
+    const match = raw.match(/^m_EditorVersion:\s*(.+?)\s*$/m);
+    const version = match?.[1]?.trim();
+    return version
+      ? {
+          version,
+          raw,
+          path: versionPath
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function findInstalledUnityEditorByVersion(version: string): InstalledUnityEditor | null {
+  return listInstalledUnityEditors().find((editor) => editor.version === version) ?? null;
+}
+
+export function selectUnityEditorForProject(projectPath: string, preferredVersion?: string): UnityProjectEditorSelection {
+  const projectVersion = readUnityProjectVersion(projectPath) ?? undefined;
+  const requiredVersion = preferredVersion?.trim() || projectVersion?.version;
+  if (requiredVersion) {
+    const editor = findInstalledUnityEditorByVersion(requiredVersion);
+    return editor
+      ? {
+          projectVersion,
+          editor
+        }
+      : {
+          projectVersion,
+          missingExactVersion: requiredVersion
+        };
+  }
+
+  return {
+    projectVersion,
+    editor: listInstalledUnityEditors()[0]
+  };
 }
 
 export function compareUnityVersions(left: string, right: string): number {

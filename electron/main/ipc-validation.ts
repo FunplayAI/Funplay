@@ -241,9 +241,7 @@ export const updateSessionRuntimeSchema = z.object({
 
 export const projectIdSchema = trimmedString(1, 120);
 export const providerIdSchema = trimmedString(1, 120);
-export const listProjectAgentSkillRegistrySchema = z.object({
-  projectId: projectIdSchema
-}).strict();
+export const listProjectAgentSkillRegistrySchema = projectIdSchema;
 export const runtimeDoctorInputSchema = z.object({
   providerId: optionalTrimmedString(120),
   projectId: optionalTrimmedString(120),

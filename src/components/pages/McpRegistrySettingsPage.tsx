@@ -1,8 +1,10 @@
 import { type JSX } from 'react';
+import { Plus, RefreshCw, RotateCw, Settings2, Square, Trash2 } from 'lucide-react';
 import type { McpConnectionSnapshot, McpPlugin, McpRawAuditEntry, McpRawRequestResult, McpToolSnapshot, UnityMcpPrompt, UnityMcpResource, UnityMcpResourceTemplate, UnityMcpServerInfo, UnityMcpTool } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import { Card, InfoRow, List } from '../shared/InfoComponents';
 import { CapabilityBadgeRow, McpRawAuditCard, McpRawDiagnosticsCard, McpToolSnapshotCard, ServerListRow, formatMcpCapabilitySummary, formatMcpPolicySummary } from './McpManagementPage';
+import { Button } from '../ui/index';
 
 function formatMcpEndpoint(plugin: McpPlugin): string {
   return plugin.transport === 'stdio'
@@ -72,9 +74,9 @@ export function McpRegistrySettingsPage(props: {
             <span>{props.selectedPlugin ? t(`当前：${props.selectedPlugin.name}`, `Selected: ${props.selectedPlugin.name}`) : t('未选择', 'None selected')}</span>
           </div>
         </div>
-        <button className="prototype-primary" onClick={props.onAddPlugin}>
-          + {t('添加 Server', 'Add server')}
-        </button>
+        <Button variant="primary" onClick={props.onAddPlugin} leadingIcon={<Plus size={15} aria-hidden="true" />}>
+          {t('添加 Server', 'Add server')}
+        </Button>
       </div>
 
       <div className="settings-page mcp-registry-layout">
@@ -108,27 +110,27 @@ export function McpRegistrySettingsPage(props: {
             </div>
             <div className="ghost-pill-group">
               {props.selectedPlugin ? (
-                <button className="prototype-secondary small" onClick={() => props.onEditPlugin(props.selectedPlugin!)}>
+                <Button variant="secondary" size="sm" onClick={() => props.onEditPlugin(props.selectedPlugin!)} leadingIcon={<Settings2 size={14} aria-hidden="true" />}>
                   {t('编辑', 'Edit')}
-                </button>
+                </Button>
               ) : null}
               {props.selectedPlugin?.transport === 'stdio' ? (
                 <>
-                  <button className="prototype-secondary small" onClick={props.onReconnect} disabled={props.isRefreshing}>
+                  <Button variant="secondary" size="sm" onClick={props.onReconnect} disabled={props.isRefreshing} leadingIcon={<RotateCw size={14} aria-hidden="true" />}>
                     {t('重启', 'Restart')}
-                  </button>
-                  <button className="prototype-secondary small" onClick={props.onStop} disabled={props.connectionStatus?.processStatus !== 'running'}>
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={props.onStop} disabled={props.connectionStatus?.processStatus !== 'running'} leadingIcon={<Square size={13} aria-hidden="true" />}>
                     {t('停止', 'Stop')}
-                  </button>
+                  </Button>
                 </>
               ) : null}
-              <button className="prototype-secondary small" onClick={props.onRefresh} disabled={!props.selectedPlugin || props.isRefreshing}>
+              <Button variant="secondary" size="sm" onClick={props.onRefresh} disabled={!props.selectedPlugin || props.isRefreshing} leadingIcon={<RefreshCw size={14} aria-hidden="true" />}>
                 {props.isRefreshing ? t('刷新中…', 'Refreshing…') : t('刷新', 'Refresh')}
-              </button>
+              </Button>
               {props.selectedPlugin ? (
-                <button className="prototype-danger small" onClick={() => props.onDeletePlugin(props.selectedPlugin!.id)}>
+                <Button variant="danger" size="sm" onClick={() => props.onDeletePlugin(props.selectedPlugin!.id)} leadingIcon={<Trash2 size={14} aria-hidden="true" />}>
                   {t('删除', 'Delete')}
-                </button>
+                </Button>
               ) : null}
             </div>
           </div>

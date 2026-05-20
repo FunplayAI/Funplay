@@ -1,0 +1,110 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+import { resolve, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/**
+ * U47-6 — Component size ratchet.
+ *
+ * Large React components are hard to reason about and review. This gate caps
+ * `.tsx` file size:
+ *
+ *  - New / already-small components must stay <= `DEFAULT_LIMIT` (600 lines).
+ *  - The oversized files inherited from earlier UI generations are listed in
+ *    `BASELINES` with their current line count. The test fails if any of them
+ *    GROWS. As U47-1/U47-3/U47-4/U47-5 split these files, lower the matching
+ *    baseline (or delete the entry once it drops under `DEFAULT_LIMIT`).
+ *  - `App.tsx` additionally carries an explicit `APP_TARGET` (400) — the
+ *    U47-1 decomposition goal — recorded here so the intent is visible.
+ *
+ * The ratchet only ever moves down; that is the whole point.
+ */
+
+const repoRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
+const srcDir = resolve(repoRoot, 'src');
+
+const DEFAULT_LIMIT = 600;
+const APP_TARGET = 400;
+
+// Oversized .tsx files inherited before U47. Keys are paths relative to repo
+// root. Lower a value when a split lands; never raise one.
+const BASELINES: Record<string, number> = {
+  'src/App.tsx': 2232,
+  // ConversationMessage.tsx split into transcript/* modules by U47-3 — now 317 lines.
+  'src/components/chat/tool-activity.tsx': 1258,
+  'src/components/pages/ProjectSettingsPage.tsx': 1127,
+  'src/components/settings-modals.tsx': 967,
+  'src/components/chat/AgentChatView.tsx': 932,
+  'src/components/modals/AppSettingsModal.tsx': 906,
+  'src/components/chat/ChatComposer.tsx': 706
+};
+
+function collectTsxFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const entryPath = resolve(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...collectTsxFiles(entryPath));
+    } else if (entry.name.endsWith('.tsx')) {
+      out.push(entryPath);
+    }
+  }
+  return out;
+}
+
+function lineCount(filePath: string): number {
+  // Count newline characters — matches `wc -l`, the source of the baselines.
+  return readFileSync(filePath, 'utf8').split('\n').length - 1;
+}
+
+test('no .tsx component grows beyond its size ratchet', () => {
+  const violations: string[] = [];
+  for (const filePath of collectTsxFiles(srcDir)) {
+    const relPath = relative(repoRoot, filePath);
+    const lines = lineCount(filePath);
+    const limit = BASELINES[relPath] ?? DEFAULT_LIMIT;
+    if (lines > limit) {
+      const kind = BASELINES[relPath] ? 'baseline' : 'default limit';
+      violations.push(
+        `${relPath}: ${lines} lines exceeds ${kind} ${limit}` +
+          (BASELINES[relPath]
+            ? ' (this file may only shrink — split it or lower the baseline)'
+            : ' (split the component or extract subcomponents)')
+      );
+    }
+  }
+  assert.equal(
+    violations.length,
+    0,
+    `Component size ratchet exceeded:\n${violations.join('\n')}`
+  );
+});
+
+test('oversized-file baselines stay in sync (no stale entries)', () => {
+  const stale: string[] = [];
+  for (const [relPath, baseline] of Object.entries(BASELINES)) {
+    const lines = lineCount(resolve(repoRoot, relPath));
+    if (lines < baseline) {
+      stale.push(
+        `${relPath}: actual ${lines} < baseline ${baseline} — lower the baseline to ${lines}` +
+          (lines <= DEFAULT_LIMIT ? ' (or remove the entry; it is now under the default limit)' : '')
+      );
+    }
+  }
+  assert.equal(
+    stale.length,
+    0,
+    `Size baselines are stale — ratchet them down in this commit:\n${stale.join('\n')}`
+  );
+});
+
+test('App.tsx records its U47-1 decomposition target', () => {
+  // Informational: keeps the 400-line goal visible next to the live baseline.
+  const lines = lineCount(resolve(repoRoot, 'src/App.tsx'));
+  assert.ok(
+    APP_TARGET < BASELINES['src/App.tsx'],
+    'APP_TARGET should remain below the current App.tsx baseline until U47-1 lands'
+  );
+  assert.ok(lines > 0, 'App.tsx should exist and be non-empty');
+});

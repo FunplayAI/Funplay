@@ -11,6 +11,7 @@ import './tools/subagent';
 import './tools/memory';
 import './tools/notifications';
 import './tools/game-project';
+import './tools/engine-control';
 import './tools/skills';
 
 export * from './tool-registry-core';

@@ -11,11 +11,16 @@ import type {
   AgentUserInputOption,
   AgentUserInputResponse,
   AppNotificationPriority,
+  AppState,
   ChatMediaBlock,
+  EngineProjectDimension,
+  EnvironmentActionKind,
   McpPlugin,
   McpPluginKind,
+  PlatformChoice,
   Project,
   ProjectMemoryEntryKind,
+  ProjectSetupMode,
   ScheduledNotificationTaskType
 } from '../../../shared/types';
 import { resolveProjectRootPathForProject } from '../project-file-service';
@@ -184,6 +189,50 @@ export type WorkspaceToolAction =
     }
   | {
       type: 'inspect_game_project';
+    }
+  | {
+      type: 'diagnose_engine_status';
+      platform?: PlatformChoice;
+      mode?: ProjectSetupMode;
+      dimension?: EngineProjectDimension;
+      projectName?: string;
+      projectPath?: string;
+      enginePluginId?: string;
+      unityEditorVersion?: string;
+    }
+  | {
+      type: 'refresh_engine_runtime_state';
+      platform?: PlatformChoice;
+      projectPath?: string;
+    }
+  | {
+      type: 'open_engine_hub';
+      platform?: PlatformChoice;
+      reason?: string;
+    }
+  | {
+      type: 'open_engine_project';
+      platform?: PlatformChoice;
+      projectPath?: string;
+      reason?: string;
+    }
+  | {
+      type: 'install_engine_bridge';
+      platform?: PlatformChoice;
+      projectPath?: string;
+      reason?: string;
+    }
+  | {
+      type: 'run_engine_environment_action';
+      actionId: EnvironmentActionKind;
+      platform?: PlatformChoice;
+      mode?: ProjectSetupMode;
+      dimension?: EngineProjectDimension;
+      projectName?: string;
+      projectPath?: string;
+      enginePluginId?: string;
+      unityEditorVersion?: string;
+      reason?: string;
     }
   | {
       type: 'list_agent_skills';
@@ -464,6 +513,8 @@ export interface AgentToolExecutionOptions {
   plugins?: McpPlugin[];
   checkpointSnapshotId?: string;
   abortSignal?: AbortSignal;
+  appState?: AppState;
+  persistAppState?: (state: AppState) => Promise<void>;
   requestUserInput?: (request: {
     title?: string;
     question: string;

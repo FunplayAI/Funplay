@@ -24,7 +24,6 @@ import {
   isUnityHubInstalled,
   getUnityHubBinary,
   findUnityEditorInstall,
-  findUnityEditorAppPath,
   isValidUnityProject,
   normalizeProjectPath,
   resolveTargetProjectPath,
@@ -36,6 +35,7 @@ import {
 } from './environment-service';
 import {
   selectUnityEditorForTemplate,
+  selectUnityEditorForProject,
   compareUnityVersions,
   versionStrategyLabel
 } from './unity-version';
@@ -142,7 +142,16 @@ export async function startInstallUnityHubTask(): Promise<EnvironmentTask> {
 export async function detectRecommendedUnityVersion(input?: {
   mode?: ProjectSetupMode;
   dimension?: EngineProjectDimension;
+  unityEditorVersion?: string | null;
 }): Promise<UnityVersionRecommendation | null> {
+  const preferredVersion = input?.unityEditorVersion?.trim();
+  if (preferredVersion) {
+    return {
+      version: preferredVersion,
+      strategyLabel: '匹配当前 Unity 项目保存版本，避免打开时触发项目升级'
+    };
+  }
+
   const binary = getUnityHubBinary();
   if (!binary) {
     return null;
@@ -179,6 +188,7 @@ export async function detectRecommendedUnityVersion(input?: {
 export async function startInstallUnityEditorTask(input?: {
   mode?: ProjectSetupMode;
   dimension?: EngineProjectDimension;
+  unityEditorVersion?: string | null;
 }): Promise<EnvironmentTask> {
   const task = createTask('install_unity_editor', '安装 Unity Editor', '正在准备安装 Unity Editor…');
   taskStageUpdate(task.id, {
@@ -275,7 +285,7 @@ export async function openUnityProjectDirectly(projectPath: string, editorAppPat
     return false;
   }
 
-  const appPath = editorAppPath ?? findUnityEditorAppPath();
+  const appPath = editorAppPath ?? selectUnityEditorForProject(projectPath).editor?.appPath;
   if (!appPath) {
     return false;
   }

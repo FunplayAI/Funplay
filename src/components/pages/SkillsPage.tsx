@@ -1,8 +1,10 @@
 import { type JSX } from 'react';
+import { Download, Pencil, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
 import type { AgentSkillCatalogItem, AgentSkillCatalogResult, AgentSkillRegistrySnapshot, Project, ProjectAgentSkill } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import type { ProjectAgentSkillDraft } from '../../lib/app-types';
 import { makeCatalogProjectSkillId } from '../../lib/app-helpers';
+import { Button, CheckboxField, TextAreaField, TextField } from '../ui/index';
 
 export function SkillsPage(props: {
   project: Project | null;
@@ -59,9 +61,16 @@ export function SkillsPage(props: {
                 : t('读取项目与用户 .claude/skills 的平台索引。', 'Read the platform index from project and user .claude/skills.')}
             </span>
           </div>
-          <button className="prototype-secondary small" disabled={props.isLoadingRegistry || !props.project} onClick={() => void props.onRefreshRegistry()}>
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon={<RefreshCw size={13} aria-hidden="true" />}
+            loading={props.isLoadingRegistry}
+            disabled={!props.project}
+            onClick={() => void props.onRefreshRegistry()}
+          >
             {props.isLoadingRegistry ? t('刷新中…', 'Refreshing…') : t('刷新索引', 'Refresh Index')}
-          </button>
+          </Button>
         </div>
         {props.registryError ? <div className="warning-banner error">{props.registryError}</div> : null}
         <div className="skill-card-meta">
@@ -119,9 +128,15 @@ export function SkillsPage(props: {
                 : t('从 FunplayAI/funplay-skill 获取可复用的游戏开发 Skills。', 'Fetch reusable game-development skills from FunplayAI/funplay-skill.')}
             </span>
           </div>
-          <button className="prototype-secondary small" disabled={props.isLoadingCatalog} onClick={() => void props.onRefreshCatalog()}>
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon={<RefreshCw size={13} aria-hidden="true" />}
+            loading={props.isLoadingCatalog}
+            onClick={() => void props.onRefreshCatalog()}
+          >
             {props.isLoadingCatalog ? t('同步中…', 'Syncing…') : t('从仓库同步', 'Sync')}
-          </button>
+          </Button>
         </div>
         {props.catalogError ? <div className="warning-banner error">{props.catalogError}</div> : null}
         <div className="skill-catalog-grid">
@@ -140,13 +155,25 @@ export function SkillsPage(props: {
                   <div className="skill-card-meta">{t('依赖：', 'Dependencies: ')}{catalogSkill.dependencies.join(', ')}</div>
                 ) : null}
                 <div className="skill-card-actions">
-                  <button className="prototype-secondary small" disabled={!props.project} onClick={() => void props.onInstallCatalogSkill(catalogSkill)}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    leadingIcon={<Download size={13} aria-hidden="true" />}
+                    disabled={!props.project}
+                    onClick={() => void props.onInstallCatalogSkill(catalogSkill)}
+                  >
                     {installedSkill ? t('更新并启用', 'Update and Enable') : t('启用到项目', 'Enable for Project')}
-                  </button>
+                  </Button>
                   {installedSkill ? (
-                    <button className="prototype-secondary small" disabled={!props.project} onClick={() => props.onEditSkill(installedSkill)}>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      leadingIcon={<Pencil size={13} aria-hidden="true" />}
+                      disabled={!props.project}
+                      onClick={() => props.onEditSkill(installedSkill)}
+                    >
                       {t('编辑覆盖', 'Edit Override')}
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               </div>
@@ -168,66 +195,61 @@ export function SkillsPage(props: {
             <span>{t('写清楚什么时候使用，以及 Agent 应该遵守的具体工作方式。', 'Define when it applies and the concrete behavior the agent should follow.')}</span>
           </div>
           {props.editingSkillId ? (
-            <button className="prototype-ghost small" onClick={props.onCancelEdit}>
+            <Button size="sm" variant="ghost" onClick={props.onCancelEdit}>
               {t('取消编辑', 'Cancel')}
-            </button>
+            </Button>
           ) : null}
         </div>
 
         <div className="skill-form-grid">
-          <label className="skill-form-row">
-            <span>{t('名称', 'Name')}</span>
-            <input
-              value={props.draft.name}
-              disabled={!props.project}
-              placeholder={t('例如：Unity 2D 场景搭建', 'Example: Unity 2D Scene Setup')}
-              onChange={(event) => props.onChangeDraft({ ...props.draft, name: event.target.value })}
-            />
-          </label>
-          <label className="skill-form-row">
-            <span>{t('触发场景', 'Trigger')}</span>
-            <input
-              value={props.draft.trigger}
-              disabled={!props.project}
-              placeholder={t('例如：用户要求搭建或调整 Unity 场景时', 'Example: when asked to build or tune a Unity scene')}
-              onChange={(event) => props.onChangeDraft({ ...props.draft, trigger: event.target.value })}
-            />
-          </label>
+          <TextField
+            label={t('名称', 'Name')}
+            value={props.draft.name}
+            disabled={!props.project}
+            placeholder={t('例如：Unity 2D 场景搭建', 'Example: Unity 2D Scene Setup')}
+            onValueChange={(value) => props.onChangeDraft({ ...props.draft, name: value })}
+          />
+          <TextField
+            label={t('触发场景', 'Trigger')}
+            value={props.draft.trigger}
+            disabled={!props.project}
+            placeholder={t('例如：用户要求搭建或调整 Unity 场景时', 'Example: when asked to build or tune a Unity scene')}
+            onValueChange={(value) => props.onChangeDraft({ ...props.draft, trigger: value })}
+          />
         </div>
 
-        <label className="skill-form-row">
-          <span>{t('简短说明', 'Description')}</span>
-          <input
-            value={props.draft.description}
-            disabled={!props.project}
-            placeholder={t('这项技能解决什么问题', 'What this skill is for')}
-            onChange={(event) => props.onChangeDraft({ ...props.draft, description: event.target.value })}
-          />
-        </label>
+        <TextField
+          label={t('简短说明', 'Description')}
+          value={props.draft.description}
+          disabled={!props.project}
+          placeholder={t('这项技能解决什么问题', 'What this skill is for')}
+          onValueChange={(value) => props.onChangeDraft({ ...props.draft, description: value })}
+        />
 
-        <label className="skill-form-row">
-          <span>{t('执行准则', 'Instructions')}</span>
-          <textarea
-            value={props.draft.instruction}
-            disabled={!props.project}
-            placeholder={t('写入具体规则、偏好、验收方式、禁止事项等。', 'Add concrete rules, preferences, acceptance checks, and constraints.')}
-            onChange={(event) => props.onChangeDraft({ ...props.draft, instruction: event.target.value })}
-          />
-        </label>
+        <TextAreaField
+          label={t('执行准则', 'Instructions')}
+          value={props.draft.instruction}
+          disabled={!props.project}
+          placeholder={t('写入具体规则、偏好、验收方式、禁止事项等。', 'Add concrete rules, preferences, acceptance checks, and constraints.')}
+          onValueChange={(value) => props.onChangeDraft({ ...props.draft, instruction: value })}
+        />
 
         <div className="skill-editor-footer">
-          <label className="skill-toggle-row">
-            <input
-              type="checkbox"
-              checked={props.draft.enabled}
-              disabled={!props.project}
-              onChange={(event) => props.onChangeDraft({ ...props.draft, enabled: event.target.checked })}
-            />
-            <span>{t('保存后立即启用', 'Enable after saving')}</span>
-          </label>
-          <button className="prototype-primary" disabled={!canSave} onClick={() => void props.onSaveSkill()}>
+          <CheckboxField
+            className="skill-toggle-row"
+            label={t('保存后立即启用', 'Enable after saving')}
+            checked={props.draft.enabled}
+            disabled={!props.project}
+            onCheckedChange={(checked) => props.onChangeDraft({ ...props.draft, enabled: checked })}
+          />
+          <Button
+            variant="primary"
+            leadingIcon={props.editingSkillId ? <Save size={14} aria-hidden="true" /> : <Plus size={14} aria-hidden="true" />}
+            disabled={!canSave}
+            onClick={() => void props.onSaveSkill()}
+          >
             {props.editingSkillId ? t('保存 Skill', 'Save Skill') : t('添加 Skill', 'Add Skill')}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -250,15 +272,15 @@ export function SkillsPage(props: {
             {skill.trigger ? <div className="skill-card-meta">{t('触发：', 'Trigger: ')}{skill.trigger}</div> : null}
             <div className="skill-instruction-preview">{skill.instruction}</div>
             <div className="skill-card-actions">
-              <button className="prototype-secondary small" disabled={!props.project} onClick={() => void props.onToggleSkill(skill.id)}>
+              <Button size="sm" variant="secondary" disabled={!props.project} onClick={() => void props.onToggleSkill(skill.id)}>
                 {skill.enabled ? t('停用', 'Disable') : t('启用', 'Enable')}
-              </button>
-              <button className="prototype-secondary small" disabled={!props.project} onClick={() => props.onEditSkill(skill)}>
+              </Button>
+              <Button size="sm" variant="secondary" leadingIcon={<Pencil size={13} aria-hidden="true" />} disabled={!props.project} onClick={() => props.onEditSkill(skill)}>
                 {t('编辑', 'Edit')}
-              </button>
-              <button className="prototype-danger small" disabled={!props.project} onClick={() => void props.onDeleteSkill(skill.id)}>
+              </Button>
+              <Button size="sm" variant="danger" leadingIcon={<Trash2 size={13} aria-hidden="true" />} disabled={!props.project} onClick={() => void props.onDeleteSkill(skill.id)}>
                 {t('删除', 'Delete')}
-              </button>
+              </Button>
             </div>
           </div>
         ))}

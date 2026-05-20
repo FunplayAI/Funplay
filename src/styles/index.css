@@ -1,0 +1,23 @@
+/*
+ * Funplay stylesheet barrel.
+ *
+ * tokens.css must load first (slices consume --fp-* tokens). The layer
+ * imports below preserve the exact source order of the original
+ * src/styles.css — see scripts/slice-styles.mjs. Reordering these imports
+ * changes the CSS cascade and is a regression; only append new slices.
+ */
+@import './tokens.css';
+@import './base/foundation.css';
+@import './components/primitives.css';
+@import './layers/01-app-shell.css';
+@import './layers/02-macos-refinement.css';
+@import './layers/03-desktop-container.css';
+@import './layers/04-workbench-v1.css';
+@import './layers/05-mac-window-fixes.css';
+@import './layers/06-desktop-workspace-v2.css';
+@import './layers/07-standalone-shell.css';
+@import './layers/08-chat-first-overrides.css';
+@import './layers/09-elevated-cards.css';
+@import './layers/10-workbench.css';
+@import './layers/11-dark-completion.css';
+@import './layers/12-card-shell-fallback.css';

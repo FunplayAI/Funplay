@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode } from 'react';
+import { Button } from '../ui/index';
 
 export function renderChatInline(
   line: string,
@@ -25,17 +26,17 @@ export function renderChatInline(
       const localFilePath = resolveLocalFilePath(target);
       if (openablePath) {
         nodes.push(
-          <button key={`path-${index}`} className="chat-inline-path" onClick={() => onOpenPath(openablePath)}>
+          <Button key={`path-${index}`} size="compact" variant="ghost" className="chat-inline-path" onClick={() => onOpenPath(openablePath)}>
             {highlightSearchText(label, searchQuery)}
-          </button>
+          </Button>
         );
       } else if (localFilePath) {
         nodes.push(renderLocalFileButton(`local-link-${index}`, localFilePath, label, searchQuery));
       } else if (/^https?:\/\//i.test(target)) {
         nodes.push(
-          <button key={`link-${index}`} className="chat-inline-link" onClick={() => openExternalUrl(target)}>
+          <Button key={`link-${index}`} size="compact" variant="ghost" className="chat-inline-link" onClick={() => openExternalUrl(target)}>
             {highlightSearchText(label, searchQuery)}
-          </button>
+          </Button>
         );
       } else {
         nodes.push(
@@ -48,9 +49,9 @@ export function renderChatInline(
       const localFilePath = resolveLocalFilePath(codeValue);
       if (openablePath) {
         nodes.push(
-          <button key={`code-path-${index}`} className="chat-inline-path" onClick={() => onOpenPath(openablePath)}>
+          <Button key={`code-path-${index}`} size="compact" variant="ghost" className="chat-inline-path" onClick={() => onOpenPath(openablePath)}>
             {highlightSearchText(openablePath, searchQuery)}
-          </button>
+          </Button>
         );
       } else if (localFilePath) {
         nodes.push(renderLocalFileButton(`code-local-${index}`, localFilePath, formatLocalFileLabel(localFilePath), searchQuery));
@@ -67,16 +68,16 @@ export function renderChatInline(
       nodes.push(<em key={`em-${index}`}>{highlightSearchText(raw.slice(1, -1), searchQuery)}</em>);
     } else if (/^https?:\/\//i.test(raw)) {
       nodes.push(
-        <button key={`url-${index}`} className="chat-inline-link" onClick={() => openExternalUrl(raw)}>
+        <Button key={`url-${index}`} size="compact" variant="ghost" className="chat-inline-link" onClick={() => openExternalUrl(raw)}>
           {highlightSearchText(raw, searchQuery)}
-        </button>
+        </Button>
       );
     } else if (resolveOpenablePath(raw, openablePathSet)) {
       const openablePath = resolveOpenablePath(raw, openablePathSet)!;
       nodes.push(
-        <button key={`file-${index}`} className="chat-inline-path" onClick={() => onOpenPath(openablePath)}>
+        <Button key={`file-${index}`} size="compact" variant="ghost" className="chat-inline-path" onClick={() => onOpenPath(openablePath)}>
           {highlightSearchText(openablePath, searchQuery)}
-        </button>
+        </Button>
       );
     } else if (resolveLocalFilePath(raw)) {
       const localFilePath = resolveLocalFilePath(raw)!;
@@ -97,15 +98,17 @@ export function renderChatInline(
 
 export function renderLocalFileButton(key: string, path: string, label: string, searchQuery: string): ReactNode {
   return (
-    <button
+    <Button
       key={key}
+      size="compact"
+      variant="ghost"
       className="chat-inline-file"
       title={path}
       aria-label={`Open local file ${path}`}
       onClick={() => openLocalFilePath(path)}
     >
       {highlightSearchText(label || formatLocalFileLabel(path), searchQuery)}
-    </button>
+    </Button>
   );
 }
 

@@ -29,7 +29,9 @@ import {
   compareUnityVersions,
   versionStrategyLabel,
   buildInstalledUnityEditorOptions,
-  selectUnityEditorForTemplate
+  selectUnityEditorForTemplate,
+  readUnityProjectVersion,
+  selectUnityEditorForProject
 } from './unity-version';
 import {
   environmentTasks,
@@ -73,6 +75,10 @@ export function findUnityEditorInstall(): { installed: boolean; versions: string
 
 export function findUnityEditorAppPath(): string | null {
   return listInstalledUnityEditors()[0]?.appPath ?? null;
+}
+
+export function readProjectUnityEditorVersion(projectPath: string): string | null {
+  return readUnityProjectVersion(projectPath)?.version ?? null;
 }
 
 export function isValidUnityProject(projectPath: string): boolean {
@@ -319,6 +325,22 @@ function formatDimensionLabel(dimension: EngineProjectDimension): string {
   return '未知类型项目';
 }
 
+function formatPlatformLabel(platform: PlatformChoice): string {
+  switch (platform) {
+    case 'unity':
+      return 'Unity';
+    case 'cocos':
+      return 'Cocos Creator';
+    case 'godot':
+      return 'Godot';
+    case 'unreal':
+      return 'Unreal Engine';
+    case 'web':
+    default:
+      return 'Web';
+  }
+}
+
 export function isUnityHubInstalled(): boolean {
   return getUnityHubCandidates().some((path) => existsSync(path));
 }
@@ -541,6 +563,31 @@ export async function diagnoseEnvironment(
     };
   }
 
+  if (input.platform !== 'unity') {
+    const label = formatPlatformLabel(input.platform);
+    checks.push({
+      id: 'engine-adapter',
+      title: `${label} Adapter`,
+      description: 'Funplay 引擎控制层已经按通用接口接入，但该引擎还没有启用本机自动化 adapter。',
+      status: 'warning',
+      detail: `${label} 项目当前可以作为通用文件工作区使用；Hub/项目打开/Bridge/MCP 自动化还没有实现。`,
+      actions: []
+    });
+
+    return {
+      platform: input.platform,
+      mode: input.mode,
+      dimension: input.dimension,
+      checkedAt,
+      projectPath: input.projectPath,
+      enginePluginId: input.enginePluginId,
+      selectedUnityVersion: selectedUnityEditorOption?.version,
+      availableUnityEditors,
+      checks,
+      ready: false
+    };
+  }
+
   const unityHubInstalled = isUnityHubInstalled();
   const unityHubRunning = unityHubInstalled && isUnityHubRunning();
   checks.push({
@@ -567,7 +614,14 @@ export async function diagnoseEnvironment(
         ]
   });
 
+  const projectPathExists = existsSync(normalizedProjectPath);
+  const targetProjectPathExists = existsSync(targetProjectPath);
+  const hasProjectName = input.mode === 'import' ? true : !!input.projectName?.trim();
+  const validUnityProject = isValidUnityProject(targetProjectPath);
   const editor = findUnityEditorInstall();
+  const projectUnityVersion = input.mode === 'import' && validUnityProject ? readUnityProjectVersion(targetProjectPath)?.version : undefined;
+  const projectVersionEditor = projectUnityVersion ? selectUnityEditorForProject(targetProjectPath, projectUnityVersion).editor : undefined;
+  const compatibleImportEditorInstalled = input.mode === 'import' ? (projectUnityVersion ? !!projectVersionEditor : editor.installed) : false;
   checks.push({
     id: 'unity-editor',
     title: 'Unity Editor',
@@ -582,7 +636,7 @@ export async function diagnoseEnvironment(
           : unityHubInstalled
             ? 'warning'
             : 'failed'
-        : editor.installed
+        : compatibleImportEditorInstalled
           ? 'passed'
           : unityHubInstalled
             ? 'warning'
@@ -597,26 +651,32 @@ export async function diagnoseEnvironment(
               : `已检测到：${editor.versions.join('、')}，但当前没有可用于官方 ${detectedDimension === '2d' ? '2D URP' : '3D URP'} 模板创建的版本。${versionStrategyLabel(detectedDimension)}`
             : `还没有检测到可用于官方模板创建的 Unity Editor。${versionStrategyLabel(detectedDimension)}`
         : editor.installed
-          ? `已检测到：${editor.versions.join('、')}`
-          : '还没有检测到可用的 Unity Editor 版本。',
+          ? projectUnityVersion
+            ? projectVersionEditor
+              ? `项目保存版本：Unity ${projectUnityVersion}，已检测到匹配 Editor。`
+              : `项目保存版本：Unity ${projectUnityVersion}。本机已安装：${editor.versions.join('、')}，但没有精确匹配版本；为避免自动升级项目，Funplay 不会用其他 Unity 版本打开。`
+            : `未能读取项目保存的 Unity 版本；已检测到：${editor.versions.join('、')}`
+          : projectUnityVersion
+            ? `项目保存版本：Unity ${projectUnityVersion}，但本机还没有检测到该版本。`
+            : '还没有检测到可用的 Unity Editor 版本。',
     actions:
-      (input.mode === 'create' ? compatibleEditorInstalled : editor.installed)
+      (input.mode === 'create' ? compatibleEditorInstalled : compatibleImportEditorInstalled)
       ? []
       : [
           {
             id: 'install_unity_editor',
             label: '安装推荐 Unity',
             description:
-              input.mode === 'create' ? `通过 Unity Hub 安装最新可用版本，后续会优先使用本机支持官方模板的最新 Unity。` : '通过 Unity Hub 安装推荐版本。',
+              input.mode === 'create'
+                ? `通过 Unity Hub 安装最新可用版本，后续会优先使用本机支持官方模板的最新 Unity。`
+                : projectUnityVersion
+                  ? `通过 Unity Hub 安装项目保存版本 Unity ${projectUnityVersion}，避免打开时触发项目升级。`
+                  : '通过 Unity Hub 安装推荐版本。',
             primary: true
           }
         ]
   });
 
-  const projectPathExists = existsSync(normalizedProjectPath);
-  const targetProjectPathExists = existsSync(targetProjectPath);
-  const hasProjectName = input.mode === 'import' ? true : !!input.projectName?.trim();
-  const validUnityProject = isValidUnityProject(targetProjectPath);
   const projectAlreadyOpen = validUnityProject ? isUnityProjectCurrentlyOpen(targetProjectPath) : false;
   const bridgeInstalled = validUnityProject ? hasBridgeDependency(targetProjectPath) : false;
   const healthBaseUrl =
@@ -727,11 +787,13 @@ export async function diagnoseEnvironment(
       ? '已检测到该项目当前就在 Unity Editor 中打开。'
       : bridgeConnected
         ? '已通过 Bridge / MCP 连通确认该 Unity 项目已经打开。'
+      : validUnityProject && projectUnityVersion && !projectVersionEditor
+        ? `该项目还没有打开；项目保存于 Unity ${projectUnityVersion}，但本机缺少精确匹配版本。请先安装该版本，避免 Unity 自动升级项目。`
       : validUnityProject
         ? '该项目还没有在 Unity 中打开。'
         : '等待先准备好有效的 Unity 项目。',
     actions:
-      validUnityProject && !projectEffectivelyOpen
+      validUnityProject && !projectEffectivelyOpen && (!projectUnityVersion || !!projectVersionEditor)
         ? [
             {
               id: 'open_unity_project',
@@ -842,6 +904,14 @@ export async function runEnvironmentAction(
     unityEditorVersion?: string;
   }
 ): Promise<EnvironmentActionResult> {
+  if (input.platform !== 'unity') {
+    return {
+      actionId: input.actionId,
+      status: 'failed',
+      message: `${formatPlatformLabel(input.platform)} 引擎 adapter 尚未实现自动打开或 Bridge 安装。`
+    };
+  }
+
   const targetProjectPath = resolveTargetProjectPath(input);
   switch (input.actionId) {
     case 'install_unity_hub': {
@@ -873,7 +943,8 @@ export async function runEnvironmentAction(
     case 'install_unity_editor': {
       const task = await startInstallUnityEditorTask({
         mode: input.mode,
-        dimension: input.dimension
+        dimension: input.dimension,
+        unityEditorVersion: input.mode === 'import' ? readProjectUnityEditorVersion(targetProjectPath) ?? input.unityEditorVersion : input.unityEditorVersion
       });
       return {
         actionId: input.actionId,
@@ -894,6 +965,23 @@ export async function runEnvironmentAction(
     case 'import_unity_project': {
       const task = createTask('import_unity_project', '导入已有 Unity 项目', '正在准备导入已有项目…');
       bindTaskProjectPath(task.id, targetProjectPath);
+      const projectUnityVersion = readProjectUnityEditorVersion(targetProjectPath);
+      const editorSelection = selectUnityEditorForProject(targetProjectPath, projectUnityVersion ?? undefined);
+      if (editorSelection.missingExactVersion) {
+        taskStageUpdate(task.id, {
+          stage: 'waiting_manual',
+          status: 'needs_user',
+          progress: 34,
+          message: `当前项目保存于 Unity ${editorSelection.missingExactVersion}，本机未安装该精确版本。为避免自动升级项目，请先安装该版本。`,
+          log: `缺少 Unity Editor ${editorSelection.missingExactVersion}。`
+        });
+        return {
+          actionId: input.actionId,
+          status: 'failed',
+          message: `缺少 Unity Editor ${editorSelection.missingExactVersion}，已阻止用其他 Unity 版本打开项目以避免自动升级。`,
+          taskId: task.id
+        };
+      }
       if (await openUnityProjectDirectly(targetProjectPath)) {
         taskStageUpdate(task.id, {
           stage: 'validating',
@@ -928,15 +1016,13 @@ export async function runEnvironmentAction(
     case 'open_unity_project': {
       const task = createTask('open_unity_project', '打开 Unity 项目', '正在准备打开 Unity 项目…');
       bindTaskProjectPath(task.id, targetProjectPath);
-      if (isValidUnityProject(targetProjectPath) && hasBridgeDependency(targetProjectPath)) {
-        const preferredPort = state.settings.lastAssignedMcpPort ?? 8765;
-        const assignedEndpoint = await configureUnityMcpPort(targetProjectPath, preferredPort);
-        if (assignedEndpoint) {
-          syncDiscoveredUnityMcpEndpoint(state, assignedEndpoint.url);
-        }
-      }
       if (isUnityProjectCurrentlyOpen(targetProjectPath)) {
         if (hasBridgeDependency(targetProjectPath)) {
+          const preferredPort = state.settings.lastAssignedMcpPort ?? 8765;
+          const assignedEndpoint = await configureUnityMcpPort(targetProjectPath, preferredPort);
+          if (assignedEndpoint) {
+            syncDiscoveredUnityMcpEndpoint(state, assignedEndpoint.url);
+          }
           taskStageUpdate(task.id, {
             stage: 'validating',
             status: 'running',
@@ -960,6 +1046,30 @@ export async function runEnvironmentAction(
           message: '当前项目已经在 Unity 中打开。',
           taskId: task.id
         };
+      }
+      const projectUnityVersion = readProjectUnityEditorVersion(targetProjectPath);
+      const editorSelection = selectUnityEditorForProject(targetProjectPath, projectUnityVersion ?? undefined);
+      if (editorSelection.missingExactVersion) {
+        taskStageUpdate(task.id, {
+          stage: 'waiting_manual',
+          status: 'needs_user',
+          progress: 36,
+          message: `当前项目保存于 Unity ${editorSelection.missingExactVersion}，本机未安装该精确版本。为避免自动升级项目，请先安装该版本。`,
+          log: `缺少 Unity Editor ${editorSelection.missingExactVersion}，拒绝使用其他 Unity 版本打开 ${targetProjectPath}。`
+        });
+        return {
+          actionId: input.actionId,
+          status: 'failed',
+          message: `缺少 Unity Editor ${editorSelection.missingExactVersion}，已阻止用其他 Unity 版本打开项目以避免自动升级。`,
+          taskId: task.id
+        };
+      }
+      if (isValidUnityProject(targetProjectPath) && hasBridgeDependency(targetProjectPath)) {
+        const preferredPort = state.settings.lastAssignedMcpPort ?? 8765;
+        const assignedEndpoint = await configureUnityMcpPort(targetProjectPath, preferredPort);
+        if (assignedEndpoint) {
+          syncDiscoveredUnityMcpEndpoint(state, assignedEndpoint.url);
+        }
       }
       if (await openUnityProjectDirectly(targetProjectPath)) {
         taskStageUpdate(task.id, {

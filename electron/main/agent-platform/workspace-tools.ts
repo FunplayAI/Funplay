@@ -2,13 +2,22 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readFile, readdir, stat } from 'node:fs/promises';
 import { basename, extname, join, resolve } from 'node:path';
+import { DEFAULT_AGENT_SETTINGS, DEFAULT_AI_SETTINGS, DEFAULT_MCP_SETTINGS } from '../../../shared/types';
 import type {
+  AppState,
   AppNotificationPriority,
   AgentUserInputOption,
   ChatMediaBlock,
+  EngineProjectDimension,
+  EnvironmentActionKind,
+  EnvironmentActionResult,
+  EnvironmentDiagnostics,
   McpPlugin,
   McpPluginKind,
+  PlatformChoice,
   Project,
+  ProjectRuntimeState,
+  ProjectSetupMode,
   ProjectFileContent,
   ProjectFileEntry,
   ScheduledNotificationTaskType,
@@ -31,6 +40,7 @@ import {
   writeProjectTextFileForProject
 } from '../project-file-service';
 import { listUnityResources, listUnityTools, readUnityResource } from '../unity-mcp-client';
+import { diagnoseEnvironment, getProjectRuntimeState, runEnvironmentAction } from '../environment-service';
 import { inspectGameProject } from './game-project-inspector';
 import { inferMcpToolReadOnly, resolveMcpToolPolicy } from './mcp-policy';
 import {
@@ -788,6 +798,192 @@ function summarizeMcpResult(result: UnityMcpCallResult): string {
   return imageCount > 0 ? `工具返回 ${imageCount} 张图片。` : '工具没有返回文本内容。';
 }
 
+function createDetachedEngineToolState(project: Project): AppState {
+  return {
+    settings: {
+      baseUrl: project.runtimeState?.mcpSettings?.url ?? 'http://127.0.0.1:8765/',
+      profile: 'core',
+      lastStatus: 'idle',
+      lastAssignedMcpPort: project.runtimeState?.mcpSettings?.port ?? 8765
+    },
+    aiSettings: DEFAULT_AI_SETTINGS,
+    agentSettings: DEFAULT_AGENT_SETTINGS,
+    providers: [],
+    mcpSettings: DEFAULT_MCP_SETTINGS,
+    mcpPlugins: [],
+    projects: [project]
+  };
+}
+
+function resolveEnginePlatform(project: Project, platform?: PlatformChoice): PlatformChoice {
+  return platform ?? project.engine?.platform ?? 'web';
+}
+
+function resolveEngineProjectPath(project: Project, projectPath?: string): string {
+  return projectPath?.trim() || project.engine?.projectPath?.trim() || '';
+}
+
+function resolveEngineDimension(project: Project, dimension?: EngineProjectDimension): EngineProjectDimension {
+  return dimension ?? project.engine?.dimension ?? project.runtimeState?.detectedDimension ?? 'unknown';
+}
+
+function buildEngineEnvironmentInput(
+  project: Project,
+  input: {
+    platform?: PlatformChoice;
+    mode?: ProjectSetupMode;
+    dimension?: EngineProjectDimension;
+    projectName?: string;
+    projectPath?: string;
+    enginePluginId?: string;
+    unityEditorVersion?: string;
+  }
+): {
+  platform: PlatformChoice;
+  mode: ProjectSetupMode;
+  dimension: EngineProjectDimension;
+  projectName?: string;
+  projectPath: string;
+  enginePluginId?: string;
+  unityEditorVersion?: string;
+} {
+  return {
+    platform: resolveEnginePlatform(project, input.platform),
+    mode: input.mode ?? 'import',
+    dimension: resolveEngineDimension(project, input.dimension),
+    projectName: input.projectName,
+    projectPath: resolveEngineProjectPath(project, input.projectPath),
+    enginePluginId: input.enginePluginId ?? project.mcpBindings?.engine ?? project.mcpPluginId,
+    unityEditorVersion: input.unityEditorVersion ?? project.engine?.unityEditorVersion
+  };
+}
+
+function formatStatusBadge(status: EnvironmentDiagnostics['checks'][number]['status']): string {
+  switch (status) {
+    case 'passed':
+      return 'passed';
+    case 'warning':
+      return 'warning';
+    case 'failed':
+      return 'failed';
+    case 'pending':
+    default:
+      return 'pending';
+  }
+}
+
+function formatEnvironmentDiagnostics(diagnostics: EnvironmentDiagnostics): string {
+  const checks = diagnostics.checks.map((check, index) => {
+    const actions = check.actions.length
+      ? `\n  Actions: ${check.actions.map((action) => action.id).join(', ')}`
+      : '';
+    return `${index + 1}. [${formatStatusBadge(check.status)}] ${check.title}\n  ${check.detail}${actions}`;
+  });
+  return [
+    `Engine platform: ${diagnostics.platform}`,
+    `Mode: ${diagnostics.mode}`,
+    `Project path: ${diagnostics.projectPath || '(none)'}`,
+    `Ready: ${diagnostics.ready ? 'yes' : 'no'}`,
+    '',
+    ...checks
+  ].join('\n');
+}
+
+function formatRuntimeState(runtimeState: ProjectRuntimeState, platform: PlatformChoice, projectPath: string): string {
+  const bridgeHealth = runtimeState.bridgeHealth;
+  return [
+    `Engine platform: ${platform}`,
+    `Project path: ${projectPath || '(none)'}`,
+    `Checked at: ${runtimeState.checkedAt}`,
+    `Project exists: ${runtimeState.projectExists ? 'yes' : 'no'}`,
+    platform === 'unity' ? `Unity project valid: ${runtimeState.unityProjectValid ? 'yes' : 'no'}` : '',
+    `Project open: ${runtimeState.projectOpen ? 'yes' : 'no'}`,
+    `Bridge installed: ${runtimeState.bridgeInstalled ? 'yes' : 'no'}`,
+    runtimeState.detectedDimension ? `Detected dimension: ${runtimeState.detectedDimension}` : '',
+    runtimeState.mcpSettings ? `MCP settings: ${runtimeState.mcpSettings.url} (${runtimeState.mcpSettings.toolExportProfile})` : '',
+    bridgeHealth ? `MCP health: ${bridgeHealth.status} - ${bridgeHealth.message}` : 'MCP health: not checked',
+    runtimeState.availableResourceUris?.length ? `MCP resources: ${runtimeState.availableResourceUris.join(', ')}` : '',
+    runtimeState.activeSceneSummary ? `Active scene:\n${runtimeState.activeSceneSummary}` : '',
+    runtimeState.currentSelectionSummary ? `Selection:\n${runtimeState.currentSelectionSummary}` : '',
+    runtimeState.recentConsoleSummary ? `Recent console:\n${runtimeState.recentConsoleSummary}` : ''
+  ].filter(Boolean).join('\n');
+}
+
+function summarizeEnvironmentAction(result: EnvironmentActionResult, diagnostics?: EnvironmentDiagnostics): string {
+  return [
+    `Action: ${result.actionId}`,
+    `Status: ${result.status}`,
+    `Message: ${result.message}`,
+    result.taskId ? `Task id: ${result.taskId}` : '',
+    diagnostics ? ['', 'Post-action diagnostics:', formatEnvironmentDiagnostics(diagnostics)].join('\n') : ''
+  ].filter(Boolean).join('\n');
+}
+
+async function executeEngineControlAction(
+  project: Project,
+  action: Extract<WorkspaceToolAction, {
+    type:
+      | 'diagnose_engine_status'
+      | 'refresh_engine_runtime_state'
+      | 'open_engine_hub'
+      | 'open_engine_project'
+      | 'install_engine_bridge'
+      | 'run_engine_environment_action';
+  }>,
+  options: AgentToolExecutionOptions
+): Promise<WorkspaceToolActionResult> {
+  const state = options.appState ?? createDetachedEngineToolState(project);
+  const persistState = async () => {
+    if (options.appState && options.persistAppState) {
+      await options.persistAppState(options.appState);
+    }
+  };
+
+  if (action.type === 'refresh_engine_runtime_state') {
+    const platform = resolveEnginePlatform(project, action.platform);
+    const projectPath = resolveEngineProjectPath(project, action.projectPath);
+    const runtimeState = await getProjectRuntimeState(state, {
+      platform,
+      projectPath
+    });
+    await persistState();
+    return {
+      ok: true,
+      summary: formatRuntimeState(runtimeState, platform, projectPath)
+    };
+  }
+
+  const environmentInput = buildEngineEnvironmentInput(project, action);
+  if (action.type === 'diagnose_engine_status') {
+    const diagnostics = await diagnoseEnvironment(state, environmentInput);
+    await persistState();
+    return {
+      ok: true,
+      summary: formatEnvironmentDiagnostics(diagnostics)
+    };
+  }
+
+  const actionId =
+    action.type === 'open_engine_hub'
+      ? 'open_unity_hub'
+      : action.type === 'open_engine_project'
+        ? 'open_unity_project'
+        : action.type === 'install_engine_bridge'
+          ? 'install_project_bridge'
+          : action.actionId;
+  const result = await runEnvironmentAction(state, {
+    ...environmentInput,
+    actionId
+  });
+  const diagnostics = await diagnoseEnvironment(state, environmentInput).catch(() => undefined);
+  await persistState();
+  return {
+    ok: result.status !== 'failed',
+    isError: result.status === 'failed',
+    summary: summarizeEnvironmentAction(result, diagnostics)
+  };
+}
+
 async function runWorkspaceCommand(
   project: Project,
   action: Extract<WorkspaceToolAction, { type: 'run_command' }>,
@@ -1188,6 +1384,10 @@ export function isWriteLikeToolAction(action: WorkspaceToolAction): boolean {
     action.type === 'browser_click' ||
     action.type === 'browser_type' ||
     action.type === 'browser_close' ||
+    action.type === 'open_engine_hub' ||
+    action.type === 'open_engine_project' ||
+    action.type === 'install_engine_bridge' ||
+    action.type === 'run_engine_environment_action' ||
     action.type === 'checkpoint_rollback' ||
     action.type === 'funplay_memory_remember' ||
     action.type === 'funplay_schedule_task' ||
@@ -1288,6 +1488,17 @@ export async function executeAgentToolAction(
         ok: true,
         summary: `Task ${action.taskId} cancelled.`
       };
+    }
+
+    if (
+      action.type === 'diagnose_engine_status' ||
+      action.type === 'refresh_engine_runtime_state' ||
+      action.type === 'open_engine_hub' ||
+      action.type === 'open_engine_project' ||
+      action.type === 'install_engine_bridge' ||
+      action.type === 'run_engine_environment_action'
+    ) {
+      return await executeEngineControlAction(project, action, options);
     }
 
     if (action.type === 'list_agent_skills') {

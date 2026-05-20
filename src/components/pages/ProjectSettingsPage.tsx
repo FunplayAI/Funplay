@@ -35,6 +35,7 @@ import {
   formatProjectStatus
 } from '../../lib/app-helpers';
 import { Card, InfoRow } from '../shared/InfoComponents';
+import { Button, TextField } from '../ui/index';
 import { McpManagementPage } from './McpManagementPage';
 import { SkillsPage } from './SkillsPage';
 
@@ -190,8 +191,10 @@ export function ProjectSettingsPage(props: {
 
         <nav className="project-settings-nav" aria-label={t('项目设置分类', 'Project settings categories')}>
           {settingsNavItems.map((item) => (
-            <button
+            <Button
               key={item.id}
+              size="compact"
+              variant="ghost"
               className={`project-settings-nav-item ${props.tab === item.id ? 'active' : ''}`}
               aria-current={props.tab === item.id ? 'page' : undefined}
               onClick={() => props.onTabChange(item.id)}
@@ -201,7 +204,7 @@ export function ProjectSettingsPage(props: {
                 <span>{item.description}</span>
               </span>
               <span className="project-settings-nav-badge">{item.badge}</span>
-            </button>
+            </Button>
           ))}
         </nav>
       </aside>
@@ -536,9 +539,9 @@ export function ProjectAgentRunsSettings(props: {
                   </em>
                 </div>
                 {run.canResume ? (
-                  <button className="prototype-secondary small" onClick={() => props.onResumeRun?.(run.id)} disabled={!props.onResumeRun}>
+                  <Button size="sm" variant="secondary" onClick={() => props.onResumeRun?.(run.id)} disabled={!props.onResumeRun}>
                     {t('恢复', 'Resume')}
-                  </button>
+                  </Button>
                 ) : null}
               </div>
             ))}
@@ -724,40 +727,40 @@ export function ProjectAgentSettings(props: {
       </Card>
       <Card title={t('模型', 'Model')}>
         <div className="agent-settings-control-stack">
-          <label className="settings-field">
-            <span>{t('当前会话模型覆盖', 'Current session model override')}</span>
-            <input
-              value={modelDraft}
-              disabled={!props.activeSession}
-              onChange={(event) => setModelDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  applyModel(modelDraft);
-                }
-              }}
-              placeholder={props.activeProvider?.model || t('跟随 Provider 默认模型', 'Use provider default model')}
-            />
-          </label>
+          <TextField
+            label={t('当前会话模型覆盖', 'Current session model override')}
+            value={modelDraft}
+            disabled={!props.activeSession}
+            onValueChange={setModelDraft}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                applyModel(modelDraft);
+              }
+            }}
+            placeholder={props.activeProvider?.model || t('跟随 Provider 默认模型', 'Use provider default model')}
+          />
           <div className="agent-settings-button-row">
-            <button className="prototype-primary small" disabled={!props.activeSession} onClick={() => applyModel(modelDraft)}>
+            <Button size="sm" variant="primary" disabled={!props.activeSession} onClick={() => applyModel(modelDraft)}>
               {t('应用模型', 'Apply Model')}
-            </button>
-            <button className="prototype-secondary small" disabled={!props.activeSession || !props.sessionModel} onClick={() => applyModel('')}>
+            </Button>
+            <Button size="sm" variant="secondary" disabled={!props.activeSession || !props.sessionModel} onClick={() => applyModel('')}>
               {t('跟随默认模型', 'Use Default Model')}
-            </button>
+            </Button>
           </div>
           {modelOptions.length > 0 ? (
             <div className="agent-settings-chip-grid">
               {modelOptions.map((model) => (
-                <button
+                <Button
                   key={model}
-                  className={(props.sessionModel || props.activeProvider?.model) === model ? 'active' : ''}
+                  size="compact"
+                  variant="ghost"
+                  className={`agent-settings-chip-button ${(props.sessionModel || props.activeProvider?.model) === model ? 'active' : ''}`}
                   disabled={!props.activeSession}
                   onClick={() => applyModel(model)}
                 >
                   {model}
-                </button>
+                </Button>
               ))}
             </div>
           ) : null}
@@ -766,18 +769,26 @@ export function ProjectAgentSettings(props: {
       <Card title="Runtime">
         <div className="agent-settings-control-stack">
           <div className="segmented-options">
-            <button className={!props.sessionRuntimeId ? 'active' : ''} disabled={!props.activeSession} onClick={() => updateRuntime({ runtimeId: undefined })}>
+            <Button
+              size="compact"
+              variant="ghost"
+              className={`settings-choice-button ${!props.sessionRuntimeId ? 'active' : ''}`}
+              disabled={!props.activeSession}
+              onClick={() => updateRuntime({ runtimeId: undefined })}
+            >
               {t('跟随默认', 'Use Default')}
-            </button>
+            </Button>
             {PROJECT_SESSION_RUNTIME_OPTIONS.map((runtime) => (
-              <button
+              <Button
                 key={runtime.id}
-                className={props.sessionRuntimeId === runtime.id ? 'active' : ''}
+                size="compact"
+                variant="ghost"
+                className={`settings-choice-button ${props.sessionRuntimeId === runtime.id ? 'active' : ''}`}
                 disabled={!props.activeSession}
                 onClick={() => updateRuntime({ runtimeId: runtime.id })}
               >
                 {runtime.label}
-              </button>
+              </Button>
             ))}
           </div>
           <div className="helper-copy">
@@ -792,14 +803,16 @@ export function ProjectAgentSettings(props: {
           <div className="agent-settings-section-label">{t('智能强度', 'Reasoning Effort')}</div>
           <div className="segmented-options">
             {effortOptions.map((option) => (
-              <button
+              <Button
                 key={option.value}
-                className={props.sessionEffort === option.value ? 'active' : ''}
+                size="compact"
+                variant="ghost"
+                className={`settings-choice-button ${props.sessionEffort === option.value ? 'active' : ''}`}
                 disabled={!props.activeSession}
                 onClick={() => updateRuntime({ effort: option.value })}
               >
                 {option.label}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -818,14 +831,16 @@ export function ProjectAgentSettings(props: {
         </div>
         <div className="segmented-options">
           {permissionOptions.map(([mode, label]) => (
-            <button
+            <Button
               key={mode}
-              className={effectivePermissionMode === mode ? 'active' : ''}
+              size="compact"
+              variant="ghost"
+              className={`settings-choice-button ${effectivePermissionMode === mode ? 'active' : ''}`}
               disabled={!props.project}
               onClick={() => void props.onUpdatePermissionMode(mode)}
             >
               {label}
-            </button>
+            </Button>
           ))}
         </div>
       </Card>

@@ -1,0 +1,686 @@
+/* Shell card surface fallback — zero-specificity via :where() so individual
+ * light rules (e.g. `.welcome-project { background: #fff }`) keep winning in
+ * light mode, while dark mode (where no individual override exists for these
+ * properties) falls through to the dark token values. */
+:where(
+  .welcome-window,
+  .onboarding-window,
+  .welcome-hero-panel,
+  .welcome-list-panel,
+  .welcome-project,
+  .onboarding-main-panel .onboarding-fixed-header,
+  .onboarding-section-card,
+  .onboarding-panel,
+  .summary-card,
+  .setup-mode-card,
+  .platform-card,
+  .wizard-step,
+  .diagnostic-step-card,
+  .diagnostic-card,
+  .task-inline-card,
+  .task-run-card,
+  .agent-column,
+  .launchpad-card,
+  .chat-card,
+  .tool-card,
+  .asset-card,
+  .progress-card,
+  .file-change-card,
+  .plugin-list-card,
+  .skills-page,
+  .asset-library-empty,
+  .code-overlay-agent,
+  .fp-modal.modal-card
+) {
+  background: var(--fp-card-shell-bg);
+  border-color: var(--fp-card-shell-border);
+  color: var(--fp-card-shell-text);
+}
+
+:where(
+  .asset-discovery-stats span,
+  .asset-discovery-paths
+) {
+  background: var(--fp-dark-surface-glass);
+  border-color: var(--fp-dark-border-default);
+}
+
+:where(
+  .asset-discovery-paths span
+) {
+  background: var(--fp-dark-accent-soft);
+  color: var(--fp-dark-accent-text);
+}
+
+:where(
+  .welcome-titlebar,
+  .onboarding-title,
+  .onboarding-footer-bar,
+  .titlebar-shell
+) {
+  background:
+    linear-gradient(180deg, rgba(22, 27, 39, 0.98), rgba(18, 24, 36, 0.96)),
+    var(--fp-dark-surface);
+  border-color: var(--fp-dark-border-default);
+  color: var(--fp-dark-text-bright);
+}
+
+:where(
+  .workspace-sidebar,
+  .project-settings-sidebar,
+  .app-settings-sidebar
+) {
+  background: var(--fp-dark-surface);
+  border-color: var(--fp-dark-border-default);
+  color: var(--text);
+}
+
+:where(
+  .app-settings-nav-item
+) {
+  background: var(--fp-dark-surface-overlay-1);
+  color: var(--fp-dark-text-secondary);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.08);
+}
+
+:where(
+  .app-settings-nav-copy strong
+) {
+  color: var(--fp-dark-text-primary);
+}
+
+:where(
+  .app-settings-nav-copy span
+) {
+  color: rgba(148, 163, 184, 0.9);
+}
+
+:where(
+  .app-settings-nav-icon
+) {
+  background: var(--fp-dark-border-subtle);
+  color: var(--fp-dark-text-secondary);
+}
+
+:where(
+  .project-tab-shell.active,
+  .project-tab-shell:hover,
+  .project-tab.add,
+  .titlebar-action-button,
+  .titlebar-icon-button,
+  .sidebar-project,
+  .sidebar-entry.active,
+  .file-item.active,
+  .file-tree-folder-label:hover,
+  .file-item:hover,
+  .project-settings-nav-item:hover,
+  .project-settings-nav-item.active,
+  .app-settings-nav-item:hover,
+  .app-settings-nav-item.active
+) {
+  background: var(--fp-dark-border-subtle);
+  color: var(--fp-dark-text-bright);
+  box-shadow: none;
+}
+
+:where(
+  .app-settings-nav-item.active
+) {
+  background: rgba(51, 65, 85, 0.78);
+  box-shadow: inset 0 0 0 1px var(--fp-dark-border-default);
+}
+
+:where(
+  .project-tab,
+  .project-tab.active,
+  .sidebar-entry,
+  .file-item,
+  .file-tree-folder-label,
+  .workspace-sidebar .section-heading,
+  .section-heading.with-icon,
+  .sidebar-entry-icon
+) {
+  color: var(--fp-dark-text-secondary);
+}
+
+:where(
+  .welcome-subtitle,
+  .welcome-description,
+  .welcome-project-meta,
+  .wizard-step-copy small,
+  .project-settings-sidebar-header p,
+  .project-settings-detail-header p,
+  .app-settings-nav-copy span,
+  .helper-copy,
+  .empty-note,
+  .page-subtitle,
+  .agent-subpath,
+  .file-inspector-meta,
+  .file-inspector-save-message,
+  .file-inspector-status,
+  .pptx-preview-header span,
+  .pptx-preview-warning
+) {
+  color: var(--fp-dark-text-tertiary);
+}
+
+:where(
+  .welcome-project:hover,
+  .setup-mode-card.selected,
+  .platform-card.selected,
+  .plugin-list-card.selected,
+  .cli-tool-card.selected,
+  .tab-strip button.active,
+  .segmented-options button.active,
+  .file-mode-button.active,
+  .html-preview-mode-button.active
+) {
+  background: var(--fp-dark-accent-soft-strong);
+  border-color: rgba(129, 140, 248, 0.32);
+  color: var(--fp-dark-accent-text);
+  box-shadow: none;
+}
+
+:where(
+  .step-dot,
+  .wizard-step-index,
+  .file-mode-button,
+  .segmented-options button,
+  .tab-strip,
+  .tab-strip button,
+  .skills-count-pill,
+  .project-settings-nav-badge,
+  .file-inspector-status,
+  .html-preview-mode-group
+) {
+  background: var(--fp-dark-border-subtle);
+  border-color: var(--fp-dark-border-strong);
+  color: var(--fp-dark-text-secondary);
+}
+
+:where(
+  .step-dot.active
+) {
+  background: #6366f1;
+  color: #ffffff;
+}
+
+:where(
+  .step-line,
+  .wizard-footer,
+  .onboarding-footer-bar,
+  .project-settings-detail-header,
+  .file-inspector-header,
+  .file-inspector-toolbar,
+  .agent-header,
+  .agent-input-shell
+) {
+  border-color: var(--fp-dark-border-default);
+}
+
+:where(
+  .agent-body,
+  .file-inspector-panel,
+  .file-inspector-body,
+  .file-editor-shell,
+  .file-editor-code-area,
+  .markdown-preview,
+  .html-preview-frame,
+  .binary-preview-fallback,
+  .pptx-preview-frame,
+  .docx-preview-frame,
+  .pdf-document-preview-frame,
+  .pdf-preview-shell,
+  .asset-preview-frame.audio
+) {
+  background: var(--fp-dark-surface-night);
+  color: var(--text);
+}
+
+:where(
+  .pdf-preview-toolbar
+) {
+  background: rgba(15, 23, 42, 0.92);
+  border-color: var(--fp-dark-border-default);
+}
+
+:where(
+  .pdf-preview-toolbar span
+) {
+  color: var(--fp-dark-text-tertiary);
+}
+
+:where(
+  .asset-preview-frame,
+  .asset-inline-preview img,
+  .asset-inline-preview video
+) {
+  background:
+    linear-gradient(45deg, var(--fp-elevated-card-border) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--fp-elevated-card-border) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--fp-elevated-card-border) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--fp-elevated-card-border) 75%);
+  background-color: var(--fp-dark-surface-night);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+}
+
+:where(
+  .asset-preview-frame.audio
+) {
+  background: var(--fp-dark-surface-night);
+}
+
+:where(
+  .file-editor-gutter
+) {
+  background: var(--fp-dark-surface);
+  border-color: var(--fp-dark-border-strong);
+  color: #64748b;
+}
+
+:where(
+  .markdown-preview code
+) {
+  background: var(--fp-dark-accent-soft);
+  color: var(--fp-dark-accent-text);
+}
+
+:where(
+  .markdown-preview pre,
+  .markdown-preview pre code,
+  .runtime-text-preview,
+  .cli-command-block,
+  .agent-diff-viewer,
+  .agent-log-block pre
+) {
+  background: var(--fp-dark-surface-deep);
+  color: #e2e8f0;
+  border-color: var(--fp-dark-border-strong);
+}
+
+:where(
+  .pptx-slide-card,
+  .docx-page-card,
+  .pdf-document-page-card,
+  .mcp-binding-row,
+  .mcp-server-list,
+  .runtime-stat-pill,
+  .workspace-readiness-row,
+  .asset-runtime-row,
+  .changed-file-row,
+  .launchpad-list-row,
+  .provider-compat-section,
+  .runtime-summary-tile,
+  .runtime-card,
+  .runtime-capability-panel,
+  .runtime-run-panel,
+  .runtime-run-row,
+  .web-search-toggle-row label,
+  .web-search-quality-panel,
+  .web-search-quality-row,
+  .memory-file-row,
+  .memory-editor-panel,
+  .notification-task-row
+) {
+  background: var(--fp-dark-surface-overlay-3);
+  border-color: var(--fp-dark-border-default);
+}
+
+:where(
+  .mcp-server-row
+) {
+  border-color: var(--fp-elevated-card-border);
+}
+
+:where(
+  .mcp-server-row.selected
+) {
+  background: rgba(129, 140, 248, 0.12);
+}
+
+:where(
+  .mcp-server-row-meta em
+) {
+  background: var(--fp-dark-accent-soft-strong);
+  color: var(--fp-dark-accent-text);
+}
+
+:where(
+  .icon-text-button:hover
+) {
+  background: var(--fp-dark-border-subtle);
+}
+
+:where(
+  .pptx-slide-thumbnail
+) {
+  background: rgba(2, 6, 23, 0.64);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+}
+
+:where(
+  .status-banner,
+  .warning-banner,
+  .workspace-guide-card,
+  .chat-restore-banner,
+  .chat-message-panel.fallback,
+  .chat-content-block.fallback,
+  .agent-permission-card,
+  .pptx-preview-warning
+) {
+  background: var(--fp-dark-warning-bg);
+  border-color: var(--fp-dark-warning-border);
+  color: var(--fp-dark-warning-text);
+}
+
+:where(
+  .warning-banner.error,
+  .warning-banner.danger,
+  .agent-composer-error,
+  .chat-content-block.tool-result.error,
+  .chat-tool-run.failed
+) {
+  background: var(--fp-dark-error-bg);
+  border-color: var(--fp-dark-error-border);
+  color: var(--fp-dark-error-text);
+}
+
+:where(
+  .status-banner.ok,
+  .runtime-stat-pill.success
+) {
+  background: var(--fp-dark-success-bg);
+  border-color: var(--fp-dark-success-border);
+  color: var(--fp-dark-success-text);
+}
+
+:where(
+  .event-toggle,
+  .modal-close-button,
+  .file-inspector-close,
+  .asset-category-tabs button,
+  .session-changes-icon-button
+) {
+  background: var(--fp-dark-border-subtle);
+  border-color: var(--fp-dark-border-strong);
+  color: #cbd5e1;
+}
+
+:where(
+  .file-inspector-close:hover,
+  .modal-close-button:hover,
+  .asset-category-tabs button:hover
+) {
+  background: var(--fp-dark-border-strong);
+  color: var(--fp-dark-text-bright);
+}
+
+:where(
+  .cli-tool-card code,
+  .chat-inline-code
+) {
+  background: rgba(226, 232, 240, 0.1);
+  color: #e2e8f0;
+}
+
+:where(
+  .progress-bar,
+  .task-run-progress
+) {
+  background: var(--fp-dark-border-default);
+}
+
+:where(
+  .event-pane
+) {
+  background: var(--fp-dark-surface-strong);
+  border-top-color: var(--fp-dark-border-default);
+  color: #cbd5e1;
+}
+
+:where(
+  .event-tabs
+) {
+  border-bottom-color: var(--fp-dark-border-default);
+}
+
+:where(
+  .event-tabs button
+) {
+  color: var(--fp-dark-text-tertiary);
+}
+
+:where(
+  .event-tabs button.active
+) {
+  background: transparent;
+  color: var(--fp-dark-accent-text);
+  border-bottom-color: #818cf8;
+}
+
+:where(
+  .event-row
+) {
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.1);
+}
+
+:where(
+  input::placeholder,
+  textarea::placeholder
+) {
+  color: var(--fp-dark-text-quaternary);
+}
+
+.runtime-doctor-modal .modal-body {
+  max-height: min(78vh, 820px);
+  overflow: auto;
+}
+
+.runtime-doctor-toolbar,
+.runtime-doctor-probe-header,
+.runtime-doctor-repairs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.runtime-doctor-toolbar {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.status-pill {
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.status-pill.ok {
+  color: #047857;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.status-pill.warn {
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.status-pill.error {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.runtime-doctor-probes {
+  display: grid;
+  gap: 12px;
+}
+
+.runtime-doctor-guidance {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: var(--ui-density-pad);
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  border-radius: var(--ui-radius-card);
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.runtime-doctor-guidance > strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.runtime-doctor-guidance-list {
+  display: grid;
+  gap: 8px;
+}
+
+.runtime-doctor-guidance-item {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding-left: 10px;
+  border-left: 3px solid rgba(148, 163, 184, 0.36);
+}
+
+.runtime-doctor-guidance-item.error {
+  border-left-color: rgba(220, 38, 38, 0.62);
+}
+
+.runtime-doctor-guidance-item.warn {
+  border-left-color: rgba(217, 119, 6, 0.62);
+}
+
+.runtime-doctor-guidance-item div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.runtime-doctor-guidance-item strong,
+.runtime-doctor-guidance-item span,
+.runtime-doctor-guidance-item em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.runtime-doctor-guidance-item strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.runtime-doctor-guidance-item span,
+.runtime-doctor-guidance-item em {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.runtime-doctor-guidance-item span {
+  white-space: nowrap;
+}
+
+.runtime-doctor-probe {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: var(--ui-radius-card);
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.runtime-doctor-probe-header {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.runtime-doctor-probe-header span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.runtime-doctor-finding {
+  display: grid;
+  gap: 6px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.runtime-doctor-finding > div {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.runtime-doctor-finding span,
+.runtime-doctor-finding em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.runtime-doctor-finding pre,
+.runtime-doctor-export {
+  width: 100%;
+  max-height: 220px;
+  overflow: auto;
+  border-radius: var(--ui-radius-row);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.04);
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.runtime-doctor-export-field {
+  margin-top: 12px;
+}
+
+.runtime-doctor-export-field .fp-field-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.runtime-doctor-repairs {
+  margin-top: 12px;
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.runtime-doctor-export {
+  min-height: 180px;
+  resize: vertical;
+}
+
+:where(
+  .runtime-doctor-probe
+) {
+  background: var(--fp-dark-surface-overlay-3);
+  border-color: var(--fp-dark-border-strong);
+}
+
+:where(
+  .runtime-doctor-guidance
+) {
+  background: rgba(129, 140, 248, 0.12);
+  border-color: rgba(129, 140, 248, 0.2);
+}
+
+:where(
+  .runtime-doctor-finding pre,
+  .runtime-doctor-export
+) {
+  background: rgba(2, 6, 23, 0.38);
+  border-color: var(--fp-dark-border-default);
+  color: #cbd5e1;
+}

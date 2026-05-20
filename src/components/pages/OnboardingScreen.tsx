@@ -1,4 +1,5 @@
 import { useEffect, useState, type JSX } from 'react';
+import { ArrowLeft, ArrowRight, CheckCircle2, FolderOpen, Search } from 'lucide-react';
 import type {
   EngineProjectDimension,
   EnvironmentActionResult,
@@ -20,6 +21,7 @@ import {
   mapTaskStatusToDiagnostic
 } from '../../lib/app-helpers';
 import type { LanguagePreference } from '../../lib/app-types';
+import { Button, SelectField, TextField } from '../ui/index';
 
 export function StepIndicator(props: { step: 1 | 2 | 3 }): JSX.Element {
   return (
@@ -148,9 +150,9 @@ export function OnboardingScreen(props: {
                         <h2>{t('环境体检', 'Environment Check')}</h2>
                         <p>{t('按步骤完成引擎项目创建、打开和 Bridge 连通。', 'Complete engine project creation, opening, and Bridge connection step by step.')}</p>
                       </div>
-                      <button className="prototype-secondary" onClick={props.onBackToSetup}>
+                      <Button variant="secondary" leadingIcon={<ArrowLeft size={14} aria-hidden="true" />} onClick={props.onBackToSetup}>
                         {t('返回上一级', 'Back')}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                   {props.actionMessage ? <div className="helper-copy onboarding-action-message">{props.actionMessage}</div> : null}
@@ -163,7 +165,9 @@ export function OnboardingScreen(props: {
                         const active = index === currentStepIndex;
                         return (
                           <div key={step.id} className="wizard-stepper-node">
-                            <button
+                            <Button
+                              variant="ghost"
+                              size="compact"
                               className={`wizard-step ${active ? 'active' : ''} ${completed ? 'completed' : ''} ${!unlocked ? 'locked' : ''}`}
                               onClick={() => {
                                 if (unlocked) setCurrentStepIndex(index);
@@ -175,7 +179,7 @@ export function OnboardingScreen(props: {
                                 <strong>{t(`步骤 ${index + 1}`, `Step ${index + 1}`)}</strong>
                                 <small>{step.title}</small>
                               </div>
-                            </button>
+                            </Button>
                             {index < steps.length - 1 ? <div className={`wizard-step-line ${index < highestUnlockedIndex ? 'active' : ''}`} /> : null}
                           </div>
                         );
@@ -193,20 +197,19 @@ export function OnboardingScreen(props: {
                             <span className={`diagnostic-status ${activeStep.status}`}>{formatDiagnosticStatus(activeStep.status)}</span>
                           </div>
                           {props.platform === 'unity' && props.mode === 'create' && activeStep.id === 'engine-project' ? (
-                            <label className="field compact">
-                              <span>{t('本机已安装引擎', 'Installed engine')}</span>
-                              <select
-                                value={props.selectedUnityEditorVersion}
-                                onChange={(event) => props.onUnityEditorVersionChange(event.target.value)}
-                              >
-                                {props.unityEditors.length === 0 ? <option value="">{t('未检测到可用 Unity', 'No Unity installation detected')}</option> : null}
-                                {props.unityEditors.map((editor) => (
-                                  <option key={editor.version} value={editor.version} disabled={!editor.compatible}>
-                                    {`${editor.displayName}${editor.compatible ? '' : t(' · 不支持当前模板', ' · Template unsupported')}`}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
+                            <SelectField
+                              className="compact"
+                              label={t('本机已安装引擎', 'Installed engine')}
+                              value={props.selectedUnityEditorVersion}
+                              options={props.unityEditors.length === 0
+                                ? [{ value: '', label: t('未检测到可用 Unity', 'No Unity installation detected') }]
+                                : props.unityEditors.map((editor) => ({
+                                  value: editor.version,
+                                  label: `${editor.displayName}${editor.compatible ? '' : t(' · 不支持当前模板', ' · Template unsupported')}`,
+                                  disabled: !editor.compatible
+                                }))}
+                              onValueChange={props.onUnityEditorVersionChange}
+                            />
                           ) : null}
                           <div className="diagnostic-detail">{activeStepDetail}</div>
 
@@ -238,9 +241,12 @@ export function OnboardingScreen(props: {
                               }).map((action) => {
                                 const disabled = busyActionIds.has(action.id);
                                 return (
-                                  <button
+                                  <Button
                                     key={action.id}
-                                    className={action.primary ? 'prototype-primary small-action' : 'prototype-secondary small-action'}
+                                    className="small-action"
+                                    size="sm"
+                                    variant={action.primary ? 'primary' : 'secondary'}
+                                    loading={disabled}
                                     onClick={() => {
                                       if (action.id === 'create_unity_project') {
                                         setHiddenActionIds((current) => new Set(current).add(action.id));
@@ -250,7 +256,7 @@ export function OnboardingScreen(props: {
                                     disabled={disabled}
                                   >
                                     {disabled ? t('处理中…', 'Processing…') : action.label}
-                                  </button>
+                                  </Button>
                                 );
                               })}
                             </div>
@@ -259,20 +265,26 @@ export function OnboardingScreen(props: {
                           )}
 
                           <div className="diagnostic-step-nav">
-                            <button
-                              className="prototype-secondary small-action"
+                            <Button
+                              className="small-action"
+                              size="sm"
+                              variant="secondary"
+                              leadingIcon={<ArrowLeft size={13} aria-hidden="true" />}
                               onClick={() => setCurrentStepIndex((current) => Math.max(current - 1, 0))}
                               disabled={currentStepIndex === 0}
                             >
                               {t('上一步', 'Previous')}
-                            </button>
-                            <button
-                              className="prototype-secondary small-action"
+                            </Button>
+                            <Button
+                              className="small-action"
+                              size="sm"
+                              variant="secondary"
+                              trailingIcon={<ArrowRight size={13} aria-hidden="true" />}
                               onClick={() => setCurrentStepIndex((current) => Math.min(current + 1, highestUnlockedIndex))}
                               disabled={currentStepIndex >= highestUnlockedIndex}
                             >
                               {t('下一步', 'Next')}
-                            </button>
+                            </Button>
                           </div>
                         </div>
                       </div>
@@ -282,12 +294,12 @@ export function OnboardingScreen(props: {
               </div>
 
               <div className="onboarding-footer-bar">
-                <button className="prototype-ghost" onClick={props.onBackToSetup}>
+                <Button variant="ghost" leadingIcon={<ArrowLeft size={14} aria-hidden="true" />} onClick={props.onBackToSetup}>
                   {t('返回上一级', 'Back')}
-                </button>
-                <button className="prototype-primary" onClick={props.onNext} disabled={!props.detectionOk}>
+                </Button>
+                <Button variant="primary" trailingIcon={<ArrowRight size={14} aria-hidden="true" />} onClick={props.onNext} disabled={!props.detectionOk}>
                   {t('完成环境准备', 'Finish Environment Setup')}
-                </button>
+                </Button>
               </div>
             </div>
           ) : props.step === 1 ? (
@@ -305,26 +317,28 @@ export function OnboardingScreen(props: {
                     <div className="onboarding-section-card">
                       <div className="section-heading">{t('项目来源', 'Project Source')}</div>
                       <div className="setup-mode-grid">
-                        <button className={`setup-mode-card ${props.mode === 'create' ? 'selected' : ''}`} onClick={() => props.onModeChange('create')}>
+                        <Button variant="ghost" size="compact" className={`setup-mode-card ${props.mode === 'create' ? 'selected' : ''}`} onClick={() => props.onModeChange('create')}>
                           <strong>{t('新建项目', 'Create New Project')}</strong>
                           <span>{t('从一个新的项目开始。', 'Start from a brand-new project.')}</span>
-                        </button>
-                        <button className={`setup-mode-card ${props.mode === 'import' ? 'selected' : ''}`} onClick={() => props.onModeChange('import')}>
+                        </Button>
+                        <Button variant="ghost" size="compact" className={`setup-mode-card ${props.mode === 'import' ? 'selected' : ''}`} onClick={() => props.onModeChange('import')}>
                           <strong>{t('导入已有项目', 'Import Existing Project')}</strong>
                           <span>{t('接入已经存在的项目目录。', 'Connect an existing project folder.')}</span>
-                        </button>
+                        </Button>
                       </div>
                       <div className="platform-grid">
                         {platformCards.map((card) => (
-                          <button
+                          <Button
                             key={card.id}
+                            variant="ghost"
+                            size="compact"
                             className={`platform-card ${props.platform === card.id ? 'selected' : ''}`}
                             onClick={() => !card.disabled && props.onPlatformChange(card.id)}
                             disabled={card.disabled}
                           >
                             <div>{card.name}</div>
                             <span>{card.description}</span>
-                          </button>
+                          </Button>
                         ))}
                       </div>
                     </div>
@@ -334,18 +348,20 @@ export function OnboardingScreen(props: {
                         <>
                           <div className="section-heading">{t('项目类型', 'Project Type')}</div>
                           <div className="setup-mode-grid compact">
-                            <button className={`setup-mode-card ${props.dimension === '2d' ? 'selected' : ''}`} onClick={() => props.onDimensionChange('2d')}>
+                            <Button variant="ghost" size="compact" className={`setup-mode-card ${props.dimension === '2d' ? 'selected' : ''}`} onClick={() => props.onDimensionChange('2d')}>
                               <strong>{t('2D 项目', '2D Project')}</strong>
                               <span>{t('像素、横版、卡牌或其他 2D 原型。', 'Pixel art, side-scrollers, card games, or other 2D prototypes.')}</span>
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="compact"
                               className={`setup-mode-card ${props.dimension === '3d' ? 'selected' : ''} ${props.platform !== 'unity' ? 'disabled-card' : ''}`}
                               onClick={() => props.platform === 'unity' && props.onDimensionChange('3d')}
                               disabled={props.platform !== 'unity'}
                             >
                               <strong>{t('3D 项目', '3D Project')}</strong>
                               <span>{props.platform === 'unity' ? t('三维场景、平台跳跃、第三人称。', '3D scenes, platformers, third-person gameplay.') : t('当前引擎暂不支持 3D。', 'This engine does not support 3D yet.')}</span>
-                            </button>
+                            </Button>
                           </div>
                         </>
                       ) : null}
@@ -353,17 +369,15 @@ export function OnboardingScreen(props: {
                       <div className="onboarding-panel">
                         <div className="section-heading">{projectSetupHeading}</div>
                         {props.mode === 'create' ? (
-                          <label className="field">
-                            <span>{t('项目名称', 'Project Name')}</span>
-                            <input
-                              value={props.projectName}
-                              onChange={(event) => props.onProjectNameChange(event.target.value)}
-                              placeholder={isGenericProject ? t('例如：我的工作区', 'Example: My Workspace') : t('例如：Flappy Bird', 'Example: Flappy Bird')}
-                            />
-                          </label>
+                          <TextField
+                            label={t('项目名称', 'Project Name')}
+                            value={props.projectName}
+                            onValueChange={props.onProjectNameChange}
+                            placeholder={isGenericProject ? t('例如：我的工作区', 'Example: My Workspace') : t('例如：Flappy Bird', 'Example: Flappy Bird')}
+                          />
                         ) : null}
-                        <label className="field">
-                          <span>
+                        <div className="fp-field">
+                          <span className="fp-field-label">
                             {props.mode === 'create'
                               ? isGenericProject
                                 ? t('项目存放目录', 'Project Destination Folder')
@@ -371,16 +385,19 @@ export function OnboardingScreen(props: {
                               : t('已有项目目录', 'Existing Project Folder')}
                           </span>
                           <div className="inline-field">
-                            <input
+                            <TextField
+                              className="onboarding-path-field"
+                              label={t('项目路径', 'Project path')}
+                              inputClassName="onboarding-path-input"
                               value={props.projectPath}
-                              onChange={(event) => props.onPathChange(event.target.value)}
+                              onValueChange={props.onPathChange}
                               placeholder={props.mode === 'create' ? '~/Downloads' : t('选择已有项目文件夹', 'Choose an existing project folder')}
                             />
-                            <button className="prototype-secondary" onClick={props.onBrowsePath}>
+                            <Button variant="secondary" leadingIcon={<FolderOpen size={14} aria-hidden="true" />} onClick={props.onBrowsePath}>
                               {t('浏览...', 'Browse...')}
-                            </button>
+                            </Button>
                           </div>
-                        </label>
+                        </div>
                         {isGenericProject ? (
                           <div className="helper-copy">{t('通用项目不会绑定游戏引擎，可直接进入工作台。', 'Generic projects do not bind a game engine and can enter the workspace directly.')}</div>
                         ) : null}
@@ -393,11 +410,13 @@ export function OnboardingScreen(props: {
               </div>
 
               <div className="onboarding-footer-bar">
-                <button className="prototype-ghost" onClick={props.onSkip}>
+                <Button variant="ghost" onClick={props.onSkip}>
                   {t('跳过引导，稍后配置', 'Skip for now')}
-                </button>
-                <button
-                  className="prototype-primary"
+                </Button>
+                <Button
+                  variant="primary"
+                  leadingIcon={isGenericProject ? <CheckCircle2 size={14} aria-hidden="true" /> : <Search size={14} aria-hidden="true" />}
+                  loading={isGenericProject ? props.isCreatingProject : props.isChecking}
                   onClick={isGenericProject ? props.onEnter : props.onDetect}
                   disabled={!canStartEnvironmentCheck || props.isChecking || props.isCreatingProject}
                 >
@@ -408,7 +427,7 @@ export function OnboardingScreen(props: {
                     : props.isChecking
                       ? t('检测中…', 'Checking…')
                       : t('开始环境体检', 'Start Environment Check')}
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
@@ -435,12 +454,12 @@ export function OnboardingScreen(props: {
               </div>
 
               <div className="onboarding-footer-bar">
-                <button className="prototype-ghost" onClick={props.onBackToSetup}>
+                <Button variant="ghost" leadingIcon={<ArrowLeft size={14} aria-hidden="true" />} onClick={props.onBackToSetup}>
                   {t('返回调整', 'Adjust Settings')}
-                </button>
-                <button className="prototype-primary" onClick={props.onEnter}>
+                </Button>
+                <Button variant="primary" trailingIcon={<ArrowRight size={14} aria-hidden="true" />} onClick={props.onEnter}>
                   {t('进入工作台', 'Enter Workspace')}
-                </button>
+                </Button>
               </div>
             </div>
           )}

@@ -1,4 +1,5 @@
-import { useMemo, type JSX } from 'react';
+import { useEffect, useMemo, useState, type JSX } from 'react';
+import { Play, RefreshCw, Wrench, X } from 'lucide-react';
 import type {
   AgentPermissionMode,
   AgentCoreMessagePart,
@@ -14,6 +15,11 @@ import type {
   ChatContentBlock,
   ChatMediaBlock,
   ChatMessage,
+  EnvironmentAction,
+  EnvironmentActionKind,
+  EnvironmentActionResult,
+  EnvironmentCheck,
+  EnvironmentDiagnostics,
   PromptAttachment,
   Project,
   ProjectSessionEffort,
@@ -27,6 +33,7 @@ import { ChatComposer, type AgentContextUsageSummary, type EngineConnectionSumma
 import { MessageList, type EmptyChatAction } from './MessageList';
 import { getVisibleRuntimeStatusMessage } from './runtime-display';
 import { buildRuntimeTaskSummaryFromTools } from './runtime-task-summary';
+import { Button, IconButton } from '../ui/index';
 
 const EMPTY_CHAT_MESSAGES: ChatMessage[] = [];
 const TOKEN_ESTIMATE_CACHE_LIMIT = 5000;
@@ -155,10 +162,19 @@ export function AgentChatView(props: {
   onUpdatePermissionMode: (mode: AgentPermissionMode) => void;
   onOpenAppSettings: () => void;
   onOpenProjectAgentSettings: () => void;
+  onDiagnoseEnvironment: () => Promise<EnvironmentDiagnostics>;
+  onRunEnvironmentAction: (actionId: EnvironmentActionKind) => Promise<EnvironmentActionResult>;
+  onRefreshProjectRuntimeState: () => Promise<Project | null>;
   onOpenFilePath: (path: string) => void;
   onRestoreCheckpoint: (snapshotId: string) => void;
 }): JSX.Element {
   const language = useUiLanguage();
+  const [engineStatusOpen, setEngineStatusOpen] = useState(false);
+  const [engineDiagnostics, setEngineDiagnostics] = useState<EnvironmentDiagnostics | null>(null);
+  const [engineStatusLoading, setEngineStatusLoading] = useState(false);
+  const [engineActionId, setEngineActionId] = useState<EnvironmentActionKind | null>(null);
+  const [engineStatusError, setEngineStatusError] = useState('');
+  const [engineActionMessage, setEngineActionMessage] = useState('');
 
   const t = (zh: string, en: string): string => localize(language, zh, en);
   const visibleStream = props.activePromptStream?.phase === 'completed' ? null : props.activePromptStream;
@@ -233,6 +249,47 @@ export function AgentChatView(props: {
       label
     };
   }, [props.project, t]);
+
+  async function refreshEngineStatus(): Promise<void> {
+    if (!props.project?.engine?.projectPath || props.project.engine.platform === 'web') {
+      return;
+    }
+    setEngineStatusLoading(true);
+    setEngineStatusError('');
+    try {
+      const diagnostics = await props.onDiagnoseEnvironment();
+      setEngineDiagnostics(diagnostics);
+      await props.onRefreshProjectRuntimeState().catch(() => null);
+    } catch (error) {
+      setEngineStatusError(error instanceof Error ? error.message : t('引擎状态检测失败。', 'Failed to inspect engine status.'));
+    } finally {
+      setEngineStatusLoading(false);
+    }
+  }
+
+  async function runEngineAction(actionId: EnvironmentActionKind): Promise<void> {
+    setEngineActionId(actionId);
+    setEngineStatusError('');
+    setEngineActionMessage('');
+    try {
+      const result = await props.onRunEnvironmentAction(actionId);
+      setEngineActionMessage(result.message);
+      await props.onRefreshProjectRuntimeState().catch(() => null);
+      const diagnostics = await props.onDiagnoseEnvironment();
+      setEngineDiagnostics(diagnostics);
+    } catch (error) {
+      setEngineStatusError(error instanceof Error ? error.message : t('引擎操作失败。', 'Engine action failed.'));
+    } finally {
+      setEngineActionId(null);
+    }
+  }
+
+  useEffect(() => {
+    if (!engineStatusOpen) {
+      return;
+    }
+    void refreshEngineStatus();
+  }, [engineStatusOpen, props.project?.id]);
 
   if (!props.project) {
     return (
@@ -345,13 +402,170 @@ export function AgentChatView(props: {
                 onRemoveQueuedPrompt={props.onRemoveQueuedPrompt}
                 onOpenAppSettings={props.onOpenAppSettings}
                 onOpenProjectAgentSettings={props.onOpenProjectAgentSettings}
+                onOpenEngineStatus={() => setEngineStatusOpen(true)}
               />
             </div>
           </div>
         </div>
       </section>
+      {engineStatusOpen ? (
+        <EngineStatusDialog
+          project={props.project}
+          diagnostics={engineDiagnostics}
+          loading={engineStatusLoading}
+          actionId={engineActionId}
+          error={engineStatusError}
+          actionMessage={engineActionMessage}
+          onClose={() => setEngineStatusOpen(false)}
+          onRefresh={() => void refreshEngineStatus()}
+          onRunAction={(actionId) => void runEngineAction(actionId)}
+        />
+      ) : null}
     </div>
   );
+}
+
+function EngineStatusDialog(props: {
+  project: Project;
+  diagnostics: EnvironmentDiagnostics | null;
+  loading: boolean;
+  actionId: EnvironmentActionKind | null;
+  error: string;
+  actionMessage: string;
+  onClose: () => void;
+  onRefresh: () => void;
+  onRunAction: (actionId: EnvironmentActionKind) => void;
+}): JSX.Element {
+  const language = useUiLanguage();
+  const t = (zh: string, en: string): string => localize(language, zh, en);
+  const hubCheck = findEnvironmentCheck(props.diagnostics, 'unity-hub');
+  const projectCheck = findEnvironmentCheck(props.diagnostics, 'engine-opened');
+  const projectValidityCheck = findEnvironmentCheck(props.diagnostics, 'engine-project');
+  const bridgeInstalledCheck = findEnvironmentCheck(props.diagnostics, 'bridge-installed');
+  const bridgeConnectedCheck = findEnvironmentCheck(props.diagnostics, 'bridge-connected');
+  const mcpStatus = bridgeConnectedCheck?.status === 'passed'
+    ? 'passed'
+    : bridgeInstalledCheck?.status === 'failed'
+      ? 'failed'
+      : bridgeInstalledCheck?.status === 'warning' || bridgeConnectedCheck?.status === 'warning'
+        ? 'warning'
+        : bridgeConnectedCheck?.status ?? bridgeInstalledCheck?.status ?? 'pending';
+  const hubStatus = hubCheck?.actions.some((action) => action.id === 'open_unity_hub')
+    ? 'warning'
+    : hubCheck?.status ?? 'pending';
+  const projectActions = dedupeEnvironmentActions([
+    ...(projectCheck?.actions ?? []),
+    ...(projectValidityCheck?.status === 'passed' ? [] : projectValidityCheck?.actions ?? [])
+  ]);
+  const mcpActions = dedupeEnvironmentActions([
+    ...(bridgeConnectedCheck?.actions ?? []),
+    ...(bridgeInstalledCheck?.actions ?? [])
+  ]);
+
+  return (
+    <div className="modal-backdrop engine-status-backdrop" role="presentation" onMouseDown={props.onClose}>
+      <section className="fp-modal modal-card engine-status-modal" role="dialog" aria-modal="true" aria-labelledby="engine-status-title" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <div className="eyebrow">{t('引擎状态', 'Engine Status')}</div>
+            <h2 id="engine-status-title" className="page-title">{formatEnginePlatformLabel(props.project.engine?.platform ?? 'unity')}</h2>
+          </div>
+          <div className="engine-status-header-actions">
+            <IconButton
+              label={t('刷新状态', 'Refresh status')}
+              icon={<RefreshCw size={16} aria-hidden="true" />}
+              onClick={props.onRefresh}
+              loading={props.loading}
+            />
+            <IconButton label={t('关闭', 'Close')} icon={<X size={16} aria-hidden="true" />} onClick={props.onClose} />
+          </div>
+        </div>
+        <div className="modal-stack engine-status-stack">
+          <div className="engine-status-path">{props.project.engine?.projectPath || t('未记录项目路径', 'No project path recorded')}</div>
+          {props.error ? <div className="warning-banner compact error">{props.error}</div> : null}
+          {props.actionMessage ? <div className="status-banner compact ok">{props.actionMessage}</div> : null}
+          <EngineStatusRow
+            title="Unity Hub"
+            status={hubStatus}
+            detail={hubCheck?.detail ?? t('尚未检测。', 'Not checked yet.')}
+            actions={hubCheck?.actions ?? []}
+            actionId={props.actionId}
+            onRunAction={props.onRunAction}
+          />
+          <EngineStatusRow
+            title={t('Unity 项目', 'Unity Project')}
+            status={projectCheck?.status ?? projectValidityCheck?.status ?? 'pending'}
+            detail={[projectValidityCheck?.detail, projectCheck?.detail].filter(Boolean).join(' · ') || t('尚未检测。', 'Not checked yet.')}
+            actions={projectActions}
+            actionId={props.actionId}
+            onRunAction={props.onRunAction}
+          />
+          <EngineStatusRow
+            title="Unity MCP"
+            status={mcpStatus}
+            detail={[bridgeInstalledCheck?.detail, bridgeConnectedCheck?.detail].filter(Boolean).join(' · ') || t('尚未检测。', 'Not checked yet.')}
+            actions={mcpActions}
+            actionId={props.actionId}
+            onRunAction={props.onRunAction}
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function EngineStatusRow(props: {
+  title: string;
+  status: EnvironmentCheck['status'];
+  detail: string;
+  actions: EnvironmentAction[];
+  actionId: EnvironmentActionKind | null;
+  onRunAction: (actionId: EnvironmentActionKind) => void;
+}): JSX.Element {
+  const language = useUiLanguage();
+  const t = (zh: string, en: string): string => localize(language, zh, en);
+  return (
+    <div className={`engine-status-row ${props.status}`}>
+      <div className="engine-status-row-main">
+        <div className="engine-status-row-title">
+          <strong>{props.title}</strong>
+          <span className={`engine-status-badge ${props.status}`}>{formatEnvironmentStatusLabel(language, props.status)}</span>
+        </div>
+        <p>{props.detail}</p>
+      </div>
+      {props.actions.length > 0 ? (
+        <div className="engine-status-row-actions">
+          {props.actions.map((action) => (
+            <Button
+              key={action.id}
+              size="sm"
+              variant={action.primary ? 'primary' : 'secondary'}
+              loading={props.actionId === action.id}
+              leadingIcon={action.id === 'install_project_bridge' ? <Wrench size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
+              onClick={() => props.onRunAction(action.id)}
+            >
+              {action.label || t('打开', 'Open')}
+            </Button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function findEnvironmentCheck(diagnostics: EnvironmentDiagnostics | null, id: string): EnvironmentCheck | undefined {
+  return diagnostics?.checks.find((check) => check.id === id);
+}
+
+function dedupeEnvironmentActions(actions: EnvironmentAction[]): EnvironmentAction[] {
+  return [...new Map(actions.map((action) => [action.id, action])).values()];
+}
+
+function formatEnvironmentStatusLabel(language: UiLanguage, status: EnvironmentCheck['status']): string {
+  if (status === 'passed') return localize(language, '已就绪', 'Ready');
+  if (status === 'warning') return localize(language, '需处理', 'Needs Action');
+  if (status === 'failed') return localize(language, '不可用', 'Unavailable');
+  return localize(language, '待检测', 'Pending');
 }
 
 function formatEnginePlatformLabel(platform: Exclude<Project['engine'], undefined>['platform']): string {

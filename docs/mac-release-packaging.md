@@ -1,6 +1,6 @@
 # macOS Release Packaging
 
-Last updated: 2026-05-13
+Last updated: 2026-05-18
 
 ## Current Release Identity
 
@@ -24,7 +24,7 @@ This updates both `package.json` and `package-lock.json`.
 
 ## Build, Sign, And Notarize
 
-Use the same universal macOS packaging path as the previous release:
+Use the single-arch arm64 macOS packaging path:
 
 ```bash
 export APPLE_ID="zhangyx798@sina.com"
@@ -38,31 +38,29 @@ npm run rebuild:native:force
 `npm run dist` runs:
 
 ```bash
-npm run dist:mac:universal
+npm run dist:mac:arm64
 ```
 
 which performs:
 
-1. `ensure:claude-sdk:darwin-x64`
-2. `npm run build`
-3. `electron-builder --mac --universal`
+1. `npm run build`
+2. `electron-builder --mac --arm64`
 
 The current `package.json` `build.mac` config uses:
 
 - `target`: `dmg`, `zip`
 - `notarize`: `true`
-- `x64ArchFiles`: `**/node_modules/@anthropic-ai/claude-agent-sdk-darwin-*/claude`
 
 ## Expected Artifacts
 
 After a successful release build:
 
 ```text
-release/mac-universal/Funplay.app
-release/Funplay-0.2.0-universal.dmg
-release/Funplay-0.2.0-universal.dmg.blockmap
-release/Funplay-0.2.0-universal-mac.zip
-release/Funplay-0.2.0-universal-mac.zip.blockmap
+release/mac-arm64/Funplay.app
+release/Funplay-0.2.0-arm64.dmg
+release/Funplay-0.2.0-arm64.dmg.blockmap
+release/Funplay-0.2.0-arm64-mac.zip
+release/Funplay-0.2.0-arm64-mac.zip.blockmap
 release/latest-mac.yml
 ```
 
@@ -71,7 +69,7 @@ release/latest-mac.yml
 Check version metadata:
 
 ```bash
-plutil -p release/mac-universal/Funplay.app/Contents/Info.plist \
+plutil -p release/mac-arm64/Funplay.app/Contents/Info.plist \
   | rg "CFBundleShortVersionString|CFBundleVersion|CFBundleIdentifier"
 ```
 
@@ -86,7 +84,7 @@ CFBundleVersion => 0.2.0
 Check Developer ID signature:
 
 ```bash
-codesign -dv --verbose=4 release/mac-universal/Funplay.app
+codesign -dv --verbose=4 release/mac-arm64/Funplay.app
 ```
 
 Expected identity:
@@ -98,7 +96,7 @@ Developer ID Application: yuanxiang zhang (72NDWCYZJZ)
 Check Gatekeeper notarization:
 
 ```bash
-spctl -a -vvv -t exec release/mac-universal/Funplay.app
+spctl -a -vvv -t exec release/mac-arm64/Funplay.app
 ```
 
 Expected result:
@@ -111,7 +109,7 @@ source=Notarized Developer ID
 Check stapled app ticket:
 
 ```bash
-xcrun stapler validate release/mac-universal/Funplay.app
+xcrun stapler validate release/mac-arm64/Funplay.app
 ```
 
 Expected result:
@@ -123,7 +121,7 @@ The validate action worked!
 Check the DMG behavior:
 
 ```bash
-xcrun stapler validate release/Funplay-0.2.0-universal.dmg
+xcrun stapler validate release/Funplay-0.2.0-arm64.dmg
 ```
 
 Current expected behavior matches the previous release: the `.dmg` itself does not have a stapled ticket. The app inside the generated artifacts is the notarized/stapled object.
@@ -138,8 +136,8 @@ Check artifact hashes:
 
 ```bash
 shasum -a 256 \
-  release/Funplay-0.2.0-universal.dmg \
-  release/Funplay-0.2.0-universal-mac.zip
+  release/Funplay-0.2.0-arm64.dmg \
+  release/Funplay-0.2.0-arm64-mac.zip
 ```
 
 ## Troubleshooting

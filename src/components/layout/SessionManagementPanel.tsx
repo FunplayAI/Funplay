@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type JSX, type MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
+import { MoreHorizontal, Plus, Search } from 'lucide-react';
 import type { ProjectSession } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
+import { Button, IconButton, TextField } from '../ui/index';
 
 export interface SessionListState {
   mode: 'idle' | 'running' | 'queued' | 'error' | 'fallback';
@@ -101,33 +103,29 @@ export function SessionManagementPanel(props: {
       <div className="sidebar-section-row sidebar-session-row">
         <div className="sidebar-section-label">{localize(language, '会话管理', 'Session Management')}</div>
         <div className="sidebar-section-actions">
-          <button
+          <IconButton
             className={`sidebar-tool-icon ${searchVisible ? 'active' : ''}`}
             onClick={() => setSearchVisible((current) => !current)}
-            aria-label={searchVisible ? localize(language, '隐藏会话搜索', 'Hide session search') : localize(language, '显示会话搜索', 'Show session search')}
-            title={searchVisible ? localize(language, '隐藏会话搜索', 'Hide session search') : localize(language, '显示会话搜索', 'Show session search')}
-          >
-            ⌕
-          </button>
-          <button
+            label={searchVisible ? localize(language, '隐藏会话搜索', 'Hide session search') : localize(language, '显示会话搜索', 'Show session search')}
+            icon={<Search size={15} aria-hidden="true" />}
+          />
+          <IconButton
             className="sidebar-tool-icon"
             onClick={props.onCreateSession}
-            aria-label={localize(language, '新建会话', 'New session')}
-            title={localize(language, '新建会话', 'New session')}
-          >
-            +
-          </button>
+            label={localize(language, '新建会话', 'New session')}
+            icon={<Plus size={15} aria-hidden="true" />}
+          />
         </div>
       </div>
 
       {searchVisible ? (
-        <label className="sidebar-session-search">
-          <input
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder={localize(language, '搜索会话…', 'Search sessions…')}
-          />
-        </label>
+        <TextField
+          className="sidebar-session-search"
+          label={localize(language, '搜索会话', 'Search sessions')}
+          value={searchQuery}
+          onValueChange={setSearchQuery}
+          placeholder={localize(language, '搜索会话…', 'Search sessions…')}
+        />
       ) : null}
 
       <div className="sidebar-session-list">
@@ -195,8 +193,10 @@ export function SessionManagementPanel(props: {
                 left: openMenuState.left
               }}
             >
-              <button
+              <Button
                 className="sidebar-session-menu-item"
+                variant="ghost"
+                size="compact"
                 onClick={() => {
                   const session = props.sessions.find((item) => item.id === openMenuState.sessionId);
                   if (session) {
@@ -205,25 +205,29 @@ export function SessionManagementPanel(props: {
                 }}
               >
                 {localize(language, '重命名', 'Rename')}
-              </button>
-              <button
+              </Button>
+              <Button
                 className="sidebar-session-menu-item"
+                variant="ghost"
+                size="compact"
                 onClick={() => {
                   navigator.clipboard.writeText(openMenuState.sessionId).catch(() => {});
                   setOpenMenuState(null);
                 }}
               >
                 {localize(language, '复制会话 ID', 'Copy Session ID')}
-              </button>
-              <button
+              </Button>
+              <Button
                 className="sidebar-session-menu-item danger"
+                variant="ghost"
+                size="compact"
                 onClick={() => {
                   setOpenMenuState(null);
                   props.onDeleteSession(openMenuState.sessionId);
                 }}
               >
                 {localize(language, '删除会话', 'Delete session')}
-              </button>
+              </Button>
             </div>,
             document.body
           )
@@ -268,11 +272,13 @@ function SessionListItem(props: {
       onMouseLeave={props.onMouseLeave}
     >
       {props.editing ? (
-        <input
-          className="sidebar-session-rename-input"
+        <TextField
+          className="sidebar-session-rename-field"
+          inputClassName="sidebar-session-rename-input"
+          label={localize(language, '会话标题', 'Session title')}
           value={props.editingTitle}
           autoFocus
-          onChange={(event) => props.onEditingTitleChange(event.target.value)}
+          onValueChange={props.onEditingTitleChange}
           onBlur={props.onCommitRename}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
@@ -284,7 +290,7 @@ function SessionListItem(props: {
           }}
         />
       ) : (
-        <button className="sidebar-session-main" onClick={props.onSelect}>
+        <Button variant="ghost" size="compact" className="sidebar-session-main" onClick={props.onSelect}>
           <span className={`sidebar-session-status ${mode}`}>
             {mode === 'running' ? (
               <span className="sidebar-session-processing-icon" aria-hidden>
@@ -312,30 +318,18 @@ function SessionListItem(props: {
               {hint ? <span className={`sidebar-session-hint ${mode}`}>{hint}</span> : null}
             </span>
           </span>
-        </button>
+        </Button>
       )}
 
       <div className={`sidebar-session-actions ${showActions ? 'visible' : ''}`}>
-        <button
+        <IconButton
           className="sidebar-session-action menu-trigger"
           onClick={props.onToggleMenu}
-          aria-label={localize(language, '打开会话菜单', 'Open session menu')}
-          title={localize(language, '会话菜单', 'Session menu')}
-        >
-          <MoreHorizontalIcon />
-        </button>
+          label={localize(language, '会话菜单', 'Session menu')}
+          icon={<MoreHorizontal size={16} aria-hidden="true" />}
+        />
       </div>
     </div>
-  );
-}
-
-function MoreHorizontalIcon(): JSX.Element {
-  return (
-    <svg className="sidebar-session-more-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false">
-      <circle cx="5" cy="10" r="1.6" fill="currentColor" />
-      <circle cx="10" cy="10" r="1.6" fill="currentColor" />
-      <circle cx="15" cy="10" r="1.6" fill="currentColor" />
-    </svg>
   );
 }
 

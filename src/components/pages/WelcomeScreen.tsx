@@ -1,8 +1,10 @@
 import { type JSX } from 'react';
+import { FolderOpen, Plus } from 'lucide-react';
 import type { Project, McpPlugin } from '../../../shared/types';
 import { StandaloneAppShell } from '../layout/AppShell';
 import { localize, useUiLanguage } from '../../i18n';
 import { formatProjectLocation, derivePlatform, formatRelativeDate } from '../../lib/app-helpers';
+import { Button } from '../ui/index';
 
 export function WelcomeScreen(props: {
   projects: Project[];
@@ -28,12 +30,12 @@ export function WelcomeScreen(props: {
             </div>
 
             <div className="welcome-actions">
-              <button className="prototype-primary" onClick={props.onCreate}>
+              <Button variant="primary" leadingIcon={<Plus size={15} aria-hidden="true" />} onClick={props.onCreate}>
                 {localize(language, '创建新项目', 'Create New Project')}
-              </button>
-              <button className="prototype-secondary" onClick={props.onOpenExisting}>
+              </Button>
+              <Button variant="secondary" leadingIcon={<FolderOpen size={15} aria-hidden="true" />} onClick={props.onOpenExisting}>
                 {localize(language, '打开已有项目', 'Open Existing Project')}
-              </button>
+              </Button>
             </div>
           </section>
 
@@ -43,15 +45,15 @@ export function WelcomeScreen(props: {
                 <div className="section-heading">{localize(language, '最近项目', 'Recent Projects')}</div>
                 <div className="helper-copy">{localize(language, '从上次中断的地方继续。', 'Resume where you left off.')}</div>
               </div>
-              <button className="prototype-secondary small" onClick={props.onOpenExisting}>
+              <Button size="sm" variant="secondary" leadingIcon={<FolderOpen size={13} aria-hidden="true" />} onClick={props.onOpenExisting}>
                 {localize(language, '打开项目', 'Open Project')}
-              </button>
+              </Button>
             </div>
 
             <div className="welcome-list">
               {recentProjects.length === 0 ? <div className="empty-note welcome-empty-state">{localize(language, '暂无最近项目', 'No recent projects')}</div> : null}
               {recentProjects.map((project) => (
-                <button key={project.id} className="welcome-project" onClick={() => props.onOpen(project.id)}>
+                <Button key={project.id} variant="ghost" size="compact" className="welcome-project" onClick={() => props.onOpen(project.id)}>
                   <div className="welcome-project-icon">{project.name.charAt(0).toUpperCase()}</div>
                   <div className="welcome-project-copy">
                     <div className="welcome-project-name">{project.name}</div>
@@ -59,7 +61,7 @@ export function WelcomeScreen(props: {
                       {`${formatProjectLocation(project.engine?.projectPath, project.name)} · ${derivePlatform(project, props.mcpPlugins)} · ${formatRelativeDate(project.updatedAt)}`}
                     </div>
                   </div>
-                </button>
+                </Button>
               ))}
             </div>
 

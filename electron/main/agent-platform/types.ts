@@ -221,6 +221,8 @@ export interface GenericAgentRuntimeParams {
   provider?: AiProvider;
   plugins: McpPlugin[];
   context: GenericAgentWorkspaceContext;
+  appState?: AppState;
+  persistAppState?: (state: AppState) => Promise<void>;
   permission: {
     mode: AgentPermissionMode;
     allowWriteTools: boolean;
@@ -370,6 +372,8 @@ export interface GenericAgentBootstrapTask extends GenericAgentTaskBase {
 
 export interface GenericAgentConversationTask extends GenericAgentTaskBase {
   kind: 'conversation';
+  appState?: AppState;
+  persistAppState?: (state: AppState) => Promise<void>;
   activeRunId?: string;
   sessionId?: string;
   userMessageId?: string;

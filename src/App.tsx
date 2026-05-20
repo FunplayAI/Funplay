@@ -26,6 +26,10 @@ import {
   type ClaudeRuntimeSetupStatus,
   type ClaudeSessionSummary,
   type CreateProjectInput,
+  type EngineProjectDimension,
+  type EnvironmentActionKind,
+  type EnvironmentActionResult,
+  type EnvironmentDiagnostics,
   type McpConnectionSnapshot,
   type McpPlugin,
   type McpPluginInput,
@@ -1382,6 +1386,46 @@ function App(): JSX.Element {
     }
   }
 
+  function buildSelectedProjectEnvironmentInput(project: Project): {
+    platform: Exclude<NonNullable<Project['engine']>['platform'], 'web'>;
+    mode: 'import';
+    dimension: EngineProjectDimension;
+    projectPath: string;
+    enginePluginId?: string;
+    unityEditorVersion?: string;
+  } {
+    if (!project.engine?.projectPath || project.engine.platform === 'web') {
+      throw new Error(localize(uiPreferences.language, '当前项目没有可打开的引擎路径。', 'This project has no engine path to open.'));
+    }
+    return {
+      platform: project.engine.platform,
+      mode: 'import',
+      dimension: project.engine.dimension ?? project.runtimeState?.detectedDimension ?? 'unknown',
+      projectPath: project.engine.projectPath,
+      enginePluginId: project.mcpBindings.engine || project.mcpPluginId,
+      unityEditorVersion: project.engine.unityEditorVersion
+    };
+  }
+
+  async function diagnoseSelectedProjectEnvironment(): Promise<EnvironmentDiagnostics> {
+    if (!selectedProjectView) {
+      throw new Error(localize(uiPreferences.language, '请先选择一个项目。', 'Select a project first.'));
+    }
+    return window.funplay.diagnoseEnvironment(buildSelectedProjectEnvironmentInput(selectedProjectView));
+  }
+
+  async function runSelectedProjectEnvironmentAction(actionId: EnvironmentActionKind): Promise<EnvironmentActionResult> {
+    if (!selectedProjectView) {
+      throw new Error(localize(uiPreferences.language, '请先选择一个项目。', 'Select a project first.'));
+    }
+    const result = await window.funplay.runEnvironmentAction({
+      ...buildSelectedProjectEnvironmentInput(selectedProjectView),
+      actionId
+    });
+    void retryRefreshProjectRuntimeState(selectedProjectView.id, 6, 1200);
+    return result;
+  }
+
   async function refreshMcpConnectionStatus(plugin: McpPlugin): Promise<McpConnectionSnapshot | null> {
     try {
       const status = await window.funplay.getMcpConnectionStatus(plugin.id);
@@ -1405,6 +1449,35 @@ function App(): JSX.Element {
     setMcpRawAudits([]);
   }
 
+  async function refreshMcpLocalDiagnostics(pluginId: string): Promise<void> {
+    try {
+      const [snapshots, rawAudits] = await Promise.all([
+        window.funplay.listMcpToolSnapshots(pluginId),
+        window.funplay.listMcpRawAudits(pluginId)
+      ]);
+      setMcpToolSnapshots(snapshots);
+      setMcpRawAudits(rawAudits);
+    } catch {
+      setMcpToolSnapshots([]);
+      setMcpRawAudits([]);
+    }
+  }
+
+  async function loadMcpPluginMetadata(pluginId: string): Promise<void> {
+    const serverInfo = await window.funplay.getMcpServerInfo(pluginId);
+    const [tools, resources, prompts, resourceTemplates] = await Promise.all([
+      window.funplay.listMcpTools(pluginId),
+      window.funplay.listMcpResources(pluginId),
+      window.funplay.listMcpPrompts(pluginId),
+      window.funplay.listMcpResourceTemplates(pluginId)
+    ]);
+    setUnityServerInfo(serverInfo);
+    setUnityTools(tools);
+    setUnityResources(resources);
+    setUnityPrompts(prompts);
+    setUnityResourceTemplates(resourceTemplates);
+  }
+
   async function handleRefreshPluginMeta(pluginOverride?: McpPlugin | null): Promise<void> {
     const targetPlugin = pluginOverride ?? selectedMcpPlugin ?? activeProjectMcpPlugins[0] ?? activeEnginePlugin;
     if (!targetPlugin) {
@@ -1415,22 +1488,14 @@ function App(): JSX.Element {
     setPluginError('');
     clearPluginMeta();
     try {
-      const [serverInfo, tools, resources, prompts, resourceTemplates, snapshots, rawAudits] = await Promise.all([
-        window.funplay.getMcpServerInfo(targetPlugin.id),
-        window.funplay.listMcpTools(targetPlugin.id),
-        window.funplay.listMcpResources(targetPlugin.id),
-        window.funplay.listMcpPrompts(targetPlugin.id),
-        window.funplay.listMcpResourceTemplates(targetPlugin.id),
-        window.funplay.listMcpToolSnapshots(targetPlugin.id),
-        window.funplay.listMcpRawAudits(targetPlugin.id)
-      ]);
-      setUnityServerInfo(serverInfo);
-      setUnityTools(tools);
-      setUnityResources(resources);
-      setUnityPrompts(prompts);
-      setUnityResourceTemplates(resourceTemplates);
-      setMcpToolSnapshots(snapshots);
-      setMcpRawAudits(rawAudits);
+      await refreshMcpLocalDiagnostics(targetPlugin.id);
+      const health = await window.funplay.checkMcpHealth(targetPlugin.id);
+      await refreshMcpConnectionStatus(targetPlugin);
+      if (health.status !== 'online') {
+        setPluginError(health.message);
+        return;
+      }
+      await loadMcpPluginMetadata(targetPlugin.id);
       await refreshMcpConnectionStatus(targetPlugin);
     } catch (error) {
       setPluginError(error instanceof Error ? error.message : localize(uiPreferences.language, '刷新失败', 'Refresh failed'));
@@ -1450,23 +1515,14 @@ function App(): JSX.Element {
     setPluginError('');
     clearPluginMeta();
     try {
-      await window.funplay.reconnectMcp(targetPlugin.id);
-      const [serverInfo, tools, resources, prompts, resourceTemplates, snapshots, rawAudits] = await Promise.all([
-        window.funplay.getMcpServerInfo(targetPlugin.id),
-        window.funplay.listMcpTools(targetPlugin.id),
-        window.funplay.listMcpResources(targetPlugin.id),
-        window.funplay.listMcpPrompts(targetPlugin.id),
-        window.funplay.listMcpResourceTemplates(targetPlugin.id),
-        window.funplay.listMcpToolSnapshots(targetPlugin.id),
-        window.funplay.listMcpRawAudits(targetPlugin.id)
-      ]);
-      setUnityServerInfo(serverInfo);
-      setUnityTools(tools);
-      setUnityResources(resources);
-      setUnityPrompts(prompts);
-      setUnityResourceTemplates(resourceTemplates);
-      setMcpToolSnapshots(snapshots);
-      setMcpRawAudits(rawAudits);
+      await refreshMcpLocalDiagnostics(targetPlugin.id);
+      const health = await window.funplay.reconnectMcp(targetPlugin.id);
+      await refreshMcpConnectionStatus(targetPlugin);
+      if (health.status !== 'online') {
+        setPluginError(health.message);
+        return;
+      }
+      await loadMcpPluginMetadata(targetPlugin.id);
       await refreshMcpConnectionStatus(targetPlugin);
     } catch (error) {
       setPluginError(error instanceof Error ? error.message : localize(uiPreferences.language, '重启失败', 'Restart failed'));
@@ -1721,6 +1777,9 @@ function App(): JSX.Element {
           setAppMode('onboarding');
         }}
         onOpenAppSettings={() => openAppSettings()}
+        onOpenAgentWorkspace={() => setSection('agent')}
+        onOpenProjectSettings={() => setSection('settings')}
+        onOpenAssets={() => setSection('assets')}
         appUpdateStatus={appUpdateStatus}
         onOpenAppUpdate={() => openAppSettings('about')}
         showChangePanelToggle={Boolean(selectedProjectView)}
@@ -1927,6 +1986,11 @@ function App(): JSX.Element {
                   setProjectSettingsTab('agent');
                   setSection('settings');
                 }}
+                onDiagnoseEnvironment={diagnoseSelectedProjectEnvironment}
+                onRunEnvironmentAction={runSelectedProjectEnvironmentAction}
+                onRefreshProjectRuntimeState={() =>
+                  selectedProjectView ? refreshProjectRuntimeStateById(selectedProjectView.id) : Promise.resolve(null)
+                }
                 onOpenFilePath={(path) => {
                   const virtualFile = virtualProjectFiles.find((file) => file.path === path);
                   if (virtualFile) {

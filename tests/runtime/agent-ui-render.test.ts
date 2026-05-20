@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
-import type { AgentSkillRegistrySnapshot, ChatMessage, McpPlugin, Project, ProjectSession, PromptAttachment, RuntimeDoctorResult, SessionCheckpointPreview } from '../../shared/types.ts';
+import type { AgentSkillRegistrySnapshot, ChatMessage, McpPlugin, Project, ProjectSession, PromptAttachment, RuntimeDoctorResult, SessionCheckpointPreview, WebSearchSettings } from '../../shared/types.ts';
 import { ChatComposer } from '../../src/components/chat/ChatComposer.tsx';
 import { ChatTranscriptMessage, StreamingTranscriptMessage, getMessagePlainText } from '../../src/components/chat/ConversationMessage.tsx';
 import { MessageList } from '../../src/components/chat/MessageList.tsx';
@@ -9,12 +9,19 @@ import { buildCompletedMessageProcessTools, pairStreamingToolExecutions, summari
 import { AgentWorkbench } from '../../src/components/layout/AgentWorkbench.tsx';
 import { FileInspectorPanel, SidebarPanel } from '../../src/components/layout/WorkspacePanels.tsx';
 import { AppSettingsModal } from '../../src/components/modals/AppSettingsModal.tsx';
+import { DeleteProjectModal } from '../../src/components/modals/DeleteProjectModal.tsx';
 import { SessionChangesPanel } from '../../src/components/modals/SessionChangesPanel.tsx';
+import { SessionManagementPanel } from '../../src/components/layout/SessionManagementPanel.tsx';
+import { NotificationToastStack } from '../../src/components/shared/NotificationToastStack.tsx';
 import { AssetsPage } from '../../src/components/pages/AssetsPage.tsx';
 import { SkillsPage } from '../../src/components/pages/SkillsPage.tsx';
+import { WelcomeScreen } from '../../src/components/pages/WelcomeScreen.tsx';
+import { OnboardingScreen } from '../../src/components/pages/OnboardingScreen.tsx';
+import { WebSearchSettingsPage } from '../../src/components/pages/WebSearchSettingsPage.tsx';
 import { ProviderSettingsPage, RuntimeDoctorDialog } from '../../src/components/pages/ProviderSettingsPage.tsx';
 import { ProjectAgentRunsSettings, ProjectAgentSettings, ProjectSettingsPage, ProjectTokenUsageSettings } from '../../src/components/pages/ProjectSettingsPage.tsx';
-import { McpRawAuditCard, McpRawDiagnosticsCard, McpToolSnapshotCard, ServerListRow, formatMcpCapabilitySummary, formatMcpPolicySummary } from '../../src/components/pages/McpManagementPage.tsx';
+import { McpManagementPage, McpRawAuditCard, McpRawDiagnosticsCard, McpToolSnapshotCard, PluginListCard, ServerListRow, formatMcpCapabilitySummary, formatMcpPolicySummary } from '../../src/components/pages/McpManagementPage.tsx';
+import { McpRegistrySettingsPage } from '../../src/components/pages/McpRegistrySettingsPage.tsx';
 import { McpPluginModal, ProviderEditor } from '../../src/components/settings-modals.tsx';
 import {
   contextUsage,
@@ -36,6 +43,18 @@ test('titlebar shows update button before current run changes when an update is 
   assert.ok(updateIndex >= 0);
   assert.ok(changesIndex > updateIndex);
   assert.match(html, /查看软件更新 0\.2\.0/);
+  assert.match(html, /fp-app-shell/);
+  assert.match(html, /fp-button[^"]*titlebar-update-toggle/);
+  assert.match(html, /fp-icon-button titlebar-icon-button file-tree-toggle/);
+  assert.match(html, /fp-icon-button titlebar-icon-button titlebar-changes-toggle/);
+  assert.match(html, /fp-icon-button titlebar-icon-button app-settings-toggle/);
+  assert.match(html, /fp-button[^"]*project-tab active/);
+  assert.match(html, /fp-icon-button project-tab-close/);
+  assert.match(html, /fp-button[^"]*project-tab add/);
+  assert.equal(html.includes('prototype-shell'), false);
+  assert.doesNotMatch(html, /<button[^>]*class="titlebar-icon-button/);
+  assert.doesNotMatch(html, /<button[^>]*class="project-tab(?:\s|")/);
+  assert.doesNotMatch(html, /<button[^>]*class="project-tab-close/);
 });
 
 test('titlebar hides update button when no update is available', () => {
@@ -45,18 +64,174 @@ test('titlebar hides update button when no update is available', () => {
   assert.match(html, /titlebar-changes-toggle/);
 });
 
+test('app shell exposes a global keyboard command palette', () => {
+  const html = renderAppShell(createUpdateSnapshot('not_available'), {
+    defaultCommandPaletteOpen: true,
+    onOpenAgentWorkspace: noop,
+    onOpenProjectSettings: noop,
+    onOpenAssets: noop
+  });
+
+  assert.match(html, /command-palette-toggle/);
+  assert.match(html, /aria-keyshortcuts="Meta\+K Control\+K"/);
+  assert.match(html, /data-command-palette-state="open"/);
+  assert.match(html, /role="dialog"[^>]*aria-modal="true"[^>]*aria-label="命令面板"[^>]*tabindex="-1"/);
+  assert.match(html, /command-palette-input/);
+  assert.match(html, /data-command-id="open-agent"/);
+  assert.match(html, /data-command-id="open-project-settings"/);
+  assert.match(html, /data-command-id="open-assets"/);
+  assert.match(html, /data-command-id="open-app-settings"/);
+  assert.match(html, /data-command-id="switch-project-project_1"/);
+});
+
+test('welcome and onboarding actions render through shared buttons', () => {
+  const project = {
+    id: 'project_welcome',
+    name: 'Bird',
+    updatedAt: new Date().toISOString(),
+    sessions: [],
+    mcpBindings: {},
+    chat: [],
+    activity: [],
+    assets: [],
+    tasks: [],
+    memory: {},
+    contextSummary: {},
+    blueprint: {}
+  } as unknown as Project;
+  const welcomeHtml = renderZh(createElement(WelcomeScreen, {
+    projects: [project],
+    mcpPlugins: [],
+    onCreate: noop,
+    onOpen: noop,
+    onOpenExisting: noop
+  }));
+  const baseOnboardingProps: Parameters<typeof OnboardingScreen>[0] = {
+    step: 1,
+    view: 'setup',
+    mode: 'create',
+    platform: 'web',
+    dimension: 'unknown',
+    projectName: 'Bird',
+    projectPath: '/tmp/bird',
+    unityEditors: [],
+    selectedUnityEditorVersion: '',
+    diagnostics: null,
+    tasks: [],
+    detectionMessage: '',
+    detectionOk: true,
+    actionMessage: '',
+    isChecking: false,
+    isCreatingProject: false,
+    onModeChange: noop,
+    onPlatformChange: noop,
+    onDimensionChange: noop,
+    onProjectNameChange: noop,
+    onPathChange: noop,
+    onUnityEditorVersionChange: noop,
+    onBrowsePath: noop,
+    onDetect: noop,
+    onRunAction: noop,
+    onBackToSetup: noop,
+    onSkip: noop,
+    onNext: noop,
+    onEnter: noop
+  };
+  const setupHtml = renderZh(createElement(OnboardingScreen, baseOnboardingProps));
+  const environmentHtml = renderZh(createElement(OnboardingScreen, {
+    ...baseOnboardingProps,
+    view: 'environment',
+    platform: 'unity',
+    dimension: '2d',
+    diagnostics: {
+      platform: 'unity',
+      mode: 'create',
+      dimension: '2d',
+      checkedAt: new Date().toISOString(),
+      projectPath: '/tmp/bird',
+      checks: [{
+        id: 'engine-project',
+        title: 'Unity Project',
+        description: 'Create project',
+        status: 'pending',
+        detail: 'Waiting',
+        actions: [{
+          id: 'open_unity_project',
+          label: 'Open Unity',
+          description: 'Open project',
+          primary: true
+        }]
+      }],
+      ready: false
+    }
+  }));
+  const completeHtml = renderZh(createElement(OnboardingScreen, {
+    ...baseOnboardingProps,
+    step: 3
+  }));
+  const combinedHtml = [welcomeHtml, setupHtml, environmentHtml, completeHtml].join('\n');
+
+  assert.match(welcomeHtml, /创建新项目/);
+  assert.match(welcomeHtml, /fp-button[^"]*welcome-project/);
+  assert.match(setupHtml, /进入工作台/);
+  assert.match(environmentHtml, /Open Unity/);
+  assert.match(completeHtml, /返回调整/);
+  assert.match(combinedHtml, /fp-button-primary/);
+  assert.match(combinedHtml, /fp-button-secondary/);
+  assert.match(combinedHtml, /fp-field/);
+  assert.match(combinedHtml, /fp-input/);
+  assert.match(environmentHtml, /fp-select-trigger/);
+  assert.match(setupHtml, /fp-button[^"]*setup-mode-card selected/);
+  assert.match(setupHtml, /fp-button[^"]*platform-card selected/);
+  assert.match(setupHtml, /onboarding-path-field/);
+  assert.match(environmentHtml, /fp-button[^"]*wizard-step active/);
+  assert.equal(combinedHtml.includes('prototype-primary'), false);
+  assert.equal(combinedHtml.includes('prototype-secondary'), false);
+  assert.equal(combinedHtml.includes('prototype-ghost'), false);
+  assert.equal(combinedHtml.includes('class="field'), false);
+  assert.doesNotMatch(setupHtml, /<button[^>]*class="setup-mode-card/);
+  assert.doesNotMatch(setupHtml, /<button[^>]*class="platform-card/);
+  assert.doesNotMatch(environmentHtml, /<button[^>]*class="wizard-step/);
+  assert.doesNotMatch(welcomeHtml, /<button[^>]*class="welcome-project/);
+});
+
 test('chat composer exposes provider and Build/Plan controls without inline model/runtime selectors', () => {
   const buildHtml = renderComposer('full-access');
   const planHtml = renderComposer('read-only');
+  const richHtml = renderComposer('full-access', undefined, {
+    draft: '/',
+    attachments: [
+      {
+        id: 'attachment_1',
+        name: 'notes.md',
+        path: '/tmp/notes.md',
+        kind: 'file',
+        size: 32
+      }
+    ] as PromptAttachment[]
+  });
 
   assert.match(buildHtml, /Xiaomi MiMo/);
   assert.match(buildHtml, /Provider/);
   assert.match(buildHtml, /Build/);
   assert.match(planHtml, /Plan/);
+  assert.match(buildHtml, /fp-icon-button agent-composer-icon-button/);
+  assert.match(buildHtml, /agent-permission-trigger full-access/);
+  assert.match(buildHtml, /agent-combo-trigger/);
+  assert.match(buildHtml, /agent-send-button/);
+  assert.match(buildHtml, /fp-textarea agent-composer-textarea/);
+  assert.doesNotMatch(buildHtml, /<textarea[^>]*class="agent-composer-textarea/);
+  assert.equal(buildHtml.includes('prototype-primary'), false);
+  assert.equal(buildHtml.includes('prototype-secondary'), false);
   assert.equal(buildHtml.includes('>!<'), false);
   assert.equal(planHtml.includes('>!<'), false);
   assert.equal(buildHtml.includes('Runtime'), false);
   assert.equal(buildHtml.includes('模型、Runtime、模式'), false);
+  assert.match(richHtml, /fp-button[^"]*agent-file-chip file/);
+  assert.match(richHtml, /agent-command-popover/);
+  assert.match(richHtml, /fp-button[^"]*fp-button-ghost/);
+  assert.doesNotMatch(richHtml, /<button[^>]*class="agent-file-chip/);
+  assert.doesNotMatch(richHtml, /<button[^>]*><strong>\/files/);
 });
 
 test('chat composer shows engine connection indicator only when an engine project provides status', () => {
@@ -450,8 +625,11 @@ test('streaming transcript shows unified thinking status and structured tool act
   assert.equal(html.includes('chat-run-status-panel'), false);
   assert.equal(html.includes('有新的输出、工具结果或任务状态时会持续更新'), false);
   assert.match(html, /notes\.md/);
+  assert.match(html, /fp-button[^"]*chat-tool-activity-summary/);
   assert.match(html, /mimo-live-tool-fixture-748219/);
   assert.match(html, /src\/app\.ts/);
+  assert.match(html, /chat-tool-result-file-list/);
+  assert.match(html, /fp-button[^"]*fp-button-ghost/);
   assert.match(html, /unified_patch/);
   assert.match(html, /Fixture Page/);
   assert.match(html, /mcp__unity__unity_echo/);
@@ -463,6 +641,38 @@ test('streaming transcript shows unified thinking status and structured tool act
   assert.equal(html.includes('View details'), false);
   assert.equal(html.includes('[Tool]'), false);
   assert.equal(html.includes('Previous tool call'), false);
+});
+
+test('completed transcript inline controls render through shared buttons', () => {
+  const message: ChatMessage = {
+    id: 'msg_inline_controls',
+    role: 'assistant',
+    content: [
+      'Open `src/App.tsx`, visit https://example.com, and inspect [local](/tmp/funplay-note.md).',
+      '',
+      '```ts',
+      'const ok = true;',
+      '```'
+    ].join('\n'),
+    createdAt: new Date().toISOString()
+  };
+  const html = renderZh(createElement(ChatTranscriptMessage, {
+    message,
+    openablePaths: ['src/App.tsx'],
+    searchQuery: '',
+    developerMode: false,
+    onOpenPath: noop
+  }));
+
+  assert.match(html, /fp-button[^"]*chat-inline-path/);
+  assert.match(html, /fp-button[^"]*chat-inline-link/);
+  assert.match(html, /fp-button[^"]*chat-inline-file/);
+  assert.match(html, /fp-button[^"]*chat-transcript-copy/);
+  assert.match(html, /fp-button[^"]*chat-code-copy/);
+  assert.doesNotMatch(html, /<button[^>]*class="chat-inline-path/);
+  assert.doesNotMatch(html, /<button[^>]*class="chat-inline-link/);
+  assert.doesNotMatch(html, /<button[^>]*class="chat-inline-file/);
+  assert.doesNotMatch(html, /<button[^>]*class="chat-code-copy/);
 });
 
 test('composer live status renders running animation and task checklist above input', () => {
@@ -510,6 +720,7 @@ test('composer live status renders running animation and task checklist above in
 
   assert.match(html, /agent-live-status/);
   assert.match(html, /agent-live-spinner/);
+  assert.match(html, /fp-button-secondary/);
   assert.match(html, /正在思考中/);
   assert.match(html, /任务清单/);
   assert.match(html, /任务 1/);
@@ -582,6 +793,31 @@ test('composer compacts task checklist while waiting for user input', () => {
   assert.match(html, /确认游戏核心玩法范围/);
   assert.match(html, /完整最小原型/);
   assert.match(html, /提交回答/);
+  assert.match(html, /agent-user-input-options/);
+  assert.match(html, /fp-textarea agent-user-input-textarea/);
+  assert.doesNotMatch(html, /<textarea[^>]*class="agent-user-input-textarea/);
+  assert.match(html, /fp-button-primary/);
+  assert.equal(html.includes('prototype-primary'), false);
+  assert.equal(html.includes('prototype-secondary'), false);
+});
+
+test('notification toast dismiss uses shared icon button', () => {
+  const html = renderZh(createElement(NotificationToastStack, {
+    notifications: [
+      {
+        id: 'notification_1',
+        title: '任务已完成',
+        body: 'Agent 已完成本轮任务。',
+        priority: 'normal',
+        createdAt: new Date().toISOString()
+      }
+    ],
+    onDismiss: noop
+  }));
+
+  assert.match(html, /notification-toast-stack/);
+  assert.match(html, /fp-icon-button notification-toast-dismiss/);
+  assert.doesNotMatch(html, /<button[^>]*class="notification-toast-dismiss/);
 });
 
 test('streaming transcript interleaves assistant text and tool activity by offset', () => {
@@ -1428,6 +1664,8 @@ test('project usage settings focus on token and provider summaries', () => {
   assert.match(html, /项目 Token 概览/);
   assert.match(html, /Token 构成/);
   assert.match(html, /Provider \/ Model/);
+  assert.match(html, /fp-info-card/);
+  assert.equal(html.includes('prototype-card'), false);
   assert.equal(html.includes('恢复入口'), false);
   assert.equal(html.includes('Agent 验证'), false);
 });
@@ -1475,6 +1713,10 @@ test('project Agent runs settings render recovery and verification summaries', (
   assert.match(html, /实现后端系统/);
   assert.match(html, /从最近工具边界继续/);
   assert.match(html, /工具失败 1/);
+  assert.match(html, /fp-info-card/);
+  assert.match(html, /fp-button-secondary/);
+  assert.equal(html.includes('prototype-card'), false);
+  assert.equal(html.includes('prototype-secondary'), false);
 });
 
 test('project Agent settings render global project session scope hierarchy', () => {
@@ -1511,7 +1753,7 @@ test('project Agent settings render global project session scope hierarchy', () 
 
   const html = renderZh(createElement(ProjectAgentSettings, {
     project,
-    providers: [provider],
+    providers: [provider, secondaryProvider],
     activeProvider: provider,
     defaultProviderId: provider.id,
     activeSession,
@@ -1538,6 +1780,18 @@ test('project Agent settings render global project session scope hierarchy', () 
   assert.match(html, /Native/);
   assert.match(html, /Build/);
   assert.match(html, /Plan/);
+  assert.match(html, /fp-field/);
+  assert.match(html, /fp-input/);
+  assert.match(html, /fp-button-primary/);
+  assert.match(html, /fp-button-secondary/);
+  assert.match(html, /fp-button[^"]*agent-settings-chip-button active/);
+  assert.match(html, /fp-button[^"]*settings-choice-button active/);
+  assert.match(html, /fp-button[^"]*settings-choice-button/);
+  assert.equal(html.includes('prototype-primary'), false);
+  assert.equal(html.includes('prototype-secondary'), false);
+  assert.equal(html.includes('settings-field'), false);
+  assert.doesNotMatch(html, /<button[^>]*class="active"[^>]*>mimo-v2\.5-pro/);
+  assert.doesNotMatch(html, /<button[^>]*class="active"[^>]*>Native/);
 });
 
 test('provider settings show preset-first operational provider cards', () => {
@@ -1567,6 +1821,36 @@ test('provider settings show preset-first operational provider cards', () => {
   assert.match(html, /启用/);
   assert.match(html, /诊断/);
   assert.match(html, /设默认/);
+  assert.match(html, /fp-surface/);
+  assert.match(html, /fp-badge/);
+  assert.match(html, /fp-button-primary/);
+  assert.match(html, /fp-button-danger/);
+});
+
+test('web search settings render through the shared UI component system', () => {
+  const settings: WebSearchSettings = {
+    provider: 'auto',
+    braveApiKey: '',
+    bingApiKey: '',
+    cacheTtlMs: 300000,
+    browserFallbackEnabled: true,
+    telemetryEnabled: true
+  };
+  const html = renderZh(createElement(WebSearchSettingsPage, {
+    settings,
+    onUpdateSettings: noopAsync
+  }));
+
+  assert.match(html, /Web Search/);
+  assert.match(html, /默认 Provider/);
+  assert.match(html, /Brave API Key/);
+  assert.match(html, /Bing API Key/);
+  assert.match(html, /缓存 TTL/);
+  assert.match(html, /fp-select-trigger/);
+  assert.match(html, /fp-switch-field/);
+  assert.match(html, /fp-metric-tile/);
+  assert.match(html, /fp-button-primary/);
+  assert.equal(html.includes('prototype-primary'), false);
 });
 
 test('provider editor prioritizes presets and hides protocol fields under advanced settings', () => {
@@ -1587,7 +1871,19 @@ test('provider editor prioritizes presets and hides protocol fields under advanc
   assert.match(html, /API Key/);
   assert.match(html, /接口模式/);
   assert.match(html, /provider-advanced-section/);
+  assert.match(html, /fp-field/);
+  assert.match(html, /fp-input/);
+  assert.match(html, /fp-select-trigger/);
+  assert.match(html, /fp-textarea/);
+  assert.match(html, /fp-checkbox-field/);
+  assert.match(html, /fp-button-primary/);
+  assert.match(html, /fp-button-secondary/);
+  assert.match(html, /fp-button[^"]*provider-preset-card active/);
+  assert.match(html, /fp-button[^"]*agent-settings-chip-button active/);
   assert.equal(/<details class="provider-advanced-section" open/.test(html), false);
+  assert.equal(html.includes('app-settings-check-row'), false);
+  assert.doesNotMatch(html, /<button[^>]*class="provider-preset-card/);
+  assert.doesNotMatch(html, /<button[^>]*class="active"[^>]*>gpt/);
 });
 
 test('MCP plugin modal exposes persisted tool permission policy controls', () => {
@@ -1637,6 +1933,14 @@ test('MCP plugin modal exposes persisted tool permission policy controls', () =>
   assert.match(html, /unity\.modify_scene/);
   assert.match(html, /Requires manual review/);
   assert.match(html, /deny/);
+  assert.match(html, /fp-select-trigger/);
+  assert.match(html, /fp-textarea/);
+  assert.match(html, /fp-checkbox-field/);
+  assert.match(html, /fp-button-primary/);
+  assert.match(html, /fp-button-secondary/);
+  assert.equal(html.includes('prototype-primary'), false);
+  assert.equal(html.includes('prototype-secondary'), false);
+  assert.equal(html.includes('app-settings-check-row'), false);
 });
 
 test('MCP tool snapshot card warns about changed and removed mappings', () => {
@@ -1703,7 +2007,11 @@ test('MCP raw diagnostics card exposes only diagnostic methods', () => {
   assert.match(html, /tools\/list/);
   assert.match(html, /resources\/read/);
   assert.match(html, /发送诊断请求/);
+  assert.match(html, /fp-select-trigger/);
+  assert.match(html, /fp-textarea/);
+  assert.match(html, /fp-button-secondary/);
   assert.equal(html.includes('tools/call'), false);
+  assert.equal(html.includes('class="field'), false);
 });
 
 test('MCP raw audit card renders recent diagnostic outcomes', () => {
@@ -1782,6 +2090,131 @@ test('MCP server list row renders operational status and policy summary', () => 
   assert.match(html, /策略：默认 ask \/ 风险 write · 覆盖 1/);
   assert.match(html, /stale schema/);
   assert.match(html, /mcp-status-dot online/);
+  assert.match(html, /fp-toggle-switch/);
+  assert.match(html, /fp-switch/);
+});
+
+test('MCP management pages render shared action controls', () => {
+  const plugin: McpPlugin = {
+    id: 'mcp_project',
+    projectId: 'project_mcp',
+    name: 'Project MCP',
+    kind: 'custom',
+    transport: 'http',
+    baseUrl: 'http://127.0.0.1:8765/',
+    enabled: true,
+    isDefault: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  const project = {
+    id: 'project_mcp',
+    name: 'MCP Project',
+    mcpBindings: {},
+    sessions: [],
+    chat: [],
+    activity: [],
+    assets: [],
+    tasks: [],
+    memory: {},
+    contextSummary: {},
+    blueprint: {}
+  } as unknown as Project;
+  const connectionStatus = {
+    pluginId: plugin.id,
+    transport: 'http',
+    status: 'online' as const,
+    initializeCount: 1
+  };
+  const projectHtml = renderZh(createElement(McpManagementPage, {
+    project,
+    plugins: [plugin],
+    projectBindings: [plugin.id],
+    selectedPlugin: plugin,
+    serverInfo: null,
+    tools: [],
+    toolSnapshots: [],
+    rawAudits: [],
+    resources: [],
+    prompts: [],
+    resourceTemplates: [],
+    connectionStatus,
+    connectionStatuses: { [plugin.id]: connectionStatus },
+    pluginError: '',
+    isRefreshing: false,
+    onRefresh: noop,
+    onReconnect: noop,
+    onStop: noop,
+    onOpenRegistry: noop,
+    onSelectProjectMcpPlugin: noop,
+    onToggleProjectMcpPlugin: noop,
+    onAddProjectMcpPlugin: noop,
+    onEditProjectMcpPlugin: noop,
+    onDeleteProjectMcpPlugin: noop,
+    onSendRawMcpRequest: async () => ({
+      method: 'tools/list',
+      pluginId: plugin.id,
+      durationMs: 1,
+      paramsSize: 2,
+      responseSize: 2,
+      truncated: false,
+      result: {}
+    })
+  }));
+  const registryHtml = renderZh(createElement(McpRegistrySettingsPage, {
+    plugins: [plugin],
+    selectedPlugin: plugin,
+    serverInfo: null,
+    tools: [],
+    toolSnapshots: [],
+    rawAudits: [],
+    resources: [],
+    prompts: [],
+    resourceTemplates: [],
+    connectionStatus,
+    connectionStatuses: { [plugin.id]: connectionStatus },
+    pluginError: '',
+    isRefreshing: false,
+    onSelectPlugin: noop,
+    onRefresh: noop,
+    onReconnect: noop,
+    onStop: noop,
+    onTogglePlugin: noop,
+    onAddPlugin: noop,
+    onEditPlugin: noop,
+    onDeletePlugin: noop,
+    onSendRawMcpRequest: async () => ({
+      method: 'tools/list',
+      pluginId: plugin.id,
+      durationMs: 1,
+      paramsSize: 2,
+      responseSize: 2,
+      truncated: false,
+      result: {}
+    })
+  }));
+  const pluginCardHtml = renderZh(createElement(PluginListCard, {
+    plugin,
+    selected: true,
+    onClick: noop
+  }));
+
+  assert.match(projectHtml, /Global Settings|全局设置/);
+  assert.match(projectHtml, /Add project server|添加项目 Server/);
+  assert.match(projectHtml, /fp-button-primary/);
+  assert.match(projectHtml, /fp-button-secondary/);
+  assert.match(projectHtml, /fp-button[^"]*mcp-server-row-main/);
+  assert.match(projectHtml, /fp-icon-button/);
+  assert.match(projectHtml, /fp-toggle-switch/);
+  assert.match(registryHtml, /MCP Registry/);
+  assert.match(registryHtml, /添加 Server|Add server/);
+  assert.match(registryHtml, /fp-button-primary/);
+  assert.match(registryHtml, /fp-button-danger/);
+  assert.match(registryHtml, /fp-button[^"]*mcp-server-row-main/);
+  assert.match(registryHtml, /fp-toggle-switch/);
+  assert.match(pluginCardHtml, /fp-button[^"]*plugin-list-card selected/);
+  assert.doesNotMatch(projectHtml, /<button[^>]*class="mcp-server-row-main/);
+  assert.doesNotMatch(pluginCardHtml, /<button[^>]*class="plugin-list-card/);
 });
 
 test('runtime doctor renders direct provider repair guidance', () => {
@@ -1824,7 +2257,7 @@ test('runtime doctor renders direct provider repair guidance', () => {
     result,
     loading: false,
     error: '',
-    exportedJson: '',
+    exportedJson: '{"provider":"Xiaomi MiMo"}',
     onRunDry: noop,
     onRunLive: noop,
     onRepair: noop,
@@ -1838,6 +2271,11 @@ test('runtime doctor renders direct provider repair guidance', () => {
   assert.match(html, /检查 Base URL 与网络/);
   assert.match(html, /保存 API key/);
   assert.match(html, /Chat Completions/);
+  assert.match(html, /fp-button-secondary/);
+  assert.match(html, /fp-badge-danger/);
+  assert.match(html, /fp-textarea runtime-doctor-export/);
+  assert.match(html, /Xiaomi MiMo/);
+  assert.doesNotMatch(html, /<textarea[^>]*class="runtime-doctor-export/);
 });
 
 test('agent workbench renders chat without redundant project status header', () => {
@@ -1887,8 +2325,57 @@ test('workspace sidebar navigation marks the active section semantically', () =>
   }));
 
   assert.match(html, /aria-label="项目导航"/);
-  assert.match(html, /aria-current="page"[^>]*><span class="workspace-sidebar-nav-icon">▧/);
+  assert.match(html, /aria-current="page"[^>]*class="[^"]*workspace-sidebar-nav-item active/);
+  assert.match(html, /fp-button-label"><span class="workspace-sidebar-nav-icon">▧/);
   assert.equal(/aria-current="page"[^>]*><span class="workspace-sidebar-nav-icon">⚙/.test(html), false);
+});
+
+test('session management panel renders shared toolbar and row action controls', () => {
+  const sessions: ProjectSession[] = [
+    {
+      id: 'session_main',
+      title: '主会话',
+      autoTitle: false,
+      createdAt: new Date(Date.now() - 3600000).toISOString(),
+      updatedAt: new Date().toISOString(),
+      chat: []
+    },
+    {
+      id: 'session_plan',
+      title: 'Plan notes',
+      autoTitle: false,
+      createdAt: new Date(Date.now() - 7200000).toISOString(),
+      updatedAt: new Date(Date.now() - 600000).toISOString(),
+      chat: []
+    }
+  ];
+  const html = renderZh(createElement(SessionManagementPanel, {
+    sessions,
+    activeSessionId: 'session_main',
+    streamingSessionId: 'session_main',
+    sessionStates: {
+      session_plan: {
+        mode: 'queued',
+        summary: '等待工具结果',
+        hint: '2 queued',
+        queuedCount: 2
+      }
+    },
+    onCreateSession: noop,
+    onSelectSession: noop,
+    onRenameSession: noop,
+    onDeleteSession: noop
+  }));
+
+  assert.match(html, /会话管理/);
+  assert.match(html, /主会话/);
+  assert.match(html, /Plan notes/);
+  assert.match(html, /正在处理当前会话请求/);
+  assert.match(html, /fp-icon-button sidebar-tool-icon/);
+  assert.match(html, /fp-icon-button sidebar-session-action/);
+  assert.match(html, /fp-button[^"]*sidebar-session-main/);
+  assert.doesNotMatch(html, /<button[^>]*class="sidebar-tool-icon/);
+  assert.doesNotMatch(html, /<button[^>]*class="sidebar-session-main/);
 });
 
 test('workspace file tree renders empty folders and inspector handoff state', () => {
@@ -1979,19 +2466,50 @@ test('workspace file tree renders empty folders and inspector handoff state', ()
     onSave: noop,
     onReset: noop
   }));
+  const editorHtml = renderZh(createElement(FileInspectorPanel, {
+    file: {
+      id: 'index.html',
+      label: 'index.html',
+      path: 'index.html',
+      content: '<!doctype html><canvas id="game"></canvas>',
+      isBinary: false,
+      mimeType: 'text/html',
+      size: 512
+    },
+    project,
+    draft: '<!doctype html><canvas id="game"></canvas>',
+    mode: 'edit',
+    width: 420,
+    isDirty: false,
+    isSaving: false,
+    saveError: '',
+    savedAt: '',
+    onDraftChange: noop,
+    onModeChange: noop,
+    onClose: noop,
+    onSave: noop,
+    onReset: noop
+  }));
 
   assert.match(sidebarHtml, /assets/);
   assert.match(sidebarHtml, /images/);
   assert.match(sidebarHtml, /audio/);
   assert.match(sidebarHtml, /index\.html/);
   assert.match(sidebarHtml, /file-item tree active/);
+  assert.match(sidebarHtml, /fp-button[^"]*file-tree-folder-label/);
+  assert.match(sidebarHtml, /fp-button[^"]*file-item tree active/);
   assert.match(inspectorHtml, /index\.html/);
   assert.match(inspectorHtml, /Rogue/);
   assert.match(inspectorHtml, /源码/);
   assert.match(inspectorHtml, /预览/);
   assert.match(inspectorHtml, /真实尺寸/);
+  assert.match(inspectorHtml, /fp-icon-button file-inspector-close/);
+  assert.match(inspectorHtml, /fp-button[^"]*file-mode-button active/);
   assert.equal(inspectorHtml.includes('funplayPreviewMode=fit'), false);
   assert.match(inspectorHtml, /可编辑文本/);
+  assert.match(editorHtml, /file-editor-field/);
+  assert.match(editorHtml, /fp-textarea file-editor-textarea/);
+  assert.doesNotMatch(editorHtml, /<textarea[^>]*class="file-editor-textarea/);
 });
 
 test('session changes panel uses the file code preview surface for diffs', () => {
@@ -2026,7 +2544,44 @@ test('session changes panel uses the file code preview surface for diffs', () =>
   assert.match(html, /file-editor-gutter/);
   assert.match(html, /session-change-diff-line add/);
   assert.match(html, /session-change-diff-line remove/);
+  assert.match(html, /fp-icon-button session-changes-icon-button/);
+  assert.match(html, /fp-button-secondary/);
   assert.equal(html.includes('chat-tool-json compact'), false);
+  assert.equal(html.includes('prototype-secondary'), false);
+});
+
+test('delete project modal uses shared checkbox field', () => {
+  const project = {
+    id: 'project_delete',
+    name: 'Rogue',
+    status: 'active',
+    engine: {
+      platform: 'web',
+      projectPath: '/tmp/rogue'
+    },
+    sessions: [],
+    mcpBindings: {},
+    chat: [],
+    activity: [],
+    assets: [],
+    tasks: [],
+    memory: {},
+    contextSummary: {},
+    blueprint: {}
+  } as unknown as Project;
+  const html = renderZh(createElement(DeleteProjectModal, {
+    project,
+    deleteSourceFiles: true,
+    isDeleting: false,
+    onChangeDeleteSourceFiles: noop,
+    onClose: noop,
+    onConfirm: noop
+  }));
+
+  assert.match(html, /删除项目/);
+  assert.match(html, /fp-checkbox-field delete-project-checkbox/);
+  assert.match(html, /同时删除源文件目录/);
+  assert.equal(html.includes('type="checkbox"'), true);
 });
 
 test('HTML inspector warns when a project entry requires a dev server', () => {
@@ -2070,6 +2625,7 @@ test('HTML inspector warns when a project entry requires a dev server', () => {
 
   assert.match(html, /TypeScript\/Vite 入口/);
   assert.match(html, /启动预览/);
+  assert.match(html, /fp-button-secondary/);
   assert.match(html, /这里预览/);
   assert.equal(html.includes('funplayPreviewMode=fit'), false);
 });
@@ -2160,9 +2716,11 @@ test('project settings shell marks selected settings category and renders only t
   }));
 
   assert.match(html, /项目设置分类/);
-  assert.match(html, /aria-current="page"[^>]*><span class="project-settings-nav-copy"><strong>引擎项目/);
+  assert.match(html, /fp-button[^"]*project-settings-nav-item active/);
+  assert.match(html, /aria-current="page"[^>]*><span class="fp-button-label"><span class="project-settings-nav-copy"><strong>引擎项目/);
   assert.match(html, /运行状态/);
   assert.equal(html.includes('Agent 运行概览'), false);
+  assert.doesNotMatch(html, /<button[^>]*class="project-settings-nav-item/);
 });
 
 test('app settings modal is a semantic dialog and opens directly to provider settings', () => {
@@ -2266,9 +2824,138 @@ test('app settings modal is a semantic dialog and opens directly to provider set
   assert.match(html, /data-modal-state="open"/);
   assert.match(html, /role="dialog"/);
   assert.match(html, /aria-modal="true"/);
-  assert.match(html, /aria-current="page"[^>]*><strong>AI Provider/);
+  assert.match(html, /tabindex="-1"/);
+  assert.match(html, /aria-current="page"[^>]*class="[^"]*app-settings-nav-item active/);
+  assert.match(html, /app-settings-nav-icon/);
+  assert.match(html, /app-settings-nav-copy"><strong>AI Provider/);
+  assert.match(html, /fp-modal app-settings-modal/);
+  assert.match(html, /fp-icon-button modal-close-button/);
   assert.match(html, /Xiaomi MiMo/);
+  assert.equal(html.includes('prototype-modal'), false);
   assert.equal(html.includes('Claude Code Runtime'), false);
+});
+
+test('app settings memory center renders shared search and editor controls', () => {
+  const appUpdateSnapshot = {
+    status: 'idle' as const,
+    currentVersion: '0.0.0',
+    canCheck: false,
+    canDownload: false,
+    canInstall: false,
+    isPackaged: false,
+    feedSource: 'none' as const,
+    autoDownload: false
+  };
+  const memoryFile = {
+    path: 'memory.md',
+    title: 'memory.md',
+    kind: 'longterm' as const,
+    memoryKinds: ['project_fact' as const],
+    tags: ['agent', 'ui'],
+    excerpt: 'UI route migration notes',
+    size: 128,
+    lineCount: 8,
+    updatedAt: new Date().toISOString(),
+    content: '# Memory\nUI route migration notes'
+  };
+  const html = renderZh(createElement(AppSettingsModal, {
+    initialTab: 'memory',
+    theme: 'light',
+    language: 'zh-CN',
+    developerMode: false,
+    permissionMode: 'full-access',
+    runtimeStrategy: 'native',
+    aiSettings: {
+      defaultProviderId: provider.id,
+      fallbackToLocalPlanner: false,
+      webSearch: {
+        provider: 'auto',
+        cacheTtlMs: 300000,
+        browserFallbackEnabled: true,
+        telemetryEnabled: true
+      }
+    },
+    providers: [provider],
+    providerTests: {},
+    mcpPlugins: [],
+    selectedMcpPlugin: null,
+    serverInfo: null,
+    tools: [],
+    toolSnapshots: [],
+    rawAudits: [],
+    resources: [],
+    prompts: [],
+    resourceTemplates: [],
+    connectionStatus: null,
+    connectionStatuses: {},
+    pluginError: '',
+    isRefreshingPlugin: false,
+    memoryFiles: [memoryFile],
+    selectedMemoryPath: memoryFile.path,
+    selectedMemoryFile: memoryFile,
+    memoryDraft: memoryFile.content,
+    isLoadingMemory: false,
+    isSavingMemory: false,
+    memoryError: '',
+    notificationTasks: [],
+    isLoadingNotificationTasks: false,
+    notificationTaskError: '',
+    appUpdateStatus: null,
+    selectedProjectId: 'project_memory',
+    onChangeTheme: noop,
+    onChangeLanguage: noop,
+    onChangeDeveloperMode: noop,
+    onChangePermissionMode: noop,
+    onChangeRuntimeStrategy: noop,
+    onUpdateWebSearchSettings: noopAsync,
+    onCreateProvider: noopAsync,
+    onUpdateProvider: noopAsync,
+    onDeleteProvider: noop,
+    onTestProvider: noop,
+    onSetDefaultProvider: noop,
+    onSelectMcpPlugin: noop,
+    onRefreshMcpPluginMeta: noop,
+    onToggleMcpPlugin: noop,
+    onAddMcpPlugin: noop,
+    onEditMcpPlugin: noop,
+    onDeleteMcpPlugin: noop,
+    onSendRawMcpRequest: async () => ({
+      method: 'tools/list',
+      durationMs: 1,
+      paramsSize: 2,
+      responseSize: 2,
+      truncated: false,
+      result: {}
+    }),
+    onReconnectMcpPlugin: noop,
+    onStopMcpPlugin: noop,
+    onImportClaudeSession: noopAsync,
+    onRefreshMemoryFiles: noopAsync,
+    onSelectMemoryFile: noopAsync,
+    onChangeMemoryDraft: noop,
+    onSaveMemoryFile: noopAsync,
+    onClearMemory: noopAsync,
+    onRefreshNotificationTasks: noopAsync,
+    onCancelNotificationTask: noopAsync,
+    onRefreshAppUpdateStatus: async () => appUpdateSnapshot,
+    onCheckForUpdates: async () => appUpdateSnapshot,
+    onDownloadUpdate: async () => appUpdateSnapshot,
+    onInstallUpdate: async () => appUpdateSnapshot,
+    onClose: noop
+  }));
+
+  assert.match(html, /Memory/);
+  assert.match(html, /搜索 Memory/);
+  assert.match(html, /内容/);
+  assert.match(html, /memory-search-field/);
+  assert.match(html, /memory-editor-field/);
+  assert.match(html, /memory-editor-textarea/);
+  assert.match(html, /fp-field/);
+  assert.match(html, /fp-input/);
+  assert.match(html, /fp-textarea/);
+  assert.match(html, /fp-button-ghost[^"]*active/);
+  assert.match(html, /fp-button[^"]*memory-file-row active/);
+  assert.doesNotMatch(html, /<button[^>]*class="memory-file-row/);
 });
 
 test('empty chat state renders actionable task starters', () => {
@@ -2302,6 +2989,8 @@ test('empty chat state renders actionable task starters', () => {
   assert.match(html, /继续完成项目/);
   assert.match(html, /运行验证/);
   assert.match(html, /选择一个常用起点/);
+  assert.match(html, /fp-button[^"]*agent-empty-suggestion/);
+  assert.doesNotMatch(html, /<button[^>]*class="agent-empty-suggestion/);
 });
 
 test('skills page renders filesystem registry precedence and conflicts', () => {
@@ -2380,6 +3069,15 @@ test('skills page renders filesystem registry precedence and conflicts', () => {
   assert.match(html, /trusted_source/);
   assert.match(html, /project:10/);
   assert.match(html, /覆盖冲突/);
+  assert.match(html, /fp-button/);
+  assert.match(html, /fp-field/);
+  assert.match(html, /fp-textarea/);
+  assert.match(html, /fp-checkbox-field[^"]*skill-toggle-row/);
+  assert.equal(html.includes('skill-form-row'), false);
+  assert.equal(html.includes('prototype-primary'), false);
+  assert.equal(html.includes('prototype-secondary'), false);
+  assert.equal(html.includes('prototype-danger'), false);
+  assert.equal(html.includes('prototype-ghost'), false);
 });
 
 test('message list windows old history by default but keeps search complete', () => {
@@ -2410,7 +3108,9 @@ test('message list windows old history by default but keeps search complete', ()
   }));
 
   assert.match(defaultHtml, /已隐藏 5 条更早消息/);
+  assert.match(defaultHtml, /fp-button[^"]*agent-hidden-history-button/);
   assert.doesNotMatch(defaultHtml, /old hidden marker/);
+  assert.doesNotMatch(defaultHtml, /<button[^>]*class="agent-hidden-history-button/);
   assert.match(defaultHtml, /recent visible marker/);
   assert.match(searchHtml, /old hidden marker/);
   assert.doesNotMatch(searchHtml, /已隐藏/);
@@ -2445,6 +3145,8 @@ test('historical orphan tool results render a compact summary until expanded', (
 
   assert.match(html, /tool summary line/);
   assert.match(html, /显示完整工具结果/);
+  assert.match(html, /fp-button[^"]*chat-tool-result-expand/);
+  assert.doesNotMatch(html, /<button[^>]*class="chat-tool-result-expand/);
   assert.doesNotMatch(html, /TAIL_SHOULD_NOT_RENDER_BY_DEFAULT/);
 });
 
@@ -2507,4 +3209,41 @@ test('assets page empty state surfaces project file discovery hints', () => {
   assert.match(html, /assets\/images/);
   assert.match(html, /assets\/audio/);
   assert.match(html, /可识别素材/);
+  assert.match(html, /asset-category-tabs/);
+  assert.match(html, /fp-button[^"]*active/);
+});
+
+test('assets page renders asset cards through shared buttons', () => {
+  const project = {
+    id: 'project_assets_cards',
+    name: 'Rogue',
+    sessions: [],
+    mcpBindings: {},
+    chat: [],
+    activity: [],
+    assets: [],
+    tasks: [],
+    memory: {},
+    contextSummary: {},
+    blueprint: {}
+  } as unknown as Project;
+  const html = renderZh(createElement(AssetsPage, {
+    project,
+    projectFiles: [
+      {
+        id: 'file_player',
+        name: 'player.png',
+        path: 'assets/images/player.png',
+        type: 'file',
+        size: 2048,
+        modifiedAt: new Date().toISOString()
+      }
+    ],
+    onOpenAsset: noop,
+    onOpenProjectFile: noop
+  }));
+
+  assert.match(html, /player\.png/);
+  assert.match(html, /fp-button[^"]*asset-library-card/);
+  assert.doesNotMatch(html, /<button[^>]*class="asset-library-card/);
 });

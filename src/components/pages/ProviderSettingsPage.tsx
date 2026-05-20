@@ -1,8 +1,10 @@
 import { useState, type JSX } from 'react';
+import { Activity, BadgeCheck, Pencil, Plus, RefreshCw, Save, Stethoscope, TestTube2, Trash2 } from 'lucide-react';
 import type { AiProvider, AiTestResult, RuntimeDoctorFinding, RuntimeDoctorResult, RuntimeRepairAction } from '../../../shared/types';
 import { resolveProviderTokenLimits } from '../../../shared/provider-catalog';
 import { localize, useUiLanguage, type UiLanguage } from '../../i18n';
 import { ModalShell } from '../settings-modals';
+import { Badge, Button, Surface, TextAreaField } from '../ui/index';
 
 export function ProviderSettingsPage(props: {
   providers: AiProvider[];
@@ -93,16 +95,16 @@ export function ProviderSettingsPage(props: {
             <span>{defaultProvider ? t(`默认：${defaultProvider.name}`, `Default: ${defaultProvider.name}`) : t('未设置默认 Provider', 'No default provider')}</span>
           </div>
         </div>
-        <button className="prototype-primary" onClick={props.onAddProvider}>
+        <Button variant="primary" onClick={props.onAddProvider} leadingIcon={<Plus size={15} aria-hidden="true" />}>
           {t('添加 Provider', 'Add Provider')}
-        </button>
+        </Button>
       </div>
       <div className="provider-channel-grid">
         {props.providers.length === 0 ? <div className="empty-note">{t('暂无 Provider，请先添加。', 'No providers yet. Add one first.')}</div> : null}
         {props.providers.map((provider) => {
           const tokenLimits = resolveProviderTokenLimits(provider);
           return (
-            <div key={provider.id} className="provider-channel-card">
+            <Surface key={provider.id} className="provider-channel-card">
             <div className="provider-channel-top">
               <div>
                 <strong>{provider.name}</strong>
@@ -136,28 +138,28 @@ export function ProviderSettingsPage(props: {
               </div>
             </div>
             <div className="tag-row provider-channel-tags">
-              <span>{provider.authStyle ?? 'api_key'}</span>
-              <span>{provider.enabled ? t('启用', 'Enabled') : t('停用', 'Disabled')}</span>
-              {provider.isDefault ? <span>{t('默认', 'Default')}</span> : null}
+              <Badge>{provider.authStyle ?? 'api_key'}</Badge>
+              <Badge tone={provider.enabled ? 'success' : 'neutral'}>{provider.enabled ? t('启用', 'Enabled') : t('停用', 'Disabled')}</Badge>
+              {provider.isDefault ? <Badge tone="brand">{t('默认', 'Default')}</Badge> : null}
             </div>
-            <div className="ghost-pill-group wrap">
-              <button className="prototype-secondary small" onClick={() => props.onEditProvider(provider)}>
+            <div className="provider-card-actions">
+              <Button variant="secondary" size="sm" onClick={() => props.onEditProvider(provider)} leadingIcon={<Pencil size={13} aria-hidden="true" />}>
                 {t('编辑', 'Edit')}
-              </button>
-              <button className="prototype-secondary small" onClick={() => props.onTestProvider(provider.id)}>
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => props.onTestProvider(provider.id)} leadingIcon={<TestTube2 size={14} aria-hidden="true" />}>
                 {t('测试', 'Test')}
-              </button>
-              <button className="prototype-secondary small" onClick={() => void runDoctor(provider)}>
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => void runDoctor(provider)} leadingIcon={<Stethoscope size={14} aria-hidden="true" />}>
                 {t('诊断', 'Doctor')}
-              </button>
+              </Button>
               {!provider.isDefault ? (
-                <button className="prototype-secondary small" onClick={() => props.onSetDefaultProvider(provider.id)}>
+                <Button variant="secondary" size="sm" onClick={() => props.onSetDefaultProvider(provider.id)} leadingIcon={<BadgeCheck size={14} aria-hidden="true" />}>
                   {t('设默认', 'Set Default')}
-                </button>
+                </Button>
               ) : null}
-              <button className="prototype-danger small" onClick={() => props.onDeleteProvider(provider.id)}>
+              <Button variant="danger" size="sm" onClick={() => props.onDeleteProvider(provider.id)} leadingIcon={<Trash2 size={14} aria-hidden="true" />}>
                 {t('删除', 'Delete')}
-              </button>
+              </Button>
             </div>
             {tokenLimits.modelId ? (
               <div className="helper-copy">
@@ -165,7 +167,7 @@ export function ProviderSettingsPage(props: {
               </div>
             ) : null}
             {props.providerTests[provider.id] ? <div className="helper-copy">{props.providerTests[provider.id].message}</div> : null}
-            </div>
+            </Surface>
           );
         })}
       </div>
@@ -394,16 +396,16 @@ export function RuntimeDoctorDialog(props: {
       onClose={props.onClose}
     >
       <div className="runtime-doctor-toolbar">
-        <button className="prototype-secondary small" disabled={props.loading} onClick={props.onRunDry}>
+        <Button variant="secondary" size="sm" disabled={props.loading} onClick={props.onRunDry} leadingIcon={<RefreshCw size={14} aria-hidden="true" />}>
           {t('重新诊断', 'Run Doctor')}
-        </button>
-        <button className="prototype-secondary small" disabled={props.loading} onClick={props.onRunLive}>
+        </Button>
+        <Button variant="secondary" size="sm" disabled={props.loading} onClick={props.onRunLive} leadingIcon={<Activity size={14} aria-hidden="true" />}>
           Live Probe
-        </button>
-        <button className="prototype-secondary small" disabled={props.loading || !props.result} onClick={props.onExport}>
+        </Button>
+        <Button variant="secondary" size="sm" disabled={props.loading || !props.result} onClick={props.onExport} leadingIcon={<Save size={14} aria-hidden="true" />}>
           {t('导出 JSON', 'Export JSON')}
-        </button>
-        {props.result ? <span className={`status-pill ${props.result.overallSeverity}`}>{severityLabel(props.result.overallSeverity)}</span> : null}
+        </Button>
+        {props.result ? <Badge tone={props.result.overallSeverity === 'error' ? 'danger' : props.result.overallSeverity === 'warn' ? 'warning' : 'success'}>{severityLabel(props.result.overallSeverity)}</Badge> : null}
       </div>
       {props.loading ? <div className="helper-copy">{t('诊断中…', 'Running diagnostics...')}</div> : null}
       {props.error ? <div className="error-text">{props.error}</div> : null}
@@ -450,15 +452,21 @@ export function RuntimeDoctorDialog(props: {
           <strong>{t('可执行修复', 'Repair Actions')}</strong>
           <div className="ghost-pill-group wrap">
             {props.result.repairs.map((action) => (
-              <button key={action.id} className="prototype-secondary small" disabled={props.loading} onClick={() => props.onRepair(action)} title={action.description}>
+              <Button key={action.id} variant="secondary" size="sm" disabled={props.loading} onClick={() => props.onRepair(action)} title={action.description}>
                 {action.label}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
       ) : null}
       {props.exportedJson ? (
-        <textarea className="runtime-doctor-export" readOnly value={props.exportedJson} />
+        <TextAreaField
+          className="runtime-doctor-export-field"
+          textareaClassName="runtime-doctor-export"
+          label={t('导出的诊断 JSON', 'Exported diagnostic JSON')}
+          readOnly
+          value={props.exportedJson}
+        />
       ) : null}
     </ModalShell>
   );

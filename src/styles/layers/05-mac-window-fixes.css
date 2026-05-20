@@ -1,0 +1,200 @@
+/* mac window interaction fixes */
+.welcome-shell,
+.onboarding-shell {
+  place-items: stretch;
+  padding: clamp(10px, 2vw, 20px);
+}
+
+.welcome-window,
+.onboarding-window {
+  width: calc(100vw - clamp(20px, 4vw, 40px));
+  height: calc(100vh - clamp(20px, 4vw, 40px));
+  max-height: none;
+  align-self: center;
+  justify-self: center;
+}
+
+.onboarding-body {
+  padding: clamp(14px, 2vw, 20px) clamp(16px, 2.4vw, 24px);
+  gap: clamp(8px, 1.4vw, 12px);
+}
+
+.onboarding-section-card {
+  padding: clamp(10px, 1.4vw, 14px);
+}
+
+.onboarding-panel {
+  padding: clamp(10px, 1.5vw, 14px);
+}
+
+.titlebar-shell {
+  justify-content: flex-start;
+}
+
+.titlebar-drag-spacer {
+  flex: 1 1 72px;
+  min-width: 72px;
+  height: 100%;
+  -webkit-app-region: drag;
+}
+
+.titlebar-drag-spacer.right {
+  min-width: 96px;
+}
+
+.project-tabs {
+  flex: 0 1 auto;
+  max-width: calc(100% - 168px);
+}
+
+@media (max-width: 1180px) {
+  .platform-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1024px) {
+  .titlebar-drag-spacer {
+    min-width: 56px;
+  }
+
+  .titlebar-drag-spacer.right {
+    min-width: 72px;
+  }
+
+  .project-tabs {
+    max-width: calc(100% - 128px);
+  }
+
+  .platform-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .setup-mode-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px), (max-height: 720px) {
+  .onboarding-title,
+  .welcome-titlebar {
+    height: 46px;
+  }
+
+  .onboarding-body h2 {
+    font-size: 18px;
+  }
+
+  .step-dot {
+    width: 24px;
+    height: 24px;
+    font-size: 12px;
+  }
+
+  .step-line {
+    width: 40px;
+  }
+
+  .setup-mode-card,
+  .platform-card {
+    padding: 9px 10px;
+  }
+
+  .setup-mode-card span,
+  .platform-card span {
+    display: none;
+  }
+}
+
+.onboarding-title {
+  justify-content: flex-start;
+  padding-left: 92px;
+}
+
+.welcome-shell,
+.onboarding-shell {
+  padding: 0;
+  place-items: stretch;
+}
+
+.welcome-window,
+.onboarding-window {
+  width: 100vw;
+  height: 100vh;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.welcome-titlebar,
+.onboarding-title {
+  padding-left: 92px;
+}
+
+.onboarding-desktop-layout {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.onboarding-main-panel {
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  background: var(--fp-workspace-shell-bg);
+}
+
+.onboarding-main-scroll {
+  min-height: 0;
+  overflow: auto;
+}
+
+.onboarding-main-panel .onboarding-body {
+  min-height: 100%;
+  padding: 22px 24px 18px;
+}
+
+.onboarding-main-panel .onboarding-fixed-header {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.04);
+}
+
+.onboarding-main-panel .onboarding-setup-stack {
+  gap: 14px;
+}
+
+.onboarding-main-panel .onboarding-section-card,
+.onboarding-main-panel .onboarding-panel,
+.onboarding-main-panel .diagnostic-step-card,
+.onboarding-main-panel .summary-card {
+  border-radius: 20px;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.04);
+}
+
+.onboarding-footer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 24px 18px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+@media (max-width: 1100px) {
+  .welcome-content {
+    grid-template-columns: 1fr;
+  }
+
+  .onboarding-desktop-layout {
+    display: flex;
+  }
+
+  .onboarding-title {
+    padding-left: 20px;
+  }
+}

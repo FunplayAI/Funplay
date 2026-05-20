@@ -325,6 +325,8 @@ export function startAgentPromptStream(params: {
         checkpointSnapshotId,
         message,
         attachments: params.attachments,
+        appState: stateAdapter.getState(),
+        persistAppState: stateAdapter.persistState,
         resumeContext: params.resumeContext,
         provider: resolved.provider,
         mcpPlugins: resolved.mcpPlugins,

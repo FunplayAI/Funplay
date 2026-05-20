@@ -58,7 +58,7 @@ Useful extra commands:
 ```bash
 npm run agent:e2e
 npm run runtime:maturity-gate
-npm run dist:mac:universal
+npm run dist
 npm run dist:win:x64
 ```
 

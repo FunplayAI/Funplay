@@ -1,9 +1,11 @@
 import { type JSX } from 'react';
+import { Trash2 } from 'lucide-react';
 import type { Project } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import { formatProjectStatus } from '../../lib/app-helpers';
 import { ModalShell } from '../settings-modals';
 import { InfoRow } from '../shared/InfoComponents';
+import { Button, CheckboxField } from '../ui/index';
 
 export function DeleteProjectModal(props: {
   project: Project;
@@ -32,15 +34,13 @@ export function DeleteProjectModal(props: {
           <InfoRow label={localize(language, '当前状态', 'Current Status')} value={formatProjectStatus(props.project.status)} />
         </div>
 
-        <label className={`delete-project-checkbox ${canDeleteSourceFiles ? '' : 'disabled'}`}>
-          <input
-            type="checkbox"
-            checked={props.deleteSourceFiles}
-            disabled={!canDeleteSourceFiles || props.isDeleting}
-            onChange={(event) => props.onChangeDeleteSourceFiles(event.target.checked)}
-          />
-          <span>{localize(language, '同时删除源文件目录', 'Also delete source project directory')}</span>
-        </label>
+        <CheckboxField
+          className="delete-project-checkbox"
+          label={localize(language, '同时删除源文件目录', 'Also delete source project directory')}
+          checked={props.deleteSourceFiles}
+          disabled={!canDeleteSourceFiles || props.isDeleting}
+          onCheckedChange={props.onChangeDeleteSourceFiles}
+        />
         <div className="helper-copy">
           {canDeleteSourceFiles
             ? props.deleteSourceFiles
@@ -50,16 +50,21 @@ export function DeleteProjectModal(props: {
         </div>
 
         <div className="modal-actions">
-          <button className="prototype-secondary" onClick={props.onClose} disabled={props.isDeleting}>
+          <Button variant="secondary" onClick={props.onClose} disabled={props.isDeleting}>
             {localize(language, '取消', 'Cancel')}
-          </button>
-          <button className="prototype-danger" onClick={props.onConfirm} disabled={props.isDeleting}>
+          </Button>
+          <Button
+            variant="danger"
+            loading={props.isDeleting}
+            leadingIcon={<Trash2 size={14} aria-hidden="true" />}
+            onClick={props.onConfirm}
+          >
             {props.isDeleting
               ? localize(language, '删除中…', 'Deleting…')
               : props.deleteSourceFiles
                 ? localize(language, '删除项目和源文件', 'Delete project and files')
                 : localize(language, '仅删除项目', 'Delete project only')}
-          </button>
+          </Button>
         </div>
       </div>
     </ModalShell>

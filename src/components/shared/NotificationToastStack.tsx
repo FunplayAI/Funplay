@@ -1,5 +1,7 @@
 import { type JSX } from 'react';
+import { X } from 'lucide-react';
 import type { AppNotification } from '../../../shared/types';
+import { IconButton } from '../ui/index';
 
 export function NotificationToastStack(props: {
   notifications: AppNotification[];
@@ -17,9 +19,12 @@ export function NotificationToastStack(props: {
             <strong>{notification.title}</strong>
             {notification.body ? <span>{notification.body}</span> : null}
           </div>
-          <button className="notification-toast-dismiss" onClick={() => props.onDismiss(notification.id)} aria-label="Dismiss notification">
-            ×
-          </button>
+          <IconButton
+            className="notification-toast-dismiss"
+            icon={<X size={14} aria-hidden="true" />}
+            label="Dismiss notification"
+            onClick={() => props.onDismiss(notification.id)}
+          />
         </div>
       ))}
     </div>

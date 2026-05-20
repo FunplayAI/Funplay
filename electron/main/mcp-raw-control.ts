@@ -68,6 +68,7 @@ export async function sendRawMcpControlRequest(plugin: McpPlugin, method: string
     const output = {
       method: normalizedMethod,
       pluginId: plugin.id,
+      status: 'success' as const,
       durationMs: Date.now() - startedAt,
       paramsSize,
       responseSize: resultText.length,
@@ -87,6 +88,7 @@ export async function sendRawMcpControlRequest(plugin: McpPlugin, method: string
     });
     return output;
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     tryAppendMcpRawAudit({
       id: makeId('mcp_raw'),
       pluginId: plugin.id,
@@ -95,8 +97,20 @@ export async function sendRawMcpControlRequest(plugin: McpPlugin, method: string
       status: 'failed',
       durationMs: Date.now() - startedAt,
       paramsSize,
-      error: error instanceof Error ? error.message : String(error)
+      error: errorMessage
     });
-    throw error;
+    return {
+      method: normalizedMethod,
+      pluginId: plugin.id,
+      status: 'failed',
+      durationMs: Date.now() - startedAt,
+      paramsSize,
+      responseSize: 0,
+      truncated: false,
+      error: errorMessage,
+      result: {
+        error: errorMessage
+      }
+    };
   }
 }

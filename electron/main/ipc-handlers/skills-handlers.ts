@@ -15,8 +15,8 @@ export function registerSkillsHandlers(ipcMain: IpcMain, ctx: HandlerContext): v
   });
 
   ipcMain.handle('skills:listProjectRegistry', async (_, input: unknown) => {
-    const validated = validateIpcInput(listProjectAgentSkillRegistrySchema, input, 'skills:listProjectRegistry(input)');
-    const project = ctx.getState().projects.find((item) => item.id === validated.projectId);
+    const projectId = validateIpcInput(listProjectAgentSkillRegistrySchema, input, 'skills:listProjectRegistry(input)');
+    const project = ctx.getState().projects.find((item) => item.id === projectId);
     if (!project) {
       throw new Error('Project not found.');
     }

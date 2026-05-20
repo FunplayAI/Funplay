@@ -495,9 +495,12 @@ export function appendProjectConversationTurn(
       ? deriveSessionTitleFromPrompt(input.userMessage)
       : activeSession.title;
   const assistantMessage = deduplicateRepeatedAssistantText(input.assistantMessage);
-  const projectedContentBlocks = input.assistantContentBlocks?.length
-    ? input.assistantContentBlocks
-    : agentCorePartsToChatContentBlocks(input.assistantMetadata?.agentCoreParts);
+  const projectedCoreBlocks = agentCorePartsToChatContentBlocks(input.assistantMetadata?.agentCoreParts);
+  const projectedContentBlocks = projectedCoreBlocks.length
+    ? projectedCoreBlocks
+    : input.assistantContentBlocks?.length
+      ? input.assistantContentBlocks
+      : [];
   const assistantContentBlocks = normalizeAssistantContentBlocks(projectedContentBlocks.length ? projectedContentBlocks : undefined);
   const baseChat = normalizeChatMessageOrdinals(activeSession.chat);
   const nextOrdinal = getNextChatMessageOrdinal(baseChat);
@@ -583,9 +586,12 @@ export function appendProjectAssistantMessage(
       : getActiveProjectSession(ensured);
   const updatedAt = input.updatedAt ?? nowIso();
   const assistantMessage = deduplicateRepeatedAssistantText(input.assistantMessage);
-  const projectedContentBlocks = input.assistantContentBlocks?.length
-    ? input.assistantContentBlocks
-    : agentCorePartsToChatContentBlocks(input.assistantMetadata?.agentCoreParts);
+  const projectedCoreBlocks = agentCorePartsToChatContentBlocks(input.assistantMetadata?.agentCoreParts);
+  const projectedContentBlocks = projectedCoreBlocks.length
+    ? projectedCoreBlocks
+    : input.assistantContentBlocks?.length
+      ? input.assistantContentBlocks
+      : [];
   const assistantContentBlocks = normalizeAssistantContentBlocks(projectedContentBlocks.length ? projectedContentBlocks : undefined);
   const baseChat = normalizeChatMessageOrdinals(activeSession.chat);
   const nextOrdinal = getNextChatMessageOrdinal(baseChat);

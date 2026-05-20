@@ -34,9 +34,10 @@ export interface AgentRunControllerOptions {
 export interface AgentRunControllerProviderStepInput {
   providerStep: AgentCoreProviderStepResult;
   forceContinuation?: {
-    reason: 'partial_write' | 'incomplete_todo' | 'edit_recovery' | 'host_policy';
+    reason: AgentRunControllerContinuationReason;
     detail?: string;
   };
+  continuation?: AgentRunControllerContinuationContext;
   pendingPermission?: {
     requestId: string;
     toolName: string;
@@ -51,6 +52,32 @@ export interface AgentRunControllerProviderStepInput {
   cancelled?: boolean;
   interrupted?: boolean;
   error?: string;
+}
+
+export type AgentRunControllerContinuationReason =
+  | 'partial_write'
+  | 'incomplete_todo'
+  | 'edit_recovery'
+  | 'host_policy'
+  | 'length';
+
+export interface AgentRunControllerContinuation {
+  reason: AgentRunControllerContinuationReason;
+  detail?: string;
+}
+
+export interface AgentRunControllerContinuationContext {
+  includeWriteTools?: boolean;
+  permissionMode?: string;
+  assistantMessage?: string;
+  incompleteTodo?: {
+    incompleteCount: number;
+    hasInProgress?: boolean;
+  };
+  partialWrite?: {
+    continuationCount: number;
+    continuationLimit: number;
+  };
 }
 
 export interface AgentRunControllerToolResultInput {
@@ -101,9 +128,65 @@ export interface AgentRunControllerSnapshot {
   parts: AgentCoreMessagePart[];
   nextAction: AgentRunControllerAction;
   lastDecision?: AgentCoreLoopDecision;
+  lastContinuation?: AgentRunControllerContinuation;
   providerStepCount: number;
   pendingToolUseIds: string[];
   completedToolUseIds: string[];
+}
+
+function containsFileReference(value: string): boolean {
+  return /(?:^|[\s"'`（(：:])[\w@./\\-]+\.(?:html|css|js|jsx|ts|tsx|json|md|txt|yml|yaml|xml|svg|py|cs|java|go|rs|sh|sql|vue|svelte)(?:$|[\s"'`，,。.!！?？）)；;:：])/i.test(value);
+}
+
+function looksLikeUnfinishedWriteReply(value: string): boolean {
+  const normalized = value.trim();
+  if (!containsFileReference(normalized)) {
+    return false;
+  }
+  return /(现在|接下来|继续|马上|下一步|最后|再来|还要|还需要|开始)(?:[\s\S]{0,40})(写|创建|生成|实现|补上)|(?:now|next|then|continue|will|going to)(?:[\s\S]{0,40})(write|create|implement|add)/i.test(normalized);
+}
+
+function isLengthLimitedProviderFinishReason(finishReason?: string): boolean {
+  return /^(length|max_tokens|max_output_tokens)$/i.test(finishReason?.trim() ?? '');
+}
+
+function resolveControllerContinuation(input: AgentRunControllerProviderStepInput): AgentRunControllerContinuation | undefined {
+  if (input.forceContinuation) {
+    return input.forceContinuation;
+  }
+  if (input.providerStep.toolCalls.length > 0) {
+    return undefined;
+  }
+  const continuation = input.continuation;
+  const includeWriteTools = Boolean(continuation?.includeWriteTools);
+  const permissionMode = continuation?.permissionMode;
+  const assistantMessage = continuation?.assistantMessage ?? input.providerStep.text ?? '';
+  if (includeWriteTools && permissionMode !== 'read-only') {
+    const incompleteCount = continuation?.incompleteTodo?.incompleteCount ?? 0;
+    if (
+      incompleteCount > 0 &&
+      (
+        !assistantMessage.trim() ||
+        Boolean(continuation?.incompleteTodo?.hasInProgress) ||
+        looksLikeUnfinishedWriteReply(assistantMessage) ||
+        /还没|未完成|继续|马上|下一步|pending|in_progress|not done|continue|next/i.test(assistantMessage)
+      )
+    ) {
+      return {
+        reason: 'incomplete_todo',
+        detail: 'Todo snapshot still has pending or in-progress items.'
+      };
+    }
+    const partialWriteCount = continuation?.partialWrite?.continuationCount ?? 0;
+    const partialWriteLimit = continuation?.partialWrite?.continuationLimit ?? 0;
+    if (partialWriteCount < partialWriteLimit && looksLikeUnfinishedWriteReply(assistantMessage)) {
+      return {
+        reason: 'partial_write',
+        detail: 'Assistant text looked like an unfinished file-writing promise.'
+      };
+    }
+  }
+  return undefined;
 }
 
 function controllerActionFromDecision(decision: AgentCoreLoopDecision): AgentRunControllerAction {
@@ -157,6 +240,7 @@ export function createAgentRunController(options: AgentRunControllerOptions = {}
   let providerStepCount = 0;
   let nextAction: AgentRunControllerAction = 'build_model_input';
   let lastDecision: AgentCoreLoopDecision | undefined;
+  let lastContinuation: AgentRunControllerContinuation | undefined;
 
   function now(): string {
     return createdAt();
@@ -186,6 +270,7 @@ export function createAgentRunController(options: AgentRunControllerOptions = {}
       parts: parts.slice(),
       nextAction,
       lastDecision,
+      lastContinuation,
       providerStepCount,
       pendingToolUseIds: [...pendingToolUseIds],
       completedToolUseIds: [...completedToolUseIds]
@@ -202,6 +287,7 @@ export function createAgentRunController(options: AgentRunControllerOptions = {}
   function recordProviderStep(input: AgentRunControllerProviderStepInput): AgentRunControllerSnapshot {
     machine.transition('streaming_model_step', 'Provider step started.', now());
     providerStepCount += 1;
+    const continuation = resolveControllerContinuation(input);
     if (input.providerStep.thinking) {
       pushPart({
         ...createPartBase({
@@ -242,7 +328,7 @@ export function createAgentRunController(options: AgentRunControllerOptions = {}
         }),
         kind: 'assistant_text',
         text: input.providerStep.text,
-        final: !input.forceContinuation && input.providerStep.toolCalls.length === 0 && input.providerStep.finishReason === 'stop'
+        final: !continuation && input.providerStep.toolCalls.length === 0 && input.providerStep.finishReason === 'stop'
       });
     }
     for (const toolCall of input.providerStep.toolCalls) {
@@ -299,14 +385,15 @@ export function createAgentRunController(options: AgentRunControllerOptions = {}
       });
     }
     machine.transition('collecting_tool_calls', 'Collect provider text, thinking, and tool calls.', now());
-    lastDecision = input.forceContinuation
+    lastContinuation = undefined;
+    lastDecision = continuation
       ? {
           outcome: 'continue_after_tools',
           nextState: 'building_model_input',
           terminal: false,
           reason: [
-            `Host requested continuation: ${input.forceContinuation.reason}.`,
-            input.forceContinuation.detail
+            `Host requested continuation: ${continuation.reason}.`,
+            continuation.detail
           ].filter(Boolean).join(' ')
         }
       : decideAgentCoreLoopOutcome({
@@ -321,6 +408,18 @@ export function createAgentRunController(options: AgentRunControllerOptions = {}
           interrupted: Boolean(input.interrupted),
           error: input.error
         });
+    if (continuation) {
+      lastContinuation = continuation;
+    } else if (
+      lastDecision.outcome === 'continue_after_tools' &&
+      lastDecision.nextState === 'building_model_input' &&
+      isLengthLimitedProviderFinishReason(input.providerStep.finishReason)
+    ) {
+      lastContinuation = {
+        reason: 'length',
+        detail: 'Provider hit output length before a final stop.'
+      };
+    }
     machine.applyDecision(lastDecision, now());
     nextAction = controllerActionFromDecision(lastDecision);
     return getSnapshot();

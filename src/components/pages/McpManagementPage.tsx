@@ -1,8 +1,10 @@
 import { useState, type JSX } from 'react';
+import { Plus, RefreshCw, RotateCw, Send, Settings2, Square, Trash2 } from 'lucide-react';
 import type { McpConnectionSnapshot, McpPlugin, McpRawAuditEntry, McpRawRequestResult, McpToolSnapshot, Project, UnityMcpPrompt, UnityMcpResource, UnityMcpResourceTemplate, UnityMcpServerInfo, UnityMcpTool } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import type { ProjectMcpBindingDraft } from '../../lib/app-types';
 import { Card, InfoRow, List } from '../shared/InfoComponents';
+import { Button, IconButton, SelectField, TextAreaField, ToggleSwitch } from '../ui/index';
 
 function canProjectUsePlugin(project: Project | null, plugin: McpPlugin): boolean {
   return Boolean(project && (!plugin.projectId || plugin.projectId === project.id));
@@ -136,20 +138,26 @@ export function McpRawDiagnosticsCard(props: {
   return (
     <Card title={t('Raw 诊断', 'Raw Diagnostics')}>
       <div className="helper-copy">{t('只允许只读/诊断类 MCP JSON-RPC 方法；工具执行类方法不会开放。', 'Only read-only diagnostic MCP JSON-RPC methods are allowed; tool execution methods are not exposed.')}</div>
-      <label className="field compact">
-        <span>Method</span>
-        <select value={method} onChange={(event) => setMethod(event.target.value)}>
-          {rawMcpDiagnosticMethods.map((item) => <option key={item} value={item}>{item}</option>)}
-        </select>
-      </label>
-      <label className="field compact">
-        <span>Params JSON</span>
-        <textarea value={paramsText} onChange={(event) => setParamsText(event.target.value)} />
-      </label>
+      <SelectField
+        className="compact"
+        label="Method"
+        value={method}
+        options={rawMcpDiagnosticMethods.map((item) => ({ value: item, label: item }))}
+        onValueChange={setMethod}
+        helper={`${t('允许：', 'Allowed: ')}${rawMcpDiagnosticMethods.join(' · ')}`}
+      />
+      <TextAreaField
+        className="compact"
+        label="Params JSON"
+        value={paramsText}
+        onValueChange={setParamsText}
+      />
       {error ? <div className="warning-banner compact error">{error}</div> : null}
-      <button
-        className="prototype-secondary small"
+      <Button
+        variant="secondary"
+        size="sm"
         disabled={loading}
+        leadingIcon={<Send size={14} aria-hidden="true" />}
         onClick={() => {
           setLoading(true);
           setError('');
@@ -167,13 +175,18 @@ export function McpRawDiagnosticsCard(props: {
             return;
           }
           void props.onSendRawRequest(props.plugin.id, method, params)
-            .then(setResult)
+            .then((nextResult) => {
+              setResult(nextResult);
+              if (nextResult.error) {
+                setError(nextResult.error);
+              }
+            })
             .catch((requestError) => setError(requestError instanceof Error ? requestError.message : t('Raw 请求失败。', 'Raw request failed.')))
             .finally(() => setLoading(false));
         }}
       >
         {loading ? t('发送中…', 'Sending...') : t('发送诊断请求', 'Send diagnostic request')}
-      </button>
+      </Button>
       {result ? (
         <pre className="mcp-process-log">{result.truncated ? result.resultPreview : JSON.stringify(result.result, null, 2)}</pre>
       ) : null}
@@ -253,12 +266,12 @@ export function McpManagementPage(props: {
           <p>{t('为当前项目选择可用 MCP。全局服务器只在这里启停，新增和删除请到全局设置。', 'Choose MCP servers for this project. Global servers can only be enabled or disabled here; add and delete them in global settings.')}</p>
         </div>
         <div className="ghost-pill-group">
-          <button className="prototype-secondary small" onClick={props.onOpenRegistry}>
+          <Button variant="secondary" size="sm" onClick={props.onOpenRegistry} leadingIcon={<Settings2 size={14} aria-hidden="true" />}>
             {t('全局设置', 'Global Settings')}
-          </button>
-          <button className="prototype-primary small" disabled={!props.project} onClick={props.onAddProjectMcpPlugin}>
-            + {t('添加项目 Server', 'Add project server')}
-          </button>
+          </Button>
+          <Button variant="primary" size="sm" disabled={!props.project} onClick={props.onAddProjectMcpPlugin} leadingIcon={<Plus size={14} aria-hidden="true" />}>
+            {t('添加项目 Server', 'Add project server')}
+          </Button>
         </div>
       </div>
 
@@ -300,17 +313,17 @@ export function McpManagementPage(props: {
           <div className="ghost-pill-group">
             {selectedPlugin?.transport === 'stdio' ? (
               <>
-                <button className="prototype-secondary small" onClick={props.onReconnect} disabled={!selectedPlugin || props.isRefreshing}>
+                <Button variant="secondary" size="sm" onClick={props.onReconnect} disabled={!selectedPlugin || props.isRefreshing} leadingIcon={<RotateCw size={14} aria-hidden="true" />}>
                   {t('重启', 'Restart')}
-                </button>
-                <button className="prototype-secondary small" onClick={props.onStop} disabled={!selectedPlugin || props.connectionStatus?.processStatus !== 'running'}>
+                </Button>
+                <Button variant="secondary" size="sm" onClick={props.onStop} disabled={!selectedPlugin || props.connectionStatus?.processStatus !== 'running'} leadingIcon={<Square size={13} aria-hidden="true" />}>
                   {t('停止', 'Stop')}
-                </button>
+                </Button>
               </>
             ) : null}
-            <button className="prototype-secondary small" onClick={props.onRefresh} disabled={!selectedPlugin || props.isRefreshing}>
+            <Button variant="secondary" size="sm" onClick={props.onRefresh} disabled={!selectedPlugin || props.isRefreshing} leadingIcon={<RefreshCw size={14} aria-hidden="true" />}>
               {props.isRefreshing ? t('刷新中…', 'Refreshing…') : t('刷新能力', 'Refresh')}
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -401,7 +414,7 @@ export function CapabilityBadgeRow(props: {
 export function PluginListCard(props: { plugin: McpPlugin; selected: boolean; onClick: () => void }): JSX.Element {
   const language = useUiLanguage();
   return (
-    <button className={`plugin-list-card ${props.selected ? 'selected' : ''}`} onClick={props.onClick}>
+    <Button variant="ghost" size="compact" className={`plugin-list-card ${props.selected ? 'selected' : ''}`} onClick={props.onClick}>
       <div>
         <strong>{props.plugin.name}</strong>
         <div className="helper-copy">{props.plugin.baseUrl}</div>
@@ -409,7 +422,7 @@ export function PluginListCard(props: { plugin: McpPlugin; selected: boolean; on
       <span className={`plugin-status ${props.plugin.enabled ? 'running' : 'stopped'}`}>
         {props.plugin.enabled ? localize(language, '启用', 'Enabled') : localize(language, '禁用', 'Disabled')}
       </span>
-    </button>
+    </Button>
   );
 }
 
@@ -432,7 +445,7 @@ export function ServerListRow(props: {
   const t = (zh: string, en: string): string => localize(language, zh, en);
   return (
     <div className={`mcp-server-row ${props.selected ? 'selected' : ''}`} role="listitem">
-      <button className="mcp-server-row-main" onClick={props.onSelect}>
+      <Button variant="ghost" size="compact" className="mcp-server-row-main" onClick={props.onSelect}>
         <span className="mcp-server-row-copy">
           <strong>{props.plugin.name}</strong>
           <span>{formatMcpEndpoint(props.plugin) || t('未配置 Endpoint', 'No endpoint configured')}</span>
@@ -446,27 +459,20 @@ export function ServerListRow(props: {
           <em>{props.scopeLabel}</em>
           {props.disabledNote ? <em>{props.disabledNote}</em> : null}
         </span>
-      </button>
+      </Button>
       <div className="mcp-server-row-actions">
         {props.onEdit ? (
-          <button className="icon-text-button" onClick={props.onEdit} aria-label={t('编辑 Server', 'Edit server')}>
-            ⚙
-          </button>
+          <IconButton label={t('编辑 Server', 'Edit server')} icon={<Settings2 size={15} aria-hidden="true" />} onClick={props.onEdit} />
         ) : null}
         {props.onDelete ? (
-          <button className="icon-text-button danger" onClick={props.onDelete} aria-label={t('删除 Server', 'Delete server')}>
-            ×
-          </button>
+          <IconButton label={t('删除 Server', 'Delete server')} icon={<Trash2 size={15} aria-hidden="true" />} variant="danger" onClick={props.onDelete} />
         ) : null}
-        <label className="mcp-switch" aria-label={props.checked ? t('停用 Server', 'Disable server') : t('启用 Server', 'Enable server')}>
-          <input
-            type="checkbox"
-            checked={props.checked}
-            disabled={props.disabled}
-            onChange={(event) => props.onToggle(event.currentTarget.checked)}
-          />
-          <span />
-        </label>
+        <ToggleSwitch
+          label={props.checked ? t('停用 Server', 'Disable server') : t('启用 Server', 'Enable server')}
+          checked={props.checked}
+          disabled={props.disabled}
+          onCheckedChange={props.onToggle}
+        />
       </div>
     </div>
   );

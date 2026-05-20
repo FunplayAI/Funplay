@@ -10,7 +10,7 @@ npm run build              # tsc --noEmit + electron-vite build → out/
 npm run test               # Alias for test:runtime
 npm run test:runtime       # Rebuilds better-sqlite3 for Node, runs tests, rebuilds back for Electron
 npm run agent:e2e          # Deterministic agent E2E (no live API)
-npm run dist               # macOS universal build → release/
+npm run dist               # macOS arm64 build → release/
 ```
 
 ### Single test file

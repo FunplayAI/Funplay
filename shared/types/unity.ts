@@ -208,12 +208,14 @@ export interface McpToolSnapshot {
 export interface McpRawRequestResult {
   method: string;
   pluginId?: string;
+  status?: 'success' | 'failed';
   durationMs: number;
   paramsSize: number;
   responseSize: number;
   truncated: boolean;
   result?: unknown;
   resultPreview?: string;
+  error?: string;
 }
 
 export interface McpRawAuditEntry {

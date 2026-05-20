@@ -93,6 +93,7 @@ import {
   redactNativeRuntimeErrorDetail
 } from '../../electron/main/agent-platform/native/diagnostics.ts';
 import { createNativeWorkspaceTools, listNativeWorkspaceToolNames, NATIVE_TOOL_OUTPUT_MAX_CHARS } from '../../electron/main/agent-platform/native/tool-adapter.ts';
+import { createNativeToolPool } from '../../electron/main/agent-platform/native/tool-pool.ts';
 import { executeAgentToolAction, executeWorkspaceToolAction } from '../../electron/main/agent-platform/workspace-tools.ts';
 import { disposePersistentTerminals } from '../../electron/main/agent-platform/persistent-terminal-store.ts';
 import { buildGenericWorkspaceContext } from '../../electron/main/agent-platform/context.ts';
@@ -840,6 +841,12 @@ test('conversation append projects legacy blocks from canonical Agent Core parts
     userMessageId: 'user_message_projection_core',
     userMessage: '读取文件',
     assistantMessage: '已经完成。',
+    assistantContentBlocks: [
+      {
+        type: 'text',
+        text: 'stale legacy block'
+      }
+    ],
     assistantMetadata: {
       agentCoreParts: [
         {
@@ -874,6 +881,7 @@ test('conversation append projects legacy blocks from canonical Agent Core parts
   const assistantMessage = getActiveProjectSession(nextProject).chat.findLast((message) => message.role === 'assistant');
 
   assert.deepEqual(assistantMessage?.contentBlocks?.map((block) => block.type), ['text', 'tool_use', 'tool_result']);
+  assert.equal(assistantMessage?.contentBlocks?.[0]?.type === 'text' ? assistantMessage.contentBlocks[0].text : undefined, '我先读取文件。');
   assert.equal(assistantMessage?.contentBlocks?.[1]?.type === 'tool_use' ? assistantMessage.contentBlocks[1].name : undefined, 'read_file');
   assert.equal(assistantMessage?.metadata?.agentCoreParts?.[1]?.kind, 'tool_call');
 });
@@ -1852,6 +1860,7 @@ test('read-only workspace tools are registered through the tool registry', () =>
       'browser_screenshot',
       'browser_snapshot',
       'checkpoint_diff',
+      'diagnose_engine_status',
       'find_files',
       'funplay_list_tasks',
       'funplay_memory_get',
@@ -1871,6 +1880,7 @@ test('read-only workspace tools are registered through the tool registry', () =>
       'read_document',
       'read_file',
       'read_mcp_resource',
+      'refresh_engine_runtime_state',
       'run_subagent',
       'run_subagents',
       'scan_file_tree',
@@ -1906,6 +1916,7 @@ test('tool registry includes write and MCP metadata boundaries', () => {
       'checkpoint_diff',
       'checkpoint_rollback',
       'create_directory',
+      'diagnose_engine_status',
       'edit_file',
       'find_files',
       'funplay_cancel_task',
@@ -1918,6 +1929,7 @@ test('tool registry includes write and MCP metadata boundaries', () => {
       'funplay_schedule_task',
       'image_generate',
       'inspect_game_project',
+      'install_engine_bridge',
       'list_agent_skill_files',
       'list_agent_skills',
       'list_mcp_resources',
@@ -1925,6 +1937,8 @@ test('tool registry includes write and MCP metadata boundaries', () => {
       'media_attach_file',
       'media_save_base64',
       'multi_edit',
+      'open_engine_hub',
+      'open_engine_project',
       'patch_file',
       'preview_file_diff',
       'preview_patch',
@@ -1933,6 +1947,7 @@ test('tool registry includes write and MCP metadata boundaries', () => {
       'read_document',
       'read_file',
       'read_mcp_resource',
+      'refresh_engine_runtime_state',
       'run_command',
       'run_subagent',
       'run_subagents',
@@ -2162,6 +2177,9 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
   assert.equal(listNativeWorkspaceToolNames().includes('funplay_schedule_task'), false);
   assert.equal(listNativeWorkspaceToolNames().includes('media_save_base64'), false);
   assert.equal(listNativeWorkspaceToolNames().includes('image_generate'), false);
+  assert.equal(listNativeWorkspaceToolNames().includes('open_engine_hub'), false);
+  assert.equal(listNativeWorkspaceToolNames().includes('open_engine_project'), false);
+  assert.equal(listNativeWorkspaceToolNames().includes('install_engine_bridge'), false);
   assert.equal(listNativeWorkspaceToolNames().includes('run_command'), false);
   assert.equal(listNativeWorkspaceToolNames().includes('terminal_start'), false);
   assert.equal(listNativeWorkspaceToolNames().includes('browser_open'), false);
@@ -2176,6 +2194,9 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
   assert.equal(listNativeWorkspaceToolNames({ includeWriteTools: true }).includes('funplay_schedule_task'), true);
   assert.equal(listNativeWorkspaceToolNames({ includeWriteTools: true }).includes('media_save_base64'), true);
   assert.equal(listNativeWorkspaceToolNames({ includeWriteTools: true }).includes('image_generate'), true);
+  assert.equal(listNativeWorkspaceToolNames({ includeWriteTools: true }).includes('open_engine_hub'), true);
+  assert.equal(listNativeWorkspaceToolNames({ includeWriteTools: true }).includes('open_engine_project'), true);
+  assert.equal(listNativeWorkspaceToolNames({ includeWriteTools: true }).includes('install_engine_bridge'), true);
   assert.equal(listNativeWorkspaceToolNames().includes('call_mcp_tool'), false);
   assert.equal(listNativeWorkspaceToolNames({ includeMcpToolCalls: true }).includes('call_mcp_tool'), true);
   assert.equal(listNativeWorkspaceToolNames({ includeCommandTools: true }).includes('run_command'), true);
@@ -2198,6 +2219,7 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
       'browser_screenshot',
       'browser_snapshot',
       'checkpoint_diff',
+      'diagnose_engine_status',
       'find_files',
       'funplay_list_tasks',
       'funplay_memory_get',
@@ -2217,6 +2239,7 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
       'read_document',
       'read_file',
       'read_mcp_resource',
+      'refresh_engine_runtime_state',
       'run_subagent',
       'run_subagents',
       'scan_file_tree',
@@ -2242,6 +2265,7 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
       'checkpoint_diff',
       'checkpoint_rollback',
       'create_directory',
+      'diagnose_engine_status',
       'edit_file',
       'find_files',
       'funplay_cancel_task',
@@ -2254,6 +2278,7 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
       'funplay_schedule_task',
       'image_generate',
       'inspect_game_project',
+      'install_engine_bridge',
       'list_agent_skill_files',
       'list_agent_skills',
       'list_mcp_resources',
@@ -2261,6 +2286,8 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
       'media_attach_file',
       'media_save_base64',
       'multi_edit',
+      'open_engine_hub',
+      'open_engine_project',
       'patch_file',
       'preview_file_diff',
       'preview_patch',
@@ -2269,6 +2296,7 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
       'read_document',
       'read_file',
       'read_mcp_resource',
+      'refresh_engine_runtime_state',
       'run_subagent',
       'run_subagents',
       'scan_file_tree',
@@ -2294,6 +2322,7 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
       'browser_snapshot',
       'call_mcp_tool',
       'checkpoint_diff',
+      'diagnose_engine_status',
       'find_files',
       'funplay_list_tasks',
       'funplay_memory_get',
@@ -2313,6 +2342,7 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
       'read_document',
       'read_file',
       'read_mcp_resource',
+      'refresh_engine_runtime_state',
       'run_subagent',
       'run_subagents',
       'scan_file_tree',
@@ -2341,6 +2371,7 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
       'browser_snapshot',
       'browser_type',
       'checkpoint_diff',
+      'diagnose_engine_status',
       'find_files',
       'funplay_list_tasks',
       'funplay_memory_get',
@@ -2360,6 +2391,7 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
       'read_document',
       'read_file',
       'read_mcp_resource',
+      'refresh_engine_runtime_state',
       'run_command',
       'run_subagent',
       'run_subagents',
@@ -2378,6 +2410,51 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
       'web_search'
     ]
   );
+});
+
+test('native tool pool centralizes AI SDK and OpenAI-compatible tool definitions', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-native-tool-pool-'));
+  const server = await startTestMcpServer();
+  try {
+    const project = buildProject(projectPath);
+    const plugin = buildMcpPlugin(server.baseUrl);
+    const pool = await createNativeToolPool({
+      params: {
+        project,
+        message: 'inspect native tool pool',
+        plugins: [plugin],
+        context: buildGenericWorkspaceContext(project, [plugin], getActiveProjectSession(project).id, 'inspect native tool pool'),
+        permission: {
+          mode: 'full-access',
+          allowWriteTools: true,
+          allowSessionWriteTools: false
+        }
+      },
+      mode: {
+        includeWriteTools: true,
+        includeMcpToolCalls: true,
+        includeCommandTools: true
+      }
+    });
+
+    const definitionNames = pool.definitions.map((definition) => definition.name).sort();
+    assert.deepEqual(Object.keys(pool.toolSet).sort(), definitionNames);
+    assert.deepEqual(pool.openAiCompatibleTools.map((definition) => definition.name).sort(), definitionNames);
+    assert.deepEqual([...pool.names].sort(), definitionNames);
+    assert.equal(pool.names.includes('write_file'), true);
+    assert.equal(pool.names.includes('run_command'), true);
+    assert.equal(pool.names.includes('call_mcp_tool'), true);
+    assert.equal(pool.names.includes('mcp__test_mcp__unity_echo'), true);
+    const dynamicMcpTool = pool.openAiCompatibleTools.find((definition) => definition.name === 'mcp__test_mcp__unity_echo');
+    assert.deepEqual((dynamicMcpTool?.parameters as { properties?: unknown } | undefined)?.properties, {
+      value: {
+        type: 'string'
+      }
+    });
+  } finally {
+    await server.close();
+    await rm(projectPath, { recursive: true, force: true });
+  }
 });
 
 test('native tool loop permission copy distinguishes build from plan', () => {
@@ -3117,6 +3194,17 @@ test('raw MCP control plane allows bounded diagnostic methods only', async () =>
   } finally {
     await server.close();
   }
+});
+
+test('raw MCP control plane returns failed diagnostic results for offline endpoints', async () => {
+  const plugin = buildMcpPlugin('http://127.0.0.1:65530/');
+  const result = await sendRawMcpControlRequest(plugin, 'tools/list', {});
+
+  assert.equal(result.method, 'tools/list');
+  assert.equal(result.pluginId, plugin.id);
+  assert.equal(result.status, 'failed');
+  assert.equal(result.responseSize, 0);
+  assert.match(result.error ?? '', /fetch failed|ECONNREFUSED/);
 });
 
 test('native tool-loop strategy reports explicit fallback reasons', () => {
@@ -4556,16 +4644,17 @@ test('openai-compatible native tool loop continues when provider finishes with l
   }
 });
 
-test('openai-compatible native tool loop does not stop at the former fixed tool step limit', async () => {
-  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-openai-compatible-no-step-cap-'));
+test('openai-compatible native tool loop continues until provider returns final text', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-openai-compatible-provider-final-'));
   const originalFetch = globalThis.fetch;
   try {
     await writeFile(join(projectPath, 'notes.md'), 'long loop fixture', 'utf8');
     const project = buildProject(projectPath);
     const requests: Record<string, unknown>[] = [];
+    const toolStepCount = 40;
     globalThis.fetch = (async (_url, init) => {
       requests.push(JSON.parse(String(init?.body)));
-      if (requests.length <= 55) {
+      if (requests.length <= toolStepCount) {
         return new Response(JSON.stringify({
           id: `chat_tool_call_${requests.length}`,
           choices: [
@@ -4601,7 +4690,7 @@ test('openai-compatible native tool loop does not stop at the former fixed tool 
             finish_reason: 'stop',
             message: {
               role: 'assistant',
-              content: '超过旧的 50 步后仍能正常结束。'
+              content: 'provider 返回最终文本后正常结束。'
             }
           }
         ]
@@ -4638,10 +4727,11 @@ test('openai-compatible native tool loop does not stop at the former fixed tool 
       }
     });
 
-    assert.equal(requests.length, 56);
-    assert.equal(result.stepCount, 56);
-    assert.equal(result.toolCalls.length, 55);
-    assert.equal(result.assistantMessage, '超过旧的 50 步后仍能正常结束。');
+    assert.equal(requests.length, toolStepCount + 1);
+    assert.equal(result.stepCount, toolStepCount + 1);
+    assert.equal(result.toolCalls.length, toolStepCount);
+    assert.equal(result.finishReason, 'stop');
+    assert.equal(result.assistantMessage, 'provider 返回最终文本后正常结束。');
   } finally {
     globalThis.fetch = originalFetch;
     await rm(projectPath, { recursive: true, force: true });

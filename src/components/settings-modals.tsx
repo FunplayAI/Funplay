@@ -1,8 +1,10 @@
-import { useEffect, useId, useMemo, useState, type JSX, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type JSX, type ReactNode } from 'react';
+import { X } from 'lucide-react';
 import { MCP_PLUGIN_PRESETS } from '../../shared/mcp-plugin-catalog';
 import { AI_PROVIDER_PRESETS, inferOpenAiCompatibleApiMode, resolveProviderAvailableModels, resolveProviderTokenLimits } from '../../shared/provider-catalog';
 import type { AiProvider, AiProviderApiMode, AiProviderAuthStyle, AiProviderInput, AiProviderProtocol, AiProviderRoleModels, McpPlugin, McpPluginInput, McpTransport } from '../../shared/types';
 import { localize, useUiLanguage } from '../i18n';
+import { Button, CheckboxField, IconButton, SelectField, TextAreaField, TextField, useDialogFocus } from './ui/index';
 
 type ProviderDraft = AiProviderInput & { presetId: string };
 type McpPluginDraft = Omit<McpPluginInput, 'args' | 'env' | 'toolPolicies'> & {
@@ -418,16 +420,17 @@ export function ProviderEditor(props: {
         </div>
         <div className="provider-preset-card-grid" role="list">
           {AI_PROVIDER_PRESETS.map((item) => (
-            <button
+            <Button
               key={item.id}
-              type="button"
+              size="compact"
+              variant="ghost"
               className={`provider-preset-card ${draft.presetId === item.id ? 'active' : ''}`}
               onClick={() => applyProviderPreset(item.id)}
             >
               <strong>{item.name}</strong>
               <span>{describeProviderPreset(language, item.id, item.description)}</span>
               <em>{formatPresetProtocol(language, item.protocol, item.apiMode)} · {item.defaultModel}</em>
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -436,244 +439,219 @@ export function ProviderEditor(props: {
           <strong>{localize(language, '核心配置', 'Core Configuration')}</strong>
           <span>{apiKeyHint}</span>
         </div>
-        <label className="field">
-          <span>{localize(language, '名称', 'Name')}</span>
-          <input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
-        </label>
-        <label className="field">
-          <span>Base URL</span>
-          <input value={draft.baseUrl} onChange={(event) => setDraft((current) => ({ ...current, baseUrl: event.target.value }))} />
-        </label>
-        <label className="field">
-          <span>API Key</span>
-          <input value={draft.apiKey} onChange={(event) => setDraft((current) => ({ ...current, apiKey: event.target.value }))} placeholder={apiKeyHint} />
-          <div className="helper-copy">
-            {props.provider?.hasStoredApiKey
-              ? localize(language, '留空将保留当前已保存的 API Key。', 'Leave blank to keep the currently saved API key.')
-              : localize(language, '当前尚未保存 API Key。', 'No API key is currently saved.')}
-          </div>
-        </label>
-        <label className="field">
-          <span>{localize(language, '默认模型', 'Default Model')}</span>
-          <input
-            list={modelListId}
-            value={draft.model}
-            onChange={(event) => setDraft((current) => ({ ...current, model: event.target.value }))}
-          />
-          <datalist id={modelListId}>
+        <TextField
+          label={localize(language, '名称', 'Name')}
+          value={draft.name}
+          onValueChange={(value) => setDraft((current) => ({ ...current, name: value }))}
+        />
+        <TextField
+          label="Base URL"
+          value={draft.baseUrl}
+          onValueChange={(value) => setDraft((current) => ({ ...current, baseUrl: value }))}
+        />
+        <TextField
+          label="API Key"
+          value={draft.apiKey}
+          placeholder={apiKeyHint}
+          onValueChange={(value) => setDraft((current) => ({ ...current, apiKey: value }))}
+          helper={props.provider?.hasStoredApiKey
+            ? localize(language, '留空将保留当前已保存的 API Key。', 'Leave blank to keep the currently saved API key.')
+            : localize(language, '当前尚未保存 API Key。', 'No API key is currently saved.')}
+        />
+        <TextField
+          label={localize(language, '默认模型', 'Default Model')}
+          list={modelListId}
+          value={draft.model}
+          onValueChange={(value) => setDraft((current) => ({ ...current, model: value }))}
+          helper={draftTokenLimits.modelId
+            ? localize(
+              language,
+              `可直接输入自定义模型，也可从预设候选里选择。当前命中：${draftTokenLimits.displayName || draftTokenLimits.modelId}；默认上下文 ${formatCompactTokenLimit(draftTokenLimits.presetContextWindowTokens)}，默认单步输出 ${formatCompactTokenLimit(draftTokenLimits.presetMaxOutputTokens)}。`,
+              `You can type a custom model or choose a preset suggestion. Current match: ${draftTokenLimits.displayName || draftTokenLimits.modelId}; default context ${formatCompactTokenLimit(draftTokenLimits.presetContextWindowTokens)}, default max output ${formatCompactTokenLimit(draftTokenLimits.presetMaxOutputTokens)}.`
+            )
+            : localize(
+              language,
+              '可直接输入自定义模型，也可从预设候选里选择。当前模型没有命中内置预设；如果是代理、自定义别名或新模型，建议按服务商文档填写上下文窗口和单步输出上限。',
+              'You can type a custom model or choose a preset suggestion. This model does not match a built-in preset; for proxies, custom aliases, or newer models, set context window and max output limits from your provider docs.'
+            )}
+        />
+        <datalist id={modelListId}>
+          {resolvedModelChoices.map((model) => (
+            <option key={model.modelId} value={model.modelId}>
+              {model.displayName || model.modelId}
+            </option>
+          ))}
+        </datalist>
+        {resolvedModelChoices.length ? (
+          <div className="agent-settings-chip-grid" role="list">
             {resolvedModelChoices.map((model) => (
-              <option key={model.modelId} value={model.modelId}>
+              <Button
+                key={model.modelId}
+                size="compact"
+                variant="ghost"
+                className={`agent-settings-chip-button ${draft.model.trim() === model.modelId ? 'active' : ''}`}
+                onClick={() => setDraft((current) => ({ ...current, model: model.modelId }))}
+                title={model.displayName || model.modelId}
+              >
                 {model.displayName || model.modelId}
-              </option>
+              </Button>
             ))}
-          </datalist>
-          <div className="helper-copy">
-            {draftTokenLimits.modelId
-              ? localize(
-                language,
-                `可直接输入自定义模型，也可从预设候选里选择。当前命中：${draftTokenLimits.displayName || draftTokenLimits.modelId}；默认上下文 ${formatCompactTokenLimit(draftTokenLimits.presetContextWindowTokens)}，默认单步输出 ${formatCompactTokenLimit(draftTokenLimits.presetMaxOutputTokens)}。`,
-                `You can type a custom model or choose a preset suggestion. Current match: ${draftTokenLimits.displayName || draftTokenLimits.modelId}; default context ${formatCompactTokenLimit(draftTokenLimits.presetContextWindowTokens)}, default max output ${formatCompactTokenLimit(draftTokenLimits.presetMaxOutputTokens)}.`
-              )
-              : localize(
-                language,
-                '可直接输入自定义模型，也可从预设候选里选择。当前模型没有命中内置预设；如果是代理、自定义别名或新模型，建议按服务商文档填写上下文窗口和单步输出上限。',
-                'You can type a custom model or choose a preset suggestion. This model does not match a built-in preset; for proxies, custom aliases, or newer models, set context window and max output limits from your provider docs.'
-              )}
           </div>
-          {resolvedModelChoices.length ? (
-            <div className="agent-settings-chip-grid" role="list">
-              {resolvedModelChoices.map((model) => (
-                <button
-                  key={model.modelId}
-                  type="button"
-                  className={draft.model.trim() === model.modelId ? 'active' : ''}
-                  onClick={() => setDraft((current) => ({ ...current, model: model.modelId }))}
-                  title={model.displayName || model.modelId}
-                >
-                  {model.displayName || model.modelId}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </label>
-        <label className="field">
-          <span>{localize(language, '上游模型 ID', 'Upstream Model ID')}</span>
-          <input
-            list={upstreamModelListId}
-            value={draft.upstreamModel ?? ''}
-            onChange={(event) => setDraft((current) => ({ ...current, upstreamModel: event.target.value }))}
-          />
-          <datalist id={upstreamModelListId}>
-            {suggestedUpstreamModels.map((modelId) => (
-              <option key={modelId} value={modelId} />
-            ))}
-          </datalist>
-          <div className="helper-copy">
-            {localize(language, '留空时使用默认模型；也可以手写真实上游模型 ID，或从已知候选里快速填入。', 'Leave this empty to use the default model; you can also type the real upstream model ID or pick a known suggestion.')}
-          </div>
-        </label>
+        ) : null}
+        <TextField
+          label={localize(language, '上游模型 ID', 'Upstream Model ID')}
+          list={upstreamModelListId}
+          value={draft.upstreamModel ?? ''}
+          onValueChange={(value) => setDraft((current) => ({ ...current, upstreamModel: value }))}
+          helper={localize(language, '留空时使用默认模型；也可以手写真实上游模型 ID，或从已知候选里快速填入。', 'Leave this empty to use the default model; you can also type the real upstream model ID or pick a known suggestion.')}
+        />
+        <datalist id={upstreamModelListId}>
+          {suggestedUpstreamModels.map((modelId) => (
+            <option key={modelId} value={modelId} />
+          ))}
+        </datalist>
       </div>
       <details className="provider-advanced-section">
         <summary>
           <span>{localize(language, '高级协议配置', 'Advanced Protocol Configuration')}</span>
           <em>{formatPresetProtocol(language, draft.protocol, draft.apiMode)}</em>
         </summary>
-        <label className="field">
-          <span>{localize(language, '协议', 'Protocol')}</span>
-          <select
-            value={draft.protocol}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                protocol: event.target.value as AiProviderProtocol,
-                authStyle: (event.target.value === 'bedrock' || event.target.value === 'vertex' ? 'env_only' : current.authStyle ?? 'api_key') as AiProviderAuthStyle,
-                apiMode: event.target.value === 'openai-compatible' ? current.apiMode ?? 'chat' : undefined,
-                claudeCodeCompatible: event.target.value === 'anthropic' || current.sdkProxyOnly,
-                claudeRoleModels: event.target.value === 'anthropic' ? current.claudeRoleModels ?? {} : {}
-              }))
-            }
-          >
-            <option value="openai-compatible">openai-compatible</option>
-            <option value="anthropic">anthropic</option>
-            <option value="google">google</option>
-            <option value="bedrock">bedrock</option>
-            <option value="vertex">vertex</option>
-          </select>
-        </label>
+        <SelectField
+          label={localize(language, '协议', 'Protocol')}
+          value={draft.protocol}
+          options={[
+            { value: 'openai-compatible', label: 'openai-compatible' },
+            { value: 'anthropic', label: 'anthropic' },
+            { value: 'google', label: 'google' },
+            { value: 'bedrock', label: 'bedrock' },
+            { value: 'vertex', label: 'vertex' }
+          ]}
+          onValueChange={(value) => {
+            const protocol = value as AiProviderProtocol;
+            setDraft((current) => ({
+              ...current,
+              protocol,
+              authStyle: (protocol === 'bedrock' || protocol === 'vertex' ? 'env_only' : current.authStyle ?? 'api_key') as AiProviderAuthStyle,
+              apiMode: protocol === 'openai-compatible' ? current.apiMode ?? 'chat' : undefined,
+              claudeCodeCompatible: protocol === 'anthropic' || current.sdkProxyOnly,
+              claudeRoleModels: protocol === 'anthropic' ? current.claudeRoleModels ?? {} : {}
+            }));
+          }}
+        />
         {draft.protocol === 'openai-compatible' ? (
-          <label className="field">
-            <span>{localize(language, '接口模式', 'API Mode')}</span>
-            <select value={draft.apiMode ?? 'chat'} onChange={(event) => setDraft((current) => ({ ...current, apiMode: event.target.value as AiProviderApiMode }))}>
-              <option value="responses">responses</option>
-              <option value="chat">chat completions</option>
-            </select>
-            <div className="helper-copy">
-              {localize(
-                language,
-                '不同服务商支持的协议不同；OpenAI 官方推荐 responses，国内兼容通道通常推荐 chat completions。',
-                'Different providers support different modes; official OpenAI prefers responses, while most domestic compatible gateways prefer chat completions.'
-              )}
-            </div>
-          </label>
+          <SelectField
+            label={localize(language, '接口模式', 'API Mode')}
+            value={draft.apiMode ?? 'chat'}
+            options={[
+              { value: 'responses', label: 'responses' },
+              { value: 'chat', label: 'chat completions' }
+            ]}
+            onValueChange={(value) => setDraft((current) => ({ ...current, apiMode: value as AiProviderApiMode }))}
+            helper={localize(
+              language,
+              '不同服务商支持的协议不同；OpenAI 官方推荐 responses，国内兼容通道通常推荐 chat completions。',
+              'Different providers support different modes; official OpenAI prefers responses, while most domestic compatible gateways prefer chat completions.'
+            )}
+          />
         ) : null}
-        <label className="field">
-          <span>{localize(language, '认证方式', 'Auth Style')}</span>
-          <select value={draft.authStyle ?? 'api_key'} onChange={(event) => setDraft((current) => ({ ...current, authStyle: event.target.value as AiProviderAuthStyle }))}>
-            <option value="api_key">api_key</option>
-            <option value="auth_token">auth_token</option>
-            <option value="env_only">env_only</option>
-            <option value="custom_header">custom_header</option>
-          </select>
-        </label>
-        <label className="app-settings-check-row">
-          <input
-            type="checkbox"
-            checked={Boolean(draft.sdkProxyOnly)}
-            onChange={(event) => setDraft((current) => ({ ...current, sdkProxyOnly: event.currentTarget.checked }))}
-          />
-          <span>
-            <strong>SDK Proxy Only</strong>
-            <em>{localize(language, '只允许 Claude Code SDK/兼容链路使用该 Provider。', 'Only allow this provider through the Claude Code SDK/compatible path.')}</em>
-          </span>
-        </label>
+        <SelectField
+          label={localize(language, '认证方式', 'Auth Style')}
+          value={draft.authStyle ?? 'api_key'}
+          options={[
+            { value: 'api_key', label: 'api_key' },
+            { value: 'auth_token', label: 'auth_token' },
+            { value: 'env_only', label: 'env_only' },
+            { value: 'custom_header', label: 'custom_header' }
+          ]}
+          onValueChange={(value) => setDraft((current) => ({ ...current, authStyle: value as AiProviderAuthStyle }))}
+        />
+        <CheckboxField
+          label="SDK Proxy Only"
+          description={localize(language, '只允许 Claude Code SDK/兼容链路使用该 Provider。', 'Only allow this provider through the Claude Code SDK/compatible path.')}
+          checked={Boolean(draft.sdkProxyOnly)}
+          onCheckedChange={(checked) => setDraft((current) => ({ ...current, sdkProxyOnly: checked }))}
+        />
         <div className="provider-role-model-grid">
-          <label className="field compact">
-            <span>{localize(language, '上下文窗口 tokens', 'Context Window tokens')}</span>
-            <input
-              type="number"
-              min={1024}
-              max={2_000_000}
-              step={1024}
-              value={typeof draft.contextWindowTokens === 'number' ? String(draft.contextWindowTokens) : ''}
-              placeholder={localize(language, '留空使用预设', 'Empty uses preset')}
-              onChange={(event) => setDraft((current) => ({ ...current, contextWindowTokens: parseOptionalInteger(event.target.value) }))}
-            />
-            <div className="helper-copy">
-              {draftTokenLimits.presetContextWindowTokens
-                ? localize(
-                  language,
-                  `用于判断何时压缩会话历史；留空时当前模型默认按 ${formatCompactTokenLimit(draftTokenLimits.presetContextWindowTokens)} 处理。`,
-                  `Used to decide when to compact history; when empty, the current model defaults to ${formatCompactTokenLimit(draftTokenLimits.presetContextWindowTokens)}.`
-                )
-                : localize(language, '用于判断何时压缩会话历史；代理或自定义模型建议按实际窗口填写。', 'Used to decide when to compact history; set the real window for proxy or custom models.')}
-            </div>
-          </label>
-          <label className="field compact">
-            <span>{localize(language, '单步输出上限 tokens', 'Max Output tokens')}</span>
-            <input
-              type="number"
-              min={1}
-              max={1_000_000}
-              step={1}
-              value={typeof draft.maxOutputTokens === 'number' ? String(draft.maxOutputTokens) : ''}
-              placeholder="32000"
-              onChange={(event) => setDraft((current) => ({ ...current, maxOutputTokens: parseOptionalInteger(event.target.value) }))}
-            />
-            <div className="helper-copy">
-              {draftTokenLimits.presetMaxOutputTokens
-                ? localize(
-                  language,
-                  `用于 Native Agent 每次流式请求的 max_tokens/max_output_tokens；留空时当前模型默认按 ${formatCompactTokenLimit(draftTokenLimits.presetMaxOutputTokens)} 处理。`,
-                  `Used for Native Agent max_tokens/max_output_tokens on each streamed request; when empty, the current model defaults to ${formatCompactTokenLimit(draftTokenLimits.presetMaxOutputTokens)}.`
-                )
-                : localize(language, '用于 Native Agent 每次流式请求的 max_tokens/max_output_tokens。', 'Used for Native Agent max_tokens/max_output_tokens on each streamed request.')}
-            </div>
-          </label>
-          <label className="field compact">
-            <span>{localize(language, '请求超时 ms', 'Request Timeout ms')}</span>
-            <input
-              type="number"
-              min={1}
-              max={60 * 60 * 1000}
-              step={1000}
-              disabled={draft.requestTimeoutMs === false}
-              value={typeof draft.requestTimeoutMs === 'number' ? String(draft.requestTimeoutMs) : ''}
-              placeholder="300000"
-              onChange={(event) => setDraft((current) => ({ ...current, requestTimeoutMs: parseOptionalInteger(event.target.value) }))}
-            />
-          </label>
-          <label className="field compact">
-            <span>{localize(language, 'SSE 分块超时 ms', 'SSE Chunk Timeout ms')}</span>
-            <input
-              type="number"
-              min={1}
-              max={60 * 60 * 1000}
-              step={1000}
-              value={typeof draft.chunkTimeoutMs === 'number' ? String(draft.chunkTimeoutMs) : ''}
-              placeholder={localize(language, '留空不限制', 'Empty for no limit')}
-              onChange={(event) => setDraft((current) => ({ ...current, chunkTimeoutMs: parseOptionalInteger(event.target.value) }))}
-            />
-          </label>
+          <TextField
+            className="compact"
+            label={localize(language, '上下文窗口 tokens', 'Context Window tokens')}
+            type="number"
+            min={1024}
+            max={2_000_000}
+            step={1024}
+            value={typeof draft.contextWindowTokens === 'number' ? String(draft.contextWindowTokens) : ''}
+            placeholder={localize(language, '留空使用预设', 'Empty uses preset')}
+            onValueChange={(value) => setDraft((current) => ({ ...current, contextWindowTokens: parseOptionalInteger(value) }))}
+            helper={draftTokenLimits.presetContextWindowTokens
+              ? localize(
+                language,
+                `用于判断何时压缩会话历史；留空时当前模型默认按 ${formatCompactTokenLimit(draftTokenLimits.presetContextWindowTokens)} 处理。`,
+                `Used to decide when to compact history; when empty, the current model defaults to ${formatCompactTokenLimit(draftTokenLimits.presetContextWindowTokens)}.`
+              )
+              : localize(language, '用于判断何时压缩会话历史；代理或自定义模型建议按实际窗口填写。', 'Used to decide when to compact history; set the real window for proxy or custom models.')}
+          />
+          <TextField
+            className="compact"
+            label={localize(language, '单步输出上限 tokens', 'Max Output tokens')}
+            type="number"
+            min={1}
+            max={1_000_000}
+            step={1}
+            value={typeof draft.maxOutputTokens === 'number' ? String(draft.maxOutputTokens) : ''}
+            placeholder="32000"
+            onValueChange={(value) => setDraft((current) => ({ ...current, maxOutputTokens: parseOptionalInteger(value) }))}
+            helper={draftTokenLimits.presetMaxOutputTokens
+              ? localize(
+                language,
+                `用于 Native Agent 每次流式请求的 max_tokens/max_output_tokens；留空时当前模型默认按 ${formatCompactTokenLimit(draftTokenLimits.presetMaxOutputTokens)} 处理。`,
+                `Used for Native Agent max_tokens/max_output_tokens on each streamed request; when empty, the current model defaults to ${formatCompactTokenLimit(draftTokenLimits.presetMaxOutputTokens)}.`
+              )
+              : localize(language, '用于 Native Agent 每次流式请求的 max_tokens/max_output_tokens。', 'Used for Native Agent max_tokens/max_output_tokens on each streamed request.')}
+          />
+          <TextField
+            className="compact"
+            label={localize(language, '请求超时 ms', 'Request Timeout ms')}
+            type="number"
+            min={1}
+            max={60 * 60 * 1000}
+            step={1000}
+            disabled={draft.requestTimeoutMs === false}
+            value={typeof draft.requestTimeoutMs === 'number' ? String(draft.requestTimeoutMs) : ''}
+            placeholder="300000"
+            onValueChange={(value) => setDraft((current) => ({ ...current, requestTimeoutMs: parseOptionalInteger(value) }))}
+          />
+          <TextField
+            className="compact"
+            label={localize(language, 'SSE 分块超时 ms', 'SSE Chunk Timeout ms')}
+            type="number"
+            min={1}
+            max={60 * 60 * 1000}
+            step={1000}
+            value={typeof draft.chunkTimeoutMs === 'number' ? String(draft.chunkTimeoutMs) : ''}
+            placeholder={localize(language, '留空不限制', 'Empty for no limit')}
+            onValueChange={(value) => setDraft((current) => ({ ...current, chunkTimeoutMs: parseOptionalInteger(value) }))}
+          />
         </div>
-        <label className="app-settings-check-row">
-          <input
-            type="checkbox"
-            checked={draft.requestTimeoutMs === false}
-            onChange={(event) => setDraft((current) => ({ ...current, requestTimeoutMs: event.currentTarget.checked ? false : undefined }))}
-          />
-          <span>
-            <strong>{localize(language, '禁用请求超时', 'Disable Request Timeout')}</strong>
-            <em>{localize(language, '默认 300000ms；只有服务商自己稳定处理超长连接时才建议关闭。', 'Default is 300000ms; disable only when the provider reliably handles very long connections.')}</em>
-          </span>
-        </label>
-        <label className="field">
-          <span>Headers</span>
-          <textarea
-            value={formatStringRecord(draft.headers)}
-            onChange={(event) => setDraft((current) => ({ ...current, headers: parseStringRecord(event.target.value) }))}
-            placeholder="X-Custom-Header=value"
-          />
-        </label>
-        <label className="field">
-          <span>Env Overrides</span>
-          <textarea
-            value={formatStringRecord(draft.envOverrides)}
-            onChange={(event) => setDraft((current) => ({ ...current, envOverrides: parseStringRecord(event.target.value) }))}
-            placeholder="CLAUDE_CODE_USE_BEDROCK=1"
-          />
-        </label>
+        <CheckboxField
+          label={localize(language, '禁用请求超时', 'Disable Request Timeout')}
+          description={localize(language, '默认 300000ms；只有服务商自己稳定处理超长连接时才建议关闭。', 'Default is 300000ms; disable only when the provider reliably handles very long connections.')}
+          checked={draft.requestTimeoutMs === false}
+          onCheckedChange={(checked) => setDraft((current) => ({ ...current, requestTimeoutMs: checked ? false : undefined }))}
+        />
+        <TextAreaField
+          label="Headers"
+          value={formatStringRecord(draft.headers)}
+          onValueChange={(value) => setDraft((current) => ({ ...current, headers: parseStringRecord(value) }))}
+          placeholder="X-Custom-Header=value"
+        />
+        <TextAreaField
+          label="Env Overrides"
+          value={formatStringRecord(draft.envOverrides)}
+          onValueChange={(value) => setDraft((current) => ({ ...current, envOverrides: parseStringRecord(value) }))}
+          placeholder="CLAUDE_CODE_USE_BEDROCK=1"
+        />
         {draft.protocol === 'anthropic' ? (
-          <div className="field provider-compat-section">
+          <div className="fp-field provider-compat-section">
             <div className="provider-compat-title">
               {localize(language, 'Claude runtime 角色模型映射', 'Claude runtime role model mapping')}
             </div>
@@ -686,31 +664,32 @@ export function ProviderEditor(props: {
             </div>
             <div className="provider-role-model-grid">
               {claudeRoleModelFields.map((field) => (
-                <label className="field compact" key={field.key}>
-                  <span>{localize(language, field.zh, field.en)}</span>
-                  <input
-                    value={draft.claudeRoleModels?.[field.key] ?? ''}
-                    placeholder={field.placeholder}
-                    onChange={(event) => updateClaudeRoleModel(field.key, event.target.value)}
-                  />
-                </label>
+                <TextField
+                  className="compact"
+                  key={field.key}
+                  label={localize(language, field.zh, field.en)}
+                  value={draft.claudeRoleModels?.[field.key] ?? ''}
+                  placeholder={field.placeholder}
+                  onValueChange={(value) => updateClaudeRoleModel(field.key, value)}
+                />
               ))}
             </div>
           </div>
         ) : null}
       </details>
-      <label className="field">
-        <span>{localize(language, '备注', 'Notes')}</span>
-        <textarea value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} />
-      </label>
+      <TextAreaField
+        label={localize(language, '备注', 'Notes')}
+        value={draft.notes}
+        onValueChange={(value) => setDraft((current) => ({ ...current, notes: value }))}
+      />
       <div className="modal-actions">
         {props.onCancel ? (
-          <button className="prototype-secondary" onClick={props.onCancel}>
+          <Button variant="secondary" onClick={props.onCancel}>
             {localize(language, '取消', 'Cancel')}
-          </button>
+          </Button>
         ) : null}
-        <button
-          className="prototype-primary"
+        <Button
+          variant="primary"
           onClick={() => {
             const payload: AiProviderInput = {
               name: draft.name,
@@ -743,7 +722,7 @@ export function ProviderEditor(props: {
           }}
         >
           {localize(language, '保存', 'Save')}
-        </button>
+        </Button>
       </div>
     </>
   );
@@ -793,12 +772,13 @@ export function McpPluginModal(props: {
       title={props.plugin ? localize(language, '编辑 MCP 插件', 'Edit MCP Plugin') : localize(language, '添加 MCP 插件', 'Add MCP Plugin')}
       subtitle={props.projectId ? localize(language, '这个 Server 只属于当前项目。', 'This server belongs only to the current project.') : localize(language, '这个 Server 会作为全局 MCP 供项目选择启用。', 'This server is registered globally and can be enabled by projects.')}
     >
-      <label className="field">
-        <span>{localize(language, '预设', 'Preset')}</span>
-        <select
-          value={draft.presetId}
-          onChange={(event) => {
-            const next = MCP_PLUGIN_PRESETS.find((item) => item.id === event.target.value);
+      <SelectField
+        label={localize(language, '预设', 'Preset')}
+        value={draft.presetId}
+        options={MCP_PLUGIN_PRESETS.map((item) => ({ value: item.id, label: item.name }))}
+        helper={presetDescription}
+        onValueChange={(value) => {
+            const next = MCP_PLUGIN_PRESETS.find((item) => item.id === value);
             if (!next) return;
             setDraft((current) => ({
               ...current,
@@ -816,112 +796,102 @@ export function McpPluginModal(props: {
               toolPoliciesText: ''
             }));
             setPolicyError('');
-          }}
-        >
-          {MCP_PLUGIN_PRESETS.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name}
-            </option>
-          ))}
-        </select>
-        <div className="helper-copy">{presetDescription}</div>
-      </label>
-      <label className="field">
-        <span>{localize(language, '名称', 'Name')}</span>
-        <input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
-      </label>
+        }}
+      />
+      <TextField
+        label={localize(language, '名称', 'Name')}
+        value={draft.name}
+        onValueChange={(value) => setDraft((current) => ({ ...current, name: value }))}
+      />
       {draft.transport === 'stdio' ? (
         <>
-          <label className="field">
-            <span>Command</span>
-            <input value={draft.command ?? ''} onChange={(event) => setDraft((current) => ({ ...current, command: event.target.value }))} />
-          </label>
-          <label className="field">
-            <span>Arguments</span>
-            <textarea value={draft.argsText} placeholder="--flag&#10;value" onChange={(event) => setDraft((current) => ({ ...current, argsText: event.target.value }))} />
-            <div className="helper-copy">{localize(language, '每行一个参数。', 'One argument per line.')}</div>
-          </label>
-          <label className="field">
-            <span>CWD</span>
-            <input value={draft.cwd ?? ''} onChange={(event) => setDraft((current) => ({ ...current, cwd: event.target.value }))} />
-          </label>
-          <label className="field">
-            <span>Environment</span>
-            <textarea value={draft.envText} placeholder="KEY=value" onChange={(event) => setDraft((current) => ({ ...current, envText: event.target.value }))} />
-            <div className="helper-copy">{localize(language, '每行一个 KEY=value。', 'One KEY=value per line.')}</div>
-          </label>
+          <TextField
+            label="Command"
+            value={draft.command ?? ''}
+            onValueChange={(value) => setDraft((current) => ({ ...current, command: value }))}
+          />
+          <TextAreaField
+            label="Arguments"
+            value={draft.argsText}
+            placeholder={'--flag\nvalue'}
+            helper={localize(language, '每行一个参数。', 'One argument per line.')}
+            onValueChange={(value) => setDraft((current) => ({ ...current, argsText: value }))}
+          />
+          <TextField
+            label="CWD"
+            value={draft.cwd ?? ''}
+            onValueChange={(value) => setDraft((current) => ({ ...current, cwd: value }))}
+          />
+          <TextAreaField
+            label="Environment"
+            value={draft.envText}
+            placeholder="KEY=value"
+            helper={localize(language, '每行一个 KEY=value。', 'One KEY=value per line.')}
+            onValueChange={(value) => setDraft((current) => ({ ...current, envText: value }))}
+          />
         </>
       ) : (
-        <label className="field">
-          <span>Base URL</span>
-          <input value={draft.baseUrl} onChange={(event) => setDraft((current) => ({ ...current, baseUrl: event.target.value }))} />
-        </label>
+        <TextField
+          label="Base URL"
+          value={draft.baseUrl}
+          onValueChange={(value) => setDraft((current) => ({ ...current, baseUrl: value }))}
+        />
       )}
-      <div className="field provider-compat-section">
+      <div className="fp-field provider-compat-section">
         <div className="provider-compat-title">{localize(language, '工具权限策略', 'Tool Permission Policy')}</div>
         <div className="helper-copy">
           {localize(language, '默认使用自动推断；对高风险或特殊工具可用 JSON 覆盖。deny 会从 Agent 工具列表中隐藏并阻止通用调用。', 'Defaults use inference. Override high-risk or special tools with JSON. deny hides direct Agent tools and blocks generic calls.')}
         </div>
-        <label className="field compact">
-          <span>{localize(language, '默认权限', 'Default Permission')}</span>
-          <select
-            value={draft.defaultToolPermission ?? 'infer'}
-            onChange={(event) => setDraft((current) => ({ ...current, defaultToolPermission: event.target.value as NonNullable<McpPluginInput['defaultToolPermission']> }))}
-          >
-            <option value="infer">{localize(language, '自动推断', 'Infer')}</option>
-            <option value="allow">{localize(language, '允许', 'Allow')}</option>
-            <option value="ask">{localize(language, '询问确认', 'Ask')}</option>
-            <option value="deny">{localize(language, '拒绝', 'Deny')}</option>
-          </select>
-        </label>
-        <label className="field compact">
-          <span>{localize(language, '默认风险', 'Default Risk')}</span>
-          <select
-            value={draft.defaultToolRisk ?? 'infer'}
-            onChange={(event) => setDraft((current) => ({ ...current, defaultToolRisk: event.target.value as NonNullable<McpPluginInput['defaultToolRisk']> }))}
-          >
-            <option value="infer">{localize(language, '自动推断', 'Infer')}</option>
-            <option value="read">{localize(language, '只读', 'Read-only')}</option>
-            <option value="write">{localize(language, '可写入/高风险', 'Write / High risk')}</option>
-          </select>
-        </label>
-        <label className="field compact">
-          <span>{localize(language, '工具覆盖 JSON', 'Tool Override JSON')}</span>
-          <textarea
-            value={draft.toolPoliciesText}
-            placeholder={'{\n  "unity.echo": { "permission": "ask", "risk": "write" }\n}'}
-            onChange={(event) => {
-              setDraft((current) => ({ ...current, toolPoliciesText: event.target.value }));
-              setPolicyError('');
-            }}
-          />
-          <div className="helper-copy">
-            {localize(language, '键是 MCP 原始工具名；permission 支持 infer/allow/ask/deny，risk 支持 infer/read/write。', 'Keys are original MCP tool names; permission supports infer/allow/ask/deny, risk supports infer/read/write.')}
-          </div>
-          {policyError ? <div className="helper-copy form-error">{policyError}</div> : null}
-        </label>
-      </div>
-      <label className="app-settings-check-row">
-        <input
-          type="checkbox"
-          checked={draft.enabled ?? true}
-          onChange={(event) => setDraft((current) => ({ ...current, enabled: event.currentTarget.checked }))}
+        <SelectField
+          label={localize(language, '默认权限', 'Default Permission')}
+          value={draft.defaultToolPermission ?? 'infer'}
+          options={[
+            { value: 'infer', label: localize(language, '自动推断', 'Infer') },
+            { value: 'allow', label: localize(language, '允许', 'Allow') },
+            { value: 'ask', label: localize(language, '询问确认', 'Ask') },
+            { value: 'deny', label: localize(language, '拒绝', 'Deny') }
+          ]}
+          onValueChange={(value) => setDraft((current) => ({ ...current, defaultToolPermission: value as NonNullable<McpPluginInput['defaultToolPermission']> }))}
         />
-        <span>
-          <strong>{localize(language, '启用 Server', 'Enable server')}</strong>
-          <em>{localize(language, '停用后项目不能调用这个 MCP。', 'Disabled servers cannot be called by projects.')}</em>
-        </span>
-      </label>
-      <label className="field">
-        <span>{localize(language, '备注', 'Notes')}</span>
-        <textarea value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} />
-      </label>
+        <SelectField
+          label={localize(language, '默认风险', 'Default Risk')}
+          value={draft.defaultToolRisk ?? 'infer'}
+          options={[
+            { value: 'infer', label: localize(language, '自动推断', 'Infer') },
+            { value: 'read', label: localize(language, '只读', 'Read-only') },
+            { value: 'write', label: localize(language, '可写入/高风险', 'Write / High risk') }
+          ]}
+          onValueChange={(value) => setDraft((current) => ({ ...current, defaultToolRisk: value as NonNullable<McpPluginInput['defaultToolRisk']> }))}
+        />
+        <TextAreaField
+          label={localize(language, '工具覆盖 JSON', 'Tool Override JSON')}
+          value={draft.toolPoliciesText}
+          placeholder={'{\n  "unity.echo": { "permission": "ask", "risk": "write" }\n}'}
+          helper={localize(language, '键是 MCP 原始工具名；permission 支持 infer/allow/ask/deny，risk 支持 infer/read/write。', 'Keys are original MCP tool names; permission supports infer/allow/ask/deny, risk supports infer/read/write.')}
+          onValueChange={(value) => {
+            setDraft((current) => ({ ...current, toolPoliciesText: value }));
+            setPolicyError('');
+          }}
+        />
+        {policyError ? <div className="helper-copy form-error">{policyError}</div> : null}
+      </div>
+      <CheckboxField
+        label={localize(language, '启用 Server', 'Enable server')}
+        description={localize(language, '停用后项目不能调用这个 MCP。', 'Disabled servers cannot be called by projects.')}
+        checked={draft.enabled ?? true}
+        onCheckedChange={(checked) => setDraft((current) => ({ ...current, enabled: checked }))}
+      />
+      <TextAreaField
+        label={localize(language, '备注', 'Notes')}
+        value={draft.notes}
+        onValueChange={(value) => setDraft((current) => ({ ...current, notes: value }))}
+      />
       <div className="modal-actions">
-        <button className="prototype-secondary" onClick={props.onClose}>
+        <Button variant="secondary" onClick={props.onClose}>
           {localize(language, '取消', 'Cancel')}
-        </button>
-        <button
-          className="prototype-primary"
+        </Button>
+        <Button
+          variant="primary"
           onClick={() => {
             let toolPolicies: McpPluginInput['toolPolicies'];
             try {
@@ -954,7 +924,7 @@ export function McpPluginModal(props: {
           }}
         >
           {localize(language, '保存', 'Save')}
-        </button>
+        </Button>
       </div>
     </ModalShell>
   );
@@ -963,14 +933,23 @@ export function McpPluginModal(props: {
 export function ModalShell(props: { title: string; subtitle: string; children: ReactNode; className?: string; onClose?: () => void }): JSX.Element {
   const titleId = useId();
   const subtitleId = useId();
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  useDialogFocus({
+    enabled: true,
+    containerRef: cardRef,
+    onEscape: props.onClose
+  });
+
   return (
     <div className="modal-backdrop" data-modal-state="open">
       <div
-        className={`modal-card prototype-modal ${props.className ?? ''}`}
+        ref={cardRef}
+        className={`modal-card fp-modal ${props.className ?? ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={subtitleId}
+        tabIndex={-1}
       >
         <div className="modal-header">
           <div>
@@ -978,9 +957,7 @@ export function ModalShell(props: { title: string; subtitle: string; children: R
             <div className="page-subtitle" id={subtitleId}>{props.subtitle}</div>
           </div>
           {props.onClose ? (
-            <button className="modal-close-button" onClick={props.onClose} aria-label="Close">
-              ×
-            </button>
+            <IconButton className="modal-close-button" icon={<X size={16} aria-hidden="true" />} label="Close" onClick={props.onClose} />
           ) : null}
         </div>
         <div className="modal-stack">{props.children}</div>

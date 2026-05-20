@@ -1,0 +1,538 @@
+/*
+ * Funplay Design Tokens
+ * ============================================================================
+ * Single source of truth for color, spacing, type, line-height, radius, shadow,
+ * z-index, motion, and control sizing. Imported before src/styles.css so token
+ * declarations are available to every component rule.
+ *
+ * Naming: --fp-{category}-{role}-{step?}
+ *
+ * Categories:
+ *   color    raw hue/step scales (gray, slate, indigo, emerald, amber, rose)
+ *   surface  app/panel backgrounds (bg, panel, panel-muted, overlay, body-fill)
+ *   text     foreground colors (primary, secondary, tertiary, inverse)
+ *   border   separator/outline colors (default, strong, subtle)
+ *   accent   brand colors (primary, primary-strong, primary-soft)
+ *   feedback semantic state colors (success, warning, danger, info)
+ *   space    spacing scale (1..8, base 4px)
+ *   text-*   typography sizes (xs, sm, base, md, lg, xl)
+ *   leading  line-heights (tight, snug, normal, loose)
+ *   radius   border-radius (sm, md, lg, xl)
+ *   shadow   elevation layers (1..5)
+ *   z        z-index layers (base, raised, overlay, dropdown, modal, toast)
+ *   duration motion durations (instant, fast, base, slow)
+ *   easing   motion easings (standard, emphasized, decelerate, accelerate)
+ *   control  shared form/control sizing (height, focus-ring)
+ *
+ * Dark theme overrides ONLY token values, never component selectors. Component
+ * rules in styles.css and elsewhere must never read [data-theme='dark'].
+ *
+ * Backward-compat aliases (--bg, --panel, --brand, etc.) keep existing
+ * component CSS working during migration. Do not introduce new code that uses
+ * these alias names — reference --fp-* tokens directly.
+ */
+
+:root {
+  /* === Raw color scales =================================================== */
+
+  /* Neutral gray (13 steps) */
+  --fp-color-gray-25: #fafbfc;
+  --fp-color-gray-50: #f5f6f8;
+  --fp-color-gray-100: #ecedf2;
+  --fp-color-gray-150: #e5e7eb;
+  --fp-color-gray-200: #d4d8e0;
+  --fp-color-gray-300: #b4bac6;
+  --fp-color-gray-400: #8f97a6;
+  --fp-color-gray-500: #69707d;
+  --fp-color-gray-600: #4a5160;
+  --fp-color-gray-700: #2f3542;
+  --fp-color-gray-800: #1f2430;
+  --fp-color-gray-900: #151923;
+  --fp-color-gray-950: #0b1020;
+
+  /* Slate (cool dark) — used by dark theme panels */
+  --fp-color-slate-700: #182235;
+  --fp-color-slate-800: #111827;
+  --fp-color-slate-900: #0f172a;
+
+  /* Indigo (brand) */
+  --fp-color-indigo-50: #eef2ff;
+  --fp-color-indigo-100: #e0e7ff;
+  --fp-color-indigo-200: #c7d2fe;
+  --fp-color-indigo-300: #a5b4fc;
+  --fp-color-indigo-400: #818cf8;
+  --fp-color-indigo-500: #6366f1;
+  --fp-color-indigo-600: #4f46e5;
+  --fp-color-indigo-700: #4338ca;
+  --fp-color-indigo-800: #3730a3;
+  --fp-color-indigo-900: #312e81;
+
+  /* Emerald (success) */
+  --fp-color-emerald-50: #ecfdf5;
+  --fp-color-emerald-100: #d1fae5;
+  --fp-color-emerald-300: #6ee7b7;
+  --fp-color-emerald-500: #10b981;
+  --fp-color-emerald-600: #16a34a;
+  --fp-color-emerald-700: #047857;
+
+  /* Amber (warning) */
+  --fp-color-amber-50: #fffbeb;
+  --fp-color-amber-100: #fef3c7;
+  --fp-color-amber-300: #fcd34d;
+  --fp-color-amber-500: #f59e0b;
+  --fp-color-amber-600: #d97706;
+  --fp-color-amber-700: #b45309;
+
+  /* Rose (danger) */
+  --fp-color-rose-50: #fff1f2;
+  --fp-color-rose-100: #ffe4e6;
+  --fp-color-rose-300: #fda4af;
+  --fp-color-rose-500: #f43f5e;
+  --fp-color-rose-600: #dc2626;
+  --fp-color-rose-700: #b91c1c;
+
+  /* === Semantic surface ==================================================== */
+  --fp-surface-bg: var(--fp-color-gray-50);
+  --fp-surface-panel: #ffffff;
+  --fp-surface-panel-muted: #f7f8fb;
+  --fp-surface-panel-dark: var(--fp-color-gray-800);
+  --fp-surface-panel-darker: var(--fp-color-gray-900);
+  --fp-surface-overlay: rgba(255, 255, 255, 0.82);
+  --fp-surface-overlay-subtle: rgba(248, 250, 252, 0.86);
+  --fp-surface-body-fill: var(--fp-color-gray-50);
+
+  /* === Semantic text ======================================================= */
+  --fp-text-primary: #15171d;
+  --fp-text-secondary: var(--fp-color-gray-500);
+  --fp-text-tertiary: var(--fp-color-gray-400);
+  --fp-text-inverse: #ffffff;
+
+  /* === Semantic border ===================================================== */
+  --fp-border-default: var(--fp-color-gray-150);
+  --fp-border-strong: var(--fp-color-gray-200);
+  --fp-border-subtle: rgba(148, 163, 184, 0.12);
+
+  /* === Semantic accent ===================================================== */
+  --fp-accent-primary: var(--fp-color-indigo-600);
+  --fp-accent-primary-strong: var(--fp-color-indigo-700);
+  --fp-accent-primary-soft: rgba(79, 70, 229, 0.12);
+
+  /* === Semantic feedback =================================================== */
+  --fp-feedback-success: var(--fp-color-emerald-600);
+  --fp-feedback-warning: var(--fp-color-amber-600);
+  --fp-feedback-danger: var(--fp-color-rose-600);
+  --fp-feedback-info: var(--fp-color-indigo-500);
+
+  /* === Spacing (base 4px) ================================================== */
+  --fp-space-1: 4px;
+  --fp-space-2: 8px;
+  --fp-space-3: 12px;
+  --fp-space-4: 16px;
+  --fp-space-5: 20px;
+  --fp-space-6: 24px;
+  --fp-space-7: 32px;
+  --fp-space-8: 48px;
+
+  /* === Typography sizes ==================================================== */
+  --fp-text-xs: 11px;
+  --fp-text-sm: 12px;
+  --fp-text-base: 13px;
+  --fp-text-md: 14px;
+  --fp-text-lg: 16px;
+  --fp-text-xl: 20px;
+
+  /* === Line heights ======================================================== */
+  --fp-leading-tight: 1.2;
+  --fp-leading-snug: 1.35;
+  --fp-leading-normal: 1.5;
+  --fp-leading-loose: 1.7;
+
+  /* === Radii =============================================================== */
+  --fp-radius-sm: 6px;
+  --fp-radius-md: 8px;
+  --fp-radius-lg: 10px;
+  --fp-radius-xl: 12px;
+
+  /* === Shadows ============================================================= */
+  --fp-shadow-1: 0 1px 2px rgba(15, 23, 38, 0.06);
+  --fp-shadow-2: 0 4px 10px rgba(15, 23, 38, 0.08);
+  --fp-shadow-3: 0 8px 20px rgba(15, 23, 38, 0.12);
+  --fp-shadow-4: 0 16px 40px rgba(15, 23, 38, 0.16);
+  --fp-shadow-5: 0 24px 60px rgba(15, 23, 38, 0.22);
+
+  /* === Z layers ============================================================ */
+  --fp-z-base: 0;
+  --fp-z-raised: 10;
+  --fp-z-overlay: 100;
+  --fp-z-dropdown: 200;
+  --fp-z-modal: 300;
+  --fp-z-toast: 400;
+
+  /* === Motion durations ==================================================== */
+  --fp-duration-instant: 0ms;
+  --fp-duration-fast: 100ms;
+  --fp-duration-base: 160ms;
+  --fp-duration-slow: 260ms;
+
+  /* === Motion easings ====================================================== */
+  --fp-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --fp-easing-emphasized: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --fp-easing-decelerate: cubic-bezier(0, 0, 0, 1);
+  --fp-easing-accelerate: cubic-bezier(0.3, 0, 1, 1);
+
+  /* === Control sizing ====================================================== */
+  --fp-control-height: 38px;
+  --fp-control-height-sm: 32px;
+  --fp-focus-ring: 0 0 0 4px var(--fp-accent-primary-soft);
+
+  /* === Layout primitives =================================================== */
+  --fp-chat-column-width: 1040px;
+
+  /* === Component-role tokens (theme-aware) ================================ */
+  /* The body background can be a flat color or a gradient stack. */
+  --fp-body-background: var(--fp-surface-body-fill);
+  /* Generic input/select/textarea surface — different from panel in dark mode. */
+  --fp-input-bg: var(--fp-surface-panel);
+  /* Command palette overlay surfaces and item states. */
+  --fp-command-palette-backdrop: rgba(15, 23, 42, 0.22);
+  --fp-command-palette-surface: rgba(255, 255, 255, 0.97);
+  --fp-command-palette-border: rgba(148, 163, 184, 0.28);
+  --fp-command-palette-shadow: 0 28px 80px rgba(15, 23, 42, 0.22);
+  --fp-command-palette-divider: rgba(148, 163, 184, 0.22);
+  --fp-command-palette-keycap-bg: rgba(248, 250, 252, 0.92);
+  --fp-command-palette-keycap-border: rgba(148, 163, 184, 0.28);
+  --fp-command-palette-icon-bg: rgba(15, 23, 42, 0.05);
+  --fp-command-palette-item-selected-bg: rgba(79, 70, 229, 0.1);
+  --fp-command-palette-item-selected-ring: inset 0 0 0 1px rgba(79, 70, 229, 0.16);
+
+  /* Titlebar */
+  --fp-titlebar-bg:
+    linear-gradient(180deg, rgba(250, 250, 252, 0.98), rgba(244, 247, 251, 0.96)),
+    #f8fafc;
+  --fp-titlebar-text: #111827;
+  --fp-titlebar-border: rgba(60, 60, 67, 0.12);
+  --fp-titlebar-icon-bg: rgba(15, 23, 42, 0.05);
+  --fp-titlebar-icon-text: rgba(31, 41, 55, 0.72);
+  --fp-titlebar-icon-bg-active: rgba(15, 23, 42, 0.09);
+  --fp-titlebar-icon-text-active: #111827;
+  --fp-titlebar-update-text: #15803d;
+  --fp-titlebar-update-bg: rgba(34, 197, 94, 0.13);
+  --fp-titlebar-update-text-active: #166534;
+  --fp-titlebar-update-bg-active: rgba(34, 197, 94, 0.2);
+  --fp-titlebar-update-downloaded-text: #2563eb;
+  --fp-titlebar-update-downloaded-bg: rgba(37, 99, 235, 0.12);
+  --fp-titlebar-update-downloaded-text-hover: #1d4ed8;
+  --fp-titlebar-update-downloaded-bg-hover: rgba(37, 99, 235, 0.18);
+  --fp-titlebar-update-progress-text: #7c3aed;
+  --fp-titlebar-update-progress-bg: rgba(124, 58, 237, 0.12);
+  --fp-titlebar-update-dot-ring: rgba(255, 255, 255, 0.95);
+
+  /* Project tabs */
+  --fp-project-tab-shell-bg: rgba(15, 23, 42, 0.05);
+  --fp-project-tab-shell-bg-hover: rgba(255, 255, 255, 0.72);
+  --fp-project-tab-shell-ring-hover: inset 0 0 0 1px rgba(148, 163, 184, 0.18);
+  --fp-project-tab-shell-bg-active: rgba(255, 255, 255, 0.94);
+  --fp-project-tab-shell-ring-active: inset 0 0 0 1px rgba(60, 60, 67, 0.08);
+  --fp-project-tab-text: rgba(31, 41, 55, 0.72);
+  --fp-project-tab-text-active: #111827;
+  --fp-project-tab-badge-running-bg: rgba(124, 58, 237, 0.12);
+  --fp-project-tab-badge-running-text: #7c3aed;
+  --fp-project-tab-badge-queued-bg: rgba(37, 99, 235, 0.1);
+  --fp-project-tab-badge-queued-text: #2563eb;
+  --fp-project-tab-badge-approval-bg: rgba(217, 119, 6, 0.12);
+  --fp-project-tab-badge-approval-text: #b45309;
+  --fp-project-tab-badge-failed-bg: rgba(220, 38, 38, 0.12);
+  --fp-project-tab-badge-failed-text: #dc2626;
+  --fp-project-tab-badge-resumable-bg: rgba(8, 145, 178, 0.12);
+  --fp-project-tab-badge-resumable-text: #0891b2;
+  --fp-project-tab-dot-bg: rgba(148, 163, 184, 0.9);
+  --fp-project-tab-dot-active-bg: #7c3aed;
+  --fp-project-tab-status-processing-text: #7c3aed;
+  --fp-project-tab-add-bg: rgba(15, 23, 42, 0.05);
+  --fp-project-tab-add-text: #334155;
+  --fp-project-tab-close-bg: rgba(15, 23, 42, 0.06);
+  --fp-project-tab-close-text: rgba(31, 41, 55, 0.52);
+  --fp-project-tab-close-bg-hover: rgba(15, 23, 42, 0.1);
+  --fp-project-tab-close-text-hover: #111827;
+
+  /* Workspace shell gradient */
+  --fp-workspace-shell-bg: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(244, 247, 251, 1));
+
+  /* Provider settings meta pill */
+  --fp-provider-meta-pill-bg: rgba(99, 102, 241, 0.08);
+  --fp-provider-meta-pill-text: var(--text-soft);
+
+  /* MCP registry note */
+  --fp-registry-note-bg: rgba(15, 23, 42, 0.04);
+
+  /* Modal close button */
+  --fp-modal-close-bg: rgba(15, 23, 42, 0.06);
+  --fp-modal-close-text: var(--text-soft);
+  --fp-modal-close-bg-hover: rgba(15, 23, 42, 0.1);
+  --fp-modal-close-text-hover: var(--text);
+
+  /* App settings panels */
+  --fp-app-settings-panel-bg: var(--panel-muted);
+  --fp-app-settings-inline-editor-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.86));
+
+  /* Elevated card surfaces — shared by claude-runtime-status, claude-session-row,
+   * runtime-run-row, web-search-quality-panel, web-search-toggle-row labels,
+   * memory-file-row, memory-editor-panel, notification-task-row. Light alpha
+   * normalizes to 0.7 (previously 0.68-0.72). */
+  --fp-elevated-card-bg: rgba(255, 255, 255, 0.7);
+  --fp-elevated-card-bg-empty: transparent;
+  --fp-app-update-panel-bg: rgba(248, 250, 252, 0.82);
+  --fp-provider-advanced-section-bg: var(--panel-muted);
+  --fp-web-search-quality-row-bg: rgba(15, 23, 42, 0.04);
+  --fp-provider-preset-card-bg: var(--panel);
+  --fp-elevated-card-border: rgba(15, 23, 42, 0.08);
+  --fp-elevated-card-border-line: var(--line);
+
+  /* Shell card surfaces — large container cards used by Welcome / Onboarding /
+   * Workspace shells. Used through low-specificity :where() rules so individual
+   * light rules with their own background remain authoritative in light mode. */
+  --fp-card-shell-bg: transparent;
+  --fp-card-shell-border: transparent;
+  --fp-card-shell-text: inherit;
+
+  /* ===================================================================
+   * Dark utility tokens — value-pair scaffolding for :where() fallback
+   * rules that replace the old `:root[data-theme='dark'] .X` bottom
+   * cluster in styles.css. In light, all of these resolve to transparent
+   * or inherit so the rule becomes a no-op (individual light rules win).
+   * In dark, they flip to the corresponding dark value preserving the
+   * exact appearance the bottom cluster used to deliver.
+   * =================================================================== */
+  --fp-dark-surface: transparent;
+  --fp-dark-surface-strong: transparent;
+  --fp-dark-surface-overlay-1: transparent;
+  --fp-dark-surface-overlay-2: transparent;
+  --fp-dark-surface-overlay-3: transparent;
+  --fp-dark-surface-glass: transparent;
+  --fp-dark-surface-night: transparent;
+  --fp-dark-surface-deep: transparent;
+  --fp-dark-border-subtle: transparent;
+  --fp-dark-border-default: transparent;
+  --fp-dark-border-strong: transparent;
+  --fp-dark-border-accent: transparent;
+  --fp-dark-text-primary: inherit;
+  --fp-dark-text-secondary: inherit;
+  --fp-dark-text-tertiary: inherit;
+  --fp-dark-text-quaternary: inherit;
+  --fp-dark-text-bright: inherit;
+  --fp-dark-accent-soft: transparent;
+  --fp-dark-accent-soft-strong: transparent;
+  --fp-dark-accent-text: inherit;
+  --fp-dark-warning-bg: transparent;
+  --fp-dark-warning-border: transparent;
+  --fp-dark-warning-text: inherit;
+  --fp-dark-error-bg: transparent;
+  --fp-dark-error-border: transparent;
+  --fp-dark-error-text: inherit;
+  --fp-dark-success-bg: transparent;
+  --fp-dark-success-border: transparent;
+  --fp-dark-success-text: inherit;
+  --fp-dark-info-bg: transparent;
+  --fp-dark-info-text: inherit;
+  --fp-dark-shadow-popover: none;
+
+  /* === Backward-compat aliases ============================================ */
+  /* Existing component CSS still references these legacy names. New code MUST
+   * use --fp-* tokens directly. Remove an alias only after rg-confirming zero
+   * usages outside this file. */
+  --bg: var(--fp-surface-bg);
+  --panel: var(--fp-surface-panel);
+  --panel-muted: var(--fp-surface-panel-muted);
+  --panel-dark: var(--fp-surface-panel-dark);
+  --panel-darker: var(--fp-surface-panel-darker);
+  --line: var(--fp-border-default);
+  --line-strong: var(--fp-border-strong);
+  --text: var(--fp-text-primary);
+  --text-main: var(--fp-text-primary);
+  --text-soft: var(--fp-text-secondary);
+  --text-faint: var(--fp-text-tertiary);
+  --brand: var(--fp-accent-primary);
+  --brand-strong: var(--fp-accent-primary-strong);
+  --brand-soft: var(--fp-accent-primary-soft);
+  --success: var(--fp-feedback-success);
+  --warning: var(--fp-feedback-warning);
+  --danger: var(--fp-feedback-danger);
+  --shadow: var(--fp-shadow-5);
+  --border: var(--fp-border-default);
+  --ui-radius-panel: var(--fp-radius-xl);
+  --ui-radius-card: var(--fp-radius-lg);
+  --ui-radius-row: var(--fp-radius-md);
+  --ui-density-gap: var(--fp-space-3);
+  --ui-density-pad: var(--fp-space-3);
+  --fp-surface: var(--fp-surface-overlay);
+  --fp-surface-subtle: var(--fp-surface-overlay-subtle);
+  --chat-column-width: var(--fp-chat-column-width);
+}
+
+:root[data-theme='dark'] {
+  /* Token-value overrides only. Do NOT add component selectors to this block.
+   * Component rules that want to react to theme should consume tokens whose
+   * values are reassigned here. */
+
+  /* Surface */
+  --fp-surface-bg: var(--fp-color-slate-900);
+  --fp-surface-panel: var(--fp-color-slate-800);
+  --fp-surface-panel-muted: var(--fp-color-slate-700);
+  --fp-surface-overlay: rgba(15, 23, 42, 0.58);
+  --fp-surface-overlay-subtle: rgba(15, 23, 42, 0.42);
+  --fp-surface-body-fill: var(--fp-color-gray-950);
+
+  /* Text */
+  --fp-text-primary: #e5e7eb;
+  --fp-text-secondary: #a6b0c2;
+  --fp-text-tertiary: #7d8798;
+
+  /* Border */
+  --fp-border-default: rgba(148, 163, 184, 0.18);
+  --fp-border-strong: rgba(148, 163, 184, 0.28);
+
+  /* Accent */
+  --fp-accent-primary-soft: rgba(129, 140, 248, 0.18);
+
+  /* Shadow */
+  --fp-shadow-5: 0 24px 60px rgba(0, 0, 0, 0.36);
+
+  /* Body — dark mode adds a radial highlight stack over the body fill. */
+  --fp-body-background:
+    radial-gradient(circle at top left, rgba(99, 102, 241, 0.18), transparent 28%),
+    radial-gradient(circle at top right, rgba(45, 212, 191, 0.1), transparent 22%),
+    var(--fp-surface-body-fill);
+
+  /* Generic form controls use a slate panel in dark mode. */
+  --fp-input-bg: var(--fp-color-slate-900);
+
+  /* Command palette */
+  --fp-command-palette-backdrop: rgba(2, 6, 23, 0.52);
+  --fp-command-palette-surface: rgba(15, 23, 42, 0.96);
+  --fp-command-palette-border: rgba(148, 163, 184, 0.2);
+  --fp-command-palette-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
+  --fp-command-palette-divider: rgba(148, 163, 184, 0.16);
+  --fp-command-palette-keycap-bg: rgba(30, 41, 59, 0.82);
+  --fp-command-palette-keycap-border: rgba(148, 163, 184, 0.18);
+  --fp-command-palette-icon-bg: rgba(30, 41, 59, 0.82);
+  --fp-command-palette-item-selected-bg: rgba(129, 140, 248, 0.16);
+  --fp-command-palette-item-selected-ring: inset 0 0 0 1px rgba(129, 140, 248, 0.22);
+
+  /* Titlebar (dark) */
+  --fp-titlebar-bg:
+    linear-gradient(180deg, rgba(22, 27, 39, 0.98), rgba(18, 24, 36, 0.96)),
+    #111827;
+  --fp-titlebar-text: #f8fafc;
+  --fp-titlebar-border: rgba(255, 255, 255, 0.08);
+  --fp-titlebar-icon-bg: rgba(255, 255, 255, 0.06);
+  --fp-titlebar-icon-text: rgba(226, 232, 240, 0.8);
+  --fp-titlebar-icon-bg-active: rgba(255, 255, 255, 0.12);
+  --fp-titlebar-icon-text-active: #fff;
+  --fp-titlebar-update-text: #86efac;
+  --fp-titlebar-update-bg: rgba(34, 197, 94, 0.16);
+  --fp-titlebar-update-text-active: #bbf7d0;
+  --fp-titlebar-update-bg-active: rgba(34, 197, 94, 0.24);
+  --fp-titlebar-update-downloaded-text: #93c5fd;
+  --fp-titlebar-update-downloaded-bg: rgba(37, 99, 235, 0.18);
+  --fp-titlebar-update-downloaded-text-hover: #93c5fd;
+  --fp-titlebar-update-downloaded-bg-hover: rgba(37, 99, 235, 0.18);
+  --fp-titlebar-update-progress-text: #c4b5fd;
+  --fp-titlebar-update-progress-bg: rgba(124, 58, 237, 0.2);
+  --fp-titlebar-update-dot-ring: rgba(17, 24, 39, 0.95);
+
+  /* Project tabs (dark) */
+  --fp-project-tab-shell-bg: rgba(255, 255, 255, 0.06);
+  --fp-project-tab-shell-bg-hover: rgba(255, 255, 255, 0.1);
+  --fp-project-tab-shell-ring-hover: inset 0 0 0 1px rgba(148, 163, 184, 0.16);
+  --fp-project-tab-text: rgba(226, 232, 240, 0.72);
+  --fp-project-tab-text-active: #fff;
+  --fp-project-tab-badge-running-bg: rgba(167, 139, 250, 0.18);
+  --fp-project-tab-badge-running-text: #c4b5fd;
+  --fp-project-tab-badge-queued-bg: rgba(96, 165, 250, 0.18);
+  --fp-project-tab-badge-queued-text: #93c5fd;
+  --fp-project-tab-badge-approval-bg: rgba(251, 191, 36, 0.16);
+  --fp-project-tab-badge-approval-text: #fcd34d;
+  --fp-project-tab-badge-failed-bg: rgba(248, 113, 113, 0.18);
+  --fp-project-tab-badge-failed-text: #fca5a5;
+  --fp-project-tab-badge-resumable-bg: rgba(34, 211, 238, 0.16);
+  --fp-project-tab-badge-resumable-text: #67e8f9;
+  --fp-project-tab-dot-active-bg: #a78bfa;
+  --fp-project-tab-status-processing-text: #a78bfa;
+  --fp-project-tab-add-bg: rgba(255, 255, 255, 0.08);
+  --fp-project-tab-add-text: #e2e8f0;
+  --fp-project-tab-close-bg: rgba(255, 255, 255, 0.02);
+  --fp-project-tab-close-text: rgba(226, 232, 240, 0.62);
+
+  /* Workspace shell gradient (dark) */
+  --fp-workspace-shell-bg: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(11, 16, 32, 1));
+
+  /* Provider settings meta pill (dark) */
+  --fp-provider-meta-pill-bg: rgba(99, 102, 241, 0.14);
+  --fp-provider-meta-pill-text: #c7d2fe;
+
+  /* MCP registry note (dark) */
+  --fp-registry-note-bg: rgba(148, 163, 184, 0.1);
+
+  /* Modal close button (dark) */
+  --fp-modal-close-bg: rgba(148, 163, 184, 0.12);
+  --fp-modal-close-text: #cbd5e1;
+  --fp-modal-close-bg-hover: rgba(148, 163, 184, 0.18);
+  --fp-modal-close-text-hover: #fff;
+
+  /* App settings panels (dark) */
+  --fp-app-settings-panel-bg: var(--fp-color-slate-800);
+  --fp-app-settings-inline-editor-bg: var(--fp-color-slate-800);
+
+  /* Elevated card surfaces (dark) — all variants converge on the same dark
+   * surface to match the previous unified dark override. */
+  --fp-elevated-card-bg: rgba(15, 23, 42, 0.58);
+  --fp-elevated-card-bg-empty: rgba(15, 23, 42, 0.58);
+  --fp-app-update-panel-bg: rgba(15, 23, 42, 0.58);
+  --fp-provider-advanced-section-bg: rgba(15, 23, 42, 0.58);
+  --fp-web-search-quality-row-bg: rgba(15, 23, 42, 0.58);
+  --fp-provider-preset-card-bg: rgba(15, 23, 42, 0.58);
+  --fp-elevated-card-border: rgba(148, 163, 184, 0.14);
+  --fp-elevated-card-border-line: rgba(148, 163, 184, 0.14);
+
+  /* Shell card surfaces (dark) — the values previously applied via a 27-selector
+   * :root[data-theme='dark'] block at the bottom of styles.css. Now consumed
+   * through a low-specificity :where() rule so light styling is preserved. */
+  --fp-card-shell-bg: #111827;
+  --fp-card-shell-border: rgba(148, 163, 184, 0.18);
+  --fp-card-shell-text: var(--text);
+
+  /* Dark utility tokens (dark) */
+  --fp-dark-surface: #111827;
+  --fp-dark-surface-strong: rgba(15, 23, 42, 0.96);
+  --fp-dark-surface-overlay-1: rgba(15, 23, 42, 0.42);
+  --fp-dark-surface-overlay-2: rgba(15, 23, 42, 0.58);
+  --fp-dark-surface-overlay-3: rgba(15, 23, 42, 0.72);
+  --fp-dark-surface-glass: rgba(255, 255, 255, 0.06);
+  --fp-dark-surface-night: #0f172a;
+  --fp-dark-surface-deep: #020617;
+  --fp-dark-border-subtle: rgba(148, 163, 184, 0.12);
+  --fp-dark-border-default: rgba(148, 163, 184, 0.16);
+  --fp-dark-border-strong: rgba(148, 163, 184, 0.18);
+  --fp-dark-border-accent: rgba(129, 140, 248, 0.28);
+  --fp-dark-text-primary: #e5e7eb;
+  --fp-dark-text-secondary: rgba(226, 232, 240, 0.72);
+  --fp-dark-text-tertiary: rgba(226, 232, 240, 0.62);
+  --fp-dark-text-quaternary: rgba(226, 232, 240, 0.42);
+  --fp-dark-text-bright: #f8fafc;
+  --fp-dark-accent-soft: rgba(129, 140, 248, 0.16);
+  --fp-dark-accent-soft-strong: rgba(129, 140, 248, 0.18);
+  --fp-dark-accent-text: #c7d2fe;
+  --fp-dark-warning-bg: rgba(120, 53, 15, 0.18);
+  --fp-dark-warning-border: rgba(245, 158, 11, 0.28);
+  --fp-dark-warning-text: #fcd34d;
+  --fp-dark-error-bg: rgba(127, 29, 29, 0.24);
+  --fp-dark-error-border: rgba(248, 113, 113, 0.32);
+  --fp-dark-error-text: #fecaca;
+  --fp-dark-success-bg: rgba(20, 83, 45, 0.24);
+  --fp-dark-success-border: rgba(34, 197, 94, 0.24);
+  --fp-dark-success-text: #86efac;
+  --fp-dark-info-bg: rgba(99, 102, 241, 0.14);
+  --fp-dark-info-text: #93c5fd;
+  --fp-dark-shadow-popover: 0 18px 44px rgba(0, 0, 0, 0.32);
+}

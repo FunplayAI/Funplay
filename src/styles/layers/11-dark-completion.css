@@ -1,0 +1,13 @@
+/* Dark theme completion pass for surfaces defined across earlier layout generations. */
+:where(
+  body,
+  .fp-app-shell,
+  .welcome-shell,
+  .onboarding-shell,
+  .welcome-screen,
+  .onboarding-screen,
+  .standalone-shell-content
+) {
+  background: #0b1020;
+  color: var(--text);
+}

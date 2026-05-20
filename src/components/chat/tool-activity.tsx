@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type JSX, type ReactNode } from 'react';
+import { FolderOpen, ExternalLink } from 'lucide-react';
 import type {
   AgentCoreMessagePart,
   AgentToolArtifact,
@@ -16,6 +17,7 @@ import type {
 } from '../../../shared/types';
 import { agentCorePartsToChatContentBlocks } from '../../../shared/agent-core-v2';
 import { localize, useUiLanguage } from '../../i18n';
+import { Button } from '../ui/index';
 
 export interface ToolExecutionEntry {
   id: string;
@@ -277,8 +279,8 @@ export function ToolActivityGroup(props: {
 
   return (
     <div className={`chat-tool-activity ${groupState} ${expanded ? 'expanded' : 'collapsed'} ${props.active ? 'active' : ''}`}>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         className="chat-tool-activity-summary"
         aria-expanded={expanded}
         aria-controls={detailId}
@@ -289,7 +291,7 @@ export function ToolActivityGroup(props: {
           {summary.meta ? <em>{summary.meta}</em> : null}
         </span>
         <ChevronDownIcon className="chat-tool-activity-chevron" />
-      </button>
+      </Button>
       <div id={detailId} className="chat-tool-activity-detail-shell" aria-hidden={!expanded}>
         <div className="chat-tool-activity-detail">
           {props.tools.map((tool) => (
@@ -367,10 +369,10 @@ export function ToolResultMetadataPanel(props: {
           <strong>{localize(language, '变更文件', 'Changed Files')}</strong>
           <div className="chat-tool-result-file-list">
             {changedFiles.slice(0, 6).map((file) => (
-              <button key={`${file.operation}:${file.path}`} type="button" onClick={() => props.onOpenPath(file.path)}>
+              <Button key={`${file.operation}:${file.path}`} size="compact" variant="ghost" onClick={() => props.onOpenPath(file.path)}>
                 <span>{file.path}</span>
                 <em>{formatChangedFileMeta(file, language)}</em>
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -745,13 +747,13 @@ export function MediaResultGrid(props: {
             {item.localPath ? <em>{item.localPath}</em> : null}
             {item.localPath && props.onOpenPath ? (
               <div className="chat-media-actions">
-                <button className="prototype-secondary small" onClick={() => props.onOpenPath!(item.localPath!)}>
+                <Button size="sm" variant="secondary" leadingIcon={<ExternalLink size={13} aria-hidden="true" />} onClick={() => props.onOpenPath!(item.localPath!)}>
                   {localize(language, '打开', 'Open')}
-                </button>
+                </Button>
                 {props.onRevealPath ? (
-                  <button className="prototype-secondary small" onClick={() => props.onRevealPath!(item.localPath!)}>
+                  <Button size="sm" variant="secondary" leadingIcon={<FolderOpen size={13} aria-hidden="true" />} onClick={() => props.onRevealPath!(item.localPath!)}>
                     {localize(language, '显示位置', 'Show')}
-                  </button>
+                  </Button>
                 ) : null}
               </div>
             ) : null}

@@ -1,5 +1,5 @@
 import { tool, type ToolSet } from 'ai';
-import type { AgentLifecycleHookConfig, AgentLifecycleHookEvaluationResult, AgentPermissionImpact, McpPlugin, Project } from '../../../../shared/types';
+import type { AgentLifecycleHookConfig, AgentLifecycleHookEvaluationResult, AgentPermissionImpact, AppState, McpPlugin, Project } from '../../../../shared/types';
 import { resolveNativeToolPermission, type NativeToolPermissionContext } from './tool-permission';
 import { getAgentToolDefinition, listReadOnlyWorkspaceToolDefinitions, type AgentToolDefinition } from '../tool-registry';
 import { executeAgentToolAction, type AgentToolExecutionOptions, type WorkspaceToolAction, type WorkspaceToolActionResult } from '../workspace-tools';
@@ -11,7 +11,7 @@ export const NATIVE_TOOL_OUTPUT_MAX_CHARS = 12_000;
 const NATIVE_TOOL_OUTPUT_TAIL_CHARS = 2_000;
 
 export const NATIVE_READ_ONLY_WORKSPACE_TOOL_NAMES = listReadOnlyWorkspaceToolDefinitions().map((definition) => definition.name);
-export const NATIVE_WRITE_WORKSPACE_TOOL_NAMES = ['create_directory', 'write_file', 'edit_file', 'multi_edit', 'patch_file', 'checkpoint_rollback', 'funplay_memory_remember', 'funplay_schedule_task', 'funplay_cancel_task', 'media_save_base64', 'image_generate'] as const;
+export const NATIVE_WRITE_WORKSPACE_TOOL_NAMES = ['create_directory', 'write_file', 'edit_file', 'multi_edit', 'patch_file', 'checkpoint_rollback', 'funplay_memory_remember', 'funplay_schedule_task', 'funplay_cancel_task', 'media_save_base64', 'image_generate', 'open_engine_hub', 'open_engine_project', 'install_engine_bridge'] as const;
 export const NATIVE_MCP_TOOL_CALL_NAMES = ['call_mcp_tool'] as const;
 export const NATIVE_COMMAND_TOOL_NAMES = [
   'run_command',
@@ -51,6 +51,8 @@ export interface NativeWorkspaceToolAdapterOptions {
   dynamicTools?: NativeRuntimeToolDefinition[];
   checkpointSnapshotId?: string;
   abortSignal?: AbortSignal;
+  appState?: AppState;
+  persistAppState?: AgentToolExecutionOptions['persistAppState'];
   permissionContext?: NativeToolPermissionContext;
   includeWriteTools?: boolean;
   includeMcpToolCalls?: boolean;
@@ -415,6 +417,8 @@ export function createNativeWorkspaceTools(options: NativeWorkspaceToolAdapterOp
                   plugins: options.plugins,
                   checkpointSnapshotId: options.checkpointSnapshotId,
                   abortSignal: options.abortSignal,
+                  appState: options.appState,
+                  persistAppState: options.persistAppState,
                   requestUserInput: options.requestMcpUserInput
                 }
               )

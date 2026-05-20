@@ -495,7 +495,83 @@ test('Agent Run Controller supports host-forced continuation after no-tool text'
   assert.equal(snapshot.nextAction, 'build_model_input');
   assert.equal(snapshot.coreState.state, 'building_model_input');
   assert.equal(snapshot.lastDecision?.terminal, false);
+  assert.equal(snapshot.lastContinuation?.reason, 'partial_write');
   assert.match(snapshot.lastDecision?.reason ?? '', /partial_write/);
+  assert.equal(snapshot.parts.at(-1)?.kind === 'assistant_text' ? snapshot.parts.at(-1)?.final : undefined, false);
+});
+
+test('Agent Run Controller owns incomplete todo continuation decisions', () => {
+  const controller = createAgentRunController({
+    createdAt: fixedClock()
+  });
+  controller.start();
+  const snapshot = controller.recordProviderStep({
+    providerStep: {
+      text: '还没完成，下一步继续写 index.html。',
+      finishReason: 'stop',
+      toolCalls: []
+    },
+    continuation: {
+      includeWriteTools: true,
+      permissionMode: 'build',
+      assistantMessage: '还没完成，下一步继续写 index.html。',
+      incompleteTodo: {
+        incompleteCount: 2,
+        hasInProgress: true
+      }
+    }
+  });
+
+  assert.equal(snapshot.nextAction, 'build_model_input');
+  assert.equal(snapshot.coreState.state, 'building_model_input');
+  assert.equal(snapshot.lastContinuation?.reason, 'incomplete_todo');
+  assert.equal(snapshot.parts.at(-1)?.kind === 'assistant_text' ? snapshot.parts.at(-1)?.final : undefined, false);
+});
+
+test('Agent Run Controller owns partial write continuation decisions', () => {
+  const controller = createAgentRunController({
+    createdAt: fixedClock()
+  });
+  controller.start();
+  const snapshot = controller.recordProviderStep({
+    providerStep: {
+      text: 'Next I will write game.js.',
+      finishReason: 'stop',
+      toolCalls: []
+    },
+    continuation: {
+      includeWriteTools: true,
+      permissionMode: 'build',
+      assistantMessage: 'Next I will write game.js.',
+      partialWrite: {
+        continuationCount: 0,
+        continuationLimit: 2
+      }
+    }
+  });
+
+  assert.equal(snapshot.nextAction, 'build_model_input');
+  assert.equal(snapshot.coreState.state, 'building_model_input');
+  assert.equal(snapshot.lastContinuation?.reason, 'partial_write');
+  assert.equal(snapshot.parts.at(-1)?.kind === 'assistant_text' ? snapshot.parts.at(-1)?.final : undefined, false);
+});
+
+test('Agent Run Controller exposes length continuation as controller state', () => {
+  const controller = createAgentRunController({
+    createdAt: fixedClock()
+  });
+  controller.start();
+  const snapshot = controller.recordProviderStep({
+    providerStep: {
+      text: 'Partial output',
+      finishReason: 'length',
+      toolCalls: []
+    }
+  });
+
+  assert.equal(snapshot.nextAction, 'build_model_input');
+  assert.equal(snapshot.coreState.state, 'building_model_input');
+  assert.equal(snapshot.lastContinuation?.reason, 'length');
   assert.equal(snapshot.parts.at(-1)?.kind === 'assistant_text' ? snapshot.parts.at(-1)?.final : undefined, false);
 });
 

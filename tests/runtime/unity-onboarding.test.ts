@@ -3,8 +3,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { checkUnityHealth } from '../../electron/main/unity-bridge.ts';
 import { executeAgentToolAction } from '../../electron/main/agent-platform/workspace-tools.ts';
+import { openUnityProjectDirectly } from '../../electron/main/unity-install-tasks.ts';
+import { readUnityProjectVersion } from '../../electron/main/unity-version.ts';
 import {
   callUnityTool,
   completeUnityMcpArgument,
@@ -132,6 +137,49 @@ test('environment task updates preserve existing fields and terminal completion'
   const manual = listEnvironmentTasks().find((item) => item.id === manualTask.id);
   assert.equal(manual?.status, 'needs_user');
   assert.equal(manual?.stage, 'waiting_manual');
+});
+
+test('agent engine control tools use generic names and return unsupported for unfinished adapters', async () => {
+  const project = {
+    ...buildProject('/tmp/funplay-godot-project'),
+    engine: {
+      platform: 'godot' as const,
+      setupMode: 'import' as const,
+      projectPath: '/tmp/funplay-godot-project',
+      dimension: '2d' as const
+    }
+  };
+
+  const diagnosis = await executeAgentToolAction(project, {
+    type: 'diagnose_engine_status'
+  });
+  assert.equal(diagnosis.ok, true);
+  assert.match(diagnosis.summary, /Godot Adapter/);
+  assert.match(diagnosis.summary, /还没有实现|尚未实现/);
+
+  const opened = await executeAgentToolAction(project, {
+    type: 'open_engine_project'
+  });
+  assert.equal(opened.ok, false);
+  assert.match(opened.summary, /Godot.*尚未实现/);
+});
+
+test('unity project opening requires the exact saved editor version', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-unity-version-'));
+  try {
+    await mkdir(join(projectPath, 'Assets'));
+    await mkdir(join(projectPath, 'ProjectSettings'));
+    await writeFile(
+      join(projectPath, 'ProjectSettings', 'ProjectVersion.txt'),
+      'm_EditorVersion: 9999.1.2f3\nm_EditorVersionWithRevision: 9999.1.2f3 (deadbeef)\n',
+      'utf8'
+    );
+
+    assert.equal(readUnityProjectVersion(projectPath)?.version, '9999.1.2f3');
+    assert.equal(await openUnityProjectDirectly(projectPath), false);
+  } finally {
+    await rm(projectPath, { recursive: true, force: true });
+  }
 });
 
 test('unity health probe does not send browser Origin header', async () => {

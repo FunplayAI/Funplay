@@ -260,6 +260,7 @@ export async function updateProjectWithPrompt(state: AppState, projectId: string
     project: resolved.current,
     sessionId: resolved.sessionId,
     message,
+    appState: state,
     provider: resolved.provider,
     mcpPlugins: resolved.mcpPlugins,
     enginePlugin: resolved.enginePlugin,

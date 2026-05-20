@@ -1,0 +1,302 @@
+/* macOS desktop shell refinement */
+body {
+  background: #eceef2;
+}
+
+.fp-app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: 52px 1fr auto;
+  background: #f5f5f7;
+  color: #1d1d1f;
+}
+
+.titlebar-shell {
+  height: 52px;
+  padding: 0 14px 0 84px;
+  background: rgba(248, 248, 250, 0.88);
+  color: #1d1d1f;
+  border-bottom: 1px solid rgba(60, 60, 67, 0.18);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  -webkit-app-region: drag;
+}
+
+.project-tabs {
+  justify-content: center;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-status-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-status-group span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(120, 120, 128, 0.12);
+  color: #3a3a3c;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.workspace-sidebar {
+  background: rgba(242, 242, 247, 0.86);
+  color: #1d1d1f;
+  border-right: 1px solid rgba(60, 60, 67, 0.18);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+}
+
+.sidebar-project {
+  background: rgba(255, 255, 255, 0.72);
+  color: #1d1d1f;
+  box-shadow: inset 0 0 0 1px rgba(60, 60, 67, 0.08);
+}
+
+.sidebar-icon {
+  background: #0a84ff;
+  color: #fff;
+}
+
+.workspace-sidebar .section-heading,
+.section-heading {
+  color: #6e6e73;
+}
+
+.sidebar-entry,
+.file-item {
+  color: #3a3a3c;
+  font-size: 13px;
+}
+
+.sidebar-entry:hover,
+.file-item:hover {
+  background: rgba(120, 120, 128, 0.12);
+}
+
+.sidebar-entry.active,
+.file-item.active {
+  background: rgba(10, 132, 255, 0.14);
+  color: #0057d9;
+  font-weight: 700;
+}
+
+.file-tree-folder-label {
+  color: #6e6e73;
+}
+
+.file-tree-folder-label:hover {
+  background: rgba(120, 120, 128, 0.08);
+}
+
+.workspace-grid {
+  grid-template-columns: minmax(520px, 1fr) 380px;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.agent-column,
+.fp-info-card,
+.settings-list-panel,
+.settings-detail-panel,
+.skills-page,
+.welcome-window,
+.onboarding-window,
+.placeholder-page,
+.provider-channel-card,
+.skill-card,
+.plugin-list-card,
+.asset-summary-card,
+.snapshot-card,
+.cli-tool-card,
+.asset-library-card {
+  border-color: rgba(60, 60, 67, 0.14);
+  box-shadow: none;
+}
+
+.agent-column {
+  min-height: calc(100vh - 126px);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.agent-header,
+.code-overlay-agent .agent-header {
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.agent-path {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.agent-subpath,
+.helper-copy,
+.empty-note,
+.page-subtitle {
+  color: #6e6e73;
+}
+
+.agent-body {
+  padding: 16px;
+  background: #fff;
+}
+
+.workspace-guide-card {
+  border-color: rgba(245, 158, 11, 0.22);
+  background: linear-gradient(180deg, rgba(255, 248, 230, 0.96), rgba(255, 244, 214, 0.96));
+}
+
+.launchpad-hero {
+  border-color: rgba(60, 60, 67, 0.12);
+  background: linear-gradient(135deg, rgba(10, 132, 255, 0.08), rgba(94, 92, 230, 0.08));
+}
+
+.launchpad-card,
+.launchpad-list-row,
+.workspace-readiness-row {
+  border-color: rgba(60, 60, 67, 0.12);
+}
+
+.runtime-text-preview {
+  background: #f6f6f8;
+  border-color: rgba(60, 60, 67, 0.12);
+}
+
+.chat-card,
+.tool-card,
+.asset-card,
+.progress-card,
+.file-change-card {
+  border-radius: 12px;
+  border-color: rgba(60, 60, 67, 0.12);
+  background: #fff;
+}
+
+.chat-card.user {
+  background: #eef5ff;
+}
+
+.chat-card.assistant,
+.tool-card {
+  background: #f9f9fb;
+}
+
+.agent-input-shell {
+  padding: 12px 14px 14px;
+  background: rgba(255, 255, 255, 0.86);
+}
+
+input,
+select,
+textarea {
+  min-height: 34px;
+  border-radius: 9px;
+  border-color: rgba(60, 60, 67, 0.22);
+  background: #fff;
+}
+
+.send-button {
+  background: #0a84ff;
+}
+
+.ghost-pill-group > span,
+.mode-pill {
+  background: rgba(120, 120, 128, 0.12);
+  color: #3a3a3c;
+}
+
+.mode-pill.active {
+  background: rgba(10, 132, 255, 0.14);
+  color: #0057d9;
+}
+
+.diff-column {
+  align-self: stretch;
+  grid-template-rows: auto minmax(320px, 1fr);
+}
+
+.config-grid {
+  gap: 12px;
+}
+
+.fp-info-card {
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.fp-info-card-title {
+  font-size: 13px;
+}
+
+.diff-panel {
+  border-radius: 14px;
+  background: #1f2329;
+  box-shadow: none;
+}
+
+.diff-viewer {
+  border-radius: 10px;
+  background: #171b21;
+}
+
+.event-pane {
+  background: rgba(248, 248, 250, 0.94);
+  color: #1d1d1f;
+  border-top: 1px solid rgba(60, 60, 67, 0.18);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+}
+
+.event-pane.collapsed {
+  height: 44px;
+}
+
+.event-tabs {
+  height: 44px;
+}
+
+.event-tabs button {
+  color: #6e6e73;
+}
+
+.event-tabs button.active {
+  background: rgba(120, 120, 128, 0.12);
+  color: #1d1d1f;
+}
+
+.event-row {
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(60, 60, 67, 0.08);
+}
+
+.welcome-shell,
+.onboarding-shell {
+  background: #eceef2;
+}
+
+.welcome-titlebar,
+.onboarding-title {
+  background: rgba(248, 248, 250, 0.88);
+  color: #1d1d1f;
+  border-bottom: 1px solid rgba(60, 60, 67, 0.18);
+}
+
+.welcome-window,
+.onboarding-window {
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.16);
+}
+
+.welcome-logo {
+  border-radius: 22px;
+}

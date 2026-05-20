@@ -1,7 +1,8 @@
 import { useEffect, useState, type JSX } from 'react';
+import { PlayCircle, RefreshCw, RotateCcw, Save } from 'lucide-react';
 import type { WebResearchMetrics, WebSearchQualityReport, WebSearchSettings } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
-import { InfoRow } from '../shared/InfoComponents';
+import { Badge, Button, MetricTile, SelectField, Surface, SwitchField, TextField, type SelectOption } from '../ui/index';
 
 export function WebSearchSettingsPage(props: {
   settings: WebSearchSettings;
@@ -85,6 +86,19 @@ export function WebSearchSettingsPage(props: {
 
   const totalRequests = (metrics?.searchRequests ?? 0) + (metrics?.fetchRequests ?? 0);
   const successRate = totalRequests > 0 && metrics ? Math.round(((totalRequests - metrics.failures) / totalRequests) * 100) : 0;
+  const providerOptions: SelectOption[] = [
+    { value: 'auto', label: t('自动选择', 'Auto') },
+    { value: 'duckduckgo', label: 'DuckDuckGo' },
+    { value: 'brave', label: 'Brave Search' },
+    { value: 'bing', label: 'Bing Web Search' }
+  ];
+  const cacheTtlOptions: SelectOption[] = [
+    { value: '0', label: t('关闭缓存', 'Disabled') },
+    { value: '300000', label: '5 min' },
+    { value: '600000', label: '10 min' },
+    { value: '1800000', label: '30 min' },
+    { value: '3600000', label: '60 min' }
+  ];
 
   return (
     <div className="web-search-settings-page">
@@ -94,105 +108,88 @@ export function WebSearchSettingsPage(props: {
           <div className="helper-copy">{t('配置搜索 provider、页面抽取 fallback、引用来源和运行指标。', 'Configure search providers, extraction fallback, citation sources, and runtime metrics.')}</div>
         </div>
         <div className="modal-actions compact">
-          <button className="prototype-secondary small" onClick={() => void refreshMetrics()} disabled={isLoadingMetrics}>
+          <Button variant="secondary" size="sm" onClick={() => void refreshMetrics()} disabled={isLoadingMetrics} leadingIcon={<RefreshCw size={14} aria-hidden="true" />}>
             {isLoadingMetrics ? t('刷新中…', 'Refreshing…') : t('刷新指标', 'Refresh Metrics')}
-          </button>
-          <button className="prototype-primary small" onClick={() => void saveSettings()} disabled={isSaving}>
+          </Button>
+          <Button variant="primary" size="sm" onClick={() => void saveSettings()} disabled={isSaving} leadingIcon={<Save size={14} aria-hidden="true" />}>
             {isSaving ? t('保存中…', 'Saving…') : t('保存', 'Save')}
-          </button>
+          </Button>
         </div>
       </div>
 
       <div className="web-search-form-grid">
-        <label className="settings-field">
-          <span>{t('默认 Provider', 'Default Provider')}</span>
-          <select
-            value={draft.provider}
-            onChange={(event) => setDraft((current) => ({ ...current, provider: event.target.value as WebSearchSettings['provider'] }))}
-          >
-            <option value="auto">{t('自动选择', 'Auto')}</option>
-            <option value="duckduckgo">DuckDuckGo</option>
-            <option value="brave">Brave Search</option>
-            <option value="bing">Bing Web Search</option>
-          </select>
-        </label>
-        <label className="settings-field">
-          <span>Brave API Key</span>
-          <input
-            type="password"
-            value={draft.braveApiKey ?? ''}
-            onChange={(event) => setDraft((current) => ({ ...current, braveApiKey: event.target.value }))}
-            placeholder={t('可选，自动选择时优先使用', 'Optional, preferred in auto mode')}
-          />
-        </label>
-        <label className="settings-field">
-          <span>Bing API Key</span>
-          <input
-            type="password"
-            value={draft.bingApiKey ?? ''}
-            onChange={(event) => setDraft((current) => ({ ...current, bingApiKey: event.target.value }))}
-            placeholder={t('可选，Brave 未配置时使用', 'Optional, used when Brave is not configured')}
-          />
-        </label>
-        <label className="settings-field">
-          <span>{t('缓存 TTL', 'Cache TTL')}</span>
-          <select
-            value={String(draft.cacheTtlMs)}
-            onChange={(event) => setDraft((current) => ({ ...current, cacheTtlMs: Number(event.target.value) }))}
-          >
-            <option value="0">{t('关闭缓存', 'Disabled')}</option>
-            <option value="300000">5 min</option>
-            <option value="600000">10 min</option>
-            <option value="1800000">30 min</option>
-            <option value="3600000">60 min</option>
-          </select>
-        </label>
+        <SelectField
+          label={t('默认 Provider', 'Default Provider')}
+          value={draft.provider}
+          options={providerOptions}
+          onValueChange={(provider) => setDraft((current) => ({ ...current, provider: provider as WebSearchSettings['provider'] }))}
+        />
+        <TextField
+          label="Brave API Key"
+          type="password"
+          value={draft.braveApiKey ?? ''}
+          onValueChange={(braveApiKey) => setDraft((current) => ({ ...current, braveApiKey }))}
+          placeholder={t('可选，自动选择时优先使用', 'Optional, preferred in auto mode')}
+          autoComplete="off"
+        />
+        <TextField
+          label="Bing API Key"
+          type="password"
+          value={draft.bingApiKey ?? ''}
+          onValueChange={(bingApiKey) => setDraft((current) => ({ ...current, bingApiKey }))}
+          placeholder={t('可选，Brave 未配置时使用', 'Optional, used when Brave is not configured')}
+          autoComplete="off"
+        />
+        <SelectField
+          label={t('缓存 TTL', 'Cache TTL')}
+          value={String(draft.cacheTtlMs)}
+          options={cacheTtlOptions}
+          onValueChange={(cacheTtlMs) => setDraft((current) => ({ ...current, cacheTtlMs: Number(cacheTtlMs) }))}
+        />
       </div>
 
       <div className="web-search-toggle-row">
-        <label>
-          <input
-            type="checkbox"
-            checked={draft.browserFallbackEnabled}
-            onChange={(event) => setDraft((current) => ({ ...current, browserFallbackEnabled: event.target.checked }))}
-          />
-          <span>{t('启用 JS 渲染页面 fallback', 'Enable JS-rendered page fallback')}</span>
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={draft.telemetryEnabled}
-            onChange={(event) => setDraft((current) => ({ ...current, telemetryEnabled: event.target.checked }))}
-          />
-          <span>{t('启用搜索 telemetry', 'Enable search telemetry')}</span>
-        </label>
+        <SwitchField
+          checked={draft.browserFallbackEnabled}
+          onCheckedChange={(browserFallbackEnabled) => setDraft((current) => ({ ...current, browserFallbackEnabled }))}
+          label={t('启用 JS 渲染页面 fallback', 'Enable JS-rendered page fallback')}
+          description={t('用于需要浏览器执行脚本后才能抽取正文的网页。', 'Use a browser extractor when pages need client-side rendering.')}
+        />
+        <SwitchField
+          checked={draft.telemetryEnabled}
+          onCheckedChange={(telemetryEnabled) => setDraft((current) => ({ ...current, telemetryEnabled }))}
+          label={t('启用搜索 telemetry', 'Enable search telemetry')}
+          description={t('记录搜索、抓取、缓存和 fallback 指标。', 'Track search, fetch, cache, and fallback metrics.')}
+        />
       </div>
 
       <div className="web-search-metrics-grid">
-        <InfoRow label={t('搜索请求', 'Searches')} value={String(metrics?.searchRequests ?? 0)} />
-        <InfoRow label={t('抓取请求', 'Fetches')} value={String(metrics?.fetchRequests ?? 0)} />
-        <InfoRow label={t('缓存命中', 'Cache Hits')} value={String(metrics?.cacheHits ?? 0)} />
-        <InfoRow label={t('成功率', 'Success Rate')} value={totalRequests ? `${successRate}%` : '-'} />
-        <InfoRow label={t('浏览器 fallback', 'Browser Fallbacks')} value={String(metrics?.browserFallbacks ?? 0)} />
-        <InfoRow label={t('文档抽取', 'Document Extractions')} value={String(metrics?.documentExtractions ?? 0)} />
+        <MetricTile label={t('搜索请求', 'Searches')} value={String(metrics?.searchRequests ?? 0)} />
+        <MetricTile label={t('抓取请求', 'Fetches')} value={String(metrics?.fetchRequests ?? 0)} />
+        <MetricTile label={t('缓存命中', 'Cache Hits')} value={String(metrics?.cacheHits ?? 0)} />
+        <MetricTile label={t('成功率', 'Success Rate')} value={totalRequests ? `${successRate}%` : '-'} tone={successRate >= 90 ? 'success' : successRate > 0 ? 'warning' : 'neutral'} />
+        <MetricTile label={t('浏览器 fallback', 'Browser Fallbacks')} value={String(metrics?.browserFallbacks ?? 0)} />
+        <MetricTile label={t('文档抽取', 'Document Extractions')} value={String(metrics?.documentExtractions ?? 0)} />
       </div>
 
-      <div className="web-search-quality-panel">
+      <Surface className="web-search-quality-panel" density="compact">
         <div className="runtime-subheader">
           <strong>{t('搜索质量评测', 'Search Quality Evaluation')}</strong>
           <span>{t('内置评测集会验证官方来源优先、引用数量和 provider 可用性。', 'Built-in cases validate official-source ranking, citation count, and provider availability.')}</span>
         </div>
         <div className="modal-actions compact">
-          <button className="prototype-secondary small" onClick={() => void resetMetrics()} disabled={isLoadingMetrics}>
+          <Button variant="secondary" size="sm" onClick={() => void resetMetrics()} disabled={isLoadingMetrics} leadingIcon={<RotateCcw size={14} aria-hidden="true" />}>
             {t('重置指标', 'Reset Metrics')}
-          </button>
-          <button className="prototype-primary small" onClick={() => void runQualityEval()} disabled={isRunningEval}>
+          </Button>
+          <Button variant="primary" size="sm" onClick={() => void runQualityEval()} disabled={isRunningEval} leadingIcon={<PlayCircle size={14} aria-hidden="true" />}>
             {isRunningEval ? t('评测中…', 'Evaluating…') : t('运行评测', 'Run Evaluation')}
-          </button>
+          </Button>
         </div>
         {qualityReport ? (
           <div className="web-search-quality-report">
-            <strong>{t(`通过 ${qualityReport.passedCases}/${qualityReport.totalCases} · 平均 ${qualityReport.averageDurationMs}ms`, `${qualityReport.passedCases}/${qualityReport.totalCases} passed · avg ${qualityReport.averageDurationMs}ms`)}</strong>
+            <Badge tone={qualityReport.passedCases === qualityReport.totalCases ? 'success' : 'warning'}>
+              {t(`通过 ${qualityReport.passedCases}/${qualityReport.totalCases} · 平均 ${qualityReport.averageDurationMs}ms`, `${qualityReport.passedCases}/${qualityReport.totalCases} passed · avg ${qualityReport.averageDurationMs}ms`)}
+            </Badge>
             {qualityReport.cases.map((item) => (
               <div key={item.id} className={`web-search-quality-row ${item.ok ? 'ok' : 'failed'}`}>
                 <span>{item.query}</span>
@@ -201,7 +198,7 @@ export function WebSearchSettingsPage(props: {
             ))}
           </div>
         ) : null}
-      </div>
+      </Surface>
 
       {metrics?.lastRequest ? (
         <div className="helper-copy">
