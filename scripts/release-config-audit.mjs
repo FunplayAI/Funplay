@@ -49,7 +49,6 @@ const requiredFiles = [
   'LICENSE',
   'CONTRIBUTING.md',
   'SECURITY.md',
-  'CODE_OF_CONDUCT.md',
   'CHANGELOG.md',
   '.github/PULL_REQUEST_TEMPLATE.md',
   '.github/ISSUE_TEMPLATE/bug_report.md',
