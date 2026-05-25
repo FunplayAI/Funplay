@@ -129,5 +129,8 @@ if (!workflow.includes('gh release') || !workflow.includes('dist:mac:split') || 
 if (!workflow.includes('Import macOS signing certificate') || !workflow.includes('Developer ID Application')) {
   fail('Release audit failed: release workflow must import and validate a Developer ID Application certificate before notarization.');
 }
+if (workflow.includes('-t cert -f pkcs12')) {
+  fail('Release audit failed: macOS .p12 import must not force certificate-only import.');
+}
 
 console.log('Release config audit passed.');
