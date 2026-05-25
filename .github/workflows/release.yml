@@ -172,7 +172,7 @@ jobs:
             release/latest.yml
 
   publish:
-    name: Publish draft GitHub Release
+    name: Publish GitHub Release
     needs:
       - mac
       - windows
@@ -187,7 +187,7 @@ jobs:
         with:
           path: artifacts
 
-      - name: Create or update draft release
+      - name: Create or update release
         run: |
           set -euo pipefail
           mapfile -d '' files < <(find artifacts -type f -print0 | sort -z)
@@ -197,10 +197,11 @@ jobs:
           fi
 
           title="Funplay ${RELEASE_TAG#v}"
-          notes=$'Automated Funplay desktop release artifacts.\n\nReview macOS notarization, Windows installer behavior, and update metadata before publishing this draft release.'
+          notes=$'Automated Funplay desktop release artifacts.\n\nBuilt and verified by the release workflow.'
 
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$RELEASE_TAG" --draft=false --title "$title" --notes "$notes" --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$RELEASE_TAG" "${files[@]}" --draft --title "$title" --notes "$notes" --repo "$GITHUB_REPOSITORY"
+            gh release create "$RELEASE_TAG" "${files[@]}" --title "$title" --notes "$notes" --repo "$GITHUB_REPOSITORY"
           fi

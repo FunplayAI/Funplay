@@ -107,7 +107,7 @@ npm run rebuild:native:force
 
 Release publishing requires `GH_TOKEN` in the publishing environment. macOS signing and notarization still require Apple Developer credentials.
 
-The repository also includes a tag-based GitHub Actions release workflow. Pushing a tag such as `v0.3.0` builds macOS arm64/x64 and Windows x64 artifacts, verifies macOS update metadata, and creates or updates a draft GitHub Release. Required maintainer secrets:
+The repository also includes a tag-based GitHub Actions release workflow. Pushing a tag such as `v0.3.0` builds macOS arm64/x64 and Windows x64 artifacts, verifies macOS update metadata, and creates or updates a public GitHub Release. Required maintainer secrets:
 
 - `APPLE_ID`
 - `APPLE_TEAM_ID`

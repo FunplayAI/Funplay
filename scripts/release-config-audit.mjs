@@ -73,8 +73,8 @@ const publish = packageJson.build?.publish?.[0];
 if (publish?.provider !== 'github' || publish.owner !== 'FunplayAI' || publish.repo !== 'Funplay') {
   fail('Release audit failed: package.json#build.publish must use GitHub Releases for FunplayAI/Funplay.');
 }
-if (publish?.releaseType !== 'draft') {
-  fail('Release audit failed: GitHub releaseType must remain draft so maintainers can review assets before publishing.');
+if (publish?.releaseType !== 'release') {
+  fail('Release audit failed: GitHub releaseType must publish public releases after the release workflow passes.');
 }
 
 const scripts = packageJson.scripts ?? {};
