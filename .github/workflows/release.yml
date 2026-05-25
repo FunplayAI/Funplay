@@ -101,7 +101,6 @@ jobs:
           security set-keychain-settings -lut 21600 "$keychain_path"
           security unlock-keychain -p "$keychain_password" "$keychain_path"
           security import "$certificate_path" -P "$MAC_CSC_KEY_PASSWORD" -f pkcs12 -A -k "$keychain_path" -T /usr/bin/codesign -T /usr/bin/productbuild -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path"
           security list-keychains -d user -s "$keychain_path"
           security default-keychain -s "$keychain_path"
 
@@ -111,6 +110,7 @@ jobs:
             echo "The imported macOS certificate is not a Developer ID Application certificate."
             exit 1
           fi
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path" || echo "::warning::Could not update key partition list; continuing because the signing identity was imported and the keychain is unlocked."
 
       - name: Build split-architecture macOS artifacts
         run: npm run dist:mac:split
