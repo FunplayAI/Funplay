@@ -2,6 +2,7 @@ import { type ModelMessage } from 'ai';
 import { createLanguageModel } from '../../ai-provider';
 import { buildNativeToolLoopMessages } from '../model-message-builder';
 import { ProjectInstructionTracker } from '../project-instruction-tracker';
+import { createProviderRuntimeController } from '../provider-runtime-events';
 import type { GenericAgentRuntimeParams } from '../types';
 import {
   resolveLatestTodoSnapshotFromHistory
@@ -52,7 +53,8 @@ export async function runNativeAiSdkToolLoop(
         includeWriteTools,
         includeMcpToolCalls,
         includeCommandTools,
-        dynamicMcpToolNames: toolPool.dynamicMcpTools.map((definition) => definition.name)
+        dynamicMcpToolNames: toolPool.dynamicMcpTools.map((definition) => definition.name),
+        toolDefinitions: toolPool.definitions
       })
     }) as ModelMessage[],
     assistantMessage: '',
@@ -60,6 +62,7 @@ export async function runNativeAiSdkToolLoop(
     stepCount: 0,
     streamedText: false,
     toolCalls: [],
+    partialWriteContinuationCount: 0,
     incompleteTodoContinuationCount: 0,
     latestTodoSnapshot: resolveLatestTodoSnapshotFromHistory(params)
   };
@@ -68,15 +71,18 @@ export async function runNativeAiSdkToolLoop(
   const controllerBridge = createNativeToolLoopControllerBridge({
     callbacks,
     guardTransitions: true,
-    stageId: 'stage:native_ai_sdk_agent_core_v2'
+    runId: params.activeRunId,
+    stageId: 'stage:native_ai_sdk_agent_core_v2',
+    turnId: params.turnId
   });
   const {
-    emitCoreStateStage,
-    markCoreCompleted,
-    markCoreFailed,
-    recordRunControllerProviderStep,
-    transitionCoreState
+    submitEvent,
+    emitCoreStateStage
   } = controllerBridge;
+  const providerController = createProviderRuntimeController({
+    submitEvent,
+    mapToolEventsToCore: false
+  });
 
   callbacks?.emitStage?.({
     stageId: 'stage:native_tool_stream',
@@ -100,14 +106,14 @@ export async function runNativeAiSdkToolLoop(
         stepState,
         loopState,
         maxOutputTokens,
-        controller: controllerBridge
+        providerController
       });
     } catch (error) {
       if (params.abortSignal?.aborted) {
-        transitionCoreState('interrupted_resumable', 'AI SDK Native tool loop 被中断。');
+        providerController.interruptRun('AI SDK Native tool loop 被中断。');
         emitCoreStateStage('failed', 'Agent Core v2 记录可恢复中断。');
       } else {
-        markCoreFailed(error instanceof Error ? error.message : 'AI SDK Native tool loop 执行失败。');
+        providerController.failRun(error instanceof Error ? error.message : 'AI SDK Native tool loop 执行失败。');
         emitCoreStateStage('failed', 'Agent Core v2 记录 AI SDK Native tool loop 失败。');
       }
       throw error;
@@ -119,10 +125,7 @@ export async function runNativeAiSdkToolLoop(
       includeWriteTools,
       loopState,
       providerStep,
-      recordRunControllerProviderStep,
-      transitionCoreState,
-      markCoreCompleted,
-      markCoreFailed,
+      providerController,
       emitCoreStateStage
     });
     if (completionDecision.action === 'return') {

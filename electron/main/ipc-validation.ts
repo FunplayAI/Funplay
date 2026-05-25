@@ -7,6 +7,8 @@ import type {
   AiProviderMeta,
   AiProviderModel,
   AiProviderRoleModels,
+  AssetGenerationProviderInput,
+  AssetGenerationRequest,
   PromptAttachment,
   ProjectSessionEffort,
   ProjectSessionRuntimeId,
@@ -31,6 +33,35 @@ const unityHealthStatusSchema = z.enum(['idle', 'online', 'offline']);
 const agentPermissionModeSchema = z.enum(['full-access', 'read-only']);
 const agentRuntimeStrategySchema = z.enum(['auto', 'native', 'claude-code-sdk']);
 const webSearchProviderSchema = z.enum(['auto', 'duckduckgo', 'brave', 'bing']);
+const assetGenerationKindSchema = z.enum([
+  'image_2d',
+  'ui_2d',
+  'texture_2d',
+  'animation_2d_frames',
+  'animation_2d_rig',
+  'model_3d',
+  'animation_3d',
+  'audio_sfx',
+  'audio_music',
+  'voice'
+]);
+const assetGenerationProviderAdapterSchema = z.enum([
+  'openai-image',
+  'replicate',
+  'stability',
+  'comfyui',
+  'meshy',
+  'elevenlabs',
+  'mcp'
+]);
+const configurableAssetGenerationProviderAdapterSchema = z.enum([
+  'openai-image',
+  'replicate',
+  'stability',
+  'comfyui',
+  'meshy',
+  'elevenlabs'
+]);
 const projectSessionRuntimeIdSchema = z.custom<ProjectSessionRuntimeId>((value) =>
   ['native', 'claude-code-sdk'].includes(String(value))
 );
@@ -241,6 +272,49 @@ export const updateSessionRuntimeSchema = z.object({
 
 export const projectIdSchema = trimmedString(1, 120);
 export const providerIdSchema = trimmedString(1, 120);
+export const assetGenerationProviderIdSchema = trimmedString(1, 160);
+export const assetGenerationJobIdSchema = trimmedString(1, 160);
+export const assetGenerationProviderInputSchema = z.object({
+  name: trimmedString(1, 120),
+  adapter: configurableAssetGenerationProviderAdapterSchema,
+  enabled: z.boolean().optional(),
+  baseUrl: optionalTrimmedString(2048),
+  apiKey: z.string().max(8192).optional(),
+  model: optionalTrimmedString(240),
+  workflowJson: z.string().max(2_000_000).optional(),
+  workflowPath: optionalTrimmedString(4096),
+  voiceId: optionalTrimmedString(240),
+  notes: optionalTrimmedString(1000)
+}).strict() satisfies z.ZodType<AssetGenerationProviderInput>;
+export const assetGenerationRequestSchema = z.object({
+  title: trimmedString(1, 160),
+  kind: assetGenerationKindSchema,
+  prompt: trimmedString(1, 8000),
+  negativePrompt: optionalTrimmedString(4000),
+  providerId: optionalTrimmedString(160),
+  providerAdapter: assetGenerationProviderAdapterSchema.optional(),
+  stylePresetId: optionalTrimmedString(160),
+  references: z.array(z.object({
+    id: trimmedString(1, 160),
+    name: trimmedString(1, 255),
+    path: trimmedString(1, 4096),
+    kind: assetGenerationKindSchema.optional(),
+    role: z.enum(['style', 'character', 'pose', 'audio', 'mesh', 'other']).optional()
+  }).strict()).max(24).optional(),
+  targetEngine: platformChoiceSchema.optional(),
+  outputSpec: z.object({
+    format: optionalTrimmedString(32),
+    width: z.number().int().min(16).max(3840).optional(),
+    height: z.number().int().min(16).max(3840).optional(),
+    frameCount: z.number().int().min(1).max(240).optional(),
+    durationSeconds: z.number().min(0.1).max(600).optional(),
+    loop: z.boolean().optional(),
+    transparentBackground: z.boolean().optional(),
+    engineImportMode: z.enum(['none', 'copy', 'unity']).optional()
+  }).strict().optional(),
+  count: z.number().int().min(1).max(4).optional(),
+  createdBy: z.enum(['user', 'agent']).optional()
+}).strict() satisfies z.ZodType<AssetGenerationRequest>;
 export const listProjectAgentSkillRegistrySchema = projectIdSchema;
 export const runtimeDoctorInputSchema = z.object({
   providerId: optionalTrimmedString(120),

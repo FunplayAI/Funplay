@@ -3,10 +3,10 @@ import {
   buildSessionConversationTurns
 } from '../../../../shared/project-sessions';
 import {
+  type AgentCoreMessagePart,
   type AiProvider,
   type ClaudeContextSummaryCoverage,
   type ChatMessage,
-  type ChatContentBlock,
   type ProjectSession
 } from '../../../../shared/types';
 import { createLanguageModel } from '../../ai-provider';
@@ -132,30 +132,40 @@ export function filterClaudeMessagesAfterSummaryBoundary(session: ProjectSession
   return messages.filter((message, index) => getClaudeMessageOrdinal(message, index) > boundaryOrdinal);
 }
 
-export function normalizeClaudeHistoryBlock(block: ChatContentBlock, maxLength: number): string {
-  if (block.type === 'text' || block.type === 'fallback') {
-    return compactLongText(block.type === 'text' ? block.text : block.text, maxLength);
+export function normalizeClaudeHistoryPart(part: AgentCoreMessagePart, maxLength: number): string {
+  if (part.kind === 'assistant_text') {
+    return compactLongText(part.text, maxLength);
   }
 
-  if (block.type === 'thinking') {
-    const text = compactLongText(block.thinking, Math.min(maxLength, 900));
+  if (part.kind === 'assistant_thinking') {
+    const text = compactLongText(part.thinking, Math.min(maxLength, 900));
     return `<prior-reasoning>${text}</prior-reasoning>`;
   }
 
-  if (block.type === 'tool_use') {
-    const input = block.input ? compactLongText(JSON.stringify(block.input), Math.min(maxLength, 1200)) : '';
-    return `<prior-tool-call id="${block.toolUseId}" name="${block.name}">${input}</prior-tool-call>`;
+  if (part.kind === 'tool_call') {
+    const input = part.input ? compactLongText(JSON.stringify(part.input), Math.min(maxLength, 1200)) : '';
+    return `<prior-tool-call id="${part.toolUseId}" name="${part.name}">${input}</prior-tool-call>`;
   }
 
-  const content = compactLongText(block.content, Math.min(maxLength, 1200));
-  return `<prior-tool-result tool_use_id="${block.toolUseId}" is_error="${block.isError ? 'true' : 'false'}">${content}</prior-tool-result>`;
+  if (part.kind === 'tool_result' || part.kind === 'tool_error') {
+    const content = compactLongText(part.kind === 'tool_error' ? part.error : part.content, Math.min(maxLength, 1200));
+    return `<prior-tool-result tool_use_id="${part.toolUseId}" is_error="${part.kind === 'tool_error' ? 'true' : 'false'}">${content}</prior-tool-result>`;
+  }
+
+  if (part.kind === 'run_error') {
+    return `<prior-run-error>${compactLongText(part.error, Math.min(maxLength, 1200))}</prior-run-error>`;
+  }
+
+  return '';
 }
 
 export function normalizeClaudeHistoryMessageContent(message: ChatMessage, indexFromEnd = 0): string {
   const maxLength = indexFromEnd <= 8 ? 5000 : 1400;
-  if (message.contentBlocks?.length) {
-    return message.contentBlocks
-      .map((block) => normalizeClaudeHistoryBlock(block, maxLength))
+  const parts = message.metadata?.agentCoreParts;
+  if (parts?.length) {
+    return [...parts]
+      .sort((left, right) => left.sequence - right.sequence || left.createdAt.localeCompare(right.createdAt))
+      .map((part) => normalizeClaudeHistoryPart(part, maxLength))
       .filter(Boolean)
       .join('\n\n')
       .trim();
@@ -367,8 +377,7 @@ export function buildClaudeRecentTurnsForPrompt(params: GenericAgentRuntimeParam
     .slice(-CLAUDE_CONTEXT_RECENT_MESSAGE_KEEP)
     .map((message, index, array) => ({
       ...message,
-      content: normalizeClaudeHistoryMessageContent(message, array.length - 1 - index),
-      contentBlocks: undefined
+      content: normalizeClaudeHistoryMessageContent(message, array.length - 1 - index)
     }));
   return buildSessionConversationTurns(recentMessages, 6);
 }

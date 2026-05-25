@@ -1,5 +1,4 @@
 import { claudeCodeSdkRuntime, isClaudeSideRuntimeModel } from './claude/runtime';
-import { executionPlanRuntime } from './execution-plan-runtime';
 import { nativeRuntime } from './native/runtime';
 import type { AgentRuntimeStrategy, AiProvider } from '../../../shared/types';
 import type { GenericAgentRuntime, GenericAgentRuntimeId } from './types';
@@ -14,7 +13,6 @@ function ensureInitialized(): void {
 
   registerGenericAgentRuntime(nativeRuntime);
   registerGenericAgentRuntime(claudeCodeSdkRuntime);
-  registerGenericAgentRuntime(executionPlanRuntime);
   initialized = true;
 }
 

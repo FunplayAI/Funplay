@@ -1,10 +1,10 @@
-import { type JSX } from 'react';
-import { Plus, RefreshCw, RotateCw, Settings2, Square, Trash2 } from 'lucide-react';
+import { useEffect, useState, type JSX } from 'react';
+import { ChevronLeft, Plus, RefreshCw, RotateCw, Settings2, Square, Trash2 } from 'lucide-react';
 import type { McpConnectionSnapshot, McpPlugin, McpRawAuditEntry, McpRawRequestResult, McpToolSnapshot, UnityMcpPrompt, UnityMcpResource, UnityMcpResourceTemplate, UnityMcpServerInfo, UnityMcpTool } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import { Card, InfoRow, List } from '../shared/InfoComponents';
-import { CapabilityBadgeRow, McpRawAuditCard, McpRawDiagnosticsCard, McpToolSnapshotCard, ServerListRow, formatMcpCapabilitySummary, formatMcpPolicySummary } from './McpManagementPage';
-import { Button } from '../ui/index';
+import { CapabilityBadgeRow, McpRawAuditCard, McpRawDiagnosticsCard, McpToolSnapshotCard } from './McpManagementPage';
+import { Button, ConfigDetailActionBar, ConfigListPanel, ToggleSwitch, type ConfigListItem } from '../ui/index';
 
 function formatMcpEndpoint(plugin: McpPlugin): string {
   return plugin.transport === 'stdio'
@@ -62,6 +62,45 @@ export function McpRegistrySettingsPage(props: {
 }): JSX.Element {
   const language = useUiLanguage();
   const t = (zh: string, en: string): string => localize(language, zh, en);
+  const [detailPluginId, setDetailPluginId] = useState('');
+  const detailPlugin = props.plugins.find((plugin) => plugin.id === detailPluginId) ?? null;
+  const pluginItems: ConfigListItem[] = props.plugins.map((plugin) => {
+    const snapshot = props.connectionStatuses[plugin.id] ?? (props.selectedPlugin?.id === plugin.id ? props.connectionStatus : null);
+    const online = snapshot?.status === 'online';
+    const connecting = snapshot?.status === 'connecting';
+    return {
+      id: plugin.id,
+      title: plugin.name,
+      subtitle: `${plugin.kind} · ${plugin.transport}`,
+      description: formatMcpEndpoint(plugin),
+      statusLabel: plugin.enabled
+        ? online
+          ? t('在线', 'Online')
+          : connecting
+            ? t('连接中', 'Connecting')
+            : t('已启用', 'Enabled')
+        : t('停用', 'Disabled'),
+      statusTone: !plugin.enabled ? 'neutral' : online ? 'success' : connecting ? 'warning' : 'brand',
+      enabled: plugin.enabled,
+      meta: [
+        plugin.defaultToolPermission ? t(`权限：${plugin.defaultToolPermission}`, `Permission: ${plugin.defaultToolPermission}`) : '',
+        plugin.defaultToolRisk ? t(`风险：${plugin.defaultToolRisk}`, `Risk: ${plugin.defaultToolRisk}`) : ''
+      ].filter(Boolean),
+      rowMainClassName: 'mcp-server-row-main',
+      searchText: [plugin.baseUrl, plugin.command, plugin.args?.join(' '), plugin.notes].filter(Boolean).join(' ')
+    };
+  });
+
+  useEffect(() => {
+    if (detailPluginId && !props.plugins.some((plugin) => plugin.id === detailPluginId)) {
+      setDetailPluginId('');
+    }
+  }, [detailPluginId, props.plugins]);
+
+  function openPluginDetail(plugin: McpPlugin): void {
+    setDetailPluginId(plugin.id);
+    props.onSelectPlugin(plugin.id);
+  }
 
   return (
     <div className="mcp-registry-settings">
@@ -79,118 +118,100 @@ export function McpRegistrySettingsPage(props: {
         </Button>
       </div>
 
-      <div className="settings-page mcp-registry-layout">
-        <div className="settings-list-panel">
-          {props.plugins.length === 0 ? <div className="empty-note">{t('暂无全局 MCP Server，请先添加。', 'No global MCP servers yet. Add one first.')}</div> : null}
-          <div className="mcp-server-list">
-            {props.plugins.map((plugin) => (
-              <ServerListRow
-                key={plugin.id}
-                plugin={plugin}
-                selected={props.selectedPlugin?.id === plugin.id}
-                checked={plugin.enabled}
-                scopeLabel={t('全局', 'Global')}
-                connectionStatus={props.connectionStatuses[plugin.id] ?? null}
-                capabilitySummary={props.selectedPlugin?.id === plugin.id ? formatMcpCapabilitySummary(language, props.tools.length, props.resources.length, props.prompts.length, props.resourceTemplates.length) : undefined}
-                policySummary={formatMcpPolicySummary(language, plugin)}
-                onSelect={() => props.onSelectPlugin(plugin.id)}
-                onToggle={(enabled) => props.onTogglePlugin(plugin, enabled)}
-                onEdit={() => props.onEditPlugin(plugin)}
-                onDelete={() => props.onDeletePlugin(plugin.id)}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="settings-detail-panel">
+      {detailPlugin ? (
+        <div className="settings-detail-panel mcp-settings-detail-route">
           <div className="settings-header">
             <div>
-              <h2>{props.selectedPlugin?.name || t('选择一个 MCP', 'Select an MCP')}</h2>
-              <p>{props.selectedPlugin?.notes || (props.selectedPlugin ? formatMcpEndpoint(props.selectedPlugin) : t('管理 MCP 的全局连接定义、启停状态和元数据检测。', 'Manage global MCP connection definitions, enabled state, and metadata checks.'))}</p>
-            </div>
-            <div className="ghost-pill-group">
-              {props.selectedPlugin ? (
-                <Button variant="secondary" size="sm" onClick={() => props.onEditPlugin(props.selectedPlugin!)} leadingIcon={<Settings2 size={14} aria-hidden="true" />}>
-                  {t('编辑', 'Edit')}
-                </Button>
-              ) : null}
-              {props.selectedPlugin?.transport === 'stdio' ? (
-                <>
-                  <Button variant="secondary" size="sm" onClick={props.onReconnect} disabled={props.isRefreshing} leadingIcon={<RotateCw size={14} aria-hidden="true" />}>
-                    {t('重启', 'Restart')}
-                  </Button>
-                  <Button variant="secondary" size="sm" onClick={props.onStop} disabled={props.connectionStatus?.processStatus !== 'running'} leadingIcon={<Square size={13} aria-hidden="true" />}>
-                    {t('停止', 'Stop')}
-                  </Button>
-                </>
-              ) : null}
-              <Button variant="secondary" size="sm" onClick={props.onRefresh} disabled={!props.selectedPlugin || props.isRefreshing} leadingIcon={<RefreshCw size={14} aria-hidden="true" />}>
-                {props.isRefreshing ? t('刷新中…', 'Refreshing…') : t('刷新', 'Refresh')}
+              <Button variant="ghost" size="sm" className="settings-detail-back-button" onClick={() => setDetailPluginId('')} leadingIcon={<ChevronLeft size={14} aria-hidden="true" />}>
+                {t('返回', 'Back')}
               </Button>
-              {props.selectedPlugin ? (
-                <Button variant="danger" size="sm" onClick={() => props.onDeletePlugin(props.selectedPlugin!.id)} leadingIcon={<Trash2 size={14} aria-hidden="true" />}>
-                  {t('删除', 'Delete')}
-                </Button>
-              ) : null}
+              <h2>{detailPlugin.name}</h2>
+              <p>{detailPlugin.notes || formatMcpEndpoint(detailPlugin) || t('管理 MCP 的全局连接定义、启停状态和元数据检测。', 'Manage global MCP connection definitions, enabled state, and metadata checks.')}</p>
             </div>
+            <ConfigDetailActionBar actions={[
+              { id: 'edit', label: t('编辑', 'Edit'), icon: <Settings2 size={14} aria-hidden="true" />, onAction: () => props.onEditPlugin(detailPlugin) },
+              ...(detailPlugin.transport === 'stdio'
+                ? [
+                    { id: 'restart', label: t('重启', 'Restart'), icon: <RotateCw size={14} aria-hidden="true" />, disabled: props.isRefreshing, onAction: props.onReconnect },
+                    { id: 'stop', label: t('停止', 'Stop'), icon: <Square size={13} aria-hidden="true" />, disabled: props.connectionStatus?.processStatus !== 'running', onAction: props.onStop }
+                  ]
+                : []),
+              { id: 'refresh', label: props.isRefreshing ? t('刷新中…', 'Refreshing…') : t('刷新', 'Refresh'), icon: <RefreshCw size={14} aria-hidden="true" />, disabled: props.isRefreshing, onAction: props.onRefresh },
+              { id: 'delete', label: t('删除', 'Delete'), tone: 'danger', icon: <Trash2 size={14} aria-hidden="true" />, onAction: () => props.onDeletePlugin(detailPlugin.id) }
+            ]} />
           </div>
 
           {props.pluginError ? <div className="warning-banner error">{props.pluginError}</div> : null}
 
-          {props.selectedPlugin ? (
-            <>
-              <div className="detail-grid">
-                <Card title={t('连接定义', 'Connection')}>
-                  <InfoRow label={t('范围', 'Scope')} value={t('全局', 'Global')} />
-                  <InfoRow label="Transport" value={props.selectedPlugin.transport} />
-                  <InfoRow label="Endpoint" value={formatMcpEndpoint(props.selectedPlugin)} />
-                  <InfoRow label={t('连接状态', 'Connection Status')} value={formatConnectionStatus(language, props.connectionStatus)} />
-                  {props.connectionStatus?.pid ? <InfoRow label="PID" value={String(props.connectionStatus.pid)} /> : null}
-                  <InfoRow label={t('状态', 'Status')} value={props.selectedPlugin.enabled ? t('启用', 'Enabled') : t('禁用', 'Disabled')} />
-                  {props.connectionStatus?.lastError ? <div className="warning-banner compact error">{props.connectionStatus.lastError}</div> : null}
-                </Card>
-                <Card title={t('服务端信息', 'Server Info')}>
-                  <div className="info-line">{props.serverInfo ? `${props.serverInfo.name} · ${props.serverInfo.version}` : t('尚未检测', 'Not checked yet')}</div>
-                  <div className="helper-copy">{props.serverInfo ? `protocol ${props.serverInfo.protocolVersion}` : t('点击刷新读取 MCP 元数据。', 'Click refresh to load MCP metadata.')}</div>
-                  <CapabilityBadgeRow
-                    serverInfo={props.serverInfo}
-                    tools={props.tools}
-                    resources={props.resources}
-                    prompts={props.prompts}
-                    resourceTemplates={props.resourceTemplates}
-                  />
-                </Card>
-                <Card title={t('工具能力', 'Tool Capabilities')}>
-                  <div className="helper-copy">{t(`已发现 ${props.tools.length} 个工具`, `${props.tools.length} tools detected`)}</div>
-                  <List items={props.tools.slice(0, 10).map((tool) => tool.name)} />
-                </Card>
-                <McpToolSnapshotCard snapshots={props.toolSnapshots} />
-                <McpRawDiagnosticsCard plugin={props.selectedPlugin} onSendRawRequest={props.onSendRawMcpRequest} />
-                <McpRawAuditCard audits={props.rawAudits} />
-                <Card title={t('资源上下文', 'Resource Context')}>
-                  <div className="helper-copy">{t(`已发现 ${props.resources.length} 个资源`, `${props.resources.length} resources detected`)}</div>
-                  <List items={props.resources.slice(0, 10).map((resource) => resource.uri)} />
-                </Card>
-                <Card title={t('提示词与模板', 'Prompts & Templates')}>
-                  <div className="helper-copy">{t(`已发现 ${props.prompts.length} 个 Prompt、${props.resourceTemplates.length} 个资源模板`, `${props.prompts.length} prompts, ${props.resourceTemplates.length} resource templates detected`)}</div>
-                  <List items={[
-                    ...props.prompts.slice(0, 5).map((prompt) => prompt.name),
-                    ...props.resourceTemplates.slice(0, 5).map((template) => template.uriTemplate)
-                  ]} />
-                </Card>
-                {props.selectedPlugin.transport === 'stdio' ? (
-                  <Card title={t('进程日志', 'Process Log')}>
-                    <div className="helper-copy">{props.connectionStatus?.startedAt ? t(`启动于 ${props.connectionStatus.startedAt}`, `Started at ${props.connectionStatus.startedAt}`) : t('尚未启动 stdio 进程。', 'The stdio process has not started yet.')}</div>
-                    <pre className="mcp-process-log">{props.connectionStatus?.stderrTail?.length ? props.connectionStatus.stderrTail.join('\n') : t('暂无 stderr 输出。', 'No stderr output yet.')}</pre>
-                  </Card>
-                ) : null}
-              </div>
-            </>
-          ) : (
-            <div className="empty-note">{t('选择左侧 MCP 查看连接信息。', 'Select an MCP entry on the left to inspect it.')}</div>
-          )}
+          <div className="detail-grid">
+            <Card title={t('连接定义', 'Connection')}>
+              <InfoRow label={t('范围', 'Scope')} value={t('全局', 'Global')} />
+              <InfoRow label="Transport" value={detailPlugin.transport} />
+              <InfoRow label="Endpoint" value={formatMcpEndpoint(detailPlugin)} />
+              <InfoRow label={t('连接状态', 'Connection Status')} value={formatConnectionStatus(language, props.connectionStatus)} />
+              {props.connectionStatus?.pid ? <InfoRow label="PID" value={String(props.connectionStatus.pid)} /> : null}
+              <InfoRow label={t('状态', 'Status')} value={detailPlugin.enabled ? t('启用', 'Enabled') : t('禁用', 'Disabled')} />
+              {props.connectionStatus?.lastError ? <div className="warning-banner compact error">{props.connectionStatus.lastError}</div> : null}
+            </Card>
+            <Card title={t('服务端信息', 'Server Info')}>
+              <div className="info-line">{props.serverInfo ? `${props.serverInfo.name} · ${props.serverInfo.version}` : t('尚未检测', 'Not checked yet')}</div>
+              <div className="helper-copy">{props.serverInfo ? `protocol ${props.serverInfo.protocolVersion}` : t('点击刷新读取 MCP 元数据。', 'Click refresh to load MCP metadata.')}</div>
+              <CapabilityBadgeRow
+                serverInfo={props.serverInfo}
+                tools={props.tools}
+                resources={props.resources}
+                prompts={props.prompts}
+                resourceTemplates={props.resourceTemplates}
+              />
+            </Card>
+            <Card title={t('工具能力', 'Tool Capabilities')}>
+              <div className="helper-copy">{t(`已发现 ${props.tools.length} 个工具`, `${props.tools.length} tools detected`)}</div>
+              <List items={props.tools.slice(0, 10).map((tool) => tool.name)} />
+            </Card>
+            <McpToolSnapshotCard snapshots={props.toolSnapshots} />
+            <McpRawDiagnosticsCard plugin={detailPlugin} onSendRawRequest={props.onSendRawMcpRequest} />
+            <McpRawAuditCard audits={props.rawAudits} />
+            <Card title={t('资源上下文', 'Resource Context')}>
+              <div className="helper-copy">{t(`已发现 ${props.resources.length} 个资源`, `${props.resources.length} resources detected`)}</div>
+              <List items={props.resources.slice(0, 10).map((resource) => resource.uri)} />
+            </Card>
+            <Card title={t('提示词与模板', 'Prompts & Templates')}>
+              <div className="helper-copy">{t(`已发现 ${props.prompts.length} 个 Prompt、${props.resourceTemplates.length} 个资源模板`, `${props.prompts.length} prompts, ${props.resourceTemplates.length} resource templates detected`)}</div>
+              <List items={[
+                ...props.prompts.slice(0, 5).map((prompt) => prompt.name),
+                ...props.resourceTemplates.slice(0, 5).map((template) => template.uriTemplate)
+              ]} />
+            </Card>
+            {detailPlugin.transport === 'stdio' ? (
+              <Card title={t('进程日志', 'Process Log')}>
+                <div className="helper-copy">{props.connectionStatus?.startedAt ? t(`启动于 ${props.connectionStatus.startedAt}`, `Started at ${props.connectionStatus.startedAt}`) : t('尚未启动 stdio 进程。', 'The stdio process has not started yet.')}</div>
+                <pre className="mcp-process-log">{props.connectionStatus?.stderrTail?.length ? props.connectionStatus.stderrTail.join('\n') : t('暂无 stderr 输出。', 'No stderr output yet.')}</pre>
+              </Card>
+            ) : null}
+          </div>
         </div>
-      </div>
+      ) : (
+        <ConfigListPanel
+          className="mcp-settings-list-panel"
+          items={pluginItems}
+          emptyTitle={t('暂无全局 MCP Server', 'No global MCP servers yet')}
+          emptyDescription={t('添加 Server 后，可在项目设置中启用对应工具。', 'Add a server to enable its tools from project settings.')}
+          onOpenItem={(pluginId) => {
+            const plugin = props.plugins.find((item) => item.id === pluginId);
+            if (plugin) openPluginDetail(plugin);
+          }}
+          renderItemActions={(item) => {
+            const plugin = props.plugins.find((candidate) => candidate.id === item.id);
+            return plugin ? (
+              <ToggleSwitch
+                label={plugin.enabled ? t('停用 MCP Server', 'Disable MCP server') : t('启用 MCP Server', 'Enable MCP server')}
+                checked={plugin.enabled}
+                onCheckedChange={(enabled) => props.onTogglePlugin(plugin, enabled)}
+              />
+            ) : null;
+          }}
+        />
+      )}
     </div>
   );
 }

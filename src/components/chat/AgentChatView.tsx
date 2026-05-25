@@ -1,122 +1,32 @@
 import { useEffect, useMemo, useState, type JSX } from 'react';
-import { Play, RefreshCw, Wrench, X } from 'lucide-react';
 import type {
   AgentPermissionMode,
-  AgentCoreMessagePart,
-  AgentPermissionImpact,
-  AgentToolArtifact,
-  AgentToolBrowserResult,
-  AgentToolChangedFile,
-  AgentToolEditMetrics,
-  AgentToolMcpResult,
-  AgentUserInputOption,
   AgentUserInputResponse,
   AiProvider,
-  ChatContentBlock,
-  ChatMediaBlock,
   ChatMessage,
-  EnvironmentAction,
   EnvironmentActionKind,
   EnvironmentActionResult,
-  EnvironmentCheck,
   EnvironmentDiagnostics,
   PromptAttachment,
   Project,
   ProjectSessionEffort,
-  ProjectSessionRuntimeId,
-  RuntimeRecoveryAction
+  ProjectSessionRuntimeId
 } from '../../../shared/types';
-import { resolveProviderTokenLimits } from '../../../shared/provider-catalog';
-import { agentCorePartsToPlainText } from '../../../shared/agent-core-v2';
 import { localize, useUiLanguage, type UiLanguage } from '../../i18n';
-import { ChatComposer, type AgentContextUsageSummary, type EngineConnectionSummary, type QueuedPromptItem } from './ChatComposer';
+import { ChatComposer, type EngineConnectionSummary, type QueuedPromptItem } from './ChatComposer';
 import { MessageList, type EmptyChatAction } from './MessageList';
 import { getVisibleRuntimeStatusMessage } from './runtime-display';
-import { buildRuntimeTaskSummaryFromTools } from './runtime-task-summary';
-import { Button, IconButton } from '../ui/index';
+import {
+  buildRuntimeTaskSummaryFromAgentCoreParts,
+  buildRuntimeTaskSummaryFromTools
+} from './runtime-task-summary';
+import type { AgentPromptStreamState } from './agent/agent-stream-state';
+import { estimateCurrentSessionContextUsage } from './agent/context-estimate';
+import { EngineStatusDialog, formatEnginePlatformLabel } from './agent/EngineStatusDialog';
+
+export type { AgentPromptStreamState } from './agent/agent-stream-state';
 
 const EMPTY_CHAT_MESSAGES: ChatMessage[] = [];
-const TOKEN_ESTIMATE_CACHE_LIMIT = 5000;
-const messageTokenEstimateByObject = new WeakMap<ChatMessage, {
-  signature: string;
-  tokens: number;
-}>();
-const messageTokenEstimateBySignature = new Map<string, number>();
-const streamTokenEstimateBySignature = new Map<string, number>();
-
-export interface AgentPromptStreamState {
-  streamId: string;
-  projectId: string;
-  sessionId: string;
-  prompt: string;
-  content: string;
-  thinkingContent: string;
-  toolUses: Array<{
-    toolUseId: string;
-    name: string;
-    input?: Record<string, unknown>;
-    status: 'pending' | 'running' | 'completed' | 'failed';
-  }>;
-  toolResults: Array<{
-    toolUseId: string;
-    content: string;
-    isError?: boolean;
-    media?: ChatMediaBlock[];
-    changedFiles?: AgentToolChangedFile[];
-    browser?: AgentToolBrowserResult;
-    edit?: AgentToolEditMetrics;
-    mcp?: AgentToolMcpResult;
-    artifacts?: AgentToolArtifact[];
-  }>;
-  stages: Array<{
-    stageId: string;
-    phase?: string;
-    title: string;
-    target: string;
-    status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
-    input?: Record<string, unknown>;
-    summary?: string;
-    errorMessage?: string;
-    runtimeId?: ProjectSessionRuntimeId;
-    providerId?: string;
-    model?: string;
-    errorCode?: string;
-    suggestedAction?: string;
-    recoveryActions?: RuntimeRecoveryAction[];
-  }>;
-  activityItems: Array<{
-    id: string;
-    type: 'tool' | 'stage' | 'context' | 'timeout';
-    offset: number;
-    status: 'running' | 'completed' | 'failed';
-    title: string;
-    summary?: string;
-    toolUseIds?: string[];
-    stageId?: string;
-    createdAt: string;
-  }>;
-  agentCoreParts?: AgentCoreMessagePart[];
-  pendingPermission?: {
-    requestId: string;
-    title: string;
-    detail: string;
-    risk: 'low' | 'medium' | 'high';
-    impact?: AgentPermissionImpact;
-  };
-  pendingUserInput?: {
-    requestId: string;
-    title: string;
-    question: string;
-    detail?: string;
-    options?: AgentUserInputOption[];
-    multiSelect?: boolean;
-    allowFreeText?: boolean;
-    placeholder?: string;
-  };
-  phase: string;
-  statusMessage: string;
-  startedAt: string;
-}
 
 export function AgentChatView(props: {
   project: Project | null;
@@ -143,7 +53,6 @@ export function AgentChatView(props: {
   composerError: string;
   queuedPrompts: QueuedPromptItem[];
   isSending: boolean;
-  isExecutingPlan: boolean;
   onComposerChange: (value: string) => void;
   onPickAttachments: () => void;
   onRemoveAttachment: (attachmentId: string) => void;
@@ -181,6 +90,10 @@ export function AgentChatView(props: {
   const runtimeTaskSummary = useMemo(() => {
     if (!visibleStream) {
       return null;
+    }
+    const agentCoreSummary = buildRuntimeTaskSummaryFromAgentCoreParts(visibleStream.agentCoreParts);
+    if (agentCoreSummary) {
+      return agentCoreSummary;
     }
     const resultsById = new Map(visibleStream.toolResults.map((result) => [result.toolUseId, result]));
     return buildRuntimeTaskSummaryFromTools(visibleStream.toolUses.map((tool) => ({
@@ -376,7 +289,6 @@ export function AgentChatView(props: {
                 error={props.composerError}
                 queuedPrompts={props.queuedPrompts}
                 isSending={props.isSending}
-                isExecutingPlan={props.isExecutingPlan}
                 statusMessage={visibleStreamStatusMessage}
                 runtimeTaskSummary={runtimeTaskSummary}
                 engineConnection={engineConnection}
@@ -425,193 +337,6 @@ export function AgentChatView(props: {
   );
 }
 
-function EngineStatusDialog(props: {
-  project: Project;
-  diagnostics: EnvironmentDiagnostics | null;
-  loading: boolean;
-  actionId: EnvironmentActionKind | null;
-  error: string;
-  actionMessage: string;
-  onClose: () => void;
-  onRefresh: () => void;
-  onRunAction: (actionId: EnvironmentActionKind) => void;
-}): JSX.Element {
-  const language = useUiLanguage();
-  const t = (zh: string, en: string): string => localize(language, zh, en);
-  const hubCheck = findEnvironmentCheck(props.diagnostics, 'unity-hub');
-  const projectCheck = findEnvironmentCheck(props.diagnostics, 'engine-opened');
-  const projectValidityCheck = findEnvironmentCheck(props.diagnostics, 'engine-project');
-  const bridgeInstalledCheck = findEnvironmentCheck(props.diagnostics, 'bridge-installed');
-  const bridgeConnectedCheck = findEnvironmentCheck(props.diagnostics, 'bridge-connected');
-  const mcpStatus = bridgeConnectedCheck?.status === 'passed'
-    ? 'passed'
-    : bridgeInstalledCheck?.status === 'failed'
-      ? 'failed'
-      : bridgeInstalledCheck?.status === 'warning' || bridgeConnectedCheck?.status === 'warning'
-        ? 'warning'
-        : bridgeConnectedCheck?.status ?? bridgeInstalledCheck?.status ?? 'pending';
-  const hubStatus = hubCheck?.actions.some((action) => action.id === 'open_unity_hub')
-    ? 'warning'
-    : hubCheck?.status ?? 'pending';
-  const projectActions = dedupeEnvironmentActions([
-    ...(projectCheck?.actions ?? []),
-    ...(projectValidityCheck?.status === 'passed' ? [] : projectValidityCheck?.actions ?? [])
-  ]);
-  const mcpActions = dedupeEnvironmentActions([
-    ...(bridgeConnectedCheck?.actions ?? []),
-    ...(bridgeInstalledCheck?.actions ?? [])
-  ]);
-
-  return (
-    <div className="modal-backdrop engine-status-backdrop" role="presentation" onMouseDown={props.onClose}>
-      <section className="fp-modal modal-card engine-status-modal" role="dialog" aria-modal="true" aria-labelledby="engine-status-title" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="modal-header">
-          <div>
-            <div className="eyebrow">{t('引擎状态', 'Engine Status')}</div>
-            <h2 id="engine-status-title" className="page-title">{formatEnginePlatformLabel(props.project.engine?.platform ?? 'unity')}</h2>
-          </div>
-          <div className="engine-status-header-actions">
-            <IconButton
-              label={t('刷新状态', 'Refresh status')}
-              icon={<RefreshCw size={16} aria-hidden="true" />}
-              onClick={props.onRefresh}
-              loading={props.loading}
-            />
-            <IconButton label={t('关闭', 'Close')} icon={<X size={16} aria-hidden="true" />} onClick={props.onClose} />
-          </div>
-        </div>
-        <div className="modal-stack engine-status-stack">
-          <div className="engine-status-path">{props.project.engine?.projectPath || t('未记录项目路径', 'No project path recorded')}</div>
-          {props.error ? <div className="warning-banner compact error">{props.error}</div> : null}
-          {props.actionMessage ? <div className="status-banner compact ok">{props.actionMessage}</div> : null}
-          <EngineStatusRow
-            title="Unity Hub"
-            status={hubStatus}
-            detail={hubCheck?.detail ?? t('尚未检测。', 'Not checked yet.')}
-            actions={hubCheck?.actions ?? []}
-            actionId={props.actionId}
-            onRunAction={props.onRunAction}
-          />
-          <EngineStatusRow
-            title={t('Unity 项目', 'Unity Project')}
-            status={projectCheck?.status ?? projectValidityCheck?.status ?? 'pending'}
-            detail={[projectValidityCheck?.detail, projectCheck?.detail].filter(Boolean).join(' · ') || t('尚未检测。', 'Not checked yet.')}
-            actions={projectActions}
-            actionId={props.actionId}
-            onRunAction={props.onRunAction}
-          />
-          <EngineStatusRow
-            title="Unity MCP"
-            status={mcpStatus}
-            detail={[bridgeInstalledCheck?.detail, bridgeConnectedCheck?.detail].filter(Boolean).join(' · ') || t('尚未检测。', 'Not checked yet.')}
-            actions={mcpActions}
-            actionId={props.actionId}
-            onRunAction={props.onRunAction}
-          />
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function EngineStatusRow(props: {
-  title: string;
-  status: EnvironmentCheck['status'];
-  detail: string;
-  actions: EnvironmentAction[];
-  actionId: EnvironmentActionKind | null;
-  onRunAction: (actionId: EnvironmentActionKind) => void;
-}): JSX.Element {
-  const language = useUiLanguage();
-  const t = (zh: string, en: string): string => localize(language, zh, en);
-  return (
-    <div className={`engine-status-row ${props.status}`}>
-      <div className="engine-status-row-main">
-        <div className="engine-status-row-title">
-          <strong>{props.title}</strong>
-          <span className={`engine-status-badge ${props.status}`}>{formatEnvironmentStatusLabel(language, props.status)}</span>
-        </div>
-        <p>{props.detail}</p>
-      </div>
-      {props.actions.length > 0 ? (
-        <div className="engine-status-row-actions">
-          {props.actions.map((action) => (
-            <Button
-              key={action.id}
-              size="sm"
-              variant={action.primary ? 'primary' : 'secondary'}
-              loading={props.actionId === action.id}
-              leadingIcon={action.id === 'install_project_bridge' ? <Wrench size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
-              onClick={() => props.onRunAction(action.id)}
-            >
-              {action.label || t('打开', 'Open')}
-            </Button>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function findEnvironmentCheck(diagnostics: EnvironmentDiagnostics | null, id: string): EnvironmentCheck | undefined {
-  return diagnostics?.checks.find((check) => check.id === id);
-}
-
-function dedupeEnvironmentActions(actions: EnvironmentAction[]): EnvironmentAction[] {
-  return [...new Map(actions.map((action) => [action.id, action])).values()];
-}
-
-function formatEnvironmentStatusLabel(language: UiLanguage, status: EnvironmentCheck['status']): string {
-  if (status === 'passed') return localize(language, '已就绪', 'Ready');
-  if (status === 'warning') return localize(language, '需处理', 'Needs Action');
-  if (status === 'failed') return localize(language, '不可用', 'Unavailable');
-  return localize(language, '待检测', 'Pending');
-}
-
-function formatEnginePlatformLabel(platform: Exclude<Project['engine'], undefined>['platform']): string {
-  if (platform === 'unity') return 'Unity';
-  if (platform === 'cocos') return 'Cocos';
-  if (platform === 'godot') return 'Godot';
-  if (platform === 'unreal') return 'Unreal';
-  return 'Engine';
-}
-
-function estimateCurrentSessionContextUsage(input: {
-  messages: ChatMessage[];
-  stream: AgentPromptStreamState | null;
-  draft: string;
-  attachments: PromptAttachment[];
-  modelLabel: string;
-  provider: AiProvider | null;
-  language: UiLanguage;
-}): AgentContextUsageSummary {
-  const sessionTokens = input.messages.reduce((total, message) => total + estimateMessageTokens(message), 0);
-  const streamTokens = input.stream ? estimateStreamTokens(input.stream) : 0;
-  const draftTokens = estimateTextTokens(input.draft);
-  const attachmentTokens = estimateAttachmentTokens(input.attachments);
-  const tokenBudget = resolveContextTokenBudget(input.modelLabel, input.provider);
-  const usedTokens = Math.max(0, sessionTokens + streamTokens + draftTokens + attachmentTokens);
-  const budgetLabel = describeContextBudget({
-    language: input.language,
-    modelLabel: input.modelLabel,
-    provider: input.provider,
-    tokenBudget
-  });
-
-  return {
-    usedTokens,
-    tokenBudget,
-    percent: tokenBudget > 0 ? usedTokens / tokenBudget : 0,
-    sessionTokens,
-    draftTokens,
-    attachmentTokens,
-    streamTokens,
-    messageCount: input.messages.length + (input.stream ? 1 : 0),
-    modelLabel: input.modelLabel || 'model',
-    budgetLabel
-  };
-}
-
 function buildEmptyChatActions(language: UiLanguage, permissionMode: AgentPermissionMode): EmptyChatAction[] {
   const buildMode = permissionMode === 'full-access';
   return [
@@ -648,285 +373,4 @@ function buildEmptyChatActions(language: UiLanguage, permissionMode: AgentPermis
       prompt: localize(language, '先不要改文件。请分析当前项目结构和目标，必要时查找相关文件，给出分阶段实施计划、验收标准和潜在风险。', 'Do not modify files yet. Analyze the current project structure and goal, inspect relevant files if needed, then provide a staged implementation plan, acceptance criteria, and risks.')
     }
   ];
-}
-
-function estimateMessageTokens(message: ChatMessage): number {
-  const signature = createMessageTokenEstimateSignature(message);
-  const cachedObject = messageTokenEstimateByObject.get(message);
-  if (cachedObject?.signature === signature) {
-    return cachedObject.tokens;
-  }
-  const cachedSignature = messageTokenEstimateBySignature.get(signature);
-  if (typeof cachedSignature === 'number') {
-    messageTokenEstimateByObject.set(message, {
-      signature,
-      tokens: cachedSignature
-    });
-    return cachedSignature;
-  }
-
-  const tokens = estimateTextTokens(getMessageTextForTokenEstimate(message)) + 4;
-  rememberTokenEstimate(messageTokenEstimateBySignature, signature, tokens);
-  messageTokenEstimateByObject.set(message, {
-    signature,
-    tokens
-  });
-  return tokens;
-}
-
-function getMessageTextForTokenEstimate(message: ChatMessage): string {
-  if (message.role === 'assistant' && message.metadata?.agentCoreParts?.length) {
-    return agentCorePartsToPlainText(message.metadata.agentCoreParts);
-  }
-
-  return message.contentBlocks?.length
-    ? message.contentBlocks.map(getBlockTextForTokenEstimate).filter(Boolean).join('\n\n')
-    : message.content;
-}
-
-function getBlockTextForTokenEstimate(block: ChatContentBlock): string {
-  switch (block.type) {
-    case 'text':
-      return block.text;
-    case 'fallback':
-      return block.text;
-    case 'thinking':
-      return block.thinking;
-    case 'tool_use':
-      return `${block.name}\n${block.input ? safeStringify(block.input) : ''}`;
-    case 'tool_result':
-      return [
-        block.content,
-        ...(block.media ?? []).map((media) => media.title || media.localPath || media.mimeType || media.type)
-      ].filter(Boolean).join('\n');
-    default:
-      return '';
-  }
-}
-
-function estimateStreamTokens(stream: AgentPromptStreamState): number {
-  const signature = createStreamTokenEstimateSignature(stream);
-  const cached = streamTokenEstimateBySignature.get(signature);
-  if (typeof cached === 'number') {
-    return cached;
-  }
-
-  const tokens = estimateTextTokens(getStreamTextForTokenEstimate(stream));
-  rememberTokenEstimate(streamTokenEstimateBySignature, signature, tokens);
-  return tokens;
-}
-
-function getStreamTextForTokenEstimate(stream: AgentPromptStreamState): string {
-  if (stream.agentCoreParts?.length) {
-    return [
-      stream.prompt,
-      agentCorePartsToPlainText(stream.agentCoreParts)
-    ].filter(Boolean).join('\n\n');
-  }
-
-  return [
-    stream.prompt,
-    stream.content,
-    stream.thinkingContent,
-    ...stream.toolUses.map((tool) => `${tool.name}\n${tool.input ? safeStringify(tool.input) : ''}`),
-    ...stream.toolResults.map((result) => result.content)
-  ].filter(Boolean).join('\n\n');
-}
-
-function rememberTokenEstimate(cache: Map<string, number>, signature: string, tokens: number): void {
-  cache.set(signature, tokens);
-  while (cache.size > TOKEN_ESTIMATE_CACHE_LIMIT) {
-    const firstKey = cache.keys().next().value;
-    if (!firstKey) {
-      return;
-    }
-    cache.delete(firstKey);
-  }
-}
-
-function createMessageTokenEstimateSignature(message: ChatMessage): string {
-  const contentSignature = message.role === 'assistant' && message.metadata?.agentCoreParts?.length
-    ? createAgentCorePartsTokenEstimateSignature(message.metadata.agentCoreParts)
-    : message.contentBlocks?.length
-    ? message.contentBlocks.map(createBlockTokenEstimateSignature).join('|')
-    : createTextTokenEstimateSignature(message.content);
-  return [
-    message.id,
-    message.role,
-    message.createdAt,
-    contentSignature
-  ].join(':');
-}
-
-function createAgentCorePartsTokenEstimateSignature(parts: AgentCoreMessagePart[]): string {
-  return parts
-    .map((part) => `${part.id}:${part.kind}:${part.sequence}:${part.createdAt}:${createUnknownTokenEstimateSignature(part)}`)
-    .join('|');
-}
-
-function createBlockTokenEstimateSignature(block: ChatContentBlock): string {
-  if (block.type === 'text') return `text:${createTextTokenEstimateSignature(block.text)}`;
-  if (block.type === 'fallback') return `fallback:${createTextTokenEstimateSignature(block.text)}:${createTextTokenEstimateSignature(block.reason ?? '')}`;
-  if (block.type === 'thinking') return `thinking:${createTextTokenEstimateSignature(block.thinking)}`;
-  if (block.type === 'tool_use') return `tool_use:${block.toolUseId}:${block.name}:${createUnknownTokenEstimateSignature(block.input)}`;
-  if (block.type === 'tool_result') {
-    const mediaSignature = (block.media ?? [])
-      .map((media) => `${media.type}:${media.mimeType ?? ''}:${createTextTokenEstimateSignature(media.title ?? '')}:${createTextTokenEstimateSignature(media.localPath ?? '')}`)
-      .join(',');
-    return `tool_result:${block.toolUseId}:${block.isError ? '1' : '0'}:${createTextTokenEstimateSignature(block.content)}:${mediaSignature}`;
-  }
-  return 'unknown';
-}
-
-function createStreamTokenEstimateSignature(stream: AgentPromptStreamState): string {
-  if (stream.agentCoreParts?.length) {
-    return [
-      stream.streamId,
-      createTextTokenEstimateSignature(stream.prompt),
-      createAgentCorePartsTokenEstimateSignature(stream.agentCoreParts)
-    ].join(':');
-  }
-
-  return [
-    stream.streamId,
-    createTextTokenEstimateSignature(stream.prompt),
-    createTextTokenEstimateSignature(stream.content),
-    createTextTokenEstimateSignature(stream.thinkingContent),
-    stream.toolUses.map((tool) => `${tool.toolUseId}:${tool.name}:${tool.status}:${createUnknownTokenEstimateSignature(tool.input)}`).join('|'),
-    stream.toolResults.map((result) => `${result.toolUseId}:${result.isError ? '1' : '0'}:${createTextTokenEstimateSignature(result.content)}`).join('|')
-  ].join(':');
-}
-
-function createTextTokenEstimateSignature(value: string): string {
-  return `${value.length}:${value.slice(0, 16)}:${value.slice(-16)}`;
-}
-
-function createUnknownTokenEstimateSignature(value: unknown, depth = 0): string {
-  if (value == null) return 'null';
-  if (typeof value === 'string') return `s:${createTextTokenEstimateSignature(value)}`;
-  if (typeof value === 'number' || typeof value === 'boolean') return `${typeof value}:${String(value)}`;
-  if (Array.isArray(value)) {
-    if (depth >= 2) return `array:${value.length}`;
-    return `array:${value.length}:${value.slice(0, 8).map((item) => createUnknownTokenEstimateSignature(item, depth + 1)).join(',')}`;
-  }
-  if (typeof value === 'object') {
-    if (depth >= 2) return 'object';
-    return Object.entries(value as Record<string, unknown>)
-      .slice(0, 20)
-      .map(([key, item]) => `${key}:${createUnknownTokenEstimateSignature(item, depth + 1)}`)
-      .join(',');
-  }
-  return typeof value;
-}
-
-function estimateAttachmentTokens(attachments: PromptAttachment[]): number {
-  return attachments.reduce((total, attachment) => {
-    if (attachment.kind === 'image') {
-      return total + 1600;
-    }
-    return total + Math.min(6000, Math.ceil(attachment.size / 6));
-  }, 0);
-}
-
-function estimateTextTokens(value: string): number {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return 0;
-  }
-  const asciiChars = [...trimmed].filter((char) => char.charCodeAt(0) <= 0x7f).length;
-  const nonAsciiChars = trimmed.length - asciiChars;
-  return Math.ceil(asciiChars / 3.8 + nonAsciiChars / 1.6);
-}
-
-function resolveContextTokenBudget(modelLabel: string, provider: AiProvider | null): number {
-  const resolvedLimits = provider ? resolveProviderTokenLimits(provider) : null;
-  if (resolvedLimits?.effectiveContextWindowTokens) {
-    return resolvedLimits.effectiveContextWindowTokens;
-  }
-  const model = modelLabel.toLowerCase();
-  if (model.includes('gemini-1.5') || model.includes('gemini-2.5')) {
-    return 1_048_576;
-  }
-  if (model.includes('gpt-4.1')) {
-    return 1_047_576;
-  }
-  if (model.includes('gpt-5.4')) {
-    return 1_050_000;
-  }
-  if (model.includes('gpt-5')) {
-    return 400_000;
-  }
-  if (model.includes('claude')) {
-    return 200_000;
-  }
-  if (model.includes('glm-5.1') || model.includes('glm-4.6')) {
-    return 200_000;
-  }
-  if (model.includes('mimo-v2.5-pro') || model.includes('mimo-v2.5')) {
-    return 1_000_000;
-  }
-  if (model.includes('mimo-v2-pro')) {
-    return 131_072;
-  }
-  if (model.includes('mimo-v2-flash')) {
-    return 65_536;
-  }
-  if (model.includes('mimo-v2-omni')) {
-    return 32_768;
-  }
-  if (model.includes('deepseek')) {
-    return 1_000_000;
-  }
-  if (model.includes('qwen') || model.includes('llama')) {
-    return 128_000;
-  }
-  return 128_000;
-}
-
-function describeContextBudget(input: {
-  language: UiLanguage;
-  modelLabel: string;
-  provider: AiProvider | null;
-  tokenBudget: number;
-}): string {
-  const resolvedLimits = input.provider ? resolveProviderTokenLimits(input.provider) : null;
-  const matchedLabel = resolvedLimits?.displayName || resolvedLimits?.modelId || input.modelLabel;
-  const formattedBudget = formatCompactTokenLimit(input.tokenBudget);
-  if (resolvedLimits?.configuredContextWindowTokens) {
-    return localize(
-      input.language,
-      `上下文窗口按 Provider 自定义 ${formattedBudget} 估算`,
-      `context window uses provider custom ${formattedBudget}`
-    );
-  }
-  if (resolvedLimits?.presetContextWindowTokens) {
-    return localize(
-      input.language,
-      `上下文窗口按 ${matchedLabel} 预设 ${formattedBudget} 估算`,
-      `context window uses ${matchedLabel} preset ${formattedBudget}`
-    );
-  }
-  return localize(
-    input.language,
-    `模型窗口按 ${input.modelLabel} 估算`,
-    `window estimated for ${input.modelLabel}`
-  );
-}
-
-function formatCompactTokenLimit(value: number): string {
-  if (value >= 1_000_000) {
-    return `${Math.round(value / 100_000) / 10}M`;
-  }
-  if (value >= 1_000) {
-    return `${Math.round(value / 100) / 10}K`;
-  }
-  return String(value);
-}
-
-function safeStringify(value: Record<string, unknown>): string {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return '';
-  }
 }

@@ -1,5 +1,6 @@
 import type { GenericAgentRuntimeParams } from '../types';
 import { createNativeRuntimeUserPrompt } from './prompt';
+import type { NativeRuntimeToolDefinition } from './tool-adapter';
 
 export function createNativeToolLoopPermissionInstructions(params: Pick<GenericAgentRuntimeParams, 'permission'>, options: {
   includeWriteTools: boolean;
@@ -32,12 +33,70 @@ export function createNativeToolLoopPermissionInstructions(params: Pick<GenericA
   return [modeLine, writeLine];
 }
 
+function formatToolPromptLine(toolName: string, definition?: NativeRuntimeToolDefinition): string {
+  if (!definition) {
+    return `- ${toolName}`;
+  }
+  const canonical = definition.toolLanguage?.canonicalName && definition.toolLanguage.canonicalName !== definition.name
+    ? `；Claude-like：${definition.toolLanguage.canonicalName}`
+    : '';
+  const hint = definition.toolLanguage?.usageHint ? `；${definition.toolLanguage.usageHint}` : '';
+  return `- ${definition.name} — ${definition.title}${canonical}${hint}`;
+}
+
+function formatNativeToolLanguageGuide(definitions: NativeRuntimeToolDefinition[]): string[] {
+  const semanticTools = definitions.filter((definition) => definition.toolLanguage?.canonicalName);
+  const byCanonical = new Map<string, NativeRuntimeToolDefinition[]>();
+  for (const definition of semanticTools) {
+    const canonical = definition.toolLanguage?.canonicalName;
+    if (!canonical) {
+      continue;
+    }
+    byCanonical.set(canonical, [...(byCanonical.get(canonical) ?? []), definition]);
+  }
+  const preferredOrder = [
+    'Read',
+    'LS',
+    'Glob',
+    'Grep',
+    'Bash',
+    'Edit',
+    'MultiEdit',
+    'ApplyPatch',
+    'TodoWrite',
+    'Task',
+    'WebSearch',
+    'WebFetch'
+  ];
+  const lines = preferredOrder
+    .map((canonical) => {
+      const items = byCanonical.get(canonical);
+      if (!items?.length) {
+        return undefined;
+      }
+      const names = items.map((definition) => definition.name).join(' / ');
+      const hint = items.map((definition) => definition.toolLanguage?.usageHint).find(Boolean);
+      return `- ${canonical} → ${names}${hint ? `；${hint}` : ''}`;
+    })
+    .filter((line): line is string => Boolean(line));
+  if (lines.length === 0) {
+    return [];
+  }
+  return [
+    '',
+    'Native 工具语言（按 Claude Code 心智模型选择，再调用右侧真实工具名）：',
+    ...lines
+  ];
+}
+
 export function createNativeToolLoopPrompt(params: GenericAgentRuntimeParams, toolNames: string[], options: {
   includeWriteTools: boolean;
   includeMcpToolCalls: boolean;
   includeCommandTools: boolean;
   dynamicMcpToolNames?: string[];
+  toolDefinitions?: NativeRuntimeToolDefinition[];
 }): string {
+  const definitionsByName = new Map((options.toolDefinitions ?? []).map((definition) => [definition.name, definition]));
   return [
     createNativeRuntimeUserPrompt(params, undefined, {
       includeRecentTurns: false
@@ -45,7 +104,8 @@ export function createNativeToolLoopPrompt(params: GenericAgentRuntimeParams, to
     '',
     ...createNativeToolLoopPermissionInstructions(params, options),
     '你可以使用这些工具来理解项目：',
-    ...toolNames.map((toolName) => `- ${toolName}`),
+    ...toolNames.map((toolName) => formatToolPromptLine(toolName, definitionsByName.get(toolName))),
+    ...formatNativeToolLanguageGuide(options.toolDefinitions ?? []),
     '',
     '规则：',
     '- 对多步骤任务，使用 update_todo_list 维护简短任务清单；优先传 todos 数组，可用 pending/in_progress/completed/cancelled 状态，并在关键步骤完成时更新状态。',

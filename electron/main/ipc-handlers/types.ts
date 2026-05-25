@@ -7,5 +7,6 @@ export interface HandlerContext {
   mainWindow: BrowserWindow | null;
   dispatchPromptStreamEvent: (payload: unknown) => void;
   dispatchProjectFileTreeChangedEvent: (payload: unknown) => void;
+  dispatchAssetGenerationProjectUpdatedEvent: (payload: unknown) => void;
   requirePluginBaseUrl: (pluginId?: string) => string;
 }

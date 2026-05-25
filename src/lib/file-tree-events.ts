@@ -2,7 +2,7 @@ export const refreshFileTreeEventName = 'refresh-file-tree';
 
 export interface RefreshFileTreeDetail {
   projectId?: string;
-  reason?: 'project-opened' | 'project-created' | 'prompt-completed' | 'watcher' | 'manual';
+  reason?: 'project-opened' | 'project-created' | 'prompt-completed' | 'asset-generation' | 'asset-import' | 'watcher' | 'manual';
 }
 
 export function dispatchRefreshFileTree(detail: RefreshFileTreeDetail = {}): void {

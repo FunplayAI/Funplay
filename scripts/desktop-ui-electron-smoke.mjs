@@ -140,6 +140,70 @@ const provider = {
   updatedAt: now
 };
 
+const assetGenerationProviderConfig = {
+  id: 'asset_provider_openai',
+  name: 'OpenAI Images',
+  adapter: 'openai-image',
+  enabled: true,
+  baseUrl: 'https://api.openai.com/v1',
+  apiKey: '',
+  hasStoredApiKey: true,
+  model: 'gpt-image-2',
+  notes: 'UI smoke fixture provider',
+  createdAt: now,
+  updatedAt: now
+};
+
+const assetGenerationProviderProfile = {
+  id: assetGenerationProviderConfig.id,
+  name: assetGenerationProviderConfig.name,
+  adapter: assetGenerationProviderConfig.adapter,
+  enabled: true,
+  capabilities: ['image.generate', 'ui.generate', 'texture.generate'],
+  supportedKinds: ['image_2d', 'ui_2d', 'texture_2d'],
+  modelLabel: 'gpt-image-2',
+  endpointLabel: 'api.openai.com',
+  notes: 'UI smoke fixture provider',
+  requiresNetwork: true,
+  supportsAsyncJobs: false
+};
+
+const assetGenerationJob = {
+  id: 'asset_job_smoke',
+  projectId: project.id,
+  title: 'Smoke sprite',
+  kind: 'image_2d',
+  prompt: 'A clean tiny game sprite for UI smoke.',
+  providerId: assetGenerationProviderProfile.id,
+  providerName: assetGenerationProviderProfile.name,
+  providerAdapter: assetGenerationProviderProfile.adapter,
+  references: [],
+  outputSpec: { format: 'png', width: 1024, height: 1024 },
+  status: 'running',
+  progress: 0.42,
+  createdBy: 'user',
+  outputs: [],
+  createdAt: now,
+  updatedAt: now
+};
+
+project.assetGenerationJobs = [assetGenerationJob];
+
+const mcpPlugin = {
+  id: 'mcp_ui_smoke',
+  name: 'UI Smoke MCP',
+  kind: 'custom',
+  transport: 'http',
+  baseUrl: 'http://127.0.0.1:8765/',
+  defaultToolPermission: 'ask',
+  defaultToolRisk: 'write',
+  enabled: true,
+  isDefault: true,
+  notes: 'UI smoke fixture MCP server',
+  createdAt: now,
+  updatedAt: now
+};
+
 const updateSnapshot = {
   status: 'idle',
   currentVersion: '0.0.0',
@@ -194,11 +258,13 @@ const bootstrapPayload = {
     runtimeStrategy: 'native'
   },
   providers: [provider],
+  assetGenerationProviders: [assetGenerationProviderConfig],
   mcpSettings: {
     baseUrl: 'http://127.0.0.1:8765/',
-    profile: 'core'
+    profile: 'core',
+    activePluginId: mcpPlugin.id
   },
-  mcpPlugins: [],
+  mcpPlugins: [mcpPlugin],
   projects: [project]
 };
 
@@ -235,6 +301,14 @@ const projectFiles = [
     path: 'assets/images/player.png',
     type: 'file',
     size: 68,
+    modifiedAt: now
+  },
+  {
+    id: 'file_smoke_audio',
+    name: 'smoke.mp3',
+    path: 'assets/audio/smoke.mp3',
+    type: 'file',
+    size: 8192,
     modifiedAt: now
   },
   {
@@ -288,6 +362,19 @@ async function writePreload() {
             previewDataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p94AAAAASUVORK5CYII='
           };
         }
+        if (filePath.endsWith('.mp3')) {
+          return {
+            id: filePath,
+            name,
+            path: filePath,
+            size: 8192,
+            content: '',
+            isBinary: true,
+            truncated: false,
+            mimeType: 'audio/mpeg',
+            previewDataUrl: 'data:audio/mpeg;base64,//uQZAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAADQgD///////////////////////////////////////////8AAAA8TEFNRTMuMTAwAQAAAAAAAAAAABSAJAJAQgAAgAAAA0JgYwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//sQxAADwAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVQ=='
+          };
+        }
         return {
           id: filePath,
           name,
@@ -310,6 +397,8 @@ async function writePreload() {
         mimeType: 'text/plain'
       }),
       openProjectFile: success,
+      startProjectHtmlPreviewServer: async () => ({ success: true, url: 'http://127.0.0.1:4173/', sessionId: 'html_preview_smoke', command: 'npm run preview', scriptName: 'preview', reused: false }),
+      stopProjectHtmlPreviewServer: async () => ({ success: true, stopped: true, sessionId: 'html_preview_smoke' }),
       revealProjectFile: success,
       refreshProjectRuntimeState: async () => project,
       createProjectSession: async () => project,
@@ -325,6 +414,7 @@ async function writePreload() {
       },
       updateProjectAgentPolicy: async () => project,
       listAgentSkillCatalog: async () => ({ skills: [], repositories: [] }),
+      listProjectAgentSkillRegistry: async () => ({ skills: [], repositories: [] }),
       updateProjectSessionRuntime: async () => project,
       sendPrompt: async () => project,
       startPromptStream: async () => ({ streamId: 'ui_smoke_stream' }),
@@ -369,6 +459,38 @@ async function writePreload() {
       runProviderDoctor: async () => (${serializeForPreload(providerDoctorResult)}),
       repairProviderDiagnostic: success,
       exportRuntimeDiagnostics: async () => JSON.stringify(${serializeForPreload(providerDoctorResult)}, null, 2),
+      listAssetGenerationProviders: async () => ${serializeForPreload([assetGenerationProviderProfile])},
+      createAssetGenerationProvider: async (input) => ({ id: 'asset_provider_created', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), hasStoredApiKey: Boolean(input.apiKey), apiKey: '', ...input }),
+      updateAssetGenerationProvider: async (providerId, input) => ({ id: providerId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), hasStoredApiKey: Boolean(input.apiKey), apiKey: '', ...input }),
+      deleteAssetGenerationProvider: success,
+      generateAsset: async (_projectId, input) => {
+        const job = {
+          id: 'asset_job_generated',
+          projectId: project.id,
+          title: input.title,
+          kind: input.kind,
+          prompt: input.prompt,
+          providerId: input.providerId || 'asset_provider_openai',
+          providerName: 'OpenAI Images',
+          providerAdapter: 'openai-image',
+          references: input.references || [],
+          outputSpec: input.outputSpec || {},
+          status: 'running',
+          progress: 0.24,
+          createdBy: input.createdBy || 'user',
+          outputs: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        project.assetGenerationJobs = [job, ...(project.assetGenerationJobs || [])];
+        return project;
+      },
+      importGeneratedAsset: async () => project,
+      cancelAssetGenerationJob: async (_projectId, jobId) => {
+        project.assetGenerationJobs = (project.assetGenerationJobs || []).map((job) => job.id === jobId ? { ...job, status: 'cancelled', updatedAt: new Date().toISOString() } : job);
+        return project;
+      },
+      onAssetGenerationProjectUpdated: noSubscription,
       updateAgentSettings: async (settings) => ({ ...bootstrapPayload.agentSettings, ...settings }),
       updateWebSearchSettings: async (settings) => ({ ...bootstrapPayload.aiSettings, webSearch: { ...bootstrapPayload.aiSettings.webSearch, ...settings } }),
       getWebResearchMetrics: async () => ({ generatedAt: new Date().toISOString(), queries: 0, cacheHits: 0, providerCalls: 0, browserFallbacks: 0, failures: 0 }),
@@ -378,11 +500,19 @@ async function writePreload() {
       updateMcpPlugin: async (pluginId, input) => ({ id: pluginId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...input }),
       deleteMcpPlugin: success,
       setActiveMcpPlugin: async () => bootstrapPayload.mcpSettings,
+      getMcpConnectionStatus: async (pluginId) => ({ pluginId: pluginId || mcpPlugin.id, transport: 'http', status: 'online', initializeCount: 1 }),
+      reconnectMcp: async () => ({ ok: true, status: 'online', message: 'UI smoke fixture' }),
+      stopMcp: async (pluginId) => ({ pluginId: pluginId || mcpPlugin.id, transport: 'http', status: 'offline', initializeCount: 1 }),
       checkMcpHealth: async () => ({ ok: false, status: 'offline', message: 'UI smoke fixture' }),
       getMcpServerInfo: async () => ({ name: 'UI Smoke MCP', version: '0.0.0', capabilities: {} }),
       listMcpTools: async () => [],
+      listMcpToolSnapshots: async () => [],
+      listMcpRawAudits: async () => [],
       callMcpTool: async () => ({ content: [] }),
+      sendRawMcpRequest: async (pluginId, method, params) => ({ pluginId, method, durationMs: 1, paramsSize: JSON.stringify(params || {}).length, responseSize: 2, truncated: false, result: {} }),
       listMcpResources: async () => [],
+      listMcpPrompts: async () => [],
+      listMcpResourceTemplates: async () => [],
       readMcpResource: async () => ({ content: [] }),
       checkUnityHealth: async () => ({ ok: false, status: 'offline', message: 'UI smoke fixture' }),
       getUnityServerInfo: async () => ({ name: 'UI Smoke Unity', version: '0.0.0', capabilities: {} }),
@@ -390,7 +520,11 @@ async function writePreload() {
       callUnityTool: async () => ({ content: [] }),
       listUnityResources: async () => [],
       readUnityResource: async () => ({ content: [] }),
-      updateProjectMcpConfig: async () => project
+      updateProjectMcpConfig: async () => project,
+      updateProjectMcpServers: async (_projectId, pluginIds) => {
+        project.mcpBindings = { ...(project.mcpBindings || {}), servers: pluginIds };
+        return project;
+      }
     });
   `;
   await writeFile(preloadPath, preloadSource);
@@ -429,6 +563,21 @@ async function clickByText(webContents, text) {
     })()
   `);
   assert.equal(clicked, true, `Expected button containing "${text}"`);
+}
+
+async function clickModalButtonByText(webContents, text) {
+  const clicked = await webContents.executeJavaScript(`
+    (() => {
+      const modal = document.querySelector('[role="dialog"][aria-modal="true"]');
+      if (!modal) return false;
+      const candidates = [...modal.querySelectorAll('button')];
+      const target = candidates.find((button) => button.textContent && button.textContent.includes(${JSON.stringify(text)}));
+      if (!target) return false;
+      target.click();
+      return true;
+    })()
+  `);
+  assert.equal(clicked, true, `Expected modal button containing "${text}"`);
 }
 
 async function clickByAriaLabel(webContents, label) {
@@ -505,6 +654,17 @@ async function capture(window, name) {
   return path;
 }
 
+async function setUiTheme(webContents, theme) {
+  await webContents.executeJavaScript(`
+    (() => {
+      const preferences = { theme: ${JSON.stringify(theme)}, language: 'zh-CN', developerMode: false };
+      window.localStorage.setItem('funplay.ui.preferences.v1', JSON.stringify(preferences));
+      document.documentElement.dataset.theme = ${JSON.stringify(theme)};
+      document.documentElement.dataset.themePreference = ${JSON.stringify(theme)};
+    })()
+  `);
+}
+
 async function snapshot(webContents) {
   return webContents.executeJavaScript(`
     (() => {
@@ -517,6 +677,7 @@ async function snapshot(webContents) {
       const appSettingsLayout = document.querySelector('.app-settings-layout');
       const projectSettingsNav = document.querySelector('.project-settings-nav');
       return {
+        theme: document.documentElement.dataset.theme || '',
         section: main?.getAttribute('data-workspace-section') || '',
         mainLabel: main?.getAttribute('aria-label') || '',
         activeWorkspaceNav: activeWorkspaceNav?.textContent?.replace(/\\s+/g, ' ').trim() || '',
@@ -832,6 +993,30 @@ async function collectLayoutIssues(webContents, state) {
           });
         }
       }
+      for (const element of document.querySelectorAll('.fp-select-value, .config-list-row-copy strong, .config-list-row-copy span, .asset-category-copy strong, .asset-library-card-name, .markdown-body p, .markdown-body li')) {
+        if (!isVisible(element)) {
+          continue;
+        }
+        const text = normalizedText(element.textContent);
+        if (text.length < 2) {
+          continue;
+        }
+        const rect = element.getBoundingClientRect();
+        const fontSize = Number.parseFloat(getComputedStyle(element).fontSize || '0') || 14;
+        if (rect.width < Math.min(28, fontSize * 2.2) && rect.height > fontSize * 2.4) {
+          issues.push({
+            state,
+            type: 'suspicious-vertical-text',
+            selector: element.className || element.tagName.toLowerCase(),
+            detail: JSON.stringify({
+              text: text.slice(0, 80),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+              fontSize: Math.round(fontSize)
+            })
+          });
+        }
+      }
       return issues;
     })()
   `);
@@ -852,9 +1037,9 @@ function buildReport(rows, accessibilityAudits, layoutAudits) {
     '',
     'This smoke uses a controlled preload API and app-scoped `BrowserWindow.capturePage()` screenshots only. It does not use whole-desktop screenshots.',
     '',
-    '| State | Section | Modal | Screenshot |',
-    '|---|---:|---:|---|',
-    ...rows.map((row) => `| ${row.state} | ${row.detail.section || '-'} | ${row.detail.modalOpen ? 'open' : 'closed'} | ${row.screenshot} |`),
+    '| State | Theme | Section | Modal | Screenshot |',
+    '|---|---:|---:|---:|---|',
+    ...rows.map((row) => `| ${row.state} | ${row.detail.theme || '-'} | ${row.detail.section || '-'} | ${row.detail.modalOpen ? 'open' : 'closed'} | ${row.screenshot} |`),
     '',
     '## Checked States',
     '',
@@ -862,6 +1047,7 @@ function buildReport(rows, accessibilityAudits, layoutAudits) {
       `### ${row.state}`,
       '',
       `- Main label: ${row.detail.mainLabel || '-'}`,
+      `- Theme: ${row.detail.theme || '-'}`,
       `- Active workspace nav: ${row.detail.activeWorkspaceNav || '-'}`,
       `- Active settings nav: ${row.detail.activeSettingsNav || '-'}`,
       `- App settings columns: ${row.detail.appSettingsColumns || '-'}`,
@@ -927,6 +1113,7 @@ async function main() {
     });
     await win.loadFile(rendererEntry);
     await waitFor(win.webContents, "() => document.querySelector('[data-workspace-section=\"agent\"]') && /UI smoke assistant message 36/.test(document.body.textContent)", 'Agent workspace');
+    await setUiTheme(win.webContents, 'light');
     await emulateAccessibilityMedia(win.webContents);
     await waitFor(win.webContents, "() => window.matchMedia('(prefers-reduced-motion: reduce)').matches", 'Reduced motion emulation');
     await waitFor(win.webContents, "() => window.matchMedia('(forced-colors: active)').matches", 'Forced colors emulation');
@@ -992,10 +1179,24 @@ async function main() {
     assert.equal(assets.section, 'assets');
     assert.match(assets.activeWorkspaceNav, /素材库|Assets/);
     assert.match(assets.bodyText, /player\.png|assets\/images\/player\.png/);
-    assert.equal(assets.assetCardCount, 1);
+    assert.equal(assets.assetCardCount, 2);
     await auditAccessibility(win.webContents, 'Assets', accessibilityAudits);
     await auditLayout(win.webContents, 'Assets', layoutAudits);
     rows.push({ state: 'Assets', screenshot: await capture(win, 'assets'), detail: assets });
+
+    await clickByText(win.webContents, '生成素材');
+    await waitFor(win.webContents, "() => document.querySelector('.asset-generation-center') && /任务队列|Job Queue/.test(document.body.textContent)", 'Asset Generation Center');
+    const assetGeneration = await snapshot(win.webContents);
+    assert.equal(assetGeneration.section, 'assets');
+    assert.match(assetGeneration.bodyText, /生成素材|Generate/);
+    assert.match(assetGeneration.bodyText, /任务队列|Job Queue/);
+    assert.match(assetGeneration.bodyText, /OpenAI Images/);
+    await auditAccessibility(win.webContents, 'Asset Generation Center', accessibilityAudits);
+    await auditLayout(win.webContents, 'Asset Generation Center', layoutAudits);
+    rows.push({ state: 'Asset Generation Center', screenshot: await capture(win, 'asset-generation-center'), detail: assetGeneration });
+
+    await clickByText(win.webContents, '全部');
+    await waitFor(win.webContents, "() => document.querySelector('.asset-library-card')", 'Asset library after generation route');
 
     await clickByText(win.webContents, 'player.png');
     await waitFor(win.webContents, "() => document.querySelector('.file-inspector-path')?.textContent.includes('assets/images/player.png')", 'Asset inspector handoff');
@@ -1006,10 +1207,12 @@ async function main() {
     await auditAccessibility(win.webContents, 'Asset Inspector Handoff', accessibilityAudits);
     await auditLayout(win.webContents, 'Asset Inspector Handoff', layoutAudits);
     rows.push({ state: 'Asset Inspector Handoff', screenshot: await capture(win, 'asset-inspector-handoff'), detail: assetInspector });
+    await clickByAriaLabel(win.webContents, '关闭文件面板');
+    await waitFor(win.webContents, "() => !document.querySelector('.file-inspector-path')?.textContent.includes('assets/images/player.png')", 'File inspector close');
 
     await clickByAriaLabel(win.webContents, '打开应用设置');
     await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]')", 'App Settings modal');
-    await clickByText(win.webContents, 'AI Provider');
+    await clickModalButtonByText(win.webContents, 'AI Provider');
     await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"]')?.textContent.includes('Xiaomi MiMo')", 'Provider settings modal');
     const providerModal = await snapshot(win.webContents);
     assert.equal(providerModal.modalOpen, true);
@@ -1017,7 +1220,7 @@ async function main() {
     assert.match(providerModal.modalText, /AI Provider/);
     assert.match(providerModal.modalText, /Xiaomi MiMo/);
     assert.match(providerModal.modalText, /默认：Xiaomi MiMo|Default: Xiaomi MiMo/);
-    assert.match(providerModal.modalText, /诊断|Doctor/);
+    assert.match(providerModal.modalText, /搜索配置|Search configurations/);
     await auditAccessibility(win.webContents, 'App Settings Provider', accessibilityAudits);
     await auditLayout(win.webContents, 'App Settings Provider', layoutAudits);
     rows.push({ state: 'App Settings Provider', screenshot: await capture(win, 'app-settings-provider'), detail: providerModal });
@@ -1025,6 +1228,31 @@ async function main() {
     const providerModalAfterTab = await snapshot(win.webContents);
     assert.equal(providerModalAfterTab.modalOpen, true);
     assert.equal(providerModalAfterTab.activeElementInsideModal, true);
+
+    await clickModalButtonByText(win.webContents, '素材 Provider');
+    await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"]')?.textContent.includes('OpenAI Images') && document.querySelector('.asset-provider-settings-page')", 'Asset provider settings modal');
+    const assetProviderModal = await snapshot(win.webContents);
+    assert.equal(assetProviderModal.modalOpen, true);
+    assert.match(assetProviderModal.modalText, /素材 Provider|Asset Providers/);
+    assert.match(assetProviderModal.modalText, /OpenAI Images/);
+    assert.match(assetProviderModal.modalText, /添加素材 Provider|Add Asset Provider/);
+    await auditAccessibility(win.webContents, 'App Settings Asset Provider', accessibilityAudits);
+    await auditLayout(win.webContents, 'App Settings Asset Provider', layoutAudits);
+    rows.push({ state: 'App Settings Asset Provider', screenshot: await capture(win, 'app-settings-asset-provider'), detail: assetProviderModal });
+
+    await clickModalButtonByText(win.webContents, 'MCP');
+    await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"]')?.textContent.includes('UI Smoke MCP') && document.querySelector('.mcp-registry-settings')", 'MCP settings modal');
+    const mcpModal = await snapshot(win.webContents);
+    assert.equal(mcpModal.modalOpen, true);
+    assert.match(mcpModal.modalText, /MCP Registry/);
+    assert.match(mcpModal.modalText, /UI Smoke MCP/);
+    assert.match(mcpModal.modalText, /添加 Server|Add server/);
+    await auditAccessibility(win.webContents, 'App Settings MCP', accessibilityAudits);
+    await auditLayout(win.webContents, 'App Settings MCP', layoutAudits);
+    rows.push({ state: 'App Settings MCP', screenshot: await capture(win, 'app-settings-mcp'), detail: mcpModal });
+
+    await clickModalButtonByText(win.webContents, 'AI Provider');
+    await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"]')?.textContent.includes('Xiaomi MiMo')", 'Provider settings modal restored');
 
     await clickByText(win.webContents, '添加 Provider');
     await waitFor(win.webContents, "() => document.querySelector('.app-settings-inline-editor')?.textContent.includes('服务商预设')", 'Provider editor');
@@ -1088,6 +1316,81 @@ async function main() {
     await auditAccessibility(win.webContents, 'Empty Agent Composer', accessibilityAudits);
     await auditLayout(win.webContents, 'Empty Agent Composer', layoutAudits);
     rows.push({ state: 'Empty Agent Composer', screenshot: await capture(win, 'empty-agent-composer'), detail: { ...emptyAgent, emptyComposerMetrics } });
+
+    win.setSize(1280, 820);
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    await setUiTheme(win.webContents, 'dark');
+
+    await clickByText(win.webContents, '主会话');
+    await waitFor(win.webContents, "() => document.querySelector('[data-workspace-section=\"agent\"]') && document.documentElement.dataset.theme === 'dark'", 'Dark Agent workspace');
+    const darkAgent = await snapshot(win.webContents);
+    assert.equal(darkAgent.theme, 'dark');
+    assert.equal(darkAgent.section, 'agent');
+    await auditAccessibility(win.webContents, 'Dark Agent', accessibilityAudits);
+    await auditLayout(win.webContents, 'Dark Agent', layoutAudits);
+    rows.push({ state: 'Dark Agent', screenshot: await capture(win, 'dark-agent'), detail: darkAgent });
+
+    await clickByText(win.webContents, '素材库');
+    await waitFor(win.webContents, "() => document.querySelector('[data-workspace-section=\"assets\"]') && document.documentElement.dataset.theme === 'dark'", 'Dark Assets route');
+    const darkAssets = await snapshot(win.webContents);
+    assert.equal(darkAssets.theme, 'dark');
+    assert.equal(darkAssets.section, 'assets');
+    assert.match(darkAssets.bodyText, /player\.png|assets\/images\/player\.png/);
+    await auditAccessibility(win.webContents, 'Dark Assets', accessibilityAudits);
+    await auditLayout(win.webContents, 'Dark Assets', layoutAudits);
+    rows.push({ state: 'Dark Assets', screenshot: await capture(win, 'dark-assets'), detail: darkAssets });
+
+    await clickByText(win.webContents, '生成素材');
+    await waitFor(win.webContents, "() => document.querySelector('.asset-generation-center') && document.documentElement.dataset.theme === 'dark'", 'Dark Asset Generation Center');
+    const darkAssetGeneration = await snapshot(win.webContents);
+    assert.equal(darkAssetGeneration.theme, 'dark');
+    assert.match(darkAssetGeneration.bodyText, /任务队列|Job Queue/);
+    await auditAccessibility(win.webContents, 'Dark Asset Generation Center', accessibilityAudits);
+    await auditLayout(win.webContents, 'Dark Asset Generation Center', layoutAudits);
+    rows.push({ state: 'Dark Asset Generation Center', screenshot: await capture(win, 'dark-asset-generation-center'), detail: darkAssetGeneration });
+
+    await clickByText(win.webContents, '项目设置');
+    await waitFor(win.webContents, "() => document.querySelector('[data-workspace-section=\"settings\"]') && document.documentElement.dataset.theme === 'dark'", 'Dark Project Settings');
+    const darkSettings = await snapshot(win.webContents);
+    assert.equal(darkSettings.theme, 'dark');
+    assert.equal(darkSettings.section, 'settings');
+    await auditAccessibility(win.webContents, 'Dark Project Settings', accessibilityAudits);
+    await auditLayout(win.webContents, 'Dark Project Settings', layoutAudits);
+    rows.push({ state: 'Dark Project Settings', screenshot: await capture(win, 'dark-project-settings'), detail: darkSettings });
+
+    await clickByAriaLabel(win.webContents, '打开应用设置');
+    await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]') && document.documentElement.dataset.theme === 'dark'", 'Dark App Settings modal');
+    await clickModalButtonByText(win.webContents, 'AI Provider');
+    await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"]')?.textContent.includes('Xiaomi MiMo')", 'Dark Provider settings modal');
+    const darkProviderModal = await snapshot(win.webContents);
+    assert.equal(darkProviderModal.theme, 'dark');
+    assert.equal(darkProviderModal.modalOpen, true);
+    assert.match(darkProviderModal.modalText, /AI Provider/);
+    await auditAccessibility(win.webContents, 'Dark App Settings Provider', accessibilityAudits);
+    await auditLayout(win.webContents, 'Dark App Settings Provider', layoutAudits);
+    rows.push({ state: 'Dark App Settings Provider', screenshot: await capture(win, 'dark-app-settings-provider'), detail: darkProviderModal });
+
+    await clickModalButtonByText(win.webContents, '素材 Provider');
+    await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"]')?.textContent.includes('OpenAI Images')", 'Dark Asset Provider settings modal');
+    const darkAssetProviderModal = await snapshot(win.webContents);
+    assert.equal(darkAssetProviderModal.theme, 'dark');
+    assert.match(darkAssetProviderModal.modalText, /素材 Provider|Asset Providers/);
+    await auditAccessibility(win.webContents, 'Dark App Settings Asset Provider', accessibilityAudits);
+    await auditLayout(win.webContents, 'Dark App Settings Asset Provider', layoutAudits);
+    rows.push({ state: 'Dark App Settings Asset Provider', screenshot: await capture(win, 'dark-app-settings-asset-provider'), detail: darkAssetProviderModal });
+
+    await clickModalButtonByText(win.webContents, 'MCP');
+    await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"]')?.textContent.includes('UI Smoke MCP')", 'Dark MCP settings modal');
+    const darkMcpModal = await snapshot(win.webContents);
+    assert.equal(darkMcpModal.theme, 'dark');
+    assert.match(darkMcpModal.modalText, /MCP Registry/);
+    await auditAccessibility(win.webContents, 'Dark App Settings MCP', accessibilityAudits);
+    await auditLayout(win.webContents, 'Dark App Settings MCP', layoutAudits);
+    rows.push({ state: 'Dark App Settings MCP', screenshot: await capture(win, 'dark-app-settings-mcp'), detail: darkMcpModal });
+
+    await pressKey(win.webContents, 'Escape');
+    await waitFor(win.webContents, "() => !document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]')", 'Dark App Settings close');
+
     await writeFile(reportPath, buildReport(rows, accessibilityAudits, layoutAudits));
     console.log(`Desktop UI Electron smoke passed: ${reportPath}`);
   } finally {

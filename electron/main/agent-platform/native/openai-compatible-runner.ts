@@ -1,6 +1,8 @@
 import { inferOpenAiCompatibleApiMode } from '../../../../shared/provider-catalog';
 import { buildNativeToolLoopMessages } from '../model-message-builder';
 import { ProjectInstructionTracker } from '../project-instruction-tracker';
+import { createProviderRuntimeController } from '../provider-runtime-events';
+import { emitRuntimeTextDelta } from '../runtime-event-emitter';
 import type { GenericAgentRuntimeParams } from '../types';
 import {
   resolveLatestTodoSnapshotFromHistory
@@ -52,7 +54,8 @@ export async function runOpenAiCompatibleNativeToolLoop(
       includeWriteTools,
       includeMcpToolCalls,
       includeCommandTools,
-      dynamicMcpToolNames: toolPool.dynamicMcpTools.map((definition) => definition.name)
+      dynamicMcpToolNames: toolPool.dynamicMcpTools.map((definition) => definition.name),
+      toolDefinitions: toolPool.definitions
     })
   }), {
     preserveToolMessages: true
@@ -62,16 +65,19 @@ export async function runOpenAiCompatibleNativeToolLoop(
   const maxOutputTokens = resolveNativeMainToolLoopMaxOutputTokens(params.provider);
   const controllerBridge = createNativeToolLoopControllerBridge({
     callbacks,
-    stageId: 'stage:native_agent_core_v2'
+    guardTransitions: true,
+    runId: params.activeRunId,
+    stageId: 'stage:native_agent_core_v2',
+    turnId: params.turnId
   });
   const {
-    emitCoreStateStage,
-    getCoreStateSnapshot,
-    recordRunControllerProviderStep,
-    recordRunControllerToolResult,
-    setLatestCoreProviderStep,
-    transitionCoreState
+    submitEvent,
+    emitCoreStateStage
   } = controllerBridge;
+  const providerController = createProviderRuntimeController({
+    submitEvent,
+    mapToolEventsToCore: false
+  });
 
   callbacks?.emitStage?.({
     stageId: 'stage:native_tool_stream',
@@ -85,19 +91,16 @@ export async function runOpenAiCompatibleNativeToolLoop(
   let stepIndex = 0;
   const processTextStream = new NativeProcessTextStream({
     state,
-    onTextDelta: params.onTextDelta
+    onTextDelta: (delta, accumulated) => emitRuntimeTextDelta(params, delta, accumulated)
   });
   while (true) {
     params.abortSignal?.throwIfAborted();
-    if (getCoreStateSnapshot().state === 'building_model_input') {
-      transitionCoreState('streaming_model_step', `开始第 ${stepIndex + 1} 个 provider step。`);
-    }
     await toolPool.refresh({
       stepIndex,
       emitStage: callbacks?.emitStage
     });
     const stepStream = processTextStream.createStepStream();
-    const stepResult = await runOpenAiCompatibleProviderStep({
+    const providerStepResult = await runOpenAiCompatibleProviderStep({
       params,
       callbacks,
       toolPool,
@@ -107,8 +110,9 @@ export async function runOpenAiCompatibleNativeToolLoop(
       maxOutputTokens,
       processTextStream,
       stepStream,
-      setLatestCoreProviderStep
+      providerController
     });
+    const { stepResult, providerStep } = providerStepResult;
 
     if (stepResult.toolCalls.length === 0) {
       const completionDecision = completeOpenAiCompatibleNoToolStep({
@@ -121,8 +125,8 @@ export async function runOpenAiCompatibleNativeToolLoop(
         stepResult,
         processTextStream,
         stepStream,
-        recordRunControllerProviderStep,
-        transitionCoreState,
+        providerStep,
+        providerController,
         emitCoreStateStage
       });
       if (completionDecision.action === 'return') {
@@ -144,9 +148,8 @@ export async function runOpenAiCompatibleNativeToolLoop(
       stepStream,
       toolPool,
       instructionTracker,
-      recordRunControllerProviderStep,
-      recordRunControllerToolResult,
-      transitionCoreState,
+      providerStep,
+      providerController,
       emitCoreStateStage
     });
     if (toolResultDecision.action === 'return') {

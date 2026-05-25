@@ -1,0 +1,168 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag to publish, for example v0.3.0'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    name: Verify release gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit release configuration
+        run: npm run release:audit
+
+      - name: Build
+        run: npm run build
+
+      - name: Runtime tests
+        run: npm run test:runtime
+
+      - name: UI smoke
+        run: npm run ui:smoke
+
+      - name: UI maturity gate
+        run: npm run ui:maturity-gate
+
+      - name: Agent benchmark
+        run: npm run agent:benchmark
+
+  mac:
+    name: Build macOS release
+    needs: verify
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build split-architecture macOS artifacts
+        run: npm run dist:mac:split
+
+      - name: Verify macOS update metadata
+        run: npm run release:verify-mac-updates
+
+      - name: Restore Electron native ABI
+        if: always()
+        run: npm run rebuild:native:force
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: funplay-macos
+          if-no-files-found: error
+          path: |
+            release/*.dmg
+            release/*.dmg.blockmap
+            release/*.zip
+            release/*.zip.blockmap
+            release/latest-mac.yml
+            release/latest-mac-arm64.yml
+            release/latest-mac-x64.yml
+
+  windows:
+    name: Build Windows release
+    needs: verify
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Windows x64 artifacts
+        run: npm run dist:win:x64
+
+      - name: Restore Electron native ABI
+        if: always()
+        run: npm run rebuild:native:force
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: funplay-windows
+          if-no-files-found: error
+          path: |
+            release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml
+
+  publish:
+    name: Publish draft GitHub Release
+    needs:
+      - mac
+      - windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create or update draft release
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find artifacts -type f -print0 | sort -z)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No release artifacts found."
+            exit 1
+          fi
+
+          title="Funplay ${RELEASE_TAG#v}"
+          notes=$'Automated Funplay desktop release artifacts.\n\nReview macOS notarization, Windows installer behavior, and update metadata before publishing this draft release.'
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
+          else
+            gh release create "$RELEASE_TAG" "${files[@]}" --draft --title "$title" --notes "$notes"
+          fi

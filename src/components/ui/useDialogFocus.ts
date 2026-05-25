@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 
 const FOCUSABLE_SELECTOR = [
   'button:not([disabled])',
@@ -17,6 +17,11 @@ export function useDialogFocus(options: {
   restoreFocus?: boolean;
 }): void {
   const { enabled, containerRef, initialFocusRef, onEscape, restoreFocus = true } = options;
+  const onEscapeRef = useRef(onEscape);
+
+  useEffect(() => {
+    onEscapeRef.current = onEscape;
+  }, [onEscape]);
 
   useEffect(() => {
     if (!enabled) {
@@ -41,6 +46,9 @@ export function useDialogFocus(options: {
     });
 
     const focusInitialElement = (): void => {
+      if (document.activeElement instanceof HTMLElement && dialogContainer.contains(document.activeElement)) {
+        return;
+      }
       const explicitInitial = initialFocusRef?.current;
       const target =
         explicitInitial && dialogContainer.contains(explicitInitial)
@@ -52,9 +60,10 @@ export function useDialogFocus(options: {
     window.setTimeout(focusInitialElement, 0);
 
     function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape' && onEscape) {
+      const currentOnEscape = onEscapeRef.current;
+      if (event.key === 'Escape' && currentOnEscape) {
         event.preventDefault();
-        onEscape();
+        currentOnEscape();
         return;
       }
       if (event.key !== 'Tab') {
@@ -91,5 +100,5 @@ export function useDialogFocus(options: {
         }, 0);
       }
     };
-  }, [containerRef, enabled, initialFocusRef, onEscape, restoreFocus]);
+  }, [containerRef, enabled, initialFocusRef, restoreFocus]);
 }

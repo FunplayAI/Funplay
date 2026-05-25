@@ -1,4 +1,4 @@
-import type { AiProviderApiMode, ChatContentBlock, GameAgentStep, ProjectSession } from '../../../../shared/types';
+import type { AiProviderApiMode, GameAgentStep, ProjectSession } from '../../../../shared/types';
 import { inferOpenAiCompatibleApiMode } from '../../../../shared/provider-catalog';
 import { makeId } from '../../../../shared/utils';
 import { runGenericAgentLoop } from '../agent-loop';
@@ -12,11 +12,9 @@ import {
   NATIVE_MCP_TOOL_CALL_NAMES,
   NATIVE_WRITE_WORKSPACE_TOOL_NAMES
 } from './tool-adapter';
-import {
-  createConversationOperationLogCollector,
-  createConversationProcessTranscriptCollector,
-  type ConversationOperationStageEvent
-} from '../operation-log';
+import type { ConversationOperationStageEvent } from '../operation-log';
+import { createConversationRuntimeOutputCollector } from '../runtime-output';
+import { emitRuntimeLifecycleHook, emitRuntimeStatus } from '../runtime-event-emitter';
 import { formatProjectContextIndexSummary } from '../context';
 import { collectPluginObservations } from '../../game-tool-layer';
 import { emitReplyAsDeltas, runNativeDirectChatReply } from './direct-reply';
@@ -37,75 +35,6 @@ function createStep(kind: GameAgentStep['kind'], title: string, detail: string, 
     title,
     detail,
     status
-  };
-}
-
-function createConversationContentBlockCollector() {
-  const eventBlocks: ChatContentBlock[] = [];
-  let thinkingContent = '';
-
-  return {
-    onThinking(delta: string, accumulated: string): void {
-      thinkingContent = accumulated || (thinkingContent + delta);
-    },
-    onToolUse(tool: {
-      toolUseId: string;
-      name: string;
-      input?: Record<string, unknown>;
-      status: 'pending' | 'running' | 'completed' | 'failed';
-    }): void {
-      const existingIndex = eventBlocks.findIndex(
-        (block) => block.type === 'tool_use' && block.toolUseId === tool.toolUseId
-      );
-      const existingBlock =
-        existingIndex >= 0 && eventBlocks[existingIndex]?.type === 'tool_use'
-          ? eventBlocks[existingIndex]
-          : undefined;
-
-      const nextBlock: ChatContentBlock = {
-        type: 'tool_use',
-        toolUseId: tool.toolUseId,
-        name: tool.name,
-        input: tool.input ?? existingBlock?.input,
-        status: tool.status
-      };
-
-      if (existingIndex >= 0) {
-        eventBlocks[existingIndex] = nextBlock;
-        return;
-      }
-
-      eventBlocks.push(nextBlock);
-    },
-    onToolResult(result: Parameters<NonNullable<GenericAgentRuntimeParams['onToolResult']>>[0]): void {
-      eventBlocks.push({
-        type: 'tool_result',
-        toolUseId: result.toolUseId,
-        content: result.content,
-        isError: result.isError,
-        media: result.media,
-        changedFiles: result.changedFiles,
-        command: result.command,
-        terminal: result.terminal,
-        browser: result.browser,
-        edit: result.edit,
-        mcp: result.mcp,
-        artifacts: result.artifacts,
-        transaction: result.transaction
-      });
-    },
-    buildFinalBlocks(finalBlock: ChatContentBlock): ChatContentBlock[] {
-      const blocks: ChatContentBlock[] = [];
-      if (thinkingContent.trim()) {
-        blocks.push({
-          type: 'thinking',
-          thinking: thinkingContent
-        });
-      }
-      blocks.push(...eventBlocks);
-      blocks.push(finalBlock);
-      return blocks;
-    }
   };
 }
 
@@ -469,16 +398,20 @@ function isNativeSideEffectToolName(name: string): boolean {
 }
 
 export async function runNativeConversationTurn(params: GenericAgentRuntimeParams): Promise<GenericAgentRuntimeResult> {
-  const operationLogCollector = createConversationOperationLogCollector();
-  const processTranscriptCollector = createConversationProcessTranscriptCollector();
-  const contentBlockCollector = createConversationContentBlockCollector();
+  const outputCollector = createConversationRuntimeOutputCollector(params);
   const toolPolicy = resolveAgentToolPolicy(params);
   let runtimeParams: GenericAgentRuntimeParams = {
     ...params,
-    onTextDelta: (delta, accumulated) => {
-      processTranscriptCollector.onTextDelta(delta, accumulated);
-      params.onTextDelta?.(delta, accumulated);
-    }
+    emitRuntimeEvent: undefined,
+    onStatus: (phase, message) => params.emitRuntimeEvent?.({ type: 'status', phase, message }),
+    onTextDelta: outputCollector.onTextDelta,
+    onThinkingDelta: outputCollector.onThinking,
+    onToolUse: outputCollector.onToolUse,
+    onToolResult: outputCollector.onToolResult,
+    onStage: outputCollector.onStage,
+    onUsage: outputCollector.onUsage,
+    onAgentCoreParts: outputCollector.onAgentCoreParts,
+    onLifecycleHook: (hook) => params.emitRuntimeEvent?.({ type: 'lifecycle_hook', hook })
   };
   let sessionRuntimePatch: Partial<NonNullable<ProjectSession['runtimeOverrides']>> | undefined;
   let sideEffectToolExecuted = false;
@@ -491,44 +424,16 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
     if (tool.status !== 'pending' && isNativeSideEffectToolName(tool.name)) {
       sideEffectToolExecuted = true;
     }
-    processTranscriptCollector.onToolUse(tool);
-    operationLogCollector.onToolUse(tool);
-    contentBlockCollector.onToolUse(tool);
-    params.onToolUse?.(tool);
+    outputCollector.onToolUse(tool);
   };
   const emitToolResult = (result: Parameters<NonNullable<GenericAgentRuntimeParams['onToolResult']>>[0]): void => {
-    processTranscriptCollector.onToolResult(result);
-    operationLogCollector.onToolResult(result);
-    contentBlockCollector.onToolResult(result);
-    params.onToolResult?.(result);
+    outputCollector.onToolResult(result);
   };
   const emitThinking = (delta: string, accumulated: string): void => {
-    contentBlockCollector.onThinking(delta, accumulated);
-    params.onThinkingDelta?.(delta, accumulated);
+    outputCollector.onThinking(delta, accumulated);
   };
   const emitStage = (stage: ConversationOperationStageEvent): void => {
-    processTranscriptCollector.onStage(stage);
-    operationLogCollector.onStage(stage);
-    params.onStage?.({
-      stageId: stage.stageId ?? `stage:${stage.target}`,
-      phase: stage.phase,
-      title: stage.title,
-      target: stage.target,
-      status: stage.status,
-      input: stage.input,
-      summary: stage.summary,
-      errorMessage: stage.errorMessage,
-      runtimeId: stage.runtimeId,
-      providerId: stage.providerId,
-      model: stage.model,
-      upstreamModel: stage.upstreamModel,
-      diagnosticCode: stage.diagnosticCode,
-      severity: stage.severity,
-      errorCode: stage.errorCode,
-      suggestedAction: stage.suggestedAction,
-      recoveryActions: stage.recoveryActions,
-      transaction: stage.transaction
-    });
+    outputCollector.onStage(stage);
   };
   const runLifecycleHooks = (trigger: Parameters<typeof runAgentLifecycleHooks>[1]) => runAgentLifecycleHooks(
     runtimeParams.lifecycleHooks,
@@ -547,7 +452,7 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
       cwd: runtimeParams.context.runtimeEnvironment?.workingDirectory ?? runtimeParams.context.projectPath,
       checkpointSnapshotId: runtimeParams.checkpointSnapshotId,
       abortSignal: runtimeParams.abortSignal,
-      emitHook: runtimeParams.onLifecycleHook,
+      emitHook: (hook) => emitRuntimeLifecycleHook(runtimeParams, hook),
       emitStage
     }
   );
@@ -574,16 +479,15 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
     ].filter(Boolean).join('\n');
     return {
       assistantMessage: blockedReply,
-      assistantContentBlocks: contentBlockCollector.buildFinalBlocks({
+      assistantMetadata: outputCollector.buildMetadata(blockedReply, {
         type: 'fallback',
         text: blockedReply,
         reason: 'lifecycle_hook_blocked'
       }),
-      assistantMetadata: processTranscriptCollector.build(blockedReply),
       assistantIntent: 'fallback',
       fallbackDetail: blockReason,
       status: 'fallback',
-      operationLog: operationLogCollector.build(),
+      operationLog: outputCollector.buildOperationLog(),
       usedProviderId: params.provider?.id,
       usedModel: params.provider?.model,
       steps: [
@@ -681,15 +585,14 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
     const fallbackReply = createFallbackReply(params, true);
     return {
       assistantMessage: fallbackReply,
-      assistantContentBlocks: contentBlockCollector.buildFinalBlocks({
+      assistantMetadata: outputCollector.buildMetadata(fallbackReply, {
         type: 'fallback',
         text: fallbackReply,
         reason: 'missing_provider'
       }),
-      assistantMetadata: processTranscriptCollector.build(fallbackReply),
       assistantIntent: 'fallback',
       status: 'fallback',
-      operationLog: operationLogCollector.build(),
+      operationLog: outputCollector.buildOperationLog(),
       diagnosticCode: diagnostic.code,
       severity: diagnostic.severity,
       suggestedAction: diagnostic.suggestedAction,
@@ -763,7 +666,7 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
           nativeContextHandoff.patch
         )
       };
-      params.onStatus?.('thinking', '已压缩 Native runtime 上下文。');
+      emitRuntimeStatus(params, 'thinking', '已压缩 Native runtime 上下文。');
       emitStage({
         stageId: 'stage:native_context_handoff',
         phase: 'context_compressed',
@@ -822,18 +725,17 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
         }
       });
       const deniedReply = createPermissionDeniedReply();
-      params.onStatus?.('thinking', '当前等待写入权限，已回退为建议模式。');
+      emitRuntimeStatus(params, 'thinking', '当前等待写入权限，已回退为建议模式。');
       return {
         assistantMessage: deniedReply,
-        assistantContentBlocks: contentBlockCollector.buildFinalBlocks({
+        assistantMetadata: outputCollector.buildMetadata(deniedReply, {
           type: 'fallback',
           text: deniedReply,
           reason: 'write_permission_denied'
         }),
-        assistantMetadata: processTranscriptCollector.build(deniedReply),
         assistantIntent: 'fallback',
         status: 'fallback',
-        operationLog: operationLogCollector.build(),
+        operationLog: outputCollector.buildOperationLog(),
         usedProviderId: params.provider.id,
         usedModel: params.provider.model,
         diagnosticCode: diagnostic.code,
@@ -901,7 +803,7 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
               status: 'running',
               summary: '正在生成当前项目的工作区摘要。'
             });
-            params.onStatus?.('thinking', '正在整理会话上下文…');
+            emitRuntimeStatus(params, 'thinking', '正在整理会话上下文…');
             const thinkingPrelude = buildNativeRuntimeThinkingPrelude(params);
             emitThinking(thinkingPrelude, thinkingPrelude);
             const summaryToolUseId = makeId('tool');
@@ -1042,6 +944,9 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
                 reply = toolLoopResult.assistantMessage;
                 streamedReplyForStep = Boolean(toolLoopResult.streamedText);
                 toolLoopFinalSummary = summarizeToolLoopResult(toolLoopResult) || toolLoopStrategy.summary;
+                if (toolLoopResult.agentCoreParts?.length) {
+                  outputCollector.onAgentCoreParts(toolLoopResult.agentCoreParts);
+                }
                 emitStage({
                   stageId: 'stage:tool_loop',
                   title: '执行 Agent 工具循环',
@@ -1086,7 +991,7 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
               });
               throw error;
             }
-            params.onStatus?.('streaming', '正在实时生成回复…');
+            emitRuntimeStatus(params, 'streaming', '正在实时生成回复…');
             if (!streamedReplyForStep) {
               emitReplyAsDeltas(runtimeParams, reply);
             }
@@ -1121,14 +1026,13 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
 
     return {
       assistantMessage: loopState.accumulated.trim(),
-      assistantContentBlocks: contentBlockCollector.buildFinalBlocks({
+      assistantMetadata: outputCollector.buildMetadata(loopState.accumulated.trim(), {
         type: 'text',
         text: loopState.accumulated.trim()
       }),
-      assistantMetadata: processTranscriptCollector.build(loopState.accumulated.trim()),
       assistantIntent: 'chat',
       status: 'completed',
-      operationLog: operationLogCollector.build(),
+      operationLog: outputCollector.buildOperationLog(),
       usedProviderId: params.provider.id,
       usedModel: params.provider.model,
       sessionRuntimePatch,
@@ -1263,15 +1167,14 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
     return {
       assistantMessage: fallbackReply,
       fallbackDetail,
-      assistantContentBlocks: contentBlockCollector.buildFinalBlocks({
+      assistantMetadata: outputCollector.buildMetadata(fallbackReply, {
         type: 'fallback',
         text: fallbackReply,
         reason: fallbackDetail
       }),
-      assistantMetadata: processTranscriptCollector.build(fallbackReply),
       assistantIntent: 'fallback',
       status: 'fallback',
-      operationLog: operationLogCollector.build(),
+      operationLog: outputCollector.buildOperationLog(),
       usedProviderId: params.provider.id,
       usedModel: params.provider.model,
       diagnosticCode: diagnostic.code,

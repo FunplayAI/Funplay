@@ -1,4 +1,5 @@
 import type {
+  AgentCoreMessagePart,
   AgentCoreStateMachineSnapshot,
   AiProviderApiMode
 } from '../../../../shared/types';
@@ -19,6 +20,7 @@ export interface NativeToolLoopRunResult {
   streamedText?: boolean;
   usage?: unknown;
   coreState?: AgentCoreStateMachineSnapshot;
+  agentCoreParts?: AgentCoreMessagePart[];
 }
 
 export type NativeToolLoopStatePart =
@@ -67,6 +69,8 @@ export interface NativeToolLoopState {
     name: string;
     summary: string;
     isError?: boolean;
+    failureKind?: string;
+    recoveryHint?: string;
     media?: WorkspaceToolActionResult['media'];
     changedFiles?: WorkspaceToolActionResult['changedFiles'];
     command?: WorkspaceToolActionResult['command'];
@@ -75,6 +79,7 @@ export interface NativeToolLoopState {
     edit?: WorkspaceToolActionResult['edit'];
     mcp?: WorkspaceToolActionResult['mcp'];
     artifacts?: WorkspaceToolActionResult['artifacts'];
+    searchText?: string;
   }>;
 }
 
@@ -151,7 +156,11 @@ export function appendNativeToolLoopAssistantToolMessage(
   });
 }
 
-export function createNativeToolLoopRunResult(state: NativeToolLoopState, coreState?: AgentCoreStateMachineSnapshot): NativeToolLoopRunResult {
+export function createNativeToolLoopRunResult(
+  state: NativeToolLoopState,
+  coreState?: AgentCoreStateMachineSnapshot,
+  agentCoreParts?: AgentCoreMessagePart[]
+): NativeToolLoopRunResult {
   return {
     assistantMessage: normalizeModelReplyText(state.finalText),
     finishReason: state.finishReason,
@@ -159,6 +168,7 @@ export function createNativeToolLoopRunResult(state: NativeToolLoopState, coreSt
     toolCalls: state.toolCalls,
     streamedText: state.streamedText,
     usage: state.usage,
-    coreState
+    coreState,
+    agentCoreParts
   };
 }

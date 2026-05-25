@@ -12,6 +12,7 @@ import {
   claudeCodeSdkRuntime,
   testClaudeCodeSdkProviderRuntime
 } from '../../electron/main/agent-platform/claude/runtime.ts';
+import type { GenericAgentRuntime, GenericAgentRuntimeParams, GenericAgentRuntimeResult } from '../../electron/main/agent-platform/types.ts';
 import { executeAgentToolAction } from '../../electron/main/agent-platform/workspace-tools.ts';
 
 const hasCredentials = Boolean(
@@ -52,6 +53,41 @@ function buildProvider(): AiProvider {
   };
 }
 
+async function runRuntimeForTest(
+  runtime: GenericAgentRuntime,
+  params: GenericAgentRuntimeParams
+): Promise<GenericAgentRuntimeResult> {
+  for await (const event of runtime.executeEventStream(params)) {
+    if (event.type === 'status') {
+      params.onStatus?.(event.phase, event.message);
+    } else if (event.type === 'text_delta') {
+      params.onTextDelta?.(event.delta, event.accumulated);
+    } else if (event.type === 'thinking_delta') {
+      params.onThinkingDelta?.(event.delta, event.accumulated);
+    } else if (event.type === 'tool_use') {
+      params.onToolUse?.(event.tool);
+    } else if (event.type === 'tool_result') {
+      params.onToolResult?.(event.result);
+    } else if (event.type === 'stage') {
+      params.onStage?.(event.stage);
+    } else if (event.type === 'permission_request') {
+      params.onPermissionRequest?.(event.request);
+    } else if (event.type === 'user_input_request') {
+      params.onUserInputRequest?.(event.request);
+    } else if (event.type === 'usage') {
+      params.onUsage?.(event.usage);
+    } else if (event.type === 'lifecycle_hook') {
+      params.onLifecycleHook?.(event.hook);
+    } else if (event.type === 'agent_core_parts') {
+      params.onAgentCoreParts?.(event.parts);
+    }
+    if (event.type === 'result') {
+      return event.result;
+    }
+  }
+  throw new Error(`Runtime ${runtime.id} completed without a result event.`);
+}
+
 test('live Claude SDK provider probe uses runtime subprocess env', {
   skip: hasCredentials ? false : 'missing FUNPLAY_E2E_CLAUDE_* env',
   timeout: 180_000
@@ -72,7 +108,7 @@ test('live Claude runtime denies writes before contacting SDK when permission is
   try {
     const project = buildProject(projectPath);
     const context = buildGenericWorkspaceContext(project, [], getActiveProjectSession(project).id, '创建 blocked.txt');
-    const result = await claudeCodeSdkRuntime.executeTurn?.({
+    const result = await runRuntimeForTest(claudeCodeSdkRuntime, {
       project,
       message: '创建 blocked.txt，内容为 blocked',
       provider: buildProvider(),
@@ -108,7 +144,7 @@ test('live Claude SDK accepts image attachment vision blocks', {
       'Look at the attached image and reply with FUNPLAY_VISION_OK.'
     );
     const stages: Array<{ stageId: string; input?: Record<string, unknown> }> = [];
-    const result = await claudeCodeSdkRuntime.executeTurn?.({
+    const result = await runRuntimeForTest(claudeCodeSdkRuntime, {
       project,
       message: 'Look at the attached image and reply with exactly FUNPLAY_VISION_OK.',
       attachments: [
@@ -166,7 +202,7 @@ test('live Claude SDK uses host-controlled workspace write and checkpoint rollba
       'Create src/live-output.txt with exact content FUNPLAY_LIVE_OK.'
     );
     const stages: string[] = [];
-    const result = await claudeCodeSdkRuntime.executeTurn?.({
+    const result = await runRuntimeForTest(claudeCodeSdkRuntime, {
       project,
       message: [
         'Use the available Funplay host-controlled workspace write tool.',

@@ -1,15 +1,14 @@
 import type {
+  AgentCoreMessagePart,
   AgentOperationRecord,
   AgentOperationStatus,
   AgentToolTransactionSummary,
   ChatMessageProcessActivity,
   ChatMessageMetadata,
-  GameAgentAction,
   ProjectSessionRuntimeId,
   RuntimeDiagnosticSeverity,
   RuntimeRecoveryAction
 } from '../../../shared/types';
-import { makeId } from '../../../shared/utils';
 
 export interface ConversationOperationStageEvent {
   stageId?: string;
@@ -94,18 +93,20 @@ export function createConversationOperationLogCollector() {
     onToolUse(tool: {
       toolUseId: string;
       name: string;
+      title?: string;
+      summary?: string;
       input?: Record<string, unknown>;
       status: 'pending' | 'running' | 'completed' | 'failed';
     }): void {
       const existing = operations.get(tool.toolUseId);
       upsertOperation(tool.toolUseId, {
         scope: 'conversation',
-        title: tool.name,
+        title: tool.title ?? tool.name,
         target: tool.name,
         type: 'tool_call',
         input: tool.input,
         status: tool.status,
-        summary: existing?.summary,
+        summary: existing?.summary ?? tool.summary,
         errorMessage: existing?.errorMessage
       });
     },
@@ -175,6 +176,9 @@ export function createConversationProcessTranscriptCollector() {
     onToolUse(tool: {
       toolUseId: string;
       name: string;
+      title?: string;
+      summary?: string;
+      activity?: string;
       input?: Record<string, unknown>;
       status: 'pending' | 'running' | 'completed' | 'failed';
     }): void {
@@ -182,7 +186,7 @@ export function createConversationProcessTranscriptCollector() {
         type: 'tool',
         status: tool.status === 'failed' ? 'failed' : tool.status === 'completed' ? 'completed' : 'running',
         title: tool.status === 'failed' ? 'tool_failed' : tool.status === 'completed' ? 'tool_completed' : 'tool_running',
-        summary: tool.name,
+        summary: tool.activity ?? tool.summary ?? tool.title ?? tool.name,
         toolUseIds: [tool.toolUseId]
       });
     },
@@ -242,100 +246,83 @@ export function createConversationProcessTranscriptCollector() {
   };
 }
 
-export function createExecutionPlanOperationLogCollector() {
-  const operations = new Map<string, AgentOperationRecord>();
-
-  const upsertOperation = (id: string, next: Omit<AgentOperationRecord, 'id' | 'startedAt' | 'finishedAt'>): void => {
-    const existing = operations.get(id);
-    operations.set(id, {
-      id,
-      ...next,
-      startedAt: existing?.startedAt ?? new Date().toISOString(),
-      finishedAt: isTerminalStatus(next.status) ? new Date().toISOString() : existing?.finishedAt
-    });
-  };
-
-  return {
-    onStage(stage: ConversationOperationStageEvent): void {
-      const stageId = stage.stageId ?? `stage:${stage.target}`;
-      const existing = operations.get(stageId);
-      upsertOperation(stageId, {
-        scope: 'execution-plan',
-        phase: stage.phase,
-        title: stage.title,
-        target: stage.target,
-        type: 'tool_call',
-        status: stage.status,
-        summary: stage.summary ?? existing?.summary,
-        errorMessage: stage.errorMessage ?? existing?.errorMessage,
-        input: stageInputWithTransaction(stage, existing),
-        transaction: stage.transaction ?? existing?.transaction
-      });
-    },
-    build(): AgentOperationRecord[] {
-      return [...operations.values()].sort((left, right) => (left.startedAt ?? '').localeCompare(right.startedAt ?? ''));
-    }
-  };
+function partTime(part: AgentCoreMessagePart): string {
+  return part.createdAt || new Date().toISOString();
 }
 
-export function buildExecutionOperationLog(actions: GameAgentAction[]): AgentOperationRecord[] {
-  return actions.flatMap<AgentOperationRecord>((action) => {
-    const operations = action.operations.length
-      ? action.operations
-      : [
-          ...(action.readResources?.map((resource) => ({
-            type: 'resource_read' as const,
-            target: resource
-          })) ?? []),
-          ...(action.executedTools?.map((tool) => ({
-            type: 'tool_call' as const,
-            target: tool,
-            arguments: {}
-          })) ?? [])
-        ];
-
-    if (operations.length === 0) {
-      return [
-        {
-          id: makeId('oplog'),
-          scope: 'execution-plan',
-          phase: 'execute',
-          title: action.title,
-          pluginKind: action.pluginKind,
-          pluginId: action.pluginId,
-          target: action.pluginKind,
-          type: 'tool_call',
-          input: undefined,
-          status: action.status === 'planned' || action.status === 'suggested' ? 'skipped' : action.status,
-          summary: action.outputSummary,
-          errorMessage: action.errorMessage,
-          startedAt: action.lastRunAt,
-          finishedAt: action.lastRunAt
-        }
-      ];
+export function projectConversationOperationLogFromAgentCoreParts(parts: AgentCoreMessagePart[]): AgentOperationRecord[] {
+  const records = new Map<string, AgentOperationRecord>();
+  for (const part of parts) {
+    if (part.kind === 'tool_call') {
+      records.set(part.toolUseId, {
+        id: part.toolUseId,
+        scope: 'conversation',
+        title: part.title ?? part.name,
+        target: part.summary ?? part.name,
+        type: 'tool_call',
+        input: part.input,
+        status: part.status,
+        summary: part.activity,
+        startedAt: partTime(part),
+        finishedAt: part.status === 'completed' || part.status === 'failed' ? partTime(part) : undefined
+      });
+      continue;
     }
+    if (part.kind === 'tool_result' || part.kind === 'tool_error') {
+      const existing = records.get(part.toolUseId);
+      const isError = part.kind === 'tool_error';
+      const content = isError ? part.error : part.content;
+      const transaction = part.transaction ?? existing?.transaction;
+      records.set(part.toolUseId, {
+        id: part.toolUseId,
+        scope: 'conversation',
+        title: existing?.title ?? part.toolName ?? 'tool_call',
+        target: existing?.target ?? part.toolName ?? 'tool_call',
+        type: existing?.type ?? 'tool_call',
+        input: transaction ? { ...(existing?.input ?? {}), transaction } : existing?.input,
+        status: isError ? 'failed' : 'completed',
+        summary: content,
+        errorMessage: isError ? content : undefined,
+        transaction,
+        startedAt: existing?.startedAt ?? partTime(part),
+        finishedAt: partTime(part)
+      });
+    }
+  }
+  return [...records.values()].sort((left, right) => (left.startedAt ?? '').localeCompare(right.startedAt ?? ''));
+}
 
-    return operations.map((operation, index) => ({
-      id: `${action.id}:${index}`,
-      scope: 'execution-plan' as const,
-      phase: 'execute',
-      title: action.title,
-      pluginKind: action.pluginKind,
-      pluginId: action.pluginId,
-      target: operation.target,
-      type: operation.type,
-      input: operation.type === 'tool_call' ? operation.arguments : undefined,
-      status: action.status === 'planned' || action.status === 'suggested' ? 'skipped' : action.status,
-      summary: [
-        action.outputSummary,
-        action.repairSummary ? `repair: ${action.repairSummary}` : '',
-        action.rollbackSummary ? `rollback: ${action.rollbackSummary}` : ''
-      ]
-        .filter(Boolean)
-        .join('\n\n'),
-      errorMessage: action.errorMessage,
-      startedAt: action.lastRunAt,
-      finishedAt: action.lastRunAt
-    }));
-  });
+export function projectConversationProcessMetadataFromAgentCoreParts(
+  parts: AgentCoreMessagePart[],
+  finalMessage?: string
+): Partial<ChatMessageMetadata> {
+  const collector = createConversationProcessTranscriptCollector();
+  const assistantText = parts
+    .filter((part): part is Extract<AgentCoreMessagePart, { kind: 'assistant_text' }> => part.kind === 'assistant_text')
+    .map((part) => part.text)
+    .join('\n\n')
+    .trim();
+  if (assistantText) {
+    collector.onTextDelta(assistantText, assistantText);
+  }
+  for (const part of parts) {
+    if (part.kind === 'tool_call') {
+      collector.onToolUse({
+        toolUseId: part.toolUseId,
+        name: part.name,
+        input: part.input,
+        status: part.status
+      });
+      continue;
+    }
+    if (part.kind === 'tool_result' || part.kind === 'tool_error') {
+      collector.onToolResult({
+        toolUseId: part.toolUseId,
+        content: part.kind === 'tool_error' ? part.error : part.content,
+        isError: part.kind === 'tool_error',
+        transaction: part.transaction
+      });
+    }
+  }
+  return collector.build(finalMessage);
 }

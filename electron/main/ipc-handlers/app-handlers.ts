@@ -4,13 +4,15 @@ import { existsSync } from 'node:fs';
 import type { HandlerContext } from './types';
 import { externalUrlSchema, localPathSchema, validateIpcInput } from '../ipc-validation';
 import { sanitizeProvidersForRenderer } from '../provider-secret-store';
+import { sanitizeAssetGenerationProvidersForRenderer } from '../asset-generation-secret-store';
 
 export function registerAppHandlers(ipcMain: IpcMain, ctx: HandlerContext): void {
   ipcMain.handle('app:bootstrap', async () => {
     const state = ctx.getState();
     return {
       ...state,
-      providers: sanitizeProvidersForRenderer(state.providers)
+      providers: sanitizeProvidersForRenderer(state.providers),
+      assetGenerationProviders: sanitizeAssetGenerationProvidersForRenderer(state.assetGenerationProviders ?? [])
     };
   });
 

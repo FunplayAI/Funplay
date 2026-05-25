@@ -5,7 +5,7 @@ import {
   replaceProjectSession,
   syncProjectChatFromActiveSession
 } from '../../../shared/project-sessions';
-import type { AgentSkillActivation, GameAgentRun, GameAgentStep, McpPlugin, Project, RuntimeUsage } from '../../../shared/types';
+import type { GameAgentRun, GameAgentStep, McpPlugin, Project, RuntimeUsage } from '../../../shared/types';
 import { makeId, nowIso } from '../../../shared/utils';
 import { getAgentSettings } from '../store';
 import { hasSessionWritePermission, listSessionMcpToolPermissionKeys, listSessionWritePermissionTools } from './permission-session-store';
@@ -13,13 +13,13 @@ import { buildGenericWorkspaceContext } from './context';
 import { resolveGenericAgentRuntime } from './runtime-registry';
 import { supportsGenericAgentRuntimeCapability } from './runtime-capabilities';
 import { accumulateUsage, emptyUsageTotals } from './usage';
-import type { GenericAgentBootstrapTask, GenericAgentConversationTask, GenericAgentExecutePlanTask, GenericAgentRuntimeResult, GenericAgentTask } from './types';
+import type { GenericAgentBootstrapTask, GenericAgentConversationTask, GenericAgentRuntimeResult, GenericAgentTask } from './types';
+import { executeGenericAgentRuntimeEventStream } from './runtime-event-stream';
+import { createRuntimeEventResultProjection } from './runtime-event-result';
 import { acquireAgentSessionLock, releaseAgentSessionLock } from './session-run-lock';
 import { buildClaudeContextSummaryForSessionWithProvider, resetClaudeContextCompressionState } from './claude/runtime';
 import { prepareNativeContextHandoff, resetNativeContextCompressionState } from './native/context-handoff';
-import { chatContentBlocksToAgentCoreParts } from '../../../shared/agent-core-v2';
-import type { AgentCoreMessagePart } from '../../../shared/types/agent-core';
-import { recordActiveRunLifecycleHook, recordActiveRunSkillActivation } from './run-registry';
+import { recordActiveRunAgentCoreParts, recordActiveRunLifecycleHook, recordActiveRunSkillActivation } from './run-registry';
 import { loadAgentLifecycleHookConfigForProject } from './agent-hooks';
 
 function createStep(kind: GameAgentStep['kind'], title: string, detail: string, status: GameAgentStep['status']): GameAgentStep {
@@ -61,79 +61,6 @@ function collectPlugins(task: { mcpPlugins?: McpPlugin[]; enginePlugin?: McpPlug
 
 function isManualCompactPrompt(message: string): boolean {
   return message.trim() === '/compact';
-}
-
-function buildDefaultAgentCoreParts(
-  result: GenericAgentRuntimeResult,
-  options: { turnId?: string; createdAt: string; activeSkills?: AgentSkillActivation[] }
-): AgentCoreMessagePart[] | undefined {
-  const skillParts = buildSkillActivationAgentCoreParts(options.activeSkills ?? [], {
-    turnId: options.turnId,
-    createdAt: options.createdAt
-  });
-  if (result.assistantMetadata?.agentCoreParts?.length) {
-    return mergeAgentCoreParts(skillParts, result.assistantMetadata.agentCoreParts);
-  }
-
-  if (result.assistantIntent !== 'chat') {
-    return skillParts.length ? skillParts : undefined;
-  }
-
-  const contentBlocks = result.assistantContentBlocks?.length
-    ? result.assistantContentBlocks
-    : result.assistantMessage.trim()
-      ? [{ type: 'text' as const, text: result.assistantMessage.trim() }]
-      : [];
-  const parts = chatContentBlocksToAgentCoreParts(contentBlocks, {
-    turnId: options.turnId,
-    createdAt: options.createdAt
-  });
-  const merged = mergeAgentCoreParts(skillParts, parts);
-  return merged.length > 0 ? merged : undefined;
-}
-
-function buildSkillActivationAgentCoreParts(
-  skills: AgentSkillActivation[],
-  options: { turnId?: string; createdAt: string }
-): AgentCoreMessagePart[] {
-  return skills.map((skill, index) => ({
-    id: `skill_activation:${skill.id}`,
-    kind: 'system_event',
-    turnId: options.turnId,
-    createdAt: options.createdAt,
-    sequence: index,
-    title: `Skill activated: ${skill.name}`,
-    summary: [
-      `Reason: ${skill.activationReason}`,
-      `Trust: ${skill.trustLevel}`,
-      `Permission: ${skill.permissionPolicy}`
-    ].join(' · '),
-    metadata: {
-      type: 'skill_activation',
-      skillId: skill.id,
-      skillName: skill.name,
-      activationReason: skill.activationReason,
-      source: skill.source,
-      sourcePath: skill.sourcePath,
-      trustLevel: skill.trustLevel,
-      verificationStatus: skill.verificationStatus,
-      permissionPolicy: skill.permissionPolicy,
-      scriptPolicy: skill.scriptPolicy
-    }
-  }));
-}
-
-function mergeAgentCoreParts(prefix: AgentCoreMessagePart[], parts: AgentCoreMessagePart[]): AgentCoreMessagePart[] {
-  if (!prefix.length) {
-    return parts;
-  }
-  return [
-    ...prefix,
-    ...parts.map((part) => ({
-      ...part,
-      sequence: part.sequence + prefix.length
-    }))
-  ];
 }
 
 export async function executeGenericBootstrap(task: GenericAgentBootstrapTask): Promise<{ project: Project; run: GameAgentRun }> {
@@ -212,7 +139,7 @@ export async function executeGenericConversation(task: GenericAgentConversationT
     provider: task.provider,
     runtimeStrategy: agentSettings.runtimeStrategy
   });
-  if (!supportsGenericAgentRuntimeCapability(runtime, 'conversation') || !runtime.executeTurn) {
+  if (!supportsGenericAgentRuntimeCapability(runtime, 'conversation')) {
     throw new Error(`Runtime ${runtime.id} does not support conversation turns.`);
   }
   const runtimeGrantId = runtime.id === 'native' || runtime.id === 'claude-code-sdk' ? runtime.id : undefined;
@@ -397,7 +324,8 @@ export async function executeGenericConversation(task: GenericAgentConversationT
     task.onUsage?.(usage);
   };
 
-  const result = await runtime.executeTurn({
+  let result: GenericAgentRuntimeResult | undefined;
+  const runtimeParams = {
     project: currentProject,
     message: task.message,
     attachments: task.attachments,
@@ -416,37 +344,62 @@ export async function executeGenericConversation(task: GenericAgentConversationT
       allowedMcpTools: sessionMcpTools
     },
     activeRunId: task.activeRunId,
+    turnId: task.userMessageId,
     lifecycleHooks,
     abortSignal: task.abortSignal,
-    onStatus: task.onStatus,
-    onTextDelta: task.onTextDelta,
-    onThinkingDelta: task.onThinkingDelta,
-    onToolUse: task.onToolUse,
-    onToolResult: task.onToolResult,
-    onStage: task.onStage,
-    onPermissionRequest: task.onPermissionRequest,
     requestPermission: task.requestPermission,
-    onUserInputRequest: task.onUserInputRequest,
-    requestUserInput: task.requestUserInput,
-    onUsage,
-    onLifecycleHook: (hook) => {
+    requestUserInput: task.requestUserInput
+  };
+
+  const eventProjection = createRuntimeEventResultProjection(runtimeParams);
+  for await (const event of executeGenericAgentRuntimeEventStream(runtime, runtimeParams)) {
+    eventProjection.observe(event);
+    if (event.type === 'status') {
+      task.onStatus?.(event.phase, event.message);
+    } else if (event.type === 'text_delta') {
+      task.onTextDelta?.(event.delta, event.accumulated);
+    } else if (event.type === 'thinking_delta') {
+      task.onThinkingDelta?.(event.delta, event.accumulated);
+    } else if (event.type === 'tool_use') {
+      task.onToolUse?.(event.tool);
+    } else if (event.type === 'tool_result') {
+      task.onToolResult?.(event.result);
+    } else if (event.type === 'stage') {
+      task.onStage?.(event.stage);
+    } else if (event.type === 'permission_request') {
+      task.onPermissionRequest?.(event.request);
+    } else if (event.type === 'user_input_request') {
+      task.onUserInputRequest?.(event.request);
+    } else if (event.type === 'usage') {
+      onUsage(event.usage);
+    } else if (event.type === 'lifecycle_hook') {
       if (task.activeRunId) {
-        recordActiveRunLifecycleHook(task.activeRunId, hook);
+        recordActiveRunLifecycleHook(task.activeRunId, event.hook);
       }
+    } else if (event.type === 'agent_core_parts') {
+      if (task.activeRunId) {
+        recordActiveRunAgentCoreParts(task.activeRunId, event.parts);
+      }
+      task.onAgentCoreParts?.(event.parts);
+      continue;
+    } else {
+      result = event.result;
     }
-  });
+  }
+  if (!result) {
+    throw new Error(`Runtime ${runtime.id} completed without a result event.`);
+  }
 
   const updatedAt = nowIso();
-  const agentCoreParts = buildDefaultAgentCoreParts(result, {
-    turnId: task.userMessageId,
+  result = eventProjection.buildProjectedResult(result, {
     createdAt: updatedAt,
     activeSkills: context.toolContext.activeSkills
   });
+  const agentCoreParts = result.assistantMetadata?.agentCoreParts;
   let nextProject = appendProjectConversationTurn(currentProject, {
     userMessageId: task.userMessageId,
     userMessage: task.message,
     assistantMessage: result.assistantMessage,
-    assistantContentBlocks: result.assistantContentBlocks,
     assistantMetadata: {
       ...result.assistantMetadata,
       agentCoreParts,
@@ -516,22 +469,12 @@ export async function executeGenericConversation(task: GenericAgentConversationT
   }
 }
 
-export async function executeGenericExecutePlan(task: GenericAgentExecutePlanTask): Promise<{ project: Project; run: GameAgentRun }> {
-  const runtime = resolveGenericAgentRuntime('execute-plan');
-  if (!supportsGenericAgentRuntimeCapability(runtime, 'executePlan') || !runtime.executePlan) {
-    throw new Error('Execution plan runtime is not available.');
-  }
-  return runtime.executePlan(task);
-}
-
 export async function executeGenericAgentTask(task: GenericAgentTask): Promise<{ project: Project; run: GameAgentRun }> {
   switch (task.kind) {
     case 'bootstrap':
       return executeGenericBootstrap(task);
     case 'conversation':
       return executeGenericConversation(task);
-    case 'execute-plan':
-      return executeGenericExecutePlan(task);
     default:
       throw new Error('Unsupported generic agent task.');
   }

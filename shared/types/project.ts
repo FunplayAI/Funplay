@@ -1,4 +1,5 @@
 import type { AgentToolArtifact, AgentToolBrowserResult, AgentToolTerminalResult, ChatMessage } from './chat';
+import type { AssetGenerationJob, AssetGenerationPreset } from './asset-generation';
 import type { McpPluginBindings, UnityHealthResult, PlatformChoice, ProjectSetupMode, EngineProjectDimension, McpPluginKind } from './unity';
 
 export type GameTemplateId = 'generic-workspace' | 'engine-game-prototype' | '2d-roguelike' | 'narrative-adventure' | 'topdown-action';
@@ -8,7 +9,7 @@ export type AssetType = 'character' | 'environment' | 'ui' | 'audio' | 'vfx';
 export type AssetStatus = 'planned' | 'generating' | 'ready';
 export type ProjectStatus = 'planning' | 'active' | 'blocked';
 export type ActivityKind = 'project' | 'planning' | 'bridge' | 'snapshot';
-export type GameAgentRunMode = 'bootstrap' | 'update' | 'execute-plan';
+export type GameAgentRunMode = 'bootstrap' | 'update';
 export type GameAgentStepStatus = 'completed' | 'failed' | 'skipped';
 export type GameAgentStepKind = 'context' | 'model' | 'planning' | 'memory' | 'fallback';
 export type AgentOperationStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
@@ -18,11 +19,11 @@ export type GameAgentOperationType = 'tool_call' | 'resource_read';
 export type AgentPermissionMode = 'full-access' | 'ask' | 'read-only';
 export type ProjectSessionRuntimeId = 'native' | 'claude-code-sdk';
 export type AgentRuntimeStrategy = 'auto' | ProjectSessionRuntimeId;
-export type AgentRuntimeReportId = ProjectSessionRuntimeId | 'execute-plan';
+export type AgentRuntimeReportId = ProjectSessionRuntimeId;
 export type ProjectSessionMode = 'agent';
 export type ProjectSessionEffort = 'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export type ClaudeRuntimeWriteMode = 'external-audited' | 'host-controlled';
-export type AgentRunKind = 'conversation' | 'bootstrap' | 'execute-plan';
+export type AgentRunKind = 'conversation' | 'bootstrap';
 export type AgentRunResumeStrategy = 'restart_prompt' | 'resume_after_last_completed_tool' | 'resume_from_checkpoint';
 export type AgentRuntimeRunStatus = 'running' | 'interrupted' | 'failed' | 'completed';
 export type AgentTaskGraphStatus = AgentRuntimeRunStatus;
@@ -140,6 +141,8 @@ export interface AssetItem {
   status: AssetStatus;
   prompt: string;
   notes: string;
+  generationJobId?: string;
+  outputPaths?: string[];
 }
 
 export interface ProjectMemoryFileSummary {
@@ -591,6 +594,8 @@ export interface Project {
   blueprint: ProjectBlueprint;
   tasks: TaskItem[];
   assets: AssetItem[];
+  assetGenerationJobs?: AssetGenerationJob[];
+  assetGenerationPresets?: AssetGenerationPreset[];
   sessions: ProjectSession[];
   activeSessionId?: string;
   chat: ChatMessage[];

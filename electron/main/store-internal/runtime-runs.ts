@@ -103,7 +103,7 @@ function mapRuntimeRunRow(row: RuntimeRunRow): PersistedRuntimeRunRecord {
     kind: row.kind,
     projectId: row.project_id,
     sessionId: row.session_id ?? undefined,
-    runtimeId: request.runtimeId ?? (request.kind === 'execute-plan' ? 'execute-plan' : undefined),
+    runtimeId: request.runtimeId,
     providerId: request.providerId,
     model: request.model,
     permissionMode: request.permissionMode,

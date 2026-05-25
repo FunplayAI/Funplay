@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AiProviderInput,
+  AssetGenerationProviderInput,
+  AssetGenerationRequest,
   CreateProjectInput,
   EnvironmentActionKind,
   FunPlayApi,
@@ -48,6 +50,27 @@ const api: FunPlayApi = {
   deleteProject: (projectId: string, deleteSourceFiles?: boolean) =>
     ipcRenderer.invoke('projects:delete', projectId, deleteSourceFiles),
   listProjectFiles: (projectId: string) => ipcRenderer.invoke('projects:listFiles', projectId),
+  listAssetGenerationProviders: () => ipcRenderer.invoke('assetGeneration:listProviders'),
+  createAssetGenerationProvider: (input: AssetGenerationProviderInput) =>
+    ipcRenderer.invoke('assetGeneration:createProvider', input),
+  updateAssetGenerationProvider: (providerId: string, input: AssetGenerationProviderInput) =>
+    ipcRenderer.invoke('assetGeneration:updateProvider', providerId, input),
+  deleteAssetGenerationProvider: (providerId: string) =>
+    ipcRenderer.invoke('assetGeneration:deleteProvider', providerId),
+  generateAsset: (projectId: string, input: AssetGenerationRequest) =>
+    ipcRenderer.invoke('assetGeneration:generate', projectId, input),
+  importGeneratedAsset: (projectId: string, jobId: string) =>
+    ipcRenderer.invoke('assetGeneration:import', projectId, jobId),
+  cancelAssetGenerationJob: (projectId: string, jobId: string) =>
+    ipcRenderer.invoke('assetGeneration:cancel', projectId, jobId),
+  onAssetGenerationProjectUpdated: (listener) => {
+    const channel = 'assetGeneration:projectUpdated';
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+      listener(payload as Parameters<typeof listener>[0]);
+    };
+    ipcRenderer.on(channel, wrapped);
+    return () => ipcRenderer.removeListener(channel, wrapped);
+  },
   readProjectFile: (projectId: string, filePath: string) => ipcRenderer.invoke('projects:readFile', projectId, filePath),
   writeProjectFile: (projectId: string, filePath: string, content: string) =>
     ipcRenderer.invoke('projects:writeFile', projectId, filePath, content),
@@ -136,8 +159,6 @@ const api: FunPlayApi = {
     ipcRenderer.invoke('projects:previewSessionCheckpoint', projectId, snapshotId),
   restoreSessionCheckpoint: (projectId: string, snapshotId: string) =>
     ipcRenderer.invoke('projects:restoreSessionCheckpoint', projectId, snapshotId),
-  executeProjectPlan: (projectId: string) => ipcRenderer.invoke('projects:executePlan', projectId),
-  startExecutePlanStream: (projectId: string) => ipcRenderer.invoke('projects:startExecutePlanStream', projectId),
   updateProjectMcpConfig: (projectId: string, kind: McpPluginKind, pluginId: string) =>
     ipcRenderer.invoke('projects:updateMcpConfig', projectId, kind, pluginId),
   updateProjectMcpServers: (projectId: string, pluginIds: string[]) =>

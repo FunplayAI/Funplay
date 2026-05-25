@@ -7,6 +7,7 @@ import {
   type OpenAiCompatibleToolMessage
 } from '../../openai-compatible-client';
 import { runAgentLifecycleHooks } from '../agent-hooks';
+import { emitRuntimeLifecycleHook, emitRuntimeUsage } from '../runtime-event-emitter';
 import type { GenericAgentRuntimeParams } from '../types';
 import { normalizeAiSdkUsage, normalizeOpenAiUsage } from '../usage';
 import type { WorkspaceToolAction, WorkspaceToolActionResult } from '../workspace-tools';
@@ -124,7 +125,7 @@ async function emitNativeSubagentStopHook(
       cwd: params.context.runtimeEnvironment?.workingDirectory ?? params.context.projectPath,
       checkpointSnapshotId: params.checkpointSnapshotId,
       abortSignal: params.abortSignal,
-      emitHook: params.onLifecycleHook,
+      emitHook: (hook) => emitRuntimeLifecycleHook(params, hook),
       emitStage: params.onStage
     });
   } catch (error) {
@@ -203,7 +204,7 @@ export async function runNativeSubagent(
         model: params.provider?.model
       });
       if (stepUsage) {
-        params.onUsage?.(stepUsage);
+        emitRuntimeUsage(params, stepUsage);
       }
       if (stepResult.text.trim()) {
         assistantMessage = stepResult.text.trim();
@@ -291,7 +292,7 @@ export async function runNativeSubagent(
           model: params.provider?.model
         });
         if (stepUsage) {
-          params.onUsage?.(stepUsage);
+          emitRuntimeUsage(params, stepUsage);
         }
       }
     }

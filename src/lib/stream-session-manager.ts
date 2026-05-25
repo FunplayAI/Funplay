@@ -45,6 +45,9 @@ export interface StreamUserInputState {
 export interface StreamToolUseState {
   toolUseId: string;
   name: string;
+  title?: string;
+  summary?: string;
+  activity?: string;
   input?: Record<string, unknown>;
   status: 'pending' | 'running' | 'completed' | 'failed';
 }
@@ -96,6 +99,7 @@ export interface StreamSessionState {
   stages: StreamStageState[];
   activityItems: StreamActivityItem[];
   agentCoreParts?: AgentCoreMessagePart[];
+  agentCorePartsAuthoritative?: boolean;
   lastUsage?: RuntimeUsage;
   usageTotals?: RuntimeUsageTotals;
   pendingPermission?: StreamPermissionState;
@@ -217,100 +221,11 @@ function flushTextSmoothing(streamId: string): StreamSessionState | undefined {
 
   const next = {
     ...current,
-    content: state.targetContent,
-    agentCoreParts: upsertStreamTextPart(current, state.targetContent, streamId)
+    content: state.targetContent
   };
   streams.set(streamId, next);
   emitChange();
   return next;
-}
-
-function nextAgentCoreSequence(current: StreamSessionState): number {
-  return (current.agentCoreParts ?? []).reduce((next, part) => Math.max(next, part.sequence + 1), 0);
-}
-
-function upsertAgentCorePart(current: StreamSessionState, part: AgentCoreMessagePart): AgentCoreMessagePart[] {
-  const parts = current.agentCoreParts ?? [];
-  const existingIndex = parts.findIndex((item) => item.id === part.id);
-  return existingIndex >= 0
-    ? parts.map((item, index) => (index === existingIndex ? part : item))
-    : [...parts, part];
-}
-
-function upsertStreamTextPart(current: StreamSessionState, content: string, streamId: string): AgentCoreMessagePart[] {
-  const existing = current.agentCoreParts?.find((part) => part.id === `stream_text:${streamId}`);
-  if (!content.trim()) {
-    return current.agentCoreParts ?? [];
-  }
-  return upsertAgentCorePart(current, {
-    id: `stream_text:${streamId}`,
-    kind: 'assistant_text',
-    createdAt: existing?.createdAt ?? current.startedAt,
-    sequence: existing?.sequence ?? nextAgentCoreSequence(current),
-    text: content
-  });
-}
-
-function upsertStreamThinkingPart(current: StreamSessionState, content: string, streamId: string, createdAt: string): AgentCoreMessagePart[] {
-  const existing = current.agentCoreParts?.find((part) => part.id === `stream_thinking:${streamId}`);
-  if (!content.trim()) {
-    return current.agentCoreParts ?? [];
-  }
-  return upsertAgentCorePart(current, {
-    id: `stream_thinking:${streamId}`,
-    kind: 'assistant_thinking',
-    createdAt: existing?.createdAt ?? createdAt,
-    sequence: existing?.sequence ?? nextAgentCoreSequence(current),
-    thinking: content
-  });
-}
-
-function upsertStreamToolUsePart(current: StreamSessionState, event: Extract<PromptStreamEvent, { type: 'tool_use' }>): AgentCoreMessagePart[] {
-  const existing = current.agentCoreParts?.find((part) => part.id === `stream_tool_call:${event.toolUseId}`);
-  return upsertAgentCorePart(current, {
-    id: `stream_tool_call:${event.toolUseId}`,
-    kind: 'tool_call',
-    createdAt: existing?.createdAt ?? event.startedAt,
-    sequence: existing?.sequence ?? nextAgentCoreSequence(current),
-    toolUseId: event.toolUseId,
-    name: event.name,
-    input: event.input,
-    status: event.status
-  });
-}
-
-function upsertStreamToolResultPart(current: StreamSessionState, event: Extract<PromptStreamEvent, { type: 'tool_result' }>): AgentCoreMessagePart[] {
-  const id = event.isError ? `stream_tool_error:${event.toolUseId}` : `stream_tool_result:${event.toolUseId}`;
-  const existing = current.agentCoreParts?.find((part) => part.id === id);
-  if (event.isError) {
-    return upsertAgentCorePart(current, {
-      id,
-      kind: 'tool_error',
-      createdAt: existing?.createdAt ?? event.startedAt,
-      sequence: existing?.sequence ?? nextAgentCoreSequence(current),
-      toolUseId: event.toolUseId,
-      error: event.content,
-      failureKind: event.edit?.failureKind ?? event.mcp?.failureKind,
-      recoveryHint: event.edit?.recoveryHint,
-      transaction: event.transaction
-    });
-  }
-  return upsertAgentCorePart(current, {
-    id,
-    kind: 'tool_result',
-    createdAt: existing?.createdAt ?? event.startedAt,
-    sequence: existing?.sequence ?? nextAgentCoreSequence(current),
-    toolUseId: event.toolUseId,
-    content: event.content,
-    changedFiles: event.changedFiles,
-    command: event.command,
-    terminal: event.terminal,
-    browser: event.browser,
-    edit: event.edit,
-    mcp: event.mcp,
-    artifacts: event.artifacts,
-    transaction: event.transaction
-  });
 }
 
 function getStreamTargetContentLength(streamId: string, current: StreamSessionState): number {
@@ -370,7 +285,8 @@ function appendToolActivityItem(
   streamId: string,
   current: StreamSessionState,
   toolUseId: string,
-  status: StreamActivityItem['status']
+  status: StreamActivityItem['status'],
+  summary?: string
 ): StreamSessionState {
   if (!current.toolUses.some((tool) => tool.toolUseId === toolUseId)) {
     return current;
@@ -380,8 +296,98 @@ function appendToolActivityItem(
     type: 'tool',
     status,
     title: status === 'running' ? 'tool_running' : status === 'failed' ? 'tool_failed' : 'tool_completed',
+    summary,
     toolUseIds: [toolUseId]
   });
+}
+
+function withLiveAgentCoreParts(current: StreamSessionState): StreamSessionState {
+  if (current.agentCorePartsAuthoritative) {
+    return current;
+  }
+  const parts: AgentCoreMessagePart[] = [];
+  let sequence = 0;
+  const createdAt = current.startedAt;
+  if (current.thinkingContent.trim()) {
+    parts.push({
+      id: `live:${current.streamId}:thinking`,
+      kind: 'assistant_thinking',
+      createdAt,
+      sequence,
+      thinking: current.thinkingContent
+    });
+    sequence += 1;
+  }
+  if (current.content.trim()) {
+    parts.push({
+      id: `live:${current.streamId}:text`,
+      kind: 'assistant_text',
+      createdAt,
+      sequence,
+      text: current.content,
+      final: false
+    });
+    sequence += 1;
+  }
+  for (const tool of current.toolUses) {
+    parts.push({
+      id: `live:${current.streamId}:tool_call:${tool.toolUseId}`,
+      kind: 'tool_call',
+      createdAt,
+      sequence,
+      toolUseId: tool.toolUseId,
+      name: tool.name,
+      input: tool.input,
+      status: tool.status
+    });
+    sequence += 1;
+  }
+  const toolsById = new Map(current.toolUses.map((tool) => [tool.toolUseId, tool]));
+  for (const result of current.toolResults) {
+    const tool = toolsById.get(result.toolUseId);
+    if (result.isError) {
+      parts.push({
+        id: `live:${current.streamId}:tool_error:${result.toolUseId}`,
+        kind: 'tool_error',
+        createdAt,
+        sequence,
+        toolUseId: result.toolUseId,
+        toolName: tool?.name,
+        error: result.content,
+        changedFiles: result.changedFiles,
+        command: result.command,
+        terminal: result.terminal,
+        browser: result.browser,
+        edit: result.edit,
+        mcp: result.mcp,
+        artifacts: result.artifacts,
+        transaction: result.transaction
+      });
+    } else {
+      parts.push({
+        id: `live:${current.streamId}:tool_result:${result.toolUseId}`,
+        kind: 'tool_result',
+        createdAt,
+        sequence,
+        toolUseId: result.toolUseId,
+        toolName: tool?.name,
+        content: result.content,
+        changedFiles: result.changedFiles,
+        command: result.command,
+        terminal: result.terminal,
+        browser: result.browser,
+        edit: result.edit,
+        mcp: result.mcp,
+        artifacts: result.artifacts,
+        transaction: result.transaction
+      });
+    }
+    sequence += 1;
+  }
+  return {
+    ...current,
+    agentCoreParts: parts.length > 0 ? parts : current.agentCoreParts
+  };
 }
 
 function isInlineLifecycleHookStage(stage: StreamStageState): boolean {
@@ -457,7 +463,7 @@ function scheduleTextSmoothing(streamId: string): void {
     content: nextContent,
     phase: 'streaming' as const
   };
-  getStreams().set(streamId, next);
+  getStreams().set(streamId, withLiveAgentCoreParts(next));
   emitChange();
 
   const remaining = state.targetContent.length - nextContent.length;
@@ -479,13 +485,12 @@ function applySmoothedDelta(event: Extract<PromptStreamEvent, { type: 'delta' }>
   const targetContent = event.content;
   if (!targetContent.startsWith(current.content) || targetContent.length <= current.content.length) {
     clearTextSmoothing(event.streamId);
-    streams.set(event.streamId, {
+    streams.set(event.streamId, withLiveAgentCoreParts({
       ...current,
       content: targetContent,
-      agentCoreParts: upsertStreamTextPart(current, targetContent, event.streamId),
       phase: 'streaming',
       statusMessage: labels.streaming
-    });
+    }));
     emitChange();
     return;
   }
@@ -496,13 +501,12 @@ function applySmoothedDelta(event: Extract<PromptStreamEvent, { type: 'delta' }>
   states.set(event.streamId, state);
 
   const nextContent = getNextSmoothedContent(current.content, targetContent);
-  streams.set(event.streamId, {
+  streams.set(event.streamId, withLiveAgentCoreParts({
     ...current,
     content: nextContent,
-    agentCoreParts: upsertStreamTextPart(current, nextContent, event.streamId),
     phase: 'streaming',
     statusMessage: labels.streaming
-  });
+  }));
   emitChange();
 
   if (nextContent === targetContent) {
@@ -573,13 +577,12 @@ export function applyPromptStreamEventToManager(event: PromptStreamEvent, labels
     if (!flushed) {
       return;
     }
-    streams.set(event.streamId, {
+    streams.set(event.streamId, withLiveAgentCoreParts({
       ...flushed,
       thinkingContent: event.content,
-      agentCoreParts: upsertStreamThinkingPart(flushed, event.content, event.streamId, event.startedAt),
       phase: 'thinking',
       statusMessage: labels.reasoning
-    });
+    }));
     emitChange();
     return;
   }
@@ -592,21 +595,31 @@ export function applyPromptStreamEventToManager(event: PromptStreamEvent, labels
     const nextTool: StreamToolUseState = {
       toolUseId: event.toolUseId,
       name: event.name,
+      title: event.title,
+      summary: event.summary,
+      activity: event.activity,
       input: event.input,
       status: event.status
     };
     const existingIndex = flushed.toolUses.findIndex((tool) => tool.toolUseId === event.toolUseId);
+    const existingTool = existingIndex >= 0 ? flushed.toolUses[existingIndex] : undefined;
+    const mergedTool: StreamToolUseState = {
+      ...nextTool,
+      title: nextTool.title ?? existingTool?.title,
+      summary: nextTool.summary ?? existingTool?.summary,
+      activity: nextTool.activity ?? existingTool?.activity,
+      input: nextTool.input ?? existingTool?.input
+    };
     const toolUses =
       existingIndex >= 0
-        ? flushed.toolUses.map((tool, index) => (index === existingIndex ? nextTool : tool))
-        : [...flushed.toolUses, nextTool];
+        ? flushed.toolUses.map((tool, index) => (index === existingIndex ? mergedTool : tool))
+        : [...flushed.toolUses, mergedTool];
     const next = appendToolActivityItem(event.streamId, {
       ...flushed,
       toolUses,
-      agentCoreParts: upsertStreamToolUsePart(flushed, event),
-      statusMessage: labels.toolRunning(event.name)
-    }, event.toolUseId, 'running');
-    streams.set(event.streamId, next);
+      statusMessage: mergedTool.activity ?? labels.toolRunning(event.name)
+    }, event.toolUseId, 'running', mergedTool.summary ?? mergedTool.activity);
+    streams.set(event.streamId, withLiveAgentCoreParts(next));
     emitChange();
     return;
   }
@@ -638,10 +651,9 @@ export function applyPromptStreamEventToManager(event: PromptStreamEvent, labels
     const next = appendToolActivityItem(event.streamId, {
       ...flushed,
       toolResults,
-      agentCoreParts: upsertStreamToolResultPart(flushed, event),
       statusMessage: event.isError ? labels.toolFailed : labels.toolCompleted
     }, event.toolUseId, event.isError ? 'failed' : 'completed');
-    streams.set(event.streamId, next);
+    streams.set(event.streamId, withLiveAgentCoreParts(next));
     emitChange();
     return;
   }
@@ -741,6 +753,20 @@ export function applyPromptStreamEventToManager(event: PromptStreamEvent, labels
       ...flushed,
       lastUsage: event.usage,
       usageTotals: event.totals
+    });
+    emitChange();
+    return;
+  }
+
+  if (event.type === 'agent_core_parts') {
+    const flushed = flushTextSmoothing(event.streamId);
+    if (!flushed) {
+      return;
+    }
+    streams.set(event.streamId, {
+      ...flushed,
+      agentCoreParts: event.parts,
+      agentCorePartsAuthoritative: true
     });
     emitChange();
     return;

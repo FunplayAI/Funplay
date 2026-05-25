@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { useUiPreferences } from './hooks/useUiPreferences';
 import { useWorkspaceLayout } from './hooks/useWorkspaceLayout';
 import { useSelectedProjectView } from './hooks/useSelectedProjectView';
@@ -8,23 +8,19 @@ import { useProviderManager } from './hooks/useProviderManager';
 import { useNotificationTasks } from './hooks/useNotificationTasks';
 import { useProjectMemory } from './hooks/useProjectMemory';
 import { useFileInspector } from './hooks/useFileInspector';
-import { useCheckpointManager, type RestoredCheckpointState } from './hooks/useCheckpointManager';
+import { useCheckpointManager } from './hooks/useCheckpointManager';
 import { useProjectSkills } from './hooks/useProjectSkills';
 import { useOnboarding } from './hooks/useOnboarding';
 import { useAgentRuntimeActivity } from './hooks/useAgentRuntimeActivity';
+import { useAssetGenerationCenter } from './hooks/useAssetGenerationCenter';
 import { formatProjectDocument } from '../shared/planner';
 import { ensureProjectSessions } from '../shared/project-sessions';
 import {
   type AgentRuntimeStrategy,
   type AgentPermissionMode,
-  type AgentOperationRecord,
-  type AgentSettings,
-  type ProjectAgentAggregateState,
-  type AiProvider,
-  type AiSettings,
+  type AssetGenerationProviderConfig,
+  type AssetGenerationProviderInput,
   type BootstrapPayload,
-  type ClaudeRuntimeSetupStatus,
-  type ClaudeSessionSummary,
   type CreateProjectInput,
   type EngineProjectDimension,
   type EnvironmentActionKind,
@@ -41,17 +37,12 @@ import {
   type Project,
   type ProjectSessionEffort,
   type ProjectSessionRuntimeId,
-  type RuntimeDoctorResult,
-  type RuntimeRepairAction,
   type UnityMcpPrompt,
   type UnityMcpResource,
   type UnityMcpResourceTemplate,
   type UnityMcpServerInfo,
   type UnityMcpTool,
-  type UnitySettings,
-  type WebResearchMetrics,
-  type WebSearchQualityReport,
-  type WebSearchSettings
+  type UnitySettings
 } from '../shared/types';
 import { AppShell, StandaloneAppShell } from './components/layout/AppShell';
 import { AgentWorkbench } from './components/layout/AgentWorkbench';
@@ -72,52 +63,30 @@ import {
   FileInspectorPanel,
   SidebarPanel
 } from './components/layout/WorkspacePanels';
-import { McpPluginModal, ModalShell, ProviderEditor } from './components/settings-modals';
+import { McpPluginModal } from './components/settings-modals';
 import type { SessionCheckpointListItem, SessionListState } from './components/layout/SessionManagementPanel';
 import type {
   AppSettingsTab,
   ProjectMcpBindingDraft,
   ProjectSettingsTab,
-  UiPreferences
 } from './lib/app-types';
 import {
   buildProjectSwitcherItem,
   buildSessionListState,
   buildVirtualProjectFiles,
-  clampNumber,
-  countProjectMessages,
   createEmptyProjectSkillDraft,
-  derivePlatform,
-  extractSessionMessagePreview,
   formatAbsoluteTime,
-  formatActionStatus,
-  formatAppUpdateFeedSource,
-  formatAppUpdateStatus,
-  formatDiagnosticStatus,
-  formatDimensionLabel,
-  formatEnvironmentTaskStage,
-  formatEnvironmentTaskStatus,
-  formatFileSize,
-  formatPlatformLabel,
-  formatProjectLocation,
-  formatProjectStatus,
-  formatRelativeDate,
-  isCancellationMessage,
-  mapTaskStatusToDiagnostic,
   mergeProjectRuntimeRefresh,
   mergeProjectSessionSelection,
-  normalizeAgentRunForView,
-  resolveAppUpdateActionMessage,
   shouldUseFastRuntimeRefresh,
-  truncateInlineText,
   wait
 } from './lib/app-helpers';
+import { canProjectUseMcpPlugin, getProjectMcpServerIds } from './lib/mcp-project-helpers';
 import { WelcomeScreen } from './components/pages/WelcomeScreen';
 import { OnboardingScreen } from './components/pages/OnboardingScreen';
 import { McpManagementPage } from './components/pages/McpManagementPage';
 import { SkillsPage } from './components/pages/SkillsPage';
 import { ProjectSettingsPage } from './components/pages/ProjectSettingsPage';
-import { ProviderSettingsPage } from './components/pages/ProviderSettingsPage';
 import { McpRegistrySettingsPage } from './components/pages/McpRegistrySettingsPage';
 import { WebSearchSettingsPage } from './components/pages/WebSearchSettingsPage';
 import { AssetsPage } from './components/pages/AssetsPage';
@@ -144,24 +113,6 @@ const emptySettings: UnitySettings = {
   lastAssignedMcpPort: 8765
 };
 
-function getProjectMcpServerIds(project: Project | null | undefined): string[] {
-  if (!project) {
-    return [];
-  }
-  const bindings = project.mcpBindings ?? {};
-  return [...new Set([
-    ...(bindings.servers ?? []),
-    bindings.engine,
-    bindings.asset,
-    bindings.qa,
-    bindings.custom
-  ].filter(Boolean) as string[])];
-}
-
-function canProjectUseMcpPlugin(project: Project | null | undefined, plugin: McpPlugin): boolean {
-  return Boolean(project && (!plugin.projectId || plugin.projectId === project.id));
-}
-
 function App(): JSX.Element {
   const [appMode, setAppMode] = useState<AppMode>('welcome');
   const [section, setSection] = useState<WorkspaceSection>('agent');
@@ -181,6 +132,7 @@ function App(): JSX.Element {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [mcpPlugins, setMcpPlugins] = useState<McpPlugin[]>([]);
+  const [assetGenerationProviderConfigs, setAssetGenerationProviderConfigs] = useState<AssetGenerationProviderConfig[]>([]);
   const [settings, setSettings] = useState<UnitySettings>(emptySettings);
   const [settingsDraft, setSettingsDraft] = useState(emptySettings);
   const [selectedProjectId, setSelectedProjectId] = useState('');
@@ -277,6 +229,7 @@ function App(): JSX.Element {
         );
         setProviders(payload.providers);
         setMcpPlugins(payload.mcpPlugins);
+        setAssetGenerationProviderConfigs(payload.assetGenerationProviders ?? []);
         setAiSettings(payload.aiSettings);
         setAgentSettings(payload.agentSettings);
         setSettings(payload.settings);
@@ -429,9 +382,6 @@ function App(): JSX.Element {
     });
   }, []);
 
-
-
-
   useEffect(() => {
     if (!selectedProject) {
       setProjectBindings([]);
@@ -577,6 +527,21 @@ function App(): JSX.Element {
     setSelectedProjectId(projects[0].id);
   }, [appMode, selectedProjectId, projects]);
 
+  const {
+    assetGenerationProviders,
+    handleGenerateAsset,
+    handleImportGeneratedAsset,
+    handleCancelAssetGenerationJob
+  } = useAssetGenerationCenter({
+    appMode,
+    mcpPlugins,
+    assetGenerationProviderConfigs,
+    selectedProjectView,
+    language: uiPreferences.language,
+    setProjects,
+    refreshProjectFiles
+  });
+
   const activeProjectMcpPlugins = mcpPlugins.filter((plugin) => projectBindings.includes(plugin.id) && plugin.enabled && canProjectUseMcpPlugin(selectedProjectView, plugin));
   const activeEnginePlugin = activeProjectMcpPlugins.find((plugin) => plugin.kind === 'engine') ?? null;
   const selectedMcpPlugin = mcpPlugins.find((plugin) => plugin.id === selectedMcpPluginId) ?? null;
@@ -619,11 +584,6 @@ function App(): JSX.Element {
   const selectedComposerAttachments = selectedSessionId ? sessionAttachments[selectedSessionId] ?? [] : [];
   const selectedComposerError = selectedSessionId ? sessionComposerErrors[selectedSessionId] ?? '' : '';
   const selectedQueuedPrompts = selectedSessionId ? queuedPromptsBySession[selectedSessionId] ?? [] : [];
-  const selectedProjectIsExecutingPlan = Boolean(
-    selectedProjectStream &&
-    selectedProjectStream.kind === 'execute-plan' &&
-    !['completed', 'cancelled', 'error'].includes(selectedProjectStream.phase)
-  );
   const selectedProjectSessionStates = useMemo<Record<string, SessionListState>>(() => {
     if (!selectedProjectView) {
       return {};
@@ -833,6 +793,21 @@ function App(): JSX.Element {
   function openAppSettings(tab: AppSettingsTab = 'appearance'): void {
     setAppSettingsInitialTab(tab);
     setShowAppSettingsModal(true);
+  }
+
+  async function handleCreateAssetGenerationProvider(input: AssetGenerationProviderInput): Promise<void> {
+    const provider = await window.funplay.createAssetGenerationProvider(input);
+    setAssetGenerationProviderConfigs((current) => [provider, ...current.filter((item) => item.id !== provider.id)]);
+  }
+
+  async function handleUpdateAssetGenerationProvider(providerId: string, input: AssetGenerationProviderInput): Promise<void> {
+    const provider = await window.funplay.updateAssetGenerationProvider(providerId, input);
+    setAssetGenerationProviderConfigs((current) => current.map((item) => (item.id === provider.id ? provider : item)));
+  }
+
+  async function handleDeleteAssetGenerationProvider(providerId: string): Promise<void> {
+    await window.funplay.deleteAssetGenerationProvider(providerId);
+    setAssetGenerationProviderConfigs((current) => current.filter((provider) => provider.id !== providerId));
   }
 
   const sidebarNavItems = [
@@ -1086,7 +1061,7 @@ function App(): JSX.Element {
     sessionId: string;
     startedAt: string;
     prompt?: string;
-    kind?: 'conversation' | 'bootstrap' | 'execute-plan';
+    kind?: 'conversation' | 'bootstrap';
   }, fallbackPrompt: string): void {
     seedStreamSession({
       streamId: handle.streamId,
@@ -1101,10 +1076,7 @@ function App(): JSX.Element {
       activityItems: [],
       phase: 'starting',
       kind: handle.kind,
-      statusMessage:
-        handle.kind === 'execute-plan'
-          ? localize(uiPreferences.language, '正在准备执行计划…', 'Preparing the execution plan…')
-          : localize(uiPreferences.language, '已提交给 AI，正在准备上下文…', 'Queued for AI. Preparing context…'),
+      statusMessage: localize(uiPreferences.language, '已提交给 AI，正在准备上下文…', 'Queued for AI. Preparing context…'),
       startedAt: handle.startedAt
     });
   }
@@ -1280,33 +1252,6 @@ function App(): JSX.Element {
       return next;
     });
     setSection('agent');
-  }
-
-  async function handleExecutePlan(): Promise<void> {
-    if (!selectedProjectView || selectedProjectStream) {
-      return;
-    }
-
-    setSessionComposerErrors((current) => ({
-      ...current,
-      [selectedSessionId]: ''
-    }));
-    try {
-      const handle = await window.funplay.startExecutePlanStream(selectedProjectView.id);
-      seedPromptHandle({
-        ...handle,
-        kind: 'execute-plan',
-        prompt: localize(uiPreferences.language, '执行当前计划', 'Run current plan')
-      }, localize(uiPreferences.language, '执行当前计划', 'Run current plan'));
-    } catch (error) {
-      setSessionComposerErrors((current) => ({
-        ...current,
-        [selectedSessionId]:
-          error instanceof Error
-            ? error.message
-            : localize(uiPreferences.language, '执行计划启动失败。', 'Failed to start the execution plan.')
-      }));
-    }
   }
 
   async function handleResumeAgentRun(runId: string): Promise<void> {
@@ -1657,7 +1602,7 @@ function App(): JSX.Element {
     return (
       <UiLanguageProvider language={uiPreferences.language}>
         <>
-          <div className="prototype-loading">{localize(uiPreferences.language, '正在加载 Funplay…', 'Loading Funplay…')}</div>
+          <div className="app-bootstrap-screen">{localize(uiPreferences.language, '正在加载 Funplay…', 'Loading Funplay…')}</div>
           <NotificationToastStack
             notifications={appNotifications}
             onDismiss={dismissNotification}
@@ -1671,7 +1616,7 @@ function App(): JSX.Element {
     return (
       <UiLanguageProvider language={uiPreferences.language}>
         <>
-          <div className="prototype-loading">
+          <div className="app-bootstrap-screen">
             <div className="bootstrap-error-card">
               <strong>{localize(uiPreferences.language, 'Funplay 启动失败', 'Funplay failed to start')}</strong>
               <div>{bootstrapError}</div>
@@ -2000,7 +1945,6 @@ function App(): JSX.Element {
                   void handleOpenProjectFile(path);
                 }}
                 onRestoreCheckpoint={(snapshotId) => void handleRequestRestoreSessionCheckpoint(selectedSessionId, snapshotId)}
-                isExecutingPlan={selectedProjectIsExecutingPlan}
               />
             </AgentWorkbench>
           ) : null}
@@ -2023,7 +1967,6 @@ function App(): JSX.Element {
               connectionStatuses={mcpConnectionStatuses}
               pluginError={pluginError}
               isRefreshing={isRefreshingPlugin}
-              globalPermissionMode={agentSettings.permissionMode}
               globalRuntimeStrategy={agentSettings.runtimeStrategy}
               projectBindings={projectBindings}
               skillDraft={skillDraft}
@@ -2091,8 +2034,12 @@ function App(): JSX.Element {
             <AssetsPage
               project={selectedProjectView}
               projectFiles={projectFiles}
+              assetGenerationProviders={assetGenerationProviders}
               onOpenAsset={handleOpenVirtualFile}
               onOpenProjectFile={(path) => void handleOpenProjectFile(path)}
+              onGenerateAsset={handleGenerateAsset}
+              onImportGeneratedAsset={handleImportGeneratedAsset}
+              onCancelAssetGenerationJob={handleCancelAssetGenerationJob}
             />
           ) : null}
         </div>
@@ -2109,10 +2056,10 @@ function App(): JSX.Element {
           theme={uiPreferences.theme}
           language={uiPreferences.language}
           developerMode={uiPreferences.developerMode}
-          permissionMode={agentSettings.permissionMode}
           runtimeStrategy={agentSettings.runtimeStrategy}
           aiSettings={aiSettings}
           providers={providers}
+          assetGenerationProviderConfigs={assetGenerationProviderConfigs}
           providerTests={providerTests}
           mcpPlugins={globalMcpPlugins}
           selectedMcpPlugin={selectedGlobalMcpPlugin}
@@ -2142,10 +2089,6 @@ function App(): JSX.Element {
           onChangeTheme={(theme) => setUiPreferences((current) => ({ ...current, theme }))}
           onChangeLanguage={(language) => setUiPreferences((current) => ({ ...current, language }))}
           onChangeDeveloperMode={(developerMode) => setUiPreferences((current) => ({ ...current, developerMode }))}
-          onChangePermissionMode={async (permissionMode) => {
-            const next = await window.funplay.updateAgentSettings({ permissionMode });
-            setAgentSettings(next);
-          }}
           onChangeRuntimeStrategy={async (runtimeStrategy) => {
             const next = await window.funplay.updateAgentSettings({ runtimeStrategy });
             setAgentSettings(next);
@@ -2159,6 +2102,9 @@ function App(): JSX.Element {
           onDeleteProvider={(providerId) => void handleDeleteProvider(providerId)}
           onTestProvider={(providerId) => void handleTestProvider(providerId)}
           onSetDefaultProvider={(providerId) => void handleSetDefaultProvider(providerId)}
+          onCreateAssetGenerationProvider={handleCreateAssetGenerationProvider}
+          onUpdateAssetGenerationProvider={handleUpdateAssetGenerationProvider}
+          onDeleteAssetGenerationProvider={(providerId) => void handleDeleteAssetGenerationProvider(providerId)}
           onSelectMcpPlugin={setSelectedMcpPluginId}
           onRefreshMcpPluginMeta={() => void handleRefreshPluginMeta(selectedGlobalMcpPlugin)}
           onToggleMcpPlugin={(plugin, enabled) => void handleToggleMcpPluginEnabled(plugin, enabled)}

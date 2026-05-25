@@ -156,6 +156,9 @@ export function makeToolUseHandler(ctx: StreamContext): NonNullable<GenericAgent
       sessionId: ctx.sessionId,
       toolUseId: tool.toolUseId,
       name: tool.name,
+      title: tool.title,
+      summary: tool.summary,
+      activity: tool.activity,
       input: tool.input,
       status: tool.status,
       startedAt: ctx.startedAt

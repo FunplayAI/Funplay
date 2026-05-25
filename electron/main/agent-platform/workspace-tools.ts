@@ -41,6 +41,7 @@ import {
 } from '../project-file-service';
 import { listUnityResources, listUnityTools, readUnityResource } from '../unity-mcp-client';
 import { diagnoseEnvironment, getProjectRuntimeState, runEnvironmentAction } from '../environment-service';
+import { generateAssetForProject, importGeneratedAsset, listAssetGenerationProviders } from '../asset-generation-service';
 import { inspectGameProject } from './game-project-inspector';
 import { inferMcpToolReadOnly, resolveMcpToolPolicy } from './mcp-policy';
 import {
@@ -798,6 +799,37 @@ function summarizeMcpResult(result: UnityMcpCallResult): string {
   return imageCount > 0 ? `工具返回 ${imageCount} 张图片。` : '工具没有返回文本内容。';
 }
 
+function summarizeAssetGenerationProviders(state: AppState, kind?: string): string {
+  const providers = listAssetGenerationProviders(state)
+    .filter((provider) => !kind || (provider.supportedKinds as readonly string[]).includes(kind));
+  return providers.length
+    ? providers.map((provider, index) =>
+        [
+          `${index + 1}. ${provider.name} [${provider.adapter}]`,
+          `ID: ${provider.id}`,
+          `Enabled: ${provider.enabled ? 'yes' : 'no'}`,
+          provider.modelLabel ? `Model: ${provider.modelLabel}` : '',
+          provider.endpointLabel ? `Endpoint: ${provider.endpointLabel}` : '',
+          `Kinds: ${provider.supportedKinds.join(', ')}`,
+          provider.notes ? `Notes: ${provider.notes}` : ''
+        ].filter(Boolean).join('\n')
+      ).join('\n\n')
+    : 'No asset generation providers match the requested kind.';
+}
+
+function createAssetGenerationState(options: AgentToolExecutionOptions, project: Project): AppState {
+  if (options.appState) {
+    return options.appState;
+  }
+  return createDetachedEngineToolState(project);
+}
+
+async function persistAssetGenerationState(options: AgentToolExecutionOptions): Promise<void> {
+  if (options.appState && options.persistAppState) {
+    await options.persistAppState(options.appState);
+  }
+}
+
 function createDetachedEngineToolState(project: Project): AppState {
   return {
     settings: {
@@ -811,6 +843,7 @@ function createDetachedEngineToolState(project: Project): AppState {
     providers: [],
     mcpSettings: DEFAULT_MCP_SETTINGS,
     mcpPlugins: [],
+    assetGenerationProviders: [],
     projects: [project]
   };
 }
@@ -1393,7 +1426,9 @@ export function isWriteLikeToolAction(action: WorkspaceToolAction): boolean {
     action.type === 'funplay_schedule_task' ||
     action.type === 'funplay_cancel_task' ||
     action.type === 'media_save_base64' ||
-    action.type === 'image_generate'
+    action.type === 'image_generate' ||
+    action.type === 'generate_asset' ||
+    action.type === 'import_generated_asset'
   ) {
     return true;
   }
@@ -1487,6 +1522,93 @@ export async function executeAgentToolAction(
       return {
         ok: true,
         summary: `Task ${action.taskId} cancelled.`
+      };
+    }
+
+    if (action.type === 'list_asset_generation_capabilities') {
+      const state = createAssetGenerationState(options, project);
+      return {
+        ok: true,
+        summary: summarizeAssetGenerationProviders(state, action.kind)
+      };
+    }
+
+    if (action.type === 'generate_asset') {
+      if (!options.appState || !options.persistAppState) {
+        return {
+          ok: false,
+          isError: true,
+          summary: 'generate_asset 需要主运行时 appState，不能在 detached 工具上下文中执行。'
+        };
+      }
+      const outputSpec = {
+        width: action.width,
+        height: action.height,
+        durationSeconds: action.durationSeconds,
+        transparentBackground: action.transparentBackground
+      };
+      const updated = await generateAssetForProject(options.appState, project.id, {
+        title: action.title,
+        kind: action.kind,
+        prompt: action.prompt,
+        negativePrompt: action.negativePrompt,
+        providerId: action.providerId,
+        outputSpec,
+        count: action.count,
+        createdBy: 'agent',
+        targetEngine: project.engine?.platform
+      }, {
+        onProjectUpdate: () => persistAssetGenerationState(options)
+      });
+      await persistAssetGenerationState(options);
+      const job = [...(updated.assetGenerationJobs ?? [])]
+        .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0];
+      const outputs = job?.outputs ?? [];
+      return {
+        ok: job?.status === 'completed',
+        isError: job?.status !== 'completed',
+        summary: [
+          `Asset generation: ${job?.status ?? 'unknown'}`,
+          `Job id: ${job?.id ?? '(unknown)'}`,
+          `Kind: ${action.kind}`,
+          `Provider: ${job?.providerName ?? action.providerId ?? 'default'}`,
+          outputs.length ? 'Outputs:' : 'No outputs.',
+          ...outputs.map((output) => `- ${output.path} (${output.format}, ${output.size} bytes)`)
+        ].join('\n'),
+        changedFiles: outputs.map((output) => ({
+          path: output.path,
+          operation: 'created' as const,
+          size: output.size
+        }))
+      };
+    }
+
+    if (action.type === 'import_generated_asset') {
+      if (!options.appState || !options.persistAppState) {
+        return {
+          ok: false,
+          isError: true,
+          summary: 'import_generated_asset 需要主运行时 appState，不能在 detached 工具上下文中执行。'
+        };
+      }
+      const updated = importGeneratedAsset(options.appState, project.id, action.jobId);
+      await persistAssetGenerationState(options);
+      const job = (updated.assetGenerationJobs ?? []).find((candidate) => candidate.id === action.jobId);
+      return {
+        ok: Boolean(job),
+        isError: !job,
+        summary: job
+          ? [
+              `Imported generated asset job: ${job.id}`,
+              `Status: ${job.status}`,
+              ...job.outputs.map((output) => `- ${output.path}${output.importedAt ? ` importedAt=${output.importedAt}` : ''}`)
+            ].join('\n')
+          : `Asset generation job not found: ${action.jobId}`,
+        changedFiles: job?.outputs.map((output) => ({
+          path: output.path,
+          operation: 'modified' as const,
+          size: output.size
+        }))
       };
     }
 

@@ -12,7 +12,7 @@
   color: var(--text);
   font-size: 13px;
   font-weight: 800;
-  line-height: 1;
+  line-height: 1.25;
   white-space: nowrap;
   transition: transform 140ms ease, opacity 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
@@ -82,6 +82,7 @@
 .fp-button-label {
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.25;
 }
 
 .fp-button-spinner {
@@ -122,13 +123,15 @@
   min-height: var(--fp-control-height);
   border: 1px solid var(--line);
   border-radius: var(--ui-radius-row);
-  background: var(--panel);
+  background: var(--fp-input-bg);
   color: var(--text);
   font-size: 13px;
+  line-height: 1.4;
 }
 
 .fp-input {
-  padding: 0 10px;
+  height: var(--fp-control-height);
+  padding: 7px 10px;
 }
 
 .fp-textarea {
@@ -143,8 +146,20 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
   padding: 0 10px;
   text-align: left;
+}
+
+.fp-select-value {
+  min-width: 0;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  writing-mode: horizontal-tb;
 }
 
 .fp-select-trigger[data-popup-open] .fp-select-chevron {
@@ -162,13 +177,15 @@
 }
 
 .fp-select-popup {
-  min-width: var(--anchor-width);
+  width: max(var(--anchor-width), 280px);
+  min-width: max(var(--anchor-width), 280px);
+  max-width: min(420px, calc(100vw - 32px));
   max-height: min(320px, var(--available-height));
   overflow: auto;
   padding: 5px;
   border: 1px solid var(--line-strong);
   border-radius: 10px;
-  background: var(--panel);
+  background: var(--fp-input-bg);
   box-shadow: var(--shadow);
 }
 
@@ -179,14 +196,20 @@
 
 .fp-select-item {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 20px minmax(0, 1fr);
   align-items: center;
+  min-width: 0;
   min-height: 32px;
   border-radius: 7px;
   padding: 0 8px;
   color: var(--text);
   font-size: 13px;
   font-weight: 750;
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
   cursor: pointer;
 }
 
@@ -202,11 +225,33 @@
 
 .fp-select-item-indicator {
   display: inline-flex;
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
   color: var(--brand-strong);
 }
 
+.fp-select-item-text {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: stretch;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
+  text-align: left;
+}
+
 .fp-switch-field {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   min-width: 0;

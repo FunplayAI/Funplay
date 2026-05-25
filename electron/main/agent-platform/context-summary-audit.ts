@@ -1,4 +1,4 @@
-import type { ChatContentBlock, ChatMessage, ContextSummaryAudit } from '../../../shared/types';
+import type { AgentCoreMessagePart, ChatMessage, ContextSummaryAudit } from '../../../shared/types';
 
 const MAX_AUDIT_ITEMS = 12;
 const MAX_AUDIT_ITEM_CHARS = 220;
@@ -11,22 +11,29 @@ function truncate(value: string): string {
   return value.length > MAX_AUDIT_ITEM_CHARS ? `${value.slice(0, MAX_AUDIT_ITEM_CHARS).trimEnd()}...` : value;
 }
 
-function blockText(block: ChatContentBlock): string {
-  if (block.type === 'text' || block.type === 'fallback') {
-    return block.text;
+function partText(part: AgentCoreMessagePart): string {
+  if (part.kind === 'assistant_text') {
+    return part.text;
   }
-  if (block.type === 'tool_use') {
-    return `Tool ${block.name} input ${JSON.stringify(block.input ?? {})}`;
+  if (part.kind === 'tool_call') {
+    return `Tool ${part.name} input ${JSON.stringify(part.input ?? {})}`;
   }
-  if (block.type === 'tool_result') {
-    return block.content;
+  if (part.kind === 'tool_result') {
+    return part.content;
+  }
+  if (part.kind === 'tool_error') {
+    return part.error;
+  }
+  if (part.kind === 'run_error') {
+    return part.error;
   }
   return '';
 }
 
 function messageText(message: ChatMessage): string {
-  if (message.contentBlocks?.length) {
-    return message.contentBlocks.map(blockText).filter(Boolean).join('\n');
+  const parts = message.metadata?.agentCoreParts;
+  if (parts?.length) {
+    return parts.map(partText).filter(Boolean).join('\n');
   }
   return message.content;
 }

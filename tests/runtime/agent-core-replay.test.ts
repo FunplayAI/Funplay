@@ -5,7 +5,7 @@ import {
   agentCorePartsToAiSdkModelMessages,
   agentCorePartsToOpenAiCompatibleMessages,
   buildAgentCoreReplaySnapshot
-} from '../../electron/main/agent-platform/agent-core-replay.ts';
+} from '../../electron/main/agent-core/index.ts';
 
 function partBase(sequence: number): Pick<AgentCoreMessagePart, 'id' | 'createdAt' | 'sequence'> {
   return {
@@ -186,7 +186,7 @@ test('Agent Core replay formats structured context summaries without breaking to
         goal: 'Build a stable agent loop',
         completedWork: ['Tool replay is stable'],
         unfinishedWork: ['UI replay parity'],
-        changedFiles: ['electron/main/agent-platform/agent-core-replay.ts'],
+        changedFiles: ['electron/main/agent-core/replay.ts'],
         decisions: ['Use host-owned permission checks'],
         constraints: ['No pseudo tool text'],
         failedTools: ['edit_file missing_match'],

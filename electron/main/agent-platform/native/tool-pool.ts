@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { OpenAiCompatibleToolDefinition } from '../../openai-compatible-client';
 import type { ConversationOperationStageEvent } from '../operation-log';
 import type { GenericAgentRuntimeParams } from '../types';
+import { emitRuntimeLifecycleHook } from '../runtime-event-emitter';
 import type { WorkspaceToolAction } from '../workspace-tools';
 import { materializeNativeMcpTools, type NativeMcpMaterializationFailure } from './mcp-tool-materializer';
 import {
@@ -156,10 +157,21 @@ function toOpenAiCompatibleToolParameters(definition: NativeRuntimeToolDefinitio
   return schema;
 }
 
+function toOpenAiCompatibleToolDescription(definition: NativeRuntimeToolDefinition): string {
+  const language = definition.toolLanguage;
+  return [
+    definition.description,
+    language?.canonicalName ? `Claude-like tool role: ${language.canonicalName}.` : '',
+    language?.aliases?.length ? `Aliases the model may think of: ${language.aliases.join(', ')}.` : '',
+    language?.usageHint ? `Use when: ${language.usageHint}` : '',
+    language?.failureHint ? `If it fails: ${language.failureHint}` : ''
+  ].filter(Boolean).join('\n');
+}
+
 export function toOpenAiCompatibleToolDefinitions(definitions: NativeRuntimeToolDefinition[]): OpenAiCompatibleToolDefinition[] {
   return definitions.map((definition) => ({
     name: definition.name,
-    description: definition.description,
+    description: toOpenAiCompatibleToolDescription(definition),
     parameters: toOpenAiCompatibleToolParameters(definition)
   }));
 }
@@ -194,7 +206,7 @@ function createNativeToolAdapterOptions(input: {
       sessionId: input.params.context.activeSessionId,
       cwd: input.params.context.runtimeEnvironment?.workingDirectory ?? input.params.context.projectPath
     },
-    onLifecycleHook: input.params.onLifecycleHook,
+    onLifecycleHook: (hook) => emitRuntimeLifecycleHook(input.params, hook),
     emitLifecycleHookStage: input.emitStage,
     requestUserInput: input.delegates?.requestUserInput,
     requestMcpUserInput: input.delegates?.requestMcpUserInput,

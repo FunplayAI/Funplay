@@ -9,6 +9,9 @@ out/
 release/
 dist/
 build/
+docs/
+AGENTS.md
+CLAUDE.md
 
 # Logs
 *.log

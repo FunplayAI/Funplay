@@ -30,7 +30,6 @@ import { getMessagePlainText } from './transcript/message-plain-text';
 import { renderChatContent } from './transcript/chat-markdown';
 import {
   hasStructuredToolBlocks,
-  hasRenderableProcessTimeline,
   renderAgentCoreParts,
   renderProcessTimeline,
   PermissionImpactBlock
@@ -114,8 +113,10 @@ function CompletedMessageProcessSummary(props: {
 }): JSX.Element {
   const language = useUiLanguage();
   const processTools = buildCompletedMessageProcessTools(props.message);
-  const title = formatCompletedProcessTitle(props.message.metadata, props.message.createdAt, language);
-  const rendersProcessInline = hasRenderableProcessTimeline(props.message) || hasStructuredToolBlocks(props.message);
+  const title = formatCompletedProcessTitle(props.message.metadata, props.message.createdAt, language, {
+    includeTokenUsage: props.developerMode
+  });
+  const rendersProcessInline = hasStructuredToolBlocks(props.message);
 
   if (processTools.length === 0 || rendersProcessInline) {
     return <span className="chat-transcript-author">{title}</span>;
@@ -134,6 +135,7 @@ function CompletedMessageProcessSummary(props: {
           openablePaths={props.openablePaths}
           searchQuery=""
           onOpenPath={props.onOpenPath}
+          showDiagnosticMeta={props.developerMode}
           renderContent={renderChatContent}
         />
         {!props.developerMode ? null : (
@@ -237,7 +239,12 @@ export function StreamingTranscriptMessage(props: {
 }): JSX.Element {
   const language = useUiLanguage();
   const now = new Date().toISOString();
-  const toolExecutions = pairStreamingToolExecutions(props.toolUses, props.toolResults);
+  const agentCoreToolExecutions = props.agentCoreParts?.length
+    ? buildCompletedMessageProcessTools({ agentCoreParts: props.agentCoreParts })
+    : [];
+  const toolExecutions = agentCoreToolExecutions.length > 0
+    ? agentCoreToolExecutions
+    : pairStreamingToolExecutions(props.toolUses, props.toolResults);
   const visibleStages = getVisibleRuntimeStages(props.stages, props.developerMode);
   const agentCoreTimeline = props.agentCoreParts?.length
     ? renderAgentCoreParts({
@@ -254,6 +261,7 @@ export function StreamingTranscriptMessage(props: {
     toolExecutions,
     visibleStages,
     autoExpandActiveToolGroup: true,
+    developerMode: props.developerMode,
     openablePaths: props.openablePaths,
     searchQuery: '',
     onOpenPath: props.onOpenPath

@@ -84,7 +84,6 @@ const electronSmoke = await readRepoFile('scripts/desktop-ui-electron-smoke.mjs'
 const staticSmoke = await readRepoFile('scripts/desktop-ui-smoke.mjs');
 const renderTests = await readRepoFile('tests/runtime/agent-ui-render.test.ts');
 const styles = await readSlicedStyles();
-const uiPlan = await readRepoFile('docs/desktop-ui-improvement-plan.md');
 
 for (const scriptName of ['ui:smoke', 'ui:electron-smoke', 'ui:maturity-gate']) {
   if (!packageJson.scripts?.[scriptName]) {
@@ -167,18 +166,6 @@ assertIncludes(styles, '@media (forced-colors: active)', 'forced-colors media qu
 assertIncludes(styles, 'accent-color: Highlight', 'forced-colors accent color');
 assertIncludes(styles, 'background: Highlight !important', 'forced-colors selected background');
 assertIncludes(styles, 'outline: 2px solid Highlight !important', 'forced-colors focus outline');
-assertMatches(uiPlan, /U35-1 through U35-4/, 'U35 completion marker');
-assertMatches(uiPlan, /U36-1 through U36-4/, 'U36 completion marker');
-assertMatches(uiPlan, /U37-1 through U37-4/, 'U37 completion marker');
-assertMatches(uiPlan, /U38-1 through U38-4/, 'U38 completion marker');
-assertMatches(uiPlan, /U39-1 through U39-4/, 'U39 completion marker');
-assertMatches(uiPlan, /U40-1 through U40-4/, 'U40 completion marker');
-assertMatches(uiPlan, /U41-1 through U41-4/, 'U41 completion marker');
-assertMatches(uiPlan, /U42-1 through U42-4/, 'U42 completion marker');
-assertMatches(uiPlan, /U43-1 through U43-4/, 'U43 completion marker');
-assertMatches(uiPlan, /U44-1 through U44-4/, 'U44 completion marker');
-assertMatches(uiPlan, /UI platform maturity for the current desktop scope is complete/i, 'UI maturity roadmap completion marker');
-
 const generatedAt = new Date().toISOString();
 const report = [
   '# Desktop UI Maturity Gate Report',

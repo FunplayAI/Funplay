@@ -1,5 +1,5 @@
-import type { AgentPermissionMode, ChatContentBlock, ChatMessage, ChatMessageMetadata, Project, ProjectAgentPolicy, ProjectSession } from './types';
-import { agentCorePartsToChatContentBlocks, agentCorePartsToPlainText, agentCorePartsToVisibleAssistantText, chatContentBlocksToAgentCoreParts } from './agent-core-v2';
+import type { AgentPermissionMode, ChatMessage, ChatMessageMetadata, Project, ProjectAgentPolicy, ProjectSession } from './types';
+import { agentCorePartsToPlainText, agentCorePartsToVisibleAssistantText } from './agent-core-v2';
 import { makeId, nowIso } from './utils';
 
 export const DEFAULT_PROJECT_SESSION_MODE = 'agent' as const;
@@ -22,39 +22,9 @@ function getNextChatMessageOrdinal(messages: ChatMessage[]): number {
   }, 0);
 }
 
-function getChatContentBlockPlainText(block: ChatContentBlock): string {
-  if (block.type === 'text') {
-    return block.text;
-  }
-
-  if (block.type === 'thinking') {
-    return block.thinking;
-  }
-
-  if (block.type === 'tool_use') {
-    return [`[Tool] ${block.name}`, block.input ? JSON.stringify(block.input, null, 2) : ''].filter(Boolean).join('\n');
-  }
-
-  if (block.type === 'tool_result') {
-    return [`[Tool Result]`, block.content, block.media?.length ? `[Media: ${block.media.length}]` : ''].filter(Boolean).join('\n');
-  }
-
-  return block.text;
-}
-
-function getAssistantVisibleBlockText(block: ChatContentBlock): string {
-  if (block.type === 'text' || block.type === 'fallback') {
-    return block.text;
-  }
-
-  return '';
-}
-
 export function getChatMessageContextText(message: ChatMessage, maxLength?: number): string {
   const value = message.metadata?.agentCoreParts?.length
     ? agentCorePartsToPlainText(message.metadata.agentCoreParts)
-    : message.contentBlocks?.length
-    ? message.contentBlocks.map((block) => getChatContentBlockPlainText(block)).filter(Boolean).join('\n\n')
     : message.content;
 
   if (!maxLength || value.length <= maxLength) {
@@ -67,8 +37,6 @@ export function getChatMessageContextText(message: ChatMessage, maxLength?: numb
 export function getChatMessageVisibleAssistantText(message: ChatMessage, maxLength?: number): string {
   const value = message.metadata?.agentCoreParts?.length
     ? agentCorePartsToVisibleAssistantText(message.metadata.agentCoreParts)
-    : message.contentBlocks?.length
-    ? message.contentBlocks.map((block) => getAssistantVisibleBlockText(block)).filter(Boolean).join('\n\n')
     : message.content;
 
   if (!maxLength || value.length <= maxLength) {
@@ -107,14 +75,6 @@ function normalizeDuplicateLine(value: string): string {
     .replace(/^[\s>*•+\-–—\d.)）(（]+/, '')
     .replace(/[`*_~#:[\]【】（）()，,。.!！?？;；:：\s]+/g, '')
     .trim();
-}
-
-function normalizeDuplicateBlock(value: string): string {
-  return value
-    .split('\n')
-    .map((line) => normalizeDuplicateLine(line))
-    .filter(Boolean)
-    .join('|');
 }
 
 function getCharacterBigrams(value: string): Set<string> {
@@ -212,75 +172,6 @@ function deduplicateRepeatedAssistantText(value: string): string {
   }
 
   return lines.join('\n').replace(/\n{4,}/g, '\n\n\n').trim();
-}
-
-function normalizeAssistantContentBlocks(blocks?: ChatContentBlock[]): ChatContentBlock[] | undefined {
-  if (!blocks?.length) {
-    return blocks;
-  }
-
-  const normalizedBlocks: ChatContentBlock[] = [];
-
-  for (const block of blocks) {
-    const normalizedBlock: ChatContentBlock =
-      block.type === 'text'
-        ? {
-            ...block,
-            text: deduplicateRepeatedAssistantText(block.text)
-          }
-        : block.type === 'fallback'
-          ? {
-              ...block,
-              text: deduplicateRepeatedAssistantText(block.text)
-            }
-          : block;
-
-    if (normalizedBlock.type === 'text' || normalizedBlock.type === 'fallback') {
-      if (!normalizedBlock.text.trim()) {
-        continue;
-      }
-
-      const previous = normalizedBlocks[normalizedBlocks.length - 1];
-      if (
-        (previous?.type === 'text' || previous?.type === 'fallback') &&
-        normalizeDuplicateBlock(previous.text) === normalizeDuplicateBlock(normalizedBlock.text)
-      ) {
-        continue;
-      }
-    }
-
-    normalizedBlocks.push(normalizedBlock);
-  }
-
-  return normalizedBlocks.length ? normalizedBlocks : blocks;
-}
-
-function normalizeAssistantMetadataWithAgentCoreParts(input: {
-  metadata?: ChatMessageMetadata;
-  content: string;
-  contentBlocks?: ChatContentBlock[];
-  turnId?: string;
-  createdAt: string;
-}): ChatMessageMetadata | undefined {
-  if (input.metadata?.agentCoreParts?.length) {
-    return input.metadata;
-  }
-  const contentBlocks = input.contentBlocks?.length
-    ? input.contentBlocks
-    : input.content.trim()
-      ? [{ type: 'text' as const, text: input.content.trim() }]
-      : [];
-  const agentCoreParts = chatContentBlocksToAgentCoreParts(contentBlocks, {
-    turnId: input.turnId,
-    createdAt: input.createdAt
-  });
-  if (agentCoreParts.length === 0) {
-    return input.metadata;
-  }
-  return {
-    ...(input.metadata ?? {}),
-    agentCoreParts
-  };
 }
 
 export interface SessionConversationTurn {
@@ -479,7 +370,6 @@ export function appendProjectConversationTurn(
     userMessageId?: string;
     userMessage: string;
     assistantMessage: string;
-    assistantContentBlocks?: ChatContentBlock[];
     assistantMetadata?: ChatMessageMetadata;
     updatedAt?: string;
     activityTitle?: string;
@@ -495,24 +385,11 @@ export function appendProjectConversationTurn(
       ? deriveSessionTitleFromPrompt(input.userMessage)
       : activeSession.title;
   const assistantMessage = deduplicateRepeatedAssistantText(input.assistantMessage);
-  const projectedCoreBlocks = agentCorePartsToChatContentBlocks(input.assistantMetadata?.agentCoreParts);
-  const projectedContentBlocks = projectedCoreBlocks.length
-    ? projectedCoreBlocks
-    : input.assistantContentBlocks?.length
-      ? input.assistantContentBlocks
-      : [];
-  const assistantContentBlocks = normalizeAssistantContentBlocks(projectedContentBlocks.length ? projectedContentBlocks : undefined);
   const baseChat = normalizeChatMessageOrdinals(activeSession.chat);
   const nextOrdinal = getNextChatMessageOrdinal(baseChat);
   const userMessageId = input.userMessageId ?? makeId('msg');
   const assistantMessageId = makeId('msg');
-  const assistantMetadata = normalizeAssistantMetadataWithAgentCoreParts({
-    metadata: input.assistantMetadata,
-    content: assistantMessage,
-    contentBlocks: assistantContentBlocks,
-    turnId: userMessageId,
-    createdAt: updatedAt
-  });
+  const assistantMetadata = input.assistantMetadata;
 
   const nextSession: ProjectSession = {
     ...activeSession,
@@ -532,7 +409,6 @@ export function appendProjectConversationTurn(
         id: assistantMessageId,
         role: 'assistant',
         content: assistantMessage,
-        contentBlocks: assistantContentBlocks,
         createdAt: updatedAt,
         ordinal: nextOrdinal + 1,
         metadata: assistantMetadata
@@ -571,7 +447,6 @@ export function appendProjectAssistantMessage(
   project: Project,
   input: {
     assistantMessage: string;
-    assistantContentBlocks?: ChatContentBlock[];
     assistantMetadata?: ChatMessageMetadata;
     updatedAt?: string;
     activityTitle?: string;
@@ -586,23 +461,10 @@ export function appendProjectAssistantMessage(
       : getActiveProjectSession(ensured);
   const updatedAt = input.updatedAt ?? nowIso();
   const assistantMessage = deduplicateRepeatedAssistantText(input.assistantMessage);
-  const projectedCoreBlocks = agentCorePartsToChatContentBlocks(input.assistantMetadata?.agentCoreParts);
-  const projectedContentBlocks = projectedCoreBlocks.length
-    ? projectedCoreBlocks
-    : input.assistantContentBlocks?.length
-      ? input.assistantContentBlocks
-      : [];
-  const assistantContentBlocks = normalizeAssistantContentBlocks(projectedContentBlocks.length ? projectedContentBlocks : undefined);
   const baseChat = normalizeChatMessageOrdinals(activeSession.chat);
   const nextOrdinal = getNextChatMessageOrdinal(baseChat);
   const assistantMessageId = makeId('msg');
-  const assistantMetadata = normalizeAssistantMetadataWithAgentCoreParts({
-    metadata: input.assistantMetadata,
-    content: assistantMessage,
-    contentBlocks: assistantContentBlocks,
-    turnId: assistantMessageId,
-    createdAt: updatedAt
-  });
+  const assistantMetadata = input.assistantMetadata;
 
   const nextSession: ProjectSession = {
     ...activeSession,
@@ -613,7 +475,6 @@ export function appendProjectAssistantMessage(
         id: assistantMessageId,
         role: 'assistant',
         content: assistantMessage,
-        contentBlocks: assistantContentBlocks,
         createdAt: updatedAt,
         ordinal: nextOrdinal,
         metadata: assistantMetadata

@@ -66,6 +66,9 @@ export interface AgentCoreToolCallPart extends AgentCorePartBase {
   kind: 'tool_call';
   toolUseId: string;
   name: string;
+  title?: string;
+  summary?: string;
+  activity?: string;
   input?: Record<string, unknown>;
   status: 'pending' | 'running' | 'completed' | 'failed';
   providerCallId?: string;
@@ -217,6 +220,13 @@ export type AgentCoreLoopOutcome =
   | 'cancel'
   | 'interrupt_resumable';
 
+export type AgentCoreContinuationReason =
+  | 'partial_write'
+  | 'incomplete_todo'
+  | 'edit_recovery'
+  | 'host_policy'
+  | 'length';
+
 export interface AgentCoreLoopDecisionInput {
   providerFinishReason: AgentCoreProviderFinishReason;
   toolCallCount: number;
@@ -228,6 +238,10 @@ export interface AgentCoreLoopDecisionInput {
   cancelled: boolean;
   interrupted: boolean;
   error?: string;
+  requestedContinuation?: {
+    reason: AgentCoreContinuationReason;
+    detail?: string;
+  };
 }
 
 export interface AgentCoreLoopDecision {

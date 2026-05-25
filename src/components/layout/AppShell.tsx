@@ -1,6 +1,6 @@
 import { Command as CommandPrimitive } from 'cmdk';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Boxes, Command as CommandIcon, Download, FolderTree, ListChecks, PanelLeft, PanelRight, Plus, Search, Settings, Sparkles, X } from 'lucide-react';
+import { Boxes, Command as CommandIcon, Download, FolderTree, ListChecks, PanelLeftClose, PanelLeftOpen, PanelRight, Plus, Search, Settings, Sparkles, X } from 'lucide-react';
 import type { AppUpdateSnapshot } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import { Button, IconButton, useDialogFocus } from '../ui/index';
@@ -248,7 +248,7 @@ export function AppShell(props: {
             className={`titlebar-icon-button file-tree-toggle ${props.leftCollapsed ? '' : 'active'}`}
             onClick={props.onToggleLeftSidebar}
             label={props.leftCollapsed ? localize(language, '显示项目文件树', 'Show project files') : localize(language, '隐藏项目文件树', 'Hide project files')}
-            icon={<PanelLeft size={18} aria-hidden="true" />}
+            icon={props.leftCollapsed ? <PanelLeftOpen size={18} aria-hidden="true" /> : <PanelLeftClose size={18} aria-hidden="true" />}
           />
           <div className="project-tabs">
             {props.projects.map((project) => (

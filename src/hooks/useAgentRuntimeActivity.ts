@@ -6,6 +6,7 @@ import {
   subscribeStreamSessions,
   type StreamSessionState
 } from '../lib/stream-session-manager';
+import { restoreMissingRuntimeStreams } from './agent-runtime-stream-restore';
 
 export interface AgentRuntimeActivityState {
   activeStreamSessions: StreamSessionState[];
@@ -35,6 +36,7 @@ export function useAgentRuntimeActivity(input: {
       try {
         const statuses = await window.funplay.getAgentRuntimeStatus();
         if (!cancelled) {
+          restoreMissingRuntimeStreams(statuses);
           setAgentRuntimeStatuses(statuses);
         }
       } catch {

@@ -140,6 +140,8 @@ test('tool executor transaction represents cancellation as structured tool error
 test('tool executor result normalization preserves MCP browser and terminal metadata', () => {
   const result = normalizeToolExecutorTransactionResult({
     summary: '工具完成。',
+    failureKind: 'tool_execution_failed',
+    recoveryHint: 'Use a safer fallback.',
     browser: {
       sessionId: 'browser_1',
       title: 'Preview',
@@ -163,6 +165,8 @@ test('tool executor result normalization preserves MCP browser and terminal meta
   });
 
   assert.equal(result.content, '工具完成。');
+  assert.equal(result.failureKind, 'tool_execution_failed');
+  assert.equal(result.recoveryHint, 'Use a safer fallback.');
   assert.equal(result.browser?.sessionId, 'browser_1');
   assert.equal(result.terminal?.sessionId, 'terminal_1');
   assert.equal(result.mcp?.exposedName, 'mcp__unity__unity_echo');

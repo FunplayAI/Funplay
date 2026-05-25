@@ -8,7 +8,7 @@ import {
 import { closeBrowserPagesForProject } from './browser-inspection-store';
 
 export interface ActiveStreamEntry {
-  kind: 'conversation' | 'execute-plan';
+  kind: 'conversation';
   streamId: string;
   projectId: string;
   sessionId: string;
@@ -24,10 +24,6 @@ function isAbortError(error: unknown): boolean {
 
 export function hasActiveStreamForSession(sessionId: string): boolean {
   return [...activeStreams.values()].some((item) => item.sessionId === sessionId && item.kind === 'conversation') || Boolean(findActiveRunBySession(sessionId));
-}
-
-export function hasActiveExecutionPlanStream(projectId: string): boolean {
-  return [...activeStreams.values()].some((stream) => stream.projectId === projectId && stream.kind === 'execute-plan');
 }
 
 export function registerActiveStream(entry: ActiveStreamEntry): void {

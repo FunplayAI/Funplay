@@ -101,7 +101,7 @@ export function SelectField(props: {
         }}
       >
         <SelectPrimitive.Trigger className="fp-select-trigger">
-          <SelectPrimitive.Value>{selectedLabel}</SelectPrimitive.Value>
+          <SelectPrimitive.Value className="fp-select-value">{selectedLabel}</SelectPrimitive.Value>
           <SelectPrimitive.Icon className="fp-select-chevron">
             <ChevronDown size={14} aria-hidden="true" />
           </SelectPrimitive.Icon>
@@ -115,7 +115,7 @@ export function SelectField(props: {
                     <SelectPrimitive.ItemIndicator className="fp-select-item-indicator">
                       <Check size={13} aria-hidden="true" />
                     </SelectPrimitive.ItemIndicator>
-                    <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
+                    <SelectPrimitive.ItemText className="fp-select-item-text">{option.label}</SelectPrimitive.ItemText>
                   </SelectPrimitive.Item>
                 ))}
               </SelectPrimitive.List>

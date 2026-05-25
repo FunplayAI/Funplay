@@ -1,6 +1,6 @@
 import { ensureProjectSessions, getActiveProjectSession, replaceProjectSession } from '../../../../shared/project-sessions';
 import { getProviderPresetDefaults, resolveProviderUpstreamModel } from '../../../../shared/provider-catalog';
-import type { AiProvider, ChatContentBlock, ChatMessage, NativeContextSummaryCoverage, Project, ProjectSession } from '../../../../shared/types';
+import type { AgentCoreMessagePart, AiProvider, ChatMessage, NativeContextSummaryCoverage, Project, ProjectSession } from '../../../../shared/types';
 import { normalizeProviderContextWindowTokens } from '../../provider-runtime-options';
 import { appendContextSummaryAudit, buildContextSummaryAudit } from '../context-summary-audit';
 
@@ -37,22 +37,36 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
 
+function agentCorePartSummaryText(part: AgentCoreMessagePart): string {
+  if (part.kind === 'assistant_text') {
+    return part.text;
+  }
+  if (part.kind === 'tool_call') {
+    return `[tool_use:${part.name}] ${JSON.stringify(part.input ?? {})}`;
+  }
+  if (part.kind === 'tool_result') {
+    return `[tool_result:${part.toolUseId}] ${part.content}`;
+  }
+  if (part.kind === 'tool_error') {
+    return `[tool_result:${part.toolUseId}] [error] ${part.error}`;
+  }
+  if (part.kind === 'run_error') {
+    return `[run_error] ${part.error}`;
+  }
+  return '';
+}
+
 function messageText(message: ChatMessage): string {
-  if (!message.contentBlocks?.length) {
+  const parts = message.metadata?.agentCoreParts;
+  if (!parts?.length) {
     return message.content;
   }
 
-  const parts = message.contentBlocks
-    .map((block) => {
-      if (block.type === 'text') return block.text;
-      if (block.type === 'fallback') return block.text;
-      if (block.type === 'thinking') return '';
-      if (block.type === 'tool_use') return `[tool_use:${block.name}] ${JSON.stringify(block.input ?? {})}`;
-      return `[tool_result:${block.toolUseId}] ${block.isError ? '[error] ' : ''}${block.content}`;
-    })
+  const textParts = parts
+    .map(agentCorePartSummaryText)
     .filter(Boolean);
 
-  return parts.join('\n');
+  return textParts.join('\n');
 }
 
 function summarizeMessage(message: ChatMessage): string {
@@ -386,18 +400,4 @@ export function resetNativeContextCompressionState(sessionId?: string): void {
 
 export function hasNativeContextCompressionCircuitOpen(sessionId: string): boolean {
   return (compressionFailuresBySession.get(sessionId) ?? 0) >= NATIVE_CONTEXT_COMPRESSION_FAILURE_LIMIT;
-}
-
-export function compactNativeToolResultBlock(block: Extract<ChatContentBlock, { type: 'tool_result' }>): Extract<ChatContentBlock, { type: 'tool_result' }> {
-  const content = compactWhitespace(block.content);
-  const summary = [
-    '[Native tool result compacted]',
-    block.isError ? 'status=error' : 'status=ok',
-    block.media?.length ? `media=${block.media.length}` : '',
-    truncateMiddle(content || '(empty)', 700)
-  ].filter(Boolean).join(' ');
-  return {
-    ...block,
-    content: summary
-  };
 }

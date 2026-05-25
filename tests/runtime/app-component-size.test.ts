@@ -30,14 +30,14 @@ const APP_TARGET = 400;
 // Oversized .tsx files inherited before U47. Keys are paths relative to repo
 // root. Lower a value when a split lands; never raise one.
 const BASELINES: Record<string, number> = {
-  'src/App.tsx': 2232,
+  'src/App.tsx': 2178,
   // ConversationMessage.tsx split into transcript/* modules by U47-3 — now 317 lines.
-  'src/components/chat/tool-activity.tsx': 1258,
-  'src/components/pages/ProjectSettingsPage.tsx': 1127,
+  // tool-activity.tsx split into tool/* modules by U47-4 — now 452 lines.
+  // AgentChatView.tsx split into agent/* modules by U47-5 — now 371 lines.
+  'src/components/pages/ProjectSettingsPage.tsx': 1035,
   'src/components/settings-modals.tsx': 967,
-  'src/components/chat/AgentChatView.tsx': 932,
-  'src/components/modals/AppSettingsModal.tsx': 906,
-  'src/components/chat/ChatComposer.tsx': 706
+  'src/components/modals/AppSettingsModal.tsx': 848,
+  'src/components/chat/ChatComposer.tsx': 651
 };
 
 function collectTsxFiles(dir: string): string[] {

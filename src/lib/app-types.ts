@@ -1,5 +1,5 @@
 export type ProjectSettingsTab = 'engine' | 'agent' | 'runs' | 'usage' | 'mcp' | 'skills';
-export type AppSettingsTab = 'appearance' | 'language' | 'agent' | 'provider' | 'mcp' | 'web-search' | 'claude' | 'memory' | 'notifications' | 'about';
+export type AppSettingsTab = 'appearance' | 'language' | 'agent' | 'provider' | 'asset-provider' | 'mcp' | 'web-search' | 'claude' | 'memory' | 'notifications' | 'about';
 export type ThemePreference = 'system' | 'light' | 'dark';
 export interface UiPreferences {
   theme: ThemePreference;
@@ -16,7 +16,7 @@ export interface ProjectAgentSkillDraft {
   enabled: boolean;
 }
 export type LanguagePreference = 'zh-CN' | 'en-US';
-export type AssetLibrarySource = 'generated' | 'project-file';
+export type AssetLibrarySource = 'project-file';
 export type AssetLibraryCategoryId = 'image' | 'audio' | 'model' | 'animation';
 export interface AssetLibraryFileItem {
   id: string;

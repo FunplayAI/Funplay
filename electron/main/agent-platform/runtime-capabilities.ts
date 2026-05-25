@@ -2,7 +2,6 @@ import type { GenericAgentRuntime, GenericAgentRuntimeCapabilityKey, GenericAgen
 
 export const DEFAULT_GENERIC_AGENT_RUNTIME_CAPABILITIES: GenericAgentRuntimeCapabilities = {
   conversation: false,
-  executePlan: false,
   toolLoop: false,
   nativeToolCalling: false,
   legacyJsonLoop: false,

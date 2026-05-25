@@ -10,8 +10,6 @@ import {
 } from '../../shared/project-sessions';
 import type {
   AppState,
-  ChatContentBlock,
-  ChatMediaBlock,
   ChatMessage,
   ClaudeInstallDetection,
   ClaudeRuntimeSetupStatus,
@@ -277,7 +275,7 @@ function readString(source: Record<string, unknown>, key: string): string | unde
 
 function extractTextFromClaudeContent(content: unknown): string {
   if (typeof content === 'string') {
-    return stripMediaMarker(content).text;
+    return stripMediaMarker(content);
   }
 
   if (!Array.isArray(content)) {
@@ -316,7 +314,7 @@ function extractTextFromClaudeContent(content: unknown): string {
 
 function extractUserTextFromClaudeContent(content: unknown): string {
   if (typeof content === 'string') {
-    return stripMediaMarker(content).text;
+    return stripMediaMarker(content);
   }
   if (!Array.isArray(content)) {
     return '';
@@ -329,139 +327,13 @@ function extractUserTextFromClaudeContent(content: unknown): string {
     .trim();
 }
 
-function stripMediaMarker(content: string): { text: string; media: ChatMediaBlock[] } {
+function stripMediaMarker(content: string): string {
   const markerIndex = content.indexOf(MEDIA_RESULT_MARKER);
   if (markerIndex < 0) {
-    return { text: content, media: [] };
+    return content;
   }
 
-  const text = content.slice(0, markerIndex).trim();
-  const payload = content.slice(markerIndex + MEDIA_RESULT_MARKER.length).trim();
-  try {
-    const parsed = JSON.parse(payload) as Array<{
-      type?: string;
-      mimeType?: string;
-      localPath?: string;
-      mediaId?: string;
-      title?: string;
-    }>;
-    const media = Array.isArray(parsed)
-      ? parsed
-          .filter((item) => item && typeof item === 'object')
-          .map((item): ChatMediaBlock => ({
-            type: item.type === 'audio' ? 'audio' : item.type === 'file' ? 'file' : 'image',
-            mimeType: item.mimeType,
-            localPath: item.localPath,
-            mediaId: item.mediaId,
-            title: item.title
-          }))
-      : [];
-    return { text, media };
-  } catch {
-    return { text, media: [] };
-  }
-}
-
-function extractMediaFromClaudeContent(content: unknown): ChatMediaBlock[] {
-  if (typeof content === 'string') {
-    return stripMediaMarker(content).media;
-  }
-
-  if (!Array.isArray(content)) {
-    return [];
-  }
-
-  const media: ChatMediaBlock[] = [];
-  for (const block of content) {
-    if (!isRecord(block)) {
-      continue;
-    }
-
-    if ((block.type === 'image' || block.type === 'audio') && typeof block.data === 'string') {
-      media.push({
-        type: block.type === 'audio' ? 'audio' : 'image',
-        data: block.data,
-        mimeType: readString(block, 'mimeType') ?? readString(block, 'media_type') ?? (block.type === 'audio' ? 'audio/wav' : 'image/png')
-      });
-    }
-
-    if (block.type === 'image' && isRecord(block.source)) {
-      const source = block.source;
-      const data = readString(source, 'data');
-      const url = readString(source, 'url');
-      media.push({
-        type: 'image',
-        data,
-        localPath: url && !/^https?:/i.test(url) ? url : undefined,
-        mimeType: readString(source, 'media_type') ?? 'image/png'
-      });
-    }
-
-    media.push(...extractMediaFromClaudeContent(block.content));
-  }
-  return media;
-}
-
-function normalizeClaudeToolInput(input: unknown): Record<string, unknown> | undefined {
-  if (isRecord(input)) {
-    return input;
-  }
-  if (typeof input === 'string' && input.trim()) {
-    try {
-      const parsed = JSON.parse(input) as unknown;
-      return isRecord(parsed) ? parsed : { raw: input };
-    } catch {
-      return { raw: input };
-    }
-  }
-  return undefined;
-}
-
-function convertClaudeContentBlocks(content: unknown): ChatContentBlock[] {
-  if (!Array.isArray(content)) {
-    const text = extractTextFromClaudeContent(content);
-    return text ? [{ type: 'text', text }] : [];
-  }
-
-  return content.flatMap((block, index): ChatContentBlock[] => {
-    if (!isRecord(block)) {
-      return [];
-    }
-
-    if (block.type === 'text') {
-      const text = readString(block, 'text');
-      return text ? [{ type: 'text', text }] : [];
-    }
-
-    if (block.type === 'thinking') {
-      const thinking = readString(block, 'thinking');
-      return thinking ? [{ type: 'thinking', thinking }] : [];
-    }
-
-    if (block.type === 'tool_use') {
-      return [{
-        type: 'tool_use',
-        toolUseId: readString(block, 'id') ?? `claude_tool_${index}`,
-        name: readString(block, 'name') ?? 'claude_tool',
-        input: normalizeClaudeToolInput(block.input),
-        status: 'completed'
-      }];
-    }
-
-    if (block.type === 'tool_result') {
-      const text = extractTextFromClaudeContent(block.content) || 'Tool execution completed.';
-      const media = extractMediaFromClaudeContent(block.content);
-      return [{
-        type: 'tool_result',
-        toolUseId: readString(block, 'tool_use_id') ?? `claude_tool_result_${index}`,
-        content: text,
-        isError: block.is_error === true,
-        media: media.length ? media : undefined
-      }];
-    }
-
-    return convertClaudeContentBlocks(block.content);
-  });
+  return content.slice(0, markerIndex).trim();
 }
 
 function extractMessageRecord(entry: SessionMessage): Record<string, unknown> | undefined {
@@ -478,20 +350,11 @@ function convertSessionMessage(entry: SessionMessage, fallbackIndex: number): Ch
   const contentSource = messageRecord && Object.prototype.hasOwnProperty.call(messageRecord, 'content')
     ? messageRecord.content
     : entry.message;
-  const contentBlocks = role === 'assistant' ? convertClaudeContentBlocks(contentSource) : undefined;
-  const content = contentBlocks?.length
-    ? contentBlocks.map((block) => {
-        if (block.type === 'text') return block.text;
-        if (block.type === 'thinking') return block.thinking;
-        if (block.type === 'tool_use') return `[Tool Call] ${block.name}`;
-        if (block.type === 'tool_result') return `[Tool Result]\n${block.content}`;
-        return block.text;
-      }).filter(Boolean).join('\n\n')
-    : role === 'user'
-      ? extractUserTextFromClaudeContent(contentSource)
-      : extractTextFromClaudeContent(contentSource);
+  const content = role === 'user'
+    ? extractUserTextFromClaudeContent(contentSource)
+    : extractTextFromClaudeContent(contentSource);
 
-  if (!content.trim() && !contentBlocks?.length) {
+  if (!content.trim()) {
     return undefined;
   }
 
@@ -501,7 +364,6 @@ function convertSessionMessage(entry: SessionMessage, fallbackIndex: number): Ch
     id: entry.uuid || makeId(`claude_msg_${fallbackIndex}`),
     role,
     content,
-    contentBlocks,
     createdAt
   };
 }

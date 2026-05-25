@@ -13,7 +13,7 @@ interface ActiveSessionWritePermissionGrant extends Omit<SessionWritePermissionG
 
 const sessionWritePermissionOverrides = new Map<string, ActiveSessionWritePermissionGrant>();
 const defaultSessionGrantTtlMs = 1000 * 60 * 60 * 4;
-export const DEFAULT_SESSION_WRITE_PERMISSION_TOOLS = ['create_directory', 'write_file', 'edit_file', 'apply_workspace_writes', 'execute_plan_unity_write'] as const;
+export const DEFAULT_SESSION_WRITE_PERMISSION_TOOLS = ['create_directory', 'write_file', 'edit_file', 'apply_workspace_writes'] as const;
 export const DEFAULT_SESSION_WRITE_PERMISSION_PRIMARY_TOOL = 'write_file';
 
 export function makeSessionMcpToolPermissionKey(pluginId: string, toolName: string): string {

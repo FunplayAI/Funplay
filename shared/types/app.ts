@@ -54,7 +54,7 @@ export interface AppUpdateSnapshot {
   canDownload: boolean;
   canInstall: boolean;
   isPackaged: boolean;
-  feedSource: 'env' | 'embedded' | 'none';
+  feedSource: 'embedded' | 'none';
   autoDownload: boolean;
 }
 

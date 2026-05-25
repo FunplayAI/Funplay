@@ -1,6 +1,7 @@
 import type {
   AgentOperationRecord,
   AgentOperationStatus,
+  AgentCoreMessagePart,
   AgentToolArtifact,
   AgentToolBrowserResult,
   AgentToolChangedFile,
@@ -20,7 +21,6 @@ import type {
   AgentPermissionMode,
   ClaudeRuntimeWriteMode,
   AppState,
-  ChatContentBlock,
   ChatMessageMetadata,
   ChatMediaBlock,
   ChatMessageIntent,
@@ -37,12 +37,117 @@ import type {
   AgentSkillIndexEntry
 } from '../../../shared/types';
 
-export type GenericAgentTaskKind = 'bootstrap' | 'conversation' | 'execute-plan';
+export type GenericAgentTaskKind = 'bootstrap' | 'conversation';
 export type GenericAgentPhase = 'thinking' | 'streaming';
-export type GenericAgentRuntimeId = ProjectSessionRuntimeId | 'execute-plan';
+export type GenericAgentRuntimeId = ProjectSessionRuntimeId;
+export type GenericAgentRuntimeOutputEvent =
+  | {
+      type: 'status';
+      phase: GenericAgentPhase;
+      message: string;
+    }
+  | {
+      type: 'text_delta';
+      delta: string;
+      accumulated: string;
+    }
+  | {
+      type: 'thinking_delta';
+      delta: string;
+      accumulated: string;
+    }
+  | {
+      type: 'tool_use';
+      tool: {
+        toolUseId: string;
+        name: string;
+        title?: string;
+        summary?: string;
+        activity?: string;
+        input?: Record<string, unknown>;
+        status: 'pending' | 'running' | 'completed' | 'failed';
+      };
+    }
+  | {
+      type: 'tool_result';
+      result: {
+        toolUseId: string;
+        toolName?: string;
+        content: string;
+        isError?: boolean;
+        media?: ChatMediaBlock[];
+        changedFiles?: AgentToolChangedFile[];
+        command?: AgentToolCommandResult;
+        terminal?: AgentToolTerminalResult;
+        browser?: AgentToolBrowserResult;
+        edit?: AgentToolEditMetrics;
+        mcp?: AgentToolMcpResult;
+        artifacts?: AgentToolArtifact[];
+        transaction?: AgentToolTransactionSummary;
+      };
+    }
+  | {
+      type: 'stage';
+      stage: {
+        stageId: string;
+        phase?: string;
+        title: string;
+        target: string;
+        status: AgentOperationStatus;
+        input?: Record<string, unknown>;
+        summary?: string;
+        errorMessage?: string;
+        runtimeId?: ProjectSessionRuntimeId;
+        providerId?: string;
+        model?: string;
+        upstreamModel?: string;
+        diagnosticCode?: string;
+        severity?: RuntimeDiagnosticSeverity;
+        errorCode?: string;
+        suggestedAction?: string;
+        recoveryActions?: RuntimeRecoveryAction[];
+        transaction?: AgentToolTransactionSummary;
+      };
+    }
+  | {
+      type: 'permission_request';
+      request: {
+        requestId: string;
+        title: string;
+        detail: string;
+        risk: 'low' | 'medium' | 'high';
+        toolName?: string;
+        impact?: AgentPermissionImpact;
+      };
+    }
+  | {
+      type: 'user_input_request';
+      request: {
+        requestId: string;
+        title: string;
+        question: string;
+        detail?: string;
+        options?: AgentUserInputOption[];
+        multiSelect?: boolean;
+        allowFreeText?: boolean;
+        placeholder?: string;
+        toolName?: string;
+      };
+    }
+  | {
+      type: 'usage';
+      usage: RuntimeUsage;
+    }
+  | {
+      type: 'lifecycle_hook';
+      hook: AgentLifecycleHookEvaluationResult;
+    }
+  | {
+      type: 'agent_core_parts';
+      parts: AgentCoreMessagePart[];
+    };
 export type GenericAgentRuntimeCapabilityKey =
   | 'conversation'
-  | 'executePlan'
   | 'toolLoop'
   | 'nativeToolCalling'
   | 'legacyJsonLoop'
@@ -64,7 +169,6 @@ export type GenericAgentRuntimeCapabilityKey =
 
 export interface GenericAgentRuntimeCapabilities {
   conversation: boolean;
-  executePlan: boolean;
   toolLoop: boolean;
   nativeToolCalling: boolean;
   legacyJsonLoop: boolean;
@@ -233,16 +337,21 @@ export interface GenericAgentRuntimeParams {
   activeRunId?: string;
   lifecycleHooks?: AgentLifecycleHookConfig;
   lifecycleHookContext?: string[];
+  turnId?: string;
   resumeContext?: AgentRuntimeResumeContext;
   checkpointSnapshotId?: string;
   abortSignal?: AbortSignal;
   nativeContextRetryAttempted?: boolean;
+  emitRuntimeEvent?: (event: GenericAgentRuntimeOutputEvent) => void;
   onStatus?: (phase: GenericAgentPhase, message: string) => void;
   onTextDelta?: (delta: string, accumulated: string) => void;
   onThinkingDelta?: (delta: string, accumulated: string) => void;
   onToolUse?: (tool: {
     toolUseId: string;
     name: string;
+    title?: string;
+    summary?: string;
+    activity?: string;
     input?: Record<string, unknown>;
     status: 'pending' | 'running' | 'completed' | 'failed';
   }) => void;
@@ -318,12 +427,12 @@ export interface GenericAgentRuntimeParams {
     toolName?: string;
   }) => Promise<AgentUserInputResponse>;
   onUsage?: (usage: RuntimeUsage) => void;
+  onAgentCoreParts?: (parts: AgentCoreMessagePart[]) => void;
   onLifecycleHook?: (hook: AgentLifecycleHookEvaluationResult) => void;
 }
 
 export interface GenericAgentRuntimeResult {
   assistantMessage: string;
-  assistantContentBlocks?: ChatContentBlock[];
   assistantMetadata?: Partial<ChatMessageMetadata>;
   assistantIntent: ChatMessageIntent;
   fallbackDetail?: string;
@@ -342,6 +451,13 @@ export interface GenericAgentRuntimeResult {
   steps: GameAgentStep[];
 }
 
+export type GenericAgentRuntimeStreamEvent =
+  | GenericAgentRuntimeOutputEvent
+  | {
+      type: 'result';
+      result: GenericAgentRuntimeResult;
+    };
+
 export interface GenericAgentRuntime {
   id: GenericAgentRuntimeId;
   displayName: string;
@@ -350,8 +466,7 @@ export interface GenericAgentRuntime {
   isAvailable: () => boolean;
   interrupt: (runIdOrSessionId: string) => void;
   dispose: () => void;
-  executeTurn?: (params: GenericAgentRuntimeParams) => Promise<GenericAgentRuntimeResult>;
-  executePlan?: (task: GenericAgentExecutePlanTask) => Promise<{ project: Project; run: GameAgentRun }>;
+  executeEventStream: (params: GenericAgentRuntimeParams) => AsyncIterable<GenericAgentRuntimeStreamEvent>;
 }
 
 export interface GenericAgentTaskBase {
@@ -393,22 +508,7 @@ export interface GenericAgentConversationTask extends GenericAgentTaskBase {
   onUserInputRequest?: GenericAgentRuntimeParams['onUserInputRequest'];
   requestUserInput?: GenericAgentRuntimeParams['requestUserInput'];
   onUsage?: GenericAgentRuntimeParams['onUsage'];
+  onAgentCoreParts?: GenericAgentRuntimeParams['onAgentCoreParts'];
 }
 
-export interface GenericAgentExecutePlanTask {
-  kind: 'execute-plan';
-  state: AppState;
-  projectId: string;
-  controller?: AbortController;
-  checkpointSnapshotId?: string;
-  onStatus?: (message: string) => void;
-  onToolUse?: GenericAgentRuntimeParams['onToolUse'];
-  onToolResult?: GenericAgentRuntimeParams['onToolResult'];
-  onStage?: GenericAgentRuntimeParams['onStage'];
-  onPermissionRequest?: GenericAgentRuntimeParams['onPermissionRequest'];
-  requestPermission?: GenericAgentRuntimeParams['requestPermission'];
-  onUserInputRequest?: GenericAgentRuntimeParams['onUserInputRequest'];
-  requestUserInput?: GenericAgentRuntimeParams['requestUserInput'];
-}
-
-export type GenericAgentTask = GenericAgentBootstrapTask | GenericAgentConversationTask | GenericAgentExecutePlanTask;
+export type GenericAgentTask = GenericAgentBootstrapTask | GenericAgentConversationTask;

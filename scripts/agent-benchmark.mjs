@@ -69,12 +69,6 @@ const benchmarks = [
     timeoutMs: 45_000
   },
   {
-    id: 'roadmap-audit',
-    title: 'Agent roadmap completion audit',
-    command: 'npm run agent:roadmap-audit',
-    timeoutMs: 30_000
-  },
-  {
     id: 'agent-e2e-dry',
     title: 'Agent dry E2E',
     command: 'npm run agent:e2e',

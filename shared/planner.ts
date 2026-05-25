@@ -490,6 +490,8 @@ export function createProjectFromInput(input: CreateProjectInput): Project {
     blueprint: buildBlueprint(input),
     tasks: buildTasks(input),
     assets: buildAssets(input),
+    assetGenerationJobs: [],
+    assetGenerationPresets: [],
     sessions: [],
     activeSessionId: undefined,
     chat: [],

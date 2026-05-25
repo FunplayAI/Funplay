@@ -14,18 +14,20 @@ import {
   RotateCcw,
   Save,
   Search,
+  Sparkles,
   Terminal,
   Trash2,
   type LucideIcon
 } from 'lucide-react';
 import type {
-  AgentPermissionMode,
   AgentRuntimeStrategy,
   AiProvider,
   AiProviderInput,
   AiSettings,
   AiTestResult,
   AppUpdateSnapshot,
+  AssetGenerationProviderConfig,
+  AssetGenerationProviderInput,
   ClaudeRuntimeSetupStatus,
   ClaudeSessionSummary,
   McpConnectionSnapshot,
@@ -57,9 +59,10 @@ import {
   formatNotificationTaskStatus,
   resolveAppUpdateActionMessage
 } from '../../lib/app-helpers';
-import { ModalShell, ProviderEditor } from '../settings-modals';
+import { ModalShell } from '../settings-modals';
 import { InfoRow } from '../shared/InfoComponents';
-import { ProviderSettingsPage } from '../pages/ProviderSettingsPage';
+import { AppSettingsAiProviderSection } from './AppSettingsAiProviderSection';
+import { AppSettingsAssetProviderSection } from './AppSettingsAssetProviderSection';
 import { McpRegistrySettingsPage } from '../pages/McpRegistrySettingsPage';
 import { WebSearchSettingsPage } from '../pages/WebSearchSettingsPage';
 import { Button, SwitchField, TextAreaField, TextField } from '../ui/index';
@@ -69,10 +72,10 @@ export function AppSettingsModal(props: {
   theme: ThemePreference;
   language: LanguagePreference;
   developerMode: boolean;
-  permissionMode: AgentPermissionMode;
   runtimeStrategy: AgentRuntimeStrategy;
   aiSettings: AiSettings;
   providers: AiProvider[];
+  assetGenerationProviderConfigs?: AssetGenerationProviderConfig[];
   providerTests: Record<string, AiTestResult>;
   mcpPlugins: McpPlugin[];
   selectedMcpPlugin: McpPlugin | null;
@@ -102,7 +105,6 @@ export function AppSettingsModal(props: {
   onChangeTheme: (theme: ThemePreference) => void;
   onChangeLanguage: (language: LanguagePreference) => void;
   onChangeDeveloperMode: (developerMode: boolean) => void;
-  onChangePermissionMode: (permissionMode: AgentPermissionMode) => void;
   onChangeRuntimeStrategy: (runtimeStrategy: AgentRuntimeStrategy) => void;
   onUpdateWebSearchSettings: (settings: Partial<WebSearchSettings>) => Promise<void>;
   onCreateProvider: (input: AiProviderInput) => Promise<void>;
@@ -110,6 +112,9 @@ export function AppSettingsModal(props: {
   onDeleteProvider: (providerId: string) => void;
   onTestProvider: (providerId: string) => void;
   onSetDefaultProvider: (providerId: string) => void;
+  onCreateAssetGenerationProvider?: (input: AssetGenerationProviderInput) => Promise<void>;
+  onUpdateAssetGenerationProvider?: (providerId: string, input: AssetGenerationProviderInput) => Promise<void>;
+  onDeleteAssetGenerationProvider?: (providerId: string) => void;
   onSelectMcpPlugin: (pluginId: string) => void;
   onRefreshMcpPluginMeta: () => void;
   onToggleMcpPlugin: (plugin: McpPlugin, enabled: boolean) => void;
@@ -134,8 +139,6 @@ export function AppSettingsModal(props: {
   onClose: () => void;
 }): JSX.Element {
   const [tab, setTab] = useState<AppSettingsTab>(props.initialTab);
-  const [providerEditorOpen, setProviderEditorOpen] = useState(false);
-  const [providerEditingTarget, setProviderEditingTarget] = useState<AiProvider | null>(null);
   const [claudeStatus, setClaudeStatus] = useState<ClaudeRuntimeSetupStatus | null>(null);
   const [claudeSessions, setClaudeSessions] = useState<ClaudeSessionSummary[]>([]);
   const [claudeLoading, setClaudeLoading] = useState(false);
@@ -266,6 +269,7 @@ export function AppSettingsModal(props: {
     { id: 'language', label: t('语言', 'Language'), desc: t('界面语言与文案', 'Interface language and copy'), Icon: Languages },
     { id: 'agent', label: t('Agent', 'Agent'), desc: t('权限模式与开发者模式', 'Permission and developer mode'), Icon: Bot },
     { id: 'provider', label: 'AI Provider', desc: t('模型服务与默认渠道', 'Model services and default providers'), Icon: Cloud },
+    { id: 'asset-provider', label: t('素材 Provider', 'Asset Provider'), desc: t('图片、3D 与音频生成', 'Image, 3D, and audio generation'), Icon: Sparkles },
     { id: 'mcp', label: 'MCP', desc: t('全局 MCP Registry', 'Global MCP Registry'), Icon: Plug },
     { id: 'web-search', label: 'Web Search', desc: t('搜索来源、抽取与评测', 'Sources, extraction, and evaluation'), Icon: Search },
     { id: 'claude', label: 'Claude Code', desc: t('安装、登录与历史会话', 'Install, login, and CLI sessions'), Icon: Terminal },
@@ -344,45 +348,9 @@ export function AppSettingsModal(props: {
 
           {tab === 'agent' ? (
             <section className="app-settings-section">
-              <div className="app-settings-scope-strip" aria-label={t('Agent 设置作用域', 'Agent settings scope')}>
-                <span>
-                  <strong>{t('全局默认', 'Global Default')}</strong>
-                  <em>{t('当前页', 'This Page')}</em>
-                </span>
-                <strong aria-hidden="true">→</strong>
-                <span>
-                  <strong>{t('项目默认', 'Project Default')}</strong>
-                  <em>{t('项目设置', 'Project Settings')}</em>
-                </span>
-                <strong aria-hidden="true">→</strong>
-                <span>
-                  <strong>{t('当前会话', 'Current Session')}</strong>
-                  <em>{t('聊天输入区', 'Composer')}</em>
-                </span>
-              </div>
               <div>
-                <strong>{t('默认 Agent 模式', 'Default Agent Mode')}</strong>
-                <div className="helper-copy">{t('这里设置全局默认；项目设置和当前会话可覆盖。Build 默认具备完整开发权限，Plan 用于只读分析和改动规划。', 'This sets the global default; project settings and the current session can override it. Build has full development access by default, while Plan is for read-only analysis and planning.')}</div>
-              </div>
-              <div className="segmented-options">
-                {([
-                  ['full-access', t('Build', 'Build')],
-                  ['read-only', t('Plan', 'Plan')]
-                ] as Array<[AgentPermissionMode, string]>).map(([mode, label]) => (
-                  <Button key={mode} size="sm" variant="secondary" className={`settings-choice-button ${props.permissionMode === mode ? 'active' : ''}`} onClick={() => props.onChangePermissionMode(mode)}>
-                    {label}
-                  </Button>
-                ))}
-              </div>
-              <div className="helper-copy">
-                {props.permissionMode === 'full-access'
-                  ? t('默认执行开发工作：文件修改工具直接可用，命令和高风险工具按运行时策略处理。', 'Runs development work by default: file modification tools are available directly, with command and high-risk tools handled by runtime policy.')
-                  : t('默认拒绝修改项目文件；适合探索未知代码库、讨论方案和规划改动。运行命令前会请求确认。', 'Rejects project file modifications by default; useful for exploring codebases, discussing approaches, and planning changes. Commands ask for confirmation before running.')}
-              </div>
-              <div className="app-settings-divider" />
-              <div>
-                <strong>{t('默认 Agent Runtime', 'Default Agent Runtime')}</strong>
-                <div className="helper-copy">{t('这里设置全局默认 Runtime；当前会话可在项目 Agent 设置中覆盖。默认推荐 Native。', 'This sets the global default runtime; the current session can override it in Project Agent settings. Native is recommended by default.')}</div>
+                <strong>{t('Agent Runtime 偏好', 'Agent Runtime Preference')}</strong>
+                <div className="helper-copy">{t('用于新会话的初始 Runtime；当前会话可在项目 Agent 设置中切换。推荐 Native。', 'Initial runtime for new sessions; the current session can switch it in Project Agent settings. Native is recommended.')}</div>
               </div>
               <div className="segmented-options">
                 {([
@@ -406,50 +374,25 @@ export function AppSettingsModal(props: {
           ) : null}
 
           {tab === 'provider' ? (
-            <section className="app-settings-section provider-settings-embedded">
-              {providerEditorOpen ? (
-                <div className="app-settings-inline-editor">
-                  <div className="app-settings-inline-editor-header">
-                    <strong>{providerEditingTarget ? t('编辑 Provider', 'Edit Provider') : t('添加 Provider', 'Add Provider')}</strong>
-                    <div className="helper-copy">{t('直接在当前设置页内完成模型服务配置。', 'Configure model services directly inside this settings page.')}</div>
-                  </div>
-                  <ProviderEditor
-                    provider={providerEditingTarget}
-                    onCancel={() => {
-                      setProviderEditorOpen(false);
-                      setProviderEditingTarget(null);
-                    }}
-                    onCreate={async (input) => {
-                      await props.onCreateProvider(input);
-                      setProviderEditorOpen(false);
-                      setProviderEditingTarget(null);
-                    }}
-                    onUpdate={async (providerId, input) => {
-                      await props.onUpdateProvider(providerId, input);
-                      setProviderEditorOpen(false);
-                      setProviderEditingTarget(null);
-                    }}
-                  />
-                </div>
-              ) : null}
-              <ProviderSettingsPage
-                providers={props.providers}
-                providerTests={props.providerTests}
-                selectedProjectId={props.selectedProjectId}
-                onAddProvider={() => {
-                  setProviderEditingTarget(null);
-                  setProviderEditorOpen(true);
-                }}
-                onEditProvider={(provider) => {
-                  setProviderEditingTarget(provider);
-                  setProviderEditorOpen(true);
-                }}
-                onDeleteProvider={props.onDeleteProvider}
-                onTestProvider={props.onTestProvider}
-                onSetDefaultProvider={props.onSetDefaultProvider}
-                embedded
-              />
-            </section>
+            <AppSettingsAiProviderSection
+              providers={props.providers}
+              providerTests={props.providerTests}
+              selectedProjectId={props.selectedProjectId}
+              onCreateProvider={props.onCreateProvider}
+              onUpdateProvider={props.onUpdateProvider}
+              onDeleteProvider={props.onDeleteProvider}
+              onTestProvider={props.onTestProvider}
+              onSetDefaultProvider={props.onSetDefaultProvider}
+            />
+          ) : null}
+
+          {tab === 'asset-provider' ? (
+            <AppSettingsAssetProviderSection
+              providers={props.assetGenerationProviderConfigs ?? []}
+              onCreateProvider={props.onCreateAssetGenerationProvider}
+              onUpdateProvider={props.onUpdateAssetGenerationProvider}
+              onDeleteProvider={props.onDeleteAssetGenerationProvider}
+            />
           ) : null}
 
           {tab === 'mcp' ? (
@@ -738,7 +681,6 @@ export function AppSettingsModal(props: {
                   )}
                 </div>
               </div>
-
               {props.memoryError ? <div className="agent-composer-error neutral">{props.memoryError}</div> : null}
             </section>
           ) : null}
@@ -891,8 +833,8 @@ export function AppSettingsModal(props: {
                 {props.appUpdateStatus?.feedSource === 'none' ? (
                   <div className="helper-copy">
                     {t(
-                      '当前没有配置更新源。正式发布时需要写入 electron-builder publish 配置，或在运行环境设置 FUNPLAY_UPDATE_FEED_URL。',
-                      'No update feed is configured. Production releases need electron-builder publish config, or set FUNPLAY_UPDATE_FEED_URL in the runtime environment.'
+                      '当前没有配置更新源。自动更新仅在正式打包应用中使用 GitHub Releases。',
+                      'No update feed is configured. Auto update uses GitHub Releases in packaged production builds.'
                     )}
                   </div>
                 ) : null}

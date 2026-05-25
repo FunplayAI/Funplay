@@ -15,10 +15,17 @@ import {
   scheduleStartupUpdateCheck
 } from './update-service';
 import { initializeProviderSecretStore } from './provider-secret-store';
+import { initializeAssetGenerationSecretStore } from './asset-generation-secret-store';
 import { installSessionSecurity, secureBrowserWindow } from './security';
 import { installProjectPreviewProtocol, registerProjectPreviewProtocolScheme } from './project-preview-protocol';
 import { disposeProjectHtmlPreviewServers } from './project-preview-dev-server';
+import {
+  createSessionCompletionBadgeTracker,
+  createWindowsCompletionBadgeDataUrl,
+  formatCompletionBadgeLabel
+} from './app-completion-badge';
 import type { HandlerContext } from './ipc-handlers/types';
+import type { PromptStreamEvent } from '../../shared/types';
 import { requirePluginBaseUrl as resolvePluginBaseUrl } from './ipc-handlers/helpers';
 import { registerAppHandlers } from './ipc-handlers/app-handlers';
 import { registerDialogHandlers } from './ipc-handlers/dialog-handlers';
@@ -35,6 +42,7 @@ import { registerNotificationHandlers } from './ipc-handlers/notification-handle
 import { registerUpdateHandlers } from './ipc-handlers/update-handlers';
 import { registerDiagnosticsHandlers } from './ipc-handlers/diagnostics-handlers';
 import { registerSkillsHandlers } from './ipc-handlers/skills-handlers';
+import { registerAssetGenerationHandlers } from './ipc-handlers/asset-generation-handlers';
 
 app.enableSandbox();
 
@@ -44,6 +52,61 @@ app.setName(APP_DISPLAY_NAME);
 registerProjectPreviewProtocolScheme();
 
 let mainWindow: BrowserWindow | null = null;
+
+const completionBadgeTracker = createSessionCompletionBadgeTracker({
+  onCountChanged: (count) => applyCompletionBadgeCount(count)
+});
+
+function isPromptStreamCompletedEvent(payload: unknown): payload is Extract<PromptStreamEvent, { type: 'completed' }> {
+  return Boolean(
+    payload &&
+      typeof payload === 'object' &&
+      (payload as { type?: unknown }).type === 'completed' &&
+      typeof (payload as { sessionId?: unknown }).sessionId === 'string'
+  );
+}
+
+function isMainWindowFocused(): boolean {
+  const window = mainWindow;
+  return Boolean(window && !window.isDestroyed() && window.isFocused());
+}
+
+function applyCompletionBadgeCount(count: number): void {
+  const label = formatCompletionBadgeLabel(count);
+
+  if (process.platform === 'darwin' && app.dock) {
+    app.dock.setBadge(label);
+  }
+
+  if (process.platform !== 'win32') {
+    return;
+  }
+
+  const window = mainWindow;
+  if (!window || window.isDestroyed()) {
+    return;
+  }
+
+  if (!label) {
+    window.setOverlayIcon(null, '');
+    return;
+  }
+
+  const image = nativeImage.createFromDataURL(createWindowsCompletionBadgeDataUrl(count));
+  window.setOverlayIcon(image.isEmpty() ? null : image, `${label} completed session${label === '1' ? '' : 's'}`);
+}
+
+function clearCompletionBadge(): void {
+  completionBadgeTracker.clear();
+}
+
+function recordPromptStreamCompletionForBadge(payload: unknown): void {
+  if (!isPromptStreamCompletedEvent(payload) || isMainWindowFocused()) {
+    return;
+  }
+
+  completionBadgeTracker.recordCompletedSession(payload.sessionId);
+}
 
 function resolvePreloadPath(): string {
   const candidates = ['../preload/index.js', '../preload/index.mjs'].map((relativePath) => join(__dirname, relativePath));
@@ -104,6 +167,14 @@ function createMainWindow(): BrowserWindow {
   });
 
   secureBrowserWindow(window);
+  window.on('focus', () => {
+    clearCompletionBadge();
+  });
+  window.on('closed', () => {
+    if (mainWindow === window) {
+      mainWindow = null;
+    }
+  });
 
   if (process.env.VITE_DEV_SERVER_URL) {
     window.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -114,16 +185,32 @@ function createMainWindow(): BrowserWindow {
   return window;
 }
 
+function sendToMainWindow(channel: string, payload: unknown): void {
+  const window = mainWindow;
+  if (!window || window.isDestroyed() || window.webContents.isDestroyed()) {
+    return;
+  }
+  try {
+    window.webContents.send(channel, payload);
+  } catch {
+    return;
+  }
+}
+
 function registerIpcHandlers(): void {
   const ctx: HandlerContext = {
     getState,
     setState,
     mainWindow,
     dispatchPromptStreamEvent: (payload: unknown) => {
-      mainWindow?.webContents.send('projects:promptStreamEvent', payload);
+      recordPromptStreamCompletionForBadge(payload);
+      sendToMainWindow('projects:promptStreamEvent', payload);
     },
     dispatchProjectFileTreeChangedEvent: (payload: unknown) => {
-      mainWindow?.webContents.send('projects:fileTreeChanged', payload);
+      sendToMainWindow('projects:fileTreeChanged', payload);
+    },
+    dispatchAssetGenerationProjectUpdatedEvent: (payload: unknown) => {
+      sendToMainWindow('assetGeneration:projectUpdated', payload);
     },
     requirePluginBaseUrl: (pluginId?: string) => resolvePluginBaseUrl(getState, pluginId)
   };
@@ -143,6 +230,7 @@ function registerIpcHandlers(): void {
   registerUpdateHandlers(ipcMain, ctx);
   registerDiagnosticsHandlers(ipcMain, ctx);
   registerSkillsHandlers(ipcMain, ctx);
+  registerAssetGenerationHandlers(ipcMain, ctx);
 }
 
 app.whenReady().then(async () => {
@@ -151,14 +239,15 @@ app.whenReady().then(async () => {
     applicationName: APP_DISPLAY_NAME
   });
   initializeProviderSecretStore(app.getPath('userData'));
+  initializeAssetGenerationSecretStore(app.getPath('userData'));
   initializePptxPreviewRenderer(app.getPath('userData'));
   await initializeStore(app.getPath('userData'), app.getPath('downloads'));
   await initializeNotificationService(app.getPath('userData'), (payload) => {
-    mainWindow?.webContents.send('app:notification', payload);
+    sendToMainWindow('app:notification', payload);
   });
   initializeAppUpdateService({
     dispatchStatus: (payload) => {
-      mainWindow?.webContents.send('updates:status', payload);
+      sendToMainWindow('updates:status', payload);
     },
     notify: (input) => {
       void sendAppNotification({
@@ -171,16 +260,21 @@ app.whenReady().then(async () => {
   installProjectPreviewProtocol(getState);
   registerIpcHandlers();
   syncProjectFileWatchers(getState(), (payload) => {
-    mainWindow?.webContents.send('projects:fileTreeChanged', payload);
+    sendToMainWindow('projects:fileTreeChanged', payload);
   });
   mainWindow = createMainWindow();
+  applyCompletionBadgeCount(completionBadgeTracker.getCount());
   scheduleStartupUpdateCheck();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       mainWindow = createMainWindow();
+      applyCompletionBadgeCount(completionBadgeTracker.getCount());
+      syncProjectFileWatchers(getState(), (payload) => {
+        sendToMainWindow('projects:fileTreeChanged', payload);
+      });
       mainWindow.webContents.once('did-finish-load', () => {
-        mainWindow?.webContents.send('updates:status', getAppUpdateStatus());
+        sendToMainWindow('updates:status', getAppUpdateStatus());
       });
     }
   });

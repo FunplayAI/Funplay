@@ -1,10 +1,10 @@
 import { useState, type JSX } from 'react';
-import { Plus, RefreshCw, RotateCw, Send, Settings2, Square, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, RotateCw, Send, Settings2, Square, Trash2 } from 'lucide-react';
 import type { McpConnectionSnapshot, McpPlugin, McpRawAuditEntry, McpRawRequestResult, McpToolSnapshot, Project, UnityMcpPrompt, UnityMcpResource, UnityMcpResourceTemplate, UnityMcpServerInfo, UnityMcpTool } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import type { ProjectMcpBindingDraft } from '../../lib/app-types';
 import { Card, InfoRow, List } from '../shared/InfoComponents';
-import { Button, IconButton, SelectField, TextAreaField, ToggleSwitch } from '../ui/index';
+import { Button, SelectField, TextAreaField, ToggleSwitch } from '../ui/index';
 
 function canProjectUsePlugin(project: Project | null, plugin: McpPlugin): boolean {
   return Boolean(project && (!plugin.projectId || plugin.projectId === project.id));
@@ -44,41 +44,6 @@ function formatConnectionStatus(language: 'zh-CN' | 'en-US', snapshot: McpConnec
         ? localize(language, '已退出', 'exited')
         : localize(language, '未启动', 'not started');
   return `${statusLabel} · ${processLabel}`;
-}
-
-function connectionStatusClass(snapshot: McpConnectionSnapshot | null | undefined): string {
-  if (!snapshot) {
-    return 'idle';
-  }
-  return snapshot.status;
-}
-
-export function formatMcpCapabilitySummary(
-  language: 'zh-CN' | 'en-US',
-  tools: number,
-  resources: number,
-  prompts: number,
-  resourceTemplates: number
-): string {
-  return localize(
-    language,
-    `能力：Tools ${tools} · Resources ${resources} · Prompts ${prompts} · Templates ${resourceTemplates}`,
-    `Capabilities: Tools ${tools} · Resources ${resources} · Prompts ${prompts} · Templates ${resourceTemplates}`
-  );
-}
-
-export function formatMcpPolicySummary(language: 'zh-CN' | 'en-US', plugin: McpPlugin): string {
-  const permission = plugin.defaultToolPermission ?? 'infer';
-  const risk = plugin.defaultToolRisk ?? 'infer';
-  const overrideCount = Object.keys(plugin.toolPolicies ?? {}).length;
-  const overrideText = overrideCount > 0
-    ? localize(language, ` · 覆盖 ${overrideCount}`, ` · overrides ${overrideCount}`)
-    : '';
-  return localize(
-    language,
-    `策略：默认 ${permission} / 风险 ${risk}${overrideText}`,
-    `Policy: default ${permission} / risk ${risk}${overrideText}`
-  );
 }
 
 function formatSnapshotChange(language: 'zh-CN' | 'en-US', change: McpToolSnapshot['changeKind']): string {
@@ -249,14 +214,17 @@ export function McpManagementPage(props: {
   onDeleteProjectMcpPlugin: (pluginId: string) => void;
   onSendRawMcpRequest: (pluginId: string, method: string, params: Record<string, unknown>) => Promise<McpRawRequestResult>;
 }): JSX.Element {
+  const [detailPluginId, setDetailPluginId] = useState('');
   const language = useUiLanguage();
   const t = (zh: string, en: string): string => localize(language, zh, en);
   const projectPlugins = props.plugins.filter((plugin) => canProjectUsePlugin(props.project, plugin));
   const enabledProjectPluginIds = new Set(props.projectBindings);
-  const selectedPlugin =
-    props.selectedPlugin && projectPlugins.some((plugin) => plugin.id === props.selectedPlugin?.id)
-      ? props.selectedPlugin
-      : projectPlugins.find((plugin) => enabledProjectPluginIds.has(plugin.id)) ?? projectPlugins[0] ?? null;
+  const detailPlugin = detailPluginId ? projectPlugins.find((plugin) => plugin.id === detailPluginId) ?? null : null;
+
+  function openPluginDetail(plugin: McpPlugin): void {
+    setDetailPluginId(plugin.id);
+    props.onSelectProjectMcpPlugin(plugin.id);
+  }
 
   return (
     <div className="mcp-server-settings-page">
@@ -275,69 +243,53 @@ export function McpManagementPage(props: {
         </div>
       </div>
 
-      <div className="mcp-server-list" role="list">
-        {projectPlugins.length === 0 ? (
-          <div className="empty-note">{t('暂无 MCP Server。可以添加项目 Server，或到全局设置里添加全局 Server。', 'No MCP servers yet. Add a project server, or add a global server in global settings.')}</div>
-        ) : null}
-        {projectPlugins.map((plugin) => {
-          const isProjectScoped = Boolean(plugin.projectId);
-          const disabledByGlobal = !isProjectScoped && !plugin.enabled;
-          const checked = enabledProjectPluginIds.has(plugin.id) && !disabledByGlobal;
-          return (
-            <ServerListRow
-              key={plugin.id}
-              plugin={plugin}
-              selected={selectedPlugin?.id === plugin.id}
-              checked={checked}
-              disabled={!props.project || disabledByGlobal}
-              scopeLabel={serverScopeLabel(language, plugin)}
-              disabledNote={disabledByGlobal ? t('已在全局禁用', 'Disabled globally') : undefined}
-              connectionStatus={props.connectionStatuses[plugin.id] ?? null}
-              capabilitySummary={selectedPlugin?.id === plugin.id ? formatMcpCapabilitySummary(language, props.tools.length, props.resources.length, props.prompts.length, props.resourceTemplates.length) : undefined}
-              policySummary={formatMcpPolicySummary(language, plugin)}
-              onSelect={() => props.onSelectProjectMcpPlugin(plugin.id)}
-              onToggle={(enabled) => props.onToggleProjectMcpPlugin(plugin.id, enabled)}
-              onEdit={isProjectScoped ? () => props.onEditProjectMcpPlugin(plugin) : undefined}
-              onDelete={isProjectScoped ? () => props.onDeleteProjectMcpPlugin(plugin.id) : undefined}
-            />
-          );
-        })}
-      </div>
-
-      <div className="mcp-server-runtime-panel">
-        <div className="settings-header compact">
-          <div>
-            <h2>{selectedPlugin?.name || t('选择一个 Server', 'Select a server')}</h2>
-            <p>{selectedPlugin?.notes || selectedPlugin?.baseUrl || t('启用后 Agent 才会获得这个 MCP 的工具和资源。', 'Enable a server before the Agent can use its tools and resources.')}</p>
+      {detailPlugin ? (
+        <div className="mcp-server-runtime-panel settings-detail-panel mcp-settings-detail-route">
+          <div className="settings-header compact">
+            <div>
+              <Button variant="ghost" size="sm" className="settings-detail-back-button" onClick={() => setDetailPluginId('')} leadingIcon={<ChevronLeft size={14} aria-hidden="true" />}>
+                {t('返回', 'Back')}
+              </Button>
+              <h2>{detailPlugin.name}</h2>
+              <p>{detailPlugin.notes || detailPlugin.baseUrl || t('启用后 Agent 才会获得这个 MCP 的工具和资源。', 'Enable a server before the Agent can use its tools and resources.')}</p>
+            </div>
+            <div className="ghost-pill-group">
+              {detailPlugin.projectId ? (
+                <>
+                  <Button variant="secondary" size="sm" onClick={() => props.onEditProjectMcpPlugin(detailPlugin)} leadingIcon={<Settings2 size={14} aria-hidden="true" />}>
+                    {t('编辑', 'Edit')}
+                  </Button>
+                  <Button variant="danger" size="sm" onClick={() => props.onDeleteProjectMcpPlugin(detailPlugin.id)} leadingIcon={<Trash2 size={14} aria-hidden="true" />}>
+                    {t('删除', 'Delete')}
+                  </Button>
+                </>
+              ) : null}
+              {detailPlugin.transport === 'stdio' ? (
+                <>
+                  <Button variant="secondary" size="sm" onClick={props.onReconnect} disabled={props.isRefreshing} leadingIcon={<RotateCw size={14} aria-hidden="true" />}>
+                    {t('重启', 'Restart')}
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={props.onStop} disabled={props.connectionStatus?.processStatus !== 'running'} leadingIcon={<Square size={13} aria-hidden="true" />}>
+                    {t('停止', 'Stop')}
+                  </Button>
+                </>
+              ) : null}
+              <Button variant="secondary" size="sm" onClick={props.onRefresh} disabled={props.isRefreshing} leadingIcon={<RefreshCw size={14} aria-hidden="true" />}>
+                {props.isRefreshing ? t('刷新中…', 'Refreshing…') : t('刷新能力', 'Refresh')}
+              </Button>
+            </div>
           </div>
-          <div className="ghost-pill-group">
-            {selectedPlugin?.transport === 'stdio' ? (
-              <>
-                <Button variant="secondary" size="sm" onClick={props.onReconnect} disabled={!selectedPlugin || props.isRefreshing} leadingIcon={<RotateCw size={14} aria-hidden="true" />}>
-                  {t('重启', 'Restart')}
-                </Button>
-                <Button variant="secondary" size="sm" onClick={props.onStop} disabled={!selectedPlugin || props.connectionStatus?.processStatus !== 'running'} leadingIcon={<Square size={13} aria-hidden="true" />}>
-                  {t('停止', 'Stop')}
-                </Button>
-              </>
-            ) : null}
-            <Button variant="secondary" size="sm" onClick={props.onRefresh} disabled={!selectedPlugin || props.isRefreshing} leadingIcon={<RefreshCw size={14} aria-hidden="true" />}>
-              {props.isRefreshing ? t('刷新中…', 'Refreshing…') : t('刷新能力', 'Refresh')}
-            </Button>
-          </div>
-        </div>
 
-        {props.pluginError ? <div className="warning-banner error">{props.pluginError}</div> : null}
+          {props.pluginError ? <div className="warning-banner error">{props.pluginError}</div> : null}
 
-        {selectedPlugin ? (
           <div className="detail-grid">
             <Card title={t('连接', 'Connection')}>
-              <InfoRow label={t('范围', 'Scope')} value={serverScopeLabel(language, selectedPlugin)} />
-              <InfoRow label="Transport" value={selectedPlugin.transport} />
-              <InfoRow label="Endpoint" value={formatMcpEndpoint(selectedPlugin)} />
+              <InfoRow label={t('范围', 'Scope')} value={serverScopeLabel(language, detailPlugin)} />
+              <InfoRow label="Transport" value={detailPlugin.transport} />
+              <InfoRow label="Endpoint" value={formatMcpEndpoint(detailPlugin)} />
               <InfoRow label={t('连接状态', 'Connection Status')} value={formatConnectionStatus(language, props.connectionStatus)} />
               {props.connectionStatus?.pid ? <InfoRow label="PID" value={String(props.connectionStatus.pid)} /> : null}
-              <InfoRow label={t('项目启用', 'Project Enabled')} value={enabledProjectPluginIds.has(selectedPlugin.id) ? t('是', 'Yes') : t('否', 'No')} />
+              <InfoRow label={t('项目启用', 'Project Enabled')} value={enabledProjectPluginIds.has(detailPlugin.id) ? t('是', 'Yes') : t('否', 'No')} />
               {props.connectionStatus?.lastError ? <div className="warning-banner compact error">{props.connectionStatus.lastError}</div> : null}
             </Card>
             <Card title={t('服务端信息', 'Server Info')}>
@@ -356,7 +308,7 @@ export function McpManagementPage(props: {
               <List items={props.tools.slice(0, 8).map((tool) => tool.name)} />
             </Card>
             <McpToolSnapshotCard snapshots={props.toolSnapshots} />
-            <McpRawDiagnosticsCard plugin={selectedPlugin} onSendRawRequest={props.onSendRawMcpRequest} />
+            <McpRawDiagnosticsCard plugin={detailPlugin} onSendRawRequest={props.onSendRawMcpRequest} />
             <McpRawAuditCard audits={props.rawAudits} />
             <Card title={t('资源上下文', 'Resource Context')}>
               <div className="helper-copy">{t(`已发现 ${props.resources.length} 个资源`, `${props.resources.length} resources detected`)}</div>
@@ -369,15 +321,39 @@ export function McpManagementPage(props: {
                 ...props.resourceTemplates.slice(0, 4).map((template) => template.uriTemplate)
               ]} />
             </Card>
-            {selectedPlugin.transport === 'stdio' ? (
+            {detailPlugin.transport === 'stdio' ? (
               <Card title={t('进程日志', 'Process Log')}>
                 <div className="helper-copy">{props.connectionStatus?.startedAt ? t(`启动于 ${props.connectionStatus.startedAt}`, `Started at ${props.connectionStatus.startedAt}`) : t('尚未启动 stdio 进程。', 'The stdio process has not started yet.')}</div>
                 <pre className="mcp-process-log">{props.connectionStatus?.stderrTail?.length ? props.connectionStatus.stderrTail.join('\n') : t('暂无 stderr 输出。', 'No stderr output yet.')}</pre>
               </Card>
             ) : null}
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : (
+        <div className="mcp-server-list" role="list">
+          {projectPlugins.length === 0 ? (
+            <div className="empty-note">{t('暂无 MCP Server。可以添加项目 Server，或到全局设置里添加全局 Server。', 'No MCP servers yet. Add a project server, or add a global server in global settings.')}</div>
+          ) : null}
+          {projectPlugins.map((plugin) => {
+            const isProjectScoped = Boolean(plugin.projectId);
+            const disabledByGlobal = !isProjectScoped && !plugin.enabled;
+            const checked = enabledProjectPluginIds.has(plugin.id) && !disabledByGlobal;
+            return (
+              <ServerListRow
+                key={plugin.id}
+                plugin={plugin}
+                selected={false}
+                checked={checked}
+                disabled={!props.project || disabledByGlobal}
+                disabledNote={disabledByGlobal ? t('已在全局禁用', 'Disabled globally') : undefined}
+                onSelect={() => openPluginDetail(plugin)}
+                onDetails={() => openPluginDetail(plugin)}
+                onToggle={(enabled) => props.onToggleProjectMcpPlugin(plugin.id, enabled)}
+              />
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -431,15 +407,10 @@ export function ServerListRow(props: {
   selected: boolean;
   checked: boolean;
   disabled?: boolean;
-  scopeLabel: string;
   disabledNote?: string;
-  connectionStatus?: McpConnectionSnapshot | null;
-  capabilitySummary?: string;
-  policySummary?: string;
   onSelect: () => void;
+  onDetails?: () => void;
   onToggle: (enabled: boolean) => void;
-  onEdit?: () => void;
-  onDelete?: () => void;
 }): JSX.Element {
   const language = useUiLanguage();
   const t = (zh: string, en: string): string => localize(language, zh, en);
@@ -448,25 +419,19 @@ export function ServerListRow(props: {
       <Button variant="ghost" size="compact" className="mcp-server-row-main" onClick={props.onSelect}>
         <span className="mcp-server-row-copy">
           <strong>{props.plugin.name}</strong>
-          <span>{formatMcpEndpoint(props.plugin) || t('未配置 Endpoint', 'No endpoint configured')}</span>
-          {props.capabilitySummary ? <span className="mcp-server-row-detail">{props.capabilitySummary}</span> : null}
-          {props.policySummary ? <span className="mcp-server-row-detail">{props.policySummary}</span> : null}
-          {props.connectionStatus?.lastError ? <span className="mcp-server-row-error">{props.connectionStatus.lastError}</span> : null}
-        </span>
-        <span className="mcp-server-row-meta">
-          <span className={`mcp-status-dot ${connectionStatusClass(props.connectionStatus)}`} aria-hidden="true" />
-          <em>{formatConnectionStatus(language, props.connectionStatus ?? null)}</em>
-          <em>{props.scopeLabel}</em>
           {props.disabledNote ? <em>{props.disabledNote}</em> : null}
         </span>
       </Button>
       <div className="mcp-server-row-actions">
-        {props.onEdit ? (
-          <IconButton label={t('编辑 Server', 'Edit server')} icon={<Settings2 size={15} aria-hidden="true" />} onClick={props.onEdit} />
-        ) : null}
-        {props.onDelete ? (
-          <IconButton label={t('删除 Server', 'Delete server')} icon={<Trash2 size={15} aria-hidden="true" />} variant="danger" onClick={props.onDelete} />
-        ) : null}
+        <Button
+          variant="secondary"
+          size="sm"
+          className="settings-row-detail-button"
+          onClick={props.onDetails ?? props.onSelect}
+          trailingIcon={<ChevronRight size={14} aria-hidden="true" />}
+        >
+          {t('详情', 'Details')}
+        </Button>
         <ToggleSwitch
           label={props.checked ? t('停用 Server', 'Disable server') : t('启用 Server', 'Enable server')}
           checked={props.checked}

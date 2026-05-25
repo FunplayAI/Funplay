@@ -20,7 +20,7 @@ import {
   replaceProjectSession,
   summarizeArchivedConversationTurns
 } from '../../shared/project-sessions.ts';
-import { DEFAULT_AI_SETTINGS, type AgentRuntimeResumeContext, type AiProvider, type AppState, type ChatContentBlock, type ChatMessage, type McpPlugin, type Project, type PromptStreamEvent } from '../../shared/types.ts';
+import { DEFAULT_AI_SETTINGS, type AgentRuntimeResumeContext, type AiProvider, type AppState, type ChatMessage, type McpPlugin, type Project, type PromptStreamEvent } from '../../shared/types.ts';
 import {
   grantSessionWritePermission,
   hasSessionMcpToolPermission,
@@ -64,7 +64,6 @@ import {
   resolveClaudeCollectorFinalText
 } from '../../electron/main/agent-platform/claude/stream-collector.ts';
 import { createConversationOperationLogCollector, createConversationProcessTranscriptCollector } from '../../electron/main/agent-platform/operation-log.ts';
-import { executionPlanRuntime } from '../../electron/main/agent-platform/execution-plan-runtime.ts';
 import { listAgentRuntimeCapabilities } from '../../electron/main/agent-runtime-capability-service.ts';
 import { getAgentToolDefinition, listAgentToolDefinitions, listReadOnlyWorkspaceToolDefinitions } from '../../electron/main/agent-platform/tool-registry.ts';
 import { resolveNativeToolPermission } from '../../electron/main/agent-platform/native/tool-permission.ts';
@@ -98,6 +97,7 @@ import { executeAgentToolAction, executeWorkspaceToolAction } from '../../electr
 import { disposePersistentTerminals } from '../../electron/main/agent-platform/persistent-terminal-store.ts';
 import { buildGenericWorkspaceContext } from '../../electron/main/agent-platform/context.ts';
 import { resolveGenericAgentRuntime } from '../../electron/main/agent-platform/runtime-registry.ts';
+import type { GenericAgentRuntime, GenericAgentRuntimeParams, GenericAgentRuntimeResult } from '../../electron/main/agent-platform/types.ts';
 import { ProjectInstructionTracker, extractNativeToolInputInstructionQuery } from '../../electron/main/agent-platform/project-instruction-tracker.ts';
 import { resolveAgentProvider } from '../../electron/main/agent-platform/provider-resolver.ts';
 import { createMcpPlugin, resolveProjectPluginByKind, setActiveMcpPlugin } from '../../electron/main/mcp-plugin-service.ts';
@@ -109,8 +109,7 @@ import {
   upsertRuntimeRun
 } from '../../electron/main/store.ts';
 import {
-  resumeAgentRun,
-  startAgentExecutionPlanStream
+  resumeAgentRun
 } from '../../electron/main/agent-platform/stream-manager.ts';
 import {
   recordActiveRunTimelineEntry,
@@ -144,7 +143,51 @@ import {
 } from '../../electron/main/runtime-doctor-service.ts';
 import { refreshProjectContext } from '../../electron/main/game-context-manager.ts';
 
-import { buildExecutionPlanProject, buildMcpPlugin, buildProject, buildState, executeNativeWorkspaceTool, readJsonRequest, sendJsonRpc, startTestMcpServer, tryRunGit, waitForFinalStreamEvent } from './test-helpers.ts';
+import { buildMcpPlugin, buildProject, buildState, executeNativeWorkspaceTool, readJsonRequest, sendJsonRpc, startTestMcpServer, tryRunGit, waitForFinalStreamEvent } from './test-helpers.ts';
+
+async function runRuntimeForTest(
+  runtime: GenericAgentRuntime,
+  params: GenericAgentRuntimeParams
+): Promise<GenericAgentRuntimeResult> {
+  for await (const event of runtime.executeEventStream(params)) {
+    if (event.type === 'status') {
+      params.onStatus?.(event.phase, event.message);
+    } else if (event.type === 'text_delta') {
+      params.onTextDelta?.(event.delta, event.accumulated);
+    } else if (event.type === 'thinking_delta') {
+      params.onThinkingDelta?.(event.delta, event.accumulated);
+    } else if (event.type === 'tool_use') {
+      params.onToolUse?.(event.tool);
+    } else if (event.type === 'tool_result') {
+      params.onToolResult?.(event.result);
+    } else if (event.type === 'stage') {
+      params.onStage?.(event.stage);
+    } else if (event.type === 'permission_request') {
+      params.onPermissionRequest?.(event.request);
+    } else if (event.type === 'user_input_request') {
+      params.onUserInputRequest?.(event.request);
+    } else if (event.type === 'usage') {
+      params.onUsage?.(event.usage);
+    } else if (event.type === 'lifecycle_hook') {
+      params.onLifecycleHook?.(event.hook);
+    } else if (event.type === 'agent_core_parts') {
+      params.onAgentCoreParts?.(event.parts);
+    }
+    if (event.type === 'result') {
+      return event.result;
+    }
+  }
+  throw new Error(`Runtime ${runtime.id} completed without a result event.`);
+}
+
+function resultStreamForTest(result: GenericAgentRuntimeResult): GenericAgentRuntime['executeEventStream'] {
+  return async function* () {
+    yield {
+      type: 'result',
+      result
+    };
+  };
+}
 
 test('Claude Agent SDK options pass model options from session runtime overrides', () => {
   let project = buildProject('/tmp/funplay-sdk-model-options');
@@ -755,30 +798,14 @@ test('conversation process transcript keeps command lifecycle hook stages visibl
   assert.equal(metadata.agentProcessActivities?.[0]?.transaction?.permission?.decision, 'allow');
 });
 
-test('generic conversation persists default Agent Core parts from runtime content blocks', async () => {
+test('generic conversation does not synthesize Agent Core parts from runtime plain text', async () => {
   const project = buildProject();
-  const originalExecuteTurn = nativeRuntime.executeTurn;
-  nativeRuntime.executeTurn = async () => ({
+  const originalExecuteEventStream = nativeRuntime.executeEventStream;
+  nativeRuntime.executeEventStream = resultStreamForTest({
     assistantMessage: '我先读取文件。\n\n已经完成。',
     assistantIntent: 'chat',
     status: 'completed',
-    steps: [],
-    assistantContentBlocks: [
-      { type: 'text', text: '我先读取文件。' },
-      {
-        type: 'tool_use',
-        toolUseId: 'tool_read_package',
-        name: 'read_file',
-        input: { path: 'package.json' },
-        status: 'completed'
-      },
-      {
-        type: 'tool_result',
-        toolUseId: 'tool_read_package',
-        content: '读取完成'
-      },
-      { type: 'text', text: '已经完成。' }
-    ]
+    steps: []
   });
 
   try {
@@ -792,61 +819,90 @@ test('generic conversation persists default Agent Core parts from runtime conten
     const assistantMessage = activeSession.chat.findLast((message) => message.role === 'assistant');
     const parts = assistantMessage?.metadata?.agentCoreParts ?? [];
 
-    assert.deepEqual(parts.map((part) => part.kind), ['assistant_text', 'tool_call', 'tool_result', 'assistant_text']);
-    assert.equal(parts[0]?.turnId, 'user_message_agent_core_default');
-    assert.equal(parts[1]?.kind === 'tool_call' ? parts[1].name : undefined, 'read_file');
-    assert.equal(parts[2]?.kind === 'tool_result' ? parts[2].content : undefined, '读取完成');
-    assert.equal(parts[3]?.kind === 'assistant_text' ? parts[3].text : undefined, '已经完成。');
+    assert.deepEqual(parts, []);
+    assert.equal(assistantMessage?.content, '我先读取文件。\n\n已经完成。');
+    assert.equal(Object.prototype.hasOwnProperty.call(assistantMessage ?? {}, 'contentBlocks'), false);
   } finally {
-    nativeRuntime.executeTurn = originalExecuteTurn;
+    nativeRuntime.executeEventStream = originalExecuteEventStream;
   }
 });
 
-test('conversation append creates canonical Agent Core parts at persistence boundary', () => {
+test('generic conversation does not synthesize Agent Core parts from runtime event stream projections', async () => {
+  const project = buildProject();
+  const originalExecuteEventStream = nativeRuntime.executeEventStream;
+  nativeRuntime.executeEventStream = async function* () {
+    yield {
+      type: 'text_delta',
+      delta: '我先读取文件。',
+      accumulated: '我先读取文件。'
+    };
+    yield {
+      type: 'tool_use',
+      tool: {
+        toolUseId: 'tool_stream_read',
+        name: 'read_file',
+        input: { path: 'package.json' },
+        status: 'running'
+      }
+    };
+    yield {
+      type: 'tool_result',
+      result: {
+        toolUseId: 'tool_stream_read',
+        toolName: 'read_file',
+        content: '读取完成'
+      }
+    };
+    yield {
+      type: 'result',
+      result: {
+        assistantMessage: 'runner fallback text',
+        assistantIntent: 'chat',
+        status: 'completed',
+        steps: []
+      }
+    };
+  };
+
+  try {
+    const result = await executeGenericConversation({
+      kind: 'conversation',
+      project,
+      userMessageId: 'user_message_agent_core_stream',
+      message: '检查 package.json'
+    });
+    const activeSession = getActiveProjectSession(result.project);
+    const assistantMessage = activeSession.chat.findLast((message) => message.role === 'assistant');
+    const parts = assistantMessage?.metadata?.agentCoreParts ?? [];
+
+    assert.deepEqual(parts, []);
+    assert.equal(assistantMessage?.content, 'runner fallback text');
+    assert.deepEqual(result.run.operationLog, []);
+  } finally {
+    nativeRuntime.executeEventStream = originalExecuteEventStream;
+  }
+});
+
+test('conversation append keeps plain text separate from Agent Core parts', () => {
   const project = buildProject();
   const nextProject = appendProjectConversationTurn(project, {
     userMessageId: 'user_message_persistence_core',
     userMessage: '读取文件',
     assistantMessage: '我先读取文件。\n\n已经完成。',
-    assistantContentBlocks: [
-      { type: 'text', text: '我先读取文件。' },
-      {
-        type: 'tool_use',
-        toolUseId: 'tool_read_persistence',
-        name: 'read_file',
-        input: { path: 'README.md' },
-        status: 'completed'
-      },
-      {
-        type: 'tool_result',
-        toolUseId: 'tool_read_persistence',
-        content: '读取完成'
-      },
-      { type: 'text', text: '已经完成。' }
-    ],
     updatedAt: '2026-05-16T00:00:00.000Z'
   });
   const assistantMessage = getActiveProjectSession(nextProject).chat.findLast((message) => message.role === 'assistant');
-  const parts = assistantMessage?.metadata?.agentCoreParts ?? [];
-
-  assert.deepEqual(parts.map((part) => part.kind), ['assistant_text', 'tool_call', 'tool_result', 'assistant_text']);
-  assert.equal(parts[0]?.turnId, 'user_message_persistence_core');
-  assert.equal(parts[1]?.kind === 'tool_call' ? parts[1].toolUseId : undefined, 'tool_read_persistence');
-  assert.equal(parts[2]?.kind === 'tool_result' ? parts[2].content : undefined, '读取完成');
+  assert.equal(assistantMessage?.metadata?.agentCoreParts, undefined);
+  assert.equal(assistantMessage?.content, '我先读取文件。\n\n已经完成。');
+  assert.equal(Object.prototype.hasOwnProperty.call(assistantMessage ?? {}, 'contentBlocks'), false);
 });
 
-test('conversation append projects legacy blocks from canonical Agent Core parts', () => {
+test('conversation append persists canonical Agent Core parts as the only structured ledger', () => {
   const project = buildProject();
   const nextProject = appendProjectConversationTurn(project, {
     userMessageId: 'user_message_projection_core',
     userMessage: '读取文件',
     assistantMessage: '已经完成。',
-    assistantContentBlocks: [
-      {
-        type: 'text',
-        text: 'stale legacy block'
-      }
-    ],
     assistantMetadata: {
       agentCoreParts: [
         {
@@ -880,15 +936,13 @@ test('conversation append projects legacy blocks from canonical Agent Core parts
   });
   const assistantMessage = getActiveProjectSession(nextProject).chat.findLast((message) => message.role === 'assistant');
 
-  assert.deepEqual(assistantMessage?.contentBlocks?.map((block) => block.type), ['text', 'tool_use', 'tool_result']);
-  assert.equal(assistantMessage?.contentBlocks?.[0]?.type === 'text' ? assistantMessage.contentBlocks[0].text : undefined, '我先读取文件。');
-  assert.equal(assistantMessage?.contentBlocks?.[1]?.type === 'tool_use' ? assistantMessage.contentBlocks[1].name : undefined, 'read_file');
+  assert.equal(Object.prototype.hasOwnProperty.call(assistantMessage ?? {}, 'contentBlocks'), false);
   assert.equal(assistantMessage?.metadata?.agentCoreParts?.[1]?.kind, 'tool_call');
 });
 
 test('generic conversation surfaces active filesystem skill as an Agent Core part', async () => {
   const projectPath = await mkdtemp(join(tmpdir(), 'funplay-skill-core-part-'));
-  const originalExecuteTurn = nativeRuntime.executeTurn;
+  const originalExecuteEventStream = nativeRuntime.executeEventStream;
   try {
     await mkdir(join(projectPath, '.git'), { recursive: true });
     await mkdir(join(projectPath, '.claude', 'skills', 'backend-plan'), { recursive: true });
@@ -900,12 +954,11 @@ test('generic conversation surfaces active filesystem skill as an Agent Core par
       '',
       'Use backend planning steps.'
     ].join('\n'), 'utf8');
-    nativeRuntime.executeTurn = async () => ({
+    nativeRuntime.executeEventStream = resultStreamForTest({
       assistantMessage: '已经完成。',
       assistantIntent: 'chat',
       status: 'completed',
-      steps: [],
-      assistantContentBlocks: [{ type: 'text', text: '已经完成。' }]
+      steps: []
     });
 
     const result = await executeGenericConversation({
@@ -921,38 +974,45 @@ test('generic conversation surfaces active filesystem skill as an Agent Core par
     assert.equal(parts[0]?.kind, 'system_event');
     assert.equal(parts[0]?.kind === 'system_event' ? parts[0].metadata?.type : undefined, 'skill_activation');
     assert.equal(parts[0]?.kind === 'system_event' ? parts[0].metadata?.skillName : undefined, 'backend-plan');
-    assert.equal(parts[1]?.kind, 'assistant_text');
+    assert.equal(parts.length, 1);
   } finally {
-    nativeRuntime.executeTurn = originalExecuteTurn;
+    nativeRuntime.executeEventStream = originalExecuteEventStream;
     await rm(projectPath, { recursive: true, force: true });
   }
 });
 
 test('generic conversation enforces a session-level run lock', async () => {
   const project = buildProject();
-  const originalExecuteTurn = nativeRuntime.executeTurn;
+  const originalExecuteEventStream = nativeRuntime.executeEventStream;
   let releaseFirstRun!: () => void;
   let callCount = 0;
   const firstRunReady = new Promise<void>((resolve) => {
-    nativeRuntime.executeTurn = async () => {
+    nativeRuntime.executeEventStream = async function* () {
       callCount += 1;
       if (callCount > 1) {
-        return {
+        yield {
+          type: 'result',
+          result: {
           assistantMessage: 'later done',
           assistantIntent: 'chat',
           status: 'completed',
           steps: []
+          }
         };
+        return;
       }
       resolve();
       await new Promise<void>((release) => {
         releaseFirstRun = release;
       });
-      return {
-        assistantMessage: 'first done',
-        assistantIntent: 'chat',
-        status: 'completed',
-        steps: []
+      yield {
+        type: 'result',
+        result: {
+          assistantMessage: 'first done',
+          assistantIntent: 'chat',
+          status: 'completed',
+          steps: []
+        }
       };
     };
   });
@@ -988,7 +1048,7 @@ test('generic conversation enforces a session-level run lock', async () => {
     });
     assert.equal(secondAfterRelease.run.status, 'completed');
   } finally {
-    nativeRuntime.executeTurn = originalExecuteTurn;
+    nativeRuntime.executeEventStream = originalExecuteEventStream;
   }
 });
 
@@ -1168,7 +1228,7 @@ test('Claude Code runtime compacts long resume context into a persistent handoff
     const stages: Array<{ stageId?: string; status?: string; input?: unknown }> = [];
     const hookEvents: string[] = [];
 
-    const result = await claudeCodeSdkRuntime.executeTurn?.({
+    const result = await runRuntimeForTest(claudeCodeSdkRuntime, {
       project,
       message: '继续执行当前任务',
       provider: {
@@ -1315,7 +1375,7 @@ test('Claude Code runtime retries stale resume and persists fresh CLI session', 
     const hookEvents: string[] = [];
     const stages: Array<{ stageId?: string; status?: string; input?: unknown; summary?: string }> = [];
 
-    const result = await claudeCodeSdkRuntime.executeTurn?.({
+    const result = await runRuntimeForTest(claudeCodeSdkRuntime, {
       project,
       message: '继续分析',
       provider: {
@@ -1478,7 +1538,7 @@ test('Claude Code runtime runs UserPromptSubmit and Stop lifecycle hooks', async
     const project = buildProject(projectPath);
     const hookEvents: string[] = [];
     const stages: Array<{ stageId?: string; status?: string; summary?: string }> = [];
-    const result = await claudeCodeSdkRuntime.executeTurn?.({
+    const result = await runRuntimeForTest(claudeCodeSdkRuntime, {
       project,
       message: '总结项目结构',
       provider: {
@@ -1597,7 +1657,7 @@ test('Claude Code runtime clears stale resume id when fresh retry also fails', a
         claudeCodeSessionCwd: projectPath
       }
     });
-    const result = await claudeCodeSdkRuntime.executeTurn?.({
+    const result = await runRuntimeForTest(claudeCodeSdkRuntime, {
       project,
       message: '继续分析',
       provider: {
@@ -1679,7 +1739,7 @@ test('Claude external audited writes create rollback checkpoints', async () => {
     const project = buildProject(projectPath);
     const context = buildGenericWorkspaceContext(project, [], getActiveProjectSession(project).id, '修改 src/existing.txt 并创建 src/added.txt');
     const stages: Array<{ stageId: string; input?: Record<string, unknown> }> = [];
-    const result = await claudeCodeSdkRuntime.executeTurn?.({
+    const result = await runRuntimeForTest(claudeCodeSdkRuntime, {
       project,
       message: '修改 src/existing.txt，创建 src/added.txt，并删除 src/removed.txt',
       provider: {
@@ -1779,7 +1839,7 @@ test('Claude read-only write requests stop before external writes', async () => 
     const project = buildProject(projectPath);
     const context = buildGenericWorkspaceContext(project, [], getActiveProjectSession(project).id, '修改 src/existing.txt');
     const stages: Array<{ stageId: string; input?: Record<string, unknown>; status?: string }> = [];
-    const result = await claudeCodeSdkRuntime.executeTurn?.({
+    const result = await runRuntimeForTest(claudeCodeSdkRuntime, {
       project,
       message: '修改 src/existing.txt',
       provider: {
@@ -1870,6 +1930,7 @@ test('read-only workspace tools are registered through the tool registry', () =>
       'inspect_game_project',
       'list_agent_skill_files',
       'list_agent_skills',
+      'list_asset_generation_capabilities',
       'list_mcp_resources',
       'list_mcp_tools',
       'media_attach_file',
@@ -1927,11 +1988,14 @@ test('tool registry includes write and MCP metadata boundaries', () => {
       'funplay_memory_search',
       'funplay_notify',
       'funplay_schedule_task',
+      'generate_asset',
       'image_generate',
+      'import_generated_asset',
       'inspect_game_project',
       'install_engine_bridge',
       'list_agent_skill_files',
       'list_agent_skills',
+      'list_asset_generation_capabilities',
       'list_mcp_resources',
       'list_mcp_tools',
       'media_attach_file',
@@ -2102,7 +2166,7 @@ test('native tool permission delegates registered write tools through broker', a
   assert.match(requested[0]?.detail ?? '', /检查点策略：external_best_effort/);
 });
 
-test('permission broker covers execute-plan and Claude external write subjects', async () => {
+test('permission broker covers Claude external write subjects', async () => {
   const requests: Array<{
     title: string;
     detail: string;
@@ -2128,23 +2192,6 @@ test('permission broker covers execute-plan and Claude external write subjects',
   assert.equal(
     await resolveAgentToolPermission(context, {
       tool: {
-        name: 'execute_plan_unity_write',
-        title: 'Execute Plan Unity Write',
-        risk: 'high',
-        readOnly: false,
-        permissionPolicy: 'ask',
-        checkpointPolicy: 'external_best_effort'
-      },
-      input: {
-        actionTitle: 'Create scene objects'
-      }
-    }),
-    'allow'
-  );
-
-  assert.equal(
-    await resolveAgentToolPermission(context, {
-      tool: {
         name: 'claude_code_external_write',
         title: 'Claude Code External Write Mode',
         risk: 'high',
@@ -2159,7 +2206,7 @@ test('permission broker covers execute-plan and Claude external write subjects',
     'allow'
   );
 
-  assert.equal(requests.length, 2);
+  assert.equal(requests.length, 1);
   assert.equal(requests.every((request) => request.risk === 'high'), true);
   assert.equal(requests.every((request) => /external_best_effort/.test(request.detail)), true);
 });
@@ -2177,6 +2224,8 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
   assert.equal(listNativeWorkspaceToolNames().includes('funplay_schedule_task'), false);
   assert.equal(listNativeWorkspaceToolNames().includes('media_save_base64'), false);
   assert.equal(listNativeWorkspaceToolNames().includes('image_generate'), false);
+  assert.equal(listNativeWorkspaceToolNames().includes('generate_asset'), false);
+  assert.equal(listNativeWorkspaceToolNames().includes('import_generated_asset'), false);
   assert.equal(listNativeWorkspaceToolNames().includes('open_engine_hub'), false);
   assert.equal(listNativeWorkspaceToolNames().includes('open_engine_project'), false);
   assert.equal(listNativeWorkspaceToolNames().includes('install_engine_bridge'), false);
@@ -2194,6 +2243,8 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
   assert.equal(listNativeWorkspaceToolNames({ includeWriteTools: true }).includes('funplay_schedule_task'), true);
   assert.equal(listNativeWorkspaceToolNames({ includeWriteTools: true }).includes('media_save_base64'), true);
   assert.equal(listNativeWorkspaceToolNames({ includeWriteTools: true }).includes('image_generate'), true);
+  assert.equal(listNativeWorkspaceToolNames({ includeWriteTools: true }).includes('generate_asset'), true);
+  assert.equal(listNativeWorkspaceToolNames({ includeWriteTools: true }).includes('import_generated_asset'), true);
   assert.equal(listNativeWorkspaceToolNames({ includeWriteTools: true }).includes('open_engine_hub'), true);
   assert.equal(listNativeWorkspaceToolNames({ includeWriteTools: true }).includes('open_engine_project'), true);
   assert.equal(listNativeWorkspaceToolNames({ includeWriteTools: true }).includes('install_engine_bridge'), true);
@@ -2229,6 +2280,7 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
       'inspect_game_project',
       'list_agent_skill_files',
       'list_agent_skills',
+      'list_asset_generation_capabilities',
       'list_mcp_resources',
       'list_mcp_tools',
       'media_attach_file',
@@ -2276,11 +2328,14 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
       'funplay_memory_search',
       'funplay_notify',
       'funplay_schedule_task',
+      'generate_asset',
       'image_generate',
+      'import_generated_asset',
       'inspect_game_project',
       'install_engine_bridge',
       'list_agent_skill_files',
       'list_agent_skills',
+      'list_asset_generation_capabilities',
       'list_mcp_resources',
       'list_mcp_tools',
       'media_attach_file',
@@ -2332,6 +2387,7 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
       'inspect_game_project',
       'list_agent_skill_files',
       'list_agent_skills',
+      'list_asset_generation_capabilities',
       'list_mcp_resources',
       'list_mcp_tools',
       'media_attach_file',
@@ -2381,6 +2437,7 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
       'inspect_game_project',
       'list_agent_skill_files',
       'list_agent_skills',
+      'list_asset_generation_capabilities',
       'list_mcp_resources',
       'list_mcp_tools',
       'media_attach_file',
@@ -3285,7 +3342,7 @@ test('native runtime does not short-circuit trivial greetings without a provider
   const project = buildProject('/tmp/funplay-native-greeting');
   const textDeltas: string[] = [];
   const stages: string[] = [];
-  const result = await nativeRuntime.executeTurn({
+  const result = await runRuntimeForTest(nativeRuntime, {
     project,
     message: '您好',
     provider: undefined,
@@ -3334,7 +3391,7 @@ test('native build mode exposes write tools before intent heuristic matches', as
       });
     }) as typeof fetch;
 
-    const result = await nativeRuntime.executeTurn({
+    const result = await runRuntimeForTest(nativeRuntime, {
       project,
       message: '先看看项目情况',
       provider: {
@@ -3400,7 +3457,7 @@ test('native plan mode exposes command tools but not write tools', async () => {
       });
     }) as typeof fetch;
 
-    const result = await nativeRuntime.executeTurn({
+    const result = await runRuntimeForTest(nativeRuntime, {
       project,
       message: '先看看项目情况',
       provider: {
@@ -3458,7 +3515,7 @@ test('native Xiaomi MiMo tool-loop map error is not retried without tools', asyn
       });
     }) as typeof fetch;
 
-    const result = await nativeRuntime.executeTurn({
+    const result = await runRuntimeForTest(nativeRuntime, {
       project,
       message: '先看看项目情况',
       provider: {
@@ -3525,7 +3582,7 @@ test('native OpenAI-compatible direct reply uses streaming chat completions', as
       });
     }) as typeof fetch;
 
-    const result = await nativeRuntime.executeTurn({
+    const result = await runRuntimeForTest(nativeRuntime, {
       project,
       message: '你好',
       provider: {
@@ -3596,7 +3653,7 @@ test('native runtime runs SessionStart hooks before provider input build', async
       });
     }) as typeof fetch;
 
-    const result = await nativeRuntime.executeTurn({
+    const result = await runRuntimeForTest(nativeRuntime, {
       project,
       message: '你好',
       provider: {
@@ -4766,7 +4823,7 @@ test('native plan mode enters tool-loop instead of local write-permission fallba
     }) as typeof fetch;
 
     const stages: Array<{ stageId: string; status?: string; summary?: string }> = [];
-    const result = await nativeRuntime.executeTurn?.({
+    const result = await runRuntimeForTest(nativeRuntime, {
       project,
       message: '在项目中新建一个文件夹用来放资源文件',
       provider: {
@@ -4815,7 +4872,7 @@ test('native plan mode enters tool-loop instead of local write-permission fallba
   }
 });
 
-test('native conversation content blocks preserve tool input across completion updates', async () => {
+test('native conversation Agent Core ledger preserves tool input across completion updates', async () => {
   const projectPath = await mkdtemp(join(tmpdir(), 'funplay-native-tool-block-input-'));
   const originalFetch = globalThis.fetch;
   try {
@@ -4872,7 +4929,7 @@ test('native conversation content blocks preserve tool input across completion u
       });
     }) as typeof fetch;
 
-    const result = await nativeRuntime.executeTurn?.({
+    const result = await runRuntimeForTest(nativeRuntime, {
       project,
       message: '读取 notes.md',
       provider: {
@@ -4890,6 +4947,8 @@ test('native conversation content blocks preserve tool input across completion u
       },
       plugins: [],
       context: buildGenericWorkspaceContext(project, [], getActiveProjectSession(project).id, '读取 notes.md'),
+      activeRunId: 'run_native_output_projection',
+      turnId: 'turn_native_output_projection',
       permission: {
         mode: 'read-only',
         allowWriteTools: false,
@@ -4898,14 +4957,14 @@ test('native conversation content blocks preserve tool input across completion u
     });
 
     assert.equal(result?.status, 'completed');
-    const readToolBlock = result?.assistantContentBlocks?.find(
-      (block): block is Extract<ChatContentBlock, { type: 'tool_use' }> => block.type === 'tool_use' && block.name === 'read_file'
-    );
-    assert.equal(readToolBlock?.type, 'tool_use');
-    assert.deepEqual(readToolBlock?.input, {
+    const parts = result?.assistantMetadata?.agentCoreParts ?? [];
+    const toolPart = parts.find((part) => part.kind === 'tool_call' && part.toolUseId === 'call_read_notes');
+    assert.equal(toolPart?.kind, 'tool_call');
+    assert.equal(toolPart?.turnId, 'turn_native_output_projection');
+    assert.equal(toolPart?.runId, 'run_native_output_projection');
+    assert.deepEqual(toolPart?.kind === 'tool_call' ? toolPart.input : undefined, {
       path: 'notes.md'
     });
-    assert.equal(readToolBlock?.status, 'completed');
   } finally {
     globalThis.fetch = originalFetch;
     await rm(projectPath, { recursive: true, force: true });
@@ -5783,29 +5842,38 @@ test('openai-compatible native tool loop resumes incomplete todo from prior assi
           role: 'assistant',
           content: '',
           createdAt,
-          contentBlocks: [
-            {
-              type: 'tool_use',
-              toolUseId: 'tool_old_todo',
-              name: 'update_todo_list',
-              input: {
-                todos: [
-                  { id: '5', content: '重写 renderer.js（掉落物/怪物/血条/光照/合成UI/死亡画面）', status: 'in_progress' },
-                  { id: '6', content: '更新 index.html（引入新脚本）', status: 'pending' }
-                ]
+          metadata: {
+            agentCoreParts: [
+              {
+                id: 'part_old_todo_call',
+                kind: 'tool_call',
+                sequence: 0,
+                createdAt,
+                toolUseId: 'tool_old_todo',
+                name: 'update_todo_list',
+                input: {
+                  todos: [
+                    { id: '5', content: '重写 renderer.js（掉落物/怪物/血条/光照/合成UI/死亡画面）', status: 'in_progress' },
+                    { id: '6', content: '更新 index.html（引入新脚本）', status: 'pending' }
+                  ]
+                },
+                status: 'completed'
               },
-              status: 'completed'
-            },
-            {
-              type: 'tool_result',
-              toolUseId: 'tool_old_todo',
-              content: [
-                '任务清单已更新（2 项）：',
-                '- [in_progress] 5 (high): 重写 renderer.js（掉落物/怪物/血条/光照/合成UI/死亡画面）',
-                '- [pending] 6 (high): 更新 index.html（引入新脚本）'
-              ].join('\n')
-            }
-          ]
+              {
+                id: 'part_old_todo_result',
+                kind: 'tool_result',
+                sequence: 1,
+                createdAt,
+                toolUseId: 'tool_old_todo',
+                toolName: 'update_todo_list',
+                content: [
+                  '任务清单已更新（2 项）：',
+                  '- [in_progress] 5 (high): 重写 renderer.js（掉落物/怪物/血条/光照/合成UI/死亡画面）',
+                  '- [pending] 6 (high): 更新 index.html（引入新脚本）'
+                ].join('\n')
+              }
+            ]
+          }
         }
       ]
     }, activeSession.id);
@@ -6285,34 +6353,50 @@ test('openai-compatible chat tool loop replays completed historical tools as pro
           role: 'assistant',
           content: '',
           createdAt: new Date().toISOString(),
-          contentBlocks: [
-            {
-              type: 'text',
-              text: '我先读取文件。'
-            },
-            {
-              type: 'tool_use',
-              toolUseId: 'tool_history_read',
-              name: 'read_file',
-              input: {
-                path: 'notes.md'
+          metadata: {
+            agentCoreParts: [
+              {
+                id: 'part_history_text',
+                kind: 'assistant_text',
+                sequence: 0,
+                createdAt: '2026-05-16T00:00:00.000Z',
+                text: '我先读取文件。'
+              },
+              {
+                id: 'part_history_read',
+                kind: 'tool_call',
+                sequence: 1,
+                createdAt: '2026-05-16T00:00:01.000Z',
+                toolUseId: 'tool_history_read',
+                name: 'read_file',
+                input: {
+                  path: 'notes.md'
+                },
+                status: 'completed'
+              },
+              {
+                id: 'part_history_result',
+                kind: 'tool_result',
+                sequence: 2,
+                createdAt: '2026-05-16T00:00:02.000Z',
+                toolUseId: 'tool_history_read',
+                toolName: 'read_file',
+                content: 'notes history content'
+              },
+              {
+                id: 'part_history_unpaired',
+                kind: 'tool_call',
+                sequence: 3,
+                createdAt: '2026-05-16T00:00:03.000Z',
+                toolUseId: 'tool_history_unpaired',
+                name: 'read_file',
+                input: {
+                  path: 'missing.md'
+                },
+                status: 'running'
               }
-            },
-            {
-              type: 'tool_result',
-              toolUseId: 'tool_history_read',
-              content: 'notes history content',
-              isError: false
-            },
-            {
-              type: 'tool_use',
-              toolUseId: 'tool_history_unpaired',
-              name: 'read_file',
-              input: {
-                path: 'missing.md'
-              }
-            }
-          ]
+            ]
+          }
         }
       ]
     });
@@ -6414,34 +6498,47 @@ test('openai-compatible responses tool loop replays completed historical tools a
           role: 'assistant',
           content: '',
           createdAt: new Date().toISOString(),
-          contentBlocks: [
-            {
-              type: 'tool_use',
-              toolUseId: 'tool_history_context',
-              name: 'inspect_workspace_context',
-              input: {
-                projectName: 'Rogue',
-                projectPath: 'Rogue',
-                pluginCount: 0
+          metadata: {
+            agentCoreParts: [
+              {
+                id: 'part_history_context',
+                kind: 'tool_call',
+                sequence: 0,
+                createdAt: '2026-05-16T00:00:00.000Z',
+                toolUseId: 'tool_history_context',
+                name: 'inspect_workspace_context',
+                input: {
+                  projectName: 'Rogue',
+                  projectPath: 'Rogue',
+                  pluginCount: 0
+                },
+                status: 'completed'
+              },
+              {
+                id: 'part_history_context_result',
+                kind: 'tool_result',
+                sequence: 1,
+                createdAt: '2026-05-16T00:00:01.000Z',
+                toolUseId: 'tool_history_context',
+                toolName: 'inspect_workspace_context',
+                content: 'Workspace context inspected.'
+              },
+              {
+                id: 'part_history_unpaired',
+                kind: 'tool_call',
+                sequence: 2,
+                createdAt: '2026-05-16T00:00:02.000Z',
+                toolUseId: 'tool_history_unpaired',
+                name: 'inspect_workspace_context',
+                input: {
+                  projectName: 'Rogue',
+                  projectPath: 'Rogue',
+                  pluginCount: 0
+                },
+                status: 'running'
               }
-            },
-            {
-              type: 'tool_result',
-              toolUseId: 'tool_history_context',
-              content: 'Workspace context inspected.',
-              isError: false
-            },
-            {
-              type: 'tool_use',
-              toolUseId: 'tool_history_unpaired',
-              name: 'inspect_workspace_context',
-              input: {
-                projectName: 'Rogue',
-                projectPath: 'Rogue',
-                pluginCount: 0
-              }
-            }
-          ]
+            ]
+          }
         }
       ]
     });
@@ -8671,43 +8768,64 @@ test('model message builder reconstructs assistant tool calls and results', () =
       role: 'assistant',
       content: '完成。',
       createdAt,
-      contentBlocks: [
-        {
-          type: 'thinking',
-          thinking: 'internal chain'
-        },
-        {
-          type: 'text',
-          text: '我先读取文件。'
-        },
-        {
-          type: 'tool_use',
-          toolUseId: 'tool_1',
-          name: 'read_file',
-          input: {
-            path: 'package.json'
+      metadata: {
+        agentCoreParts: [
+          {
+            id: 'part_thinking',
+            kind: 'assistant_thinking',
+            sequence: 0,
+            createdAt,
+            thinking: 'internal chain'
           },
-          status: 'completed'
-        },
-        {
-          type: 'tool_result',
-          toolUseId: 'tool_1',
-          content: '{"name":"funplay"}'
-        },
-        {
-          type: 'text',
-          text: 'package.json 已读取。'
-        },
-        {
-          type: 'tool_use',
-          toolUseId: 'tool_unpaired',
-          name: 'read_file',
-          input: {
-            path: 'missing.md'
+          {
+            id: 'part_text_1',
+            kind: 'assistant_text',
+            sequence: 1,
+            createdAt,
+            text: '我先读取文件。'
           },
-          status: 'running'
-        }
-      ]
+          {
+            id: 'part_tool_1',
+            kind: 'tool_call',
+            sequence: 2,
+            createdAt,
+            toolUseId: 'tool_1',
+            name: 'read_file',
+            input: {
+              path: 'package.json'
+            },
+            status: 'completed'
+          },
+          {
+            id: 'part_result_1',
+            kind: 'tool_result',
+            sequence: 3,
+            createdAt,
+            toolUseId: 'tool_1',
+            toolName: 'read_file',
+            content: '{"name":"funplay"}'
+          },
+          {
+            id: 'part_text_2',
+            kind: 'assistant_text',
+            sequence: 4,
+            createdAt,
+            text: 'package.json 已读取。'
+          },
+          {
+            id: 'part_tool_unpaired',
+            kind: 'tool_call',
+            sequence: 5,
+            createdAt,
+            toolUseId: 'tool_unpaired',
+            name: 'read_file',
+            input: {
+              path: 'missing.md'
+            },
+            status: 'running'
+          }
+        ]
+      }
     }
   ];
 
@@ -8763,14 +8881,18 @@ test('model message builder downgrades orphan tool results to assistant text', (
       role: 'assistant',
       content: '',
       createdAt,
-      contentBlocks: [
-        {
-          type: 'tool_result',
-          toolUseId: 'missing_tool',
-          content: 'late result',
-          isError: true
-        }
-      ]
+      metadata: {
+        agentCoreParts: [
+          {
+            id: 'part_orphan_error',
+            kind: 'tool_error',
+            sequence: 0,
+            createdAt,
+            toolUseId: 'missing_tool',
+            error: 'late result'
+          }
+        ]
+      }
     }
   ];
 
@@ -8849,26 +8971,38 @@ test('native tool-loop messages microcompact older tool results while preserving
           role: 'assistant',
           content: '',
           createdAt,
-          contentBlocks: [
-            {
-              type: 'text',
-              text: '我会先读文件。'
-            },
-            {
-              type: 'tool_use',
-              toolUseId: 'tool_old_read',
-              name: 'read_file',
-              input: {
-                path: 'src/App.tsx'
+          metadata: {
+            agentCoreParts: [
+              {
+                id: 'part_old_text',
+                kind: 'assistant_text',
+                sequence: 0,
+                createdAt,
+                text: '我会先读文件。'
               },
-              status: 'completed'
-            },
-            {
-              type: 'tool_result',
-              toolUseId: 'tool_old_read',
-              content: longToolOutput
-            }
-          ]
+              {
+                id: 'part_old_read',
+                kind: 'tool_call',
+                sequence: 1,
+                createdAt,
+                toolUseId: 'tool_old_read',
+                name: 'read_file',
+                input: {
+                  path: 'src/App.tsx'
+                },
+                status: 'completed'
+              },
+              {
+                id: 'part_old_read_result',
+                kind: 'tool_result',
+                sequence: 2,
+                createdAt,
+                toolUseId: 'tool_old_read',
+                toolName: 'read_file',
+                content: longToolOutput
+              }
+            ]
+          }
         },
         {
           id: 'msg_recent_user',
@@ -9286,6 +9420,7 @@ test('project memory service lists, edits, filters, and clears memory files', as
       providers: [],
       mcpSettings: {},
       mcpPlugins: [],
+      assetGenerationProviders: [],
       projects: [project]
     };
 
@@ -9647,18 +9782,12 @@ test('archived conversation summary returns undefined for empty input', () => {
   assert.equal(summarizeArchivedConversationTurns([]), undefined);
 });
 
-test('chat message text helpers prefer Agent Core parts over legacy blocks', () => {
+test('chat message text helpers read Agent Core parts as the structured ledger', () => {
   const message: ChatMessage = {
     id: 'msg_core_text',
     role: 'assistant',
     content: '[Previous tool call] stale_tool input={}',
     createdAt: '2026-05-16T00:00:00.000Z',
-    contentBlocks: [
-      {
-        type: 'text',
-        text: 'stale legacy text'
-      }
-    ],
     metadata: {
       agentCoreParts: [
         {
@@ -9700,7 +9829,6 @@ test('chat message text helpers prefer Agent Core parts over legacy blocks', () 
   assert.match(contextText, /read_file/);
   assert.match(contextText, /README loaded/);
   assert.match(contextText, /Final answer from parts/);
-  assert.doesNotMatch(contextText, /stale legacy text/);
   assert.equal(visibleText, 'Final answer from parts.');
 });
 

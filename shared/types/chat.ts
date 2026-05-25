@@ -117,7 +117,6 @@ export interface ChatMessage {
   id: string;
   role: ChatRole;
   content: string;
-  contentBlocks?: ChatContentBlock[];
   createdAt: string;
   ordinal?: number;
   storageRowId?: number;
@@ -141,6 +140,9 @@ export type ChatContentBlock =
       type: 'tool_use';
       toolUseId: string;
       name: string;
+      title?: string;
+      summary?: string;
+      activity?: string;
       input?: Record<string, unknown>;
       status?: 'pending' | 'running' | 'completed' | 'failed';
     }

@@ -145,3 +145,17 @@ test('styles.css contains no component-level dark theme overrides', () => {
       `(found ${darkComponentOverrides.length}). Theme-dependent styling flows through tokens in tokens.css.`
   );
 });
+
+test('agent user input option buttons keep answer text left aligned', () => {
+  const normalized = stylesCss.replace(/\s+/g, ' ');
+  assert.match(
+    normalized,
+    /\.agent-user-input-options button \{[^}]*justify-content: stretch;[^}]*justify-items: stretch;[^}]*text-align: left;/,
+    'pending user input option buttons must override shared centered button layout'
+  );
+  assert.match(
+    normalized,
+    /\.agent-user-input-options \.fp-button-label \{[^}]*width: 100%;[^}]*justify-items: start;[^}]*text-align: left;/,
+    'pending user input option labels must fill the row and align text from the left'
+  );
+});

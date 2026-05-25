@@ -50,7 +50,9 @@ export function renderChatContent(content: string, openablePaths: string[], sear
     <>
       {blocks.map((block, index) => {
         if (block.type === 'code') {
-          return <ChatCodeBlock key={`block-${index}`} language={block.language} content={block.content} />;
+          return isPlainTextFence(block.language)
+            ? <PlainTextBlock key={`block-${index}`} content={block.content} />
+            : <ChatCodeBlock key={`block-${index}`} language={block.language} content={block.content} />;
         }
 
         if (block.type === 'heading') {
@@ -85,7 +87,7 @@ export function renderChatContent(content: string, openablePaths: string[], sear
         }
 
         if (block.type === 'divider') {
-          return <div key={`block-${index}`} className="chat-rich-divider" role="separator" />;
+          return <hr key={`block-${index}`} className="chat-rich-divider" />;
         }
 
         if (block.type === 'table') {
@@ -129,6 +131,12 @@ export function renderChatContent(content: string, openablePaths: string[], sear
   );
 }
 
+function PlainTextBlock(props: { content: string }): JSX.Element {
+  return (
+    <pre className="chat-plain-text-block"><code>{props.content}</code></pre>
+  );
+}
+
 function ChatCodeBlock(props: { language?: string; content: string }): JSX.Element {
   const language = useUiLanguage();
   const [copied, setCopied] = useState(false);
@@ -149,11 +157,14 @@ function ChatCodeBlock(props: { language?: string; content: string }): JSX.Eleme
           {copied ? localize(language, '已复制', 'Copied') : localize(language, '复制', 'Copy')}
         </Button>
       </div>
-      <pre className="chat-code-block">
-        <code>{props.content}</code>
-      </pre>
+      <pre className="chat-code-block"><code>{props.content}</code></pre>
     </div>
   );
+}
+
+function isPlainTextFence(language: string | undefined): boolean {
+  const normalized = language?.trim().toLowerCase();
+  return normalized === 'text' || normalized === 'txt' || normalized === 'plain' || normalized === 'plaintext';
 }
 
 function parseChatBlocks(content: string): ParsedChatBlock[] {

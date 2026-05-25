@@ -272,6 +272,22 @@
 }
 
 :where(
+  .audio-waveform-preview
+) {
+  --fp-audio-waveform-bg: #111827;
+  --fp-audio-waveform-baseline: rgba(148, 163, 184, 0.22);
+  --fp-audio-waveform-fill: #f59e0b;
+  --fp-audio-waveform-progress: #a78bfa;
+}
+
+:where(
+  .audio-waveform-preview canvas
+) {
+  border-color: rgba(129, 140, 248, 0.18);
+  background: var(--fp-audio-waveform-bg);
+}
+
+:where(
   .file-editor-gutter
 ) {
   background: var(--fp-dark-surface);
@@ -284,6 +300,12 @@
 ) {
   background: var(--fp-dark-accent-soft);
   color: var(--fp-dark-accent-text);
+}
+
+:where(
+  .markdown-preview hr
+) {
+  background: linear-gradient(90deg, transparent, var(--fp-dark-border-strong), transparent);
 }
 
 :where(
@@ -340,13 +362,6 @@
 }
 
 :where(
-  .mcp-server-row-meta em
-) {
-  background: var(--fp-dark-accent-soft-strong);
-  color: var(--fp-dark-accent-text);
-}
-
-:where(
   .icon-text-button:hover
 ) {
   background: var(--fp-dark-border-subtle);
@@ -399,7 +414,6 @@
   .event-toggle,
   .modal-close-button,
   .file-inspector-close,
-  .asset-category-tabs button,
   .session-changes-icon-button
 ) {
   background: var(--fp-dark-border-subtle);
@@ -410,7 +424,7 @@
 :where(
   .file-inspector-close:hover,
   .modal-close-button:hover,
-  .asset-category-tabs button:hover
+  .session-changes-icon-button:hover
 ) {
   background: var(--fp-dark-border-strong);
   color: var(--fp-dark-text-bright);
@@ -471,6 +485,76 @@
   textarea::placeholder
 ) {
   color: var(--fp-dark-text-quaternary);
+}
+
+:where(
+  .project-settings-page,
+  .assets-page.project-settings-page
+) {
+  background: var(--fp-project-settings-page-bg);
+  color: var(--text);
+}
+
+:where(
+  .project-settings-sidebar,
+  .asset-library-sidebar
+) {
+  background: var(--fp-project-settings-sidebar-bg);
+  border-color: var(--fp-project-settings-border);
+  color: var(--text);
+}
+
+:where(
+  .project-settings-detail,
+  .project-settings-detail-body,
+  .asset-library-detail,
+  .asset-library-detail-body
+) {
+  background: var(--fp-project-settings-detail-bg);
+  color: var(--text);
+}
+
+:where(
+  .project-settings-detail-header,
+  .asset-library-detail-header
+) {
+  background: var(--fp-project-settings-detail-header-bg);
+  border-color: var(--fp-project-settings-detail-header-border);
+  color: var(--text);
+}
+
+:where(
+  .app-settings-layout,
+  .app-settings-detail,
+  .app-settings-section,
+  .app-settings-inline-editor,
+  .provider-settings-page,
+  .settings-list-panel,
+  .settings-detail-panel,
+  .provider-channel-list,
+  .provider-channel-row,
+  .provider-detail-card,
+  .mcp-server-list,
+  .asset-generation-form,
+  .asset-generation-job,
+  .asset-library-card,
+  .asset-library-empty
+) {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+:where(
+  .fp-select-popup,
+  .fp-input,
+  .fp-textarea,
+  .fp-select-trigger,
+  .fp-switch-field
+) {
+  background: var(--fp-input-bg);
+  border-color: var(--line);
+  color: var(--text);
 }
 
 .runtime-doctor-modal .modal-body {
@@ -535,9 +619,32 @@
   font-size: 13px;
 }
 
+.runtime-doctor-status-head {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fp-space-3);
+}
+
+.runtime-doctor-status-head strong {
+  color: var(--text);
+  font-size: var(--fp-text-base);
+}
+
+.runtime-doctor-status-head span {
+  color: var(--text-soft);
+  font-size: var(--fp-text-sm);
+  font-weight: 760;
+}
+
 .runtime-doctor-guidance-list {
   display: grid;
   gap: 8px;
+}
+
+.runtime-doctor-status-grid {
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
 }
 
 .runtime-doctor-guidance-item {
@@ -546,6 +653,14 @@
   gap: 5px;
   padding-left: 10px;
   border-left: 3px solid rgba(148, 163, 184, 0.36);
+}
+
+.runtime-doctor-status-card {
+  padding: var(--fp-space-3);
+  border: 1px solid var(--fp-border-subtle);
+  border-left-width: 0.1875rem;
+  border-radius: var(--fp-radius-lg);
+  background: var(--fp-surface-overlay-subtle);
 }
 
 .runtime-doctor-guidance-item.error {
@@ -560,6 +675,17 @@
   min-width: 0;
   display: grid;
   gap: 2px;
+}
+
+.runtime-doctor-status-card-top {
+  display: flex;
+  align-items: center;
+  gap: var(--fp-space-2);
+}
+
+.runtime-doctor-status-card-body {
+  display: grid;
+  gap: var(--fp-space-1);
 }
 
 .runtime-doctor-guidance-item strong,
@@ -683,4 +809,315 @@
   background: rgba(2, 6, 23, 0.38);
   border-color: var(--fp-dark-border-default);
   color: #cbd5e1;
+}
+
+.workspace-sidebar {
+  background: var(--fp-workspace-sidebar-bg);
+  border-right-color: var(--fp-workspace-sidebar-border);
+  color: var(--fp-workspace-sidebar-text);
+}
+
+.workspace-sidebar-nav-item,
+.sidebar-entry {
+  color: var(--fp-sidebar-nav-text);
+}
+
+.workspace-sidebar-nav-icon,
+.sidebar-entry-icon,
+.file-tree-folder-icon {
+  color: var(--fp-sidebar-nav-icon);
+}
+
+.workspace-sidebar-nav-item:hover,
+.project-switcher-item:hover {
+  background: var(--fp-sidebar-hover-bg);
+  color: var(--fp-sidebar-active-text);
+  box-shadow: var(--fp-sidebar-active-ring);
+}
+
+.workspace-sidebar-nav-item.active,
+.project-switcher-item.active {
+  background: var(--fp-sidebar-active-bg);
+  color: var(--fp-sidebar-active-text);
+  box-shadow: var(--fp-sidebar-active-ring);
+}
+
+.sidebar-section-row {
+  border-top-color: var(--fp-sidebar-section-border);
+}
+
+.sidebar-section-label,
+.section-heading.with-icon {
+  color: var(--fp-sidebar-section-label);
+}
+
+.sidebar-section-meta,
+.sidebar-session-empty {
+  color: var(--fp-sidebar-section-meta);
+}
+
+.sidebar-search .fp-input,
+.sidebar-search.compact input,
+.sidebar-session-search input {
+  background: var(--fp-sidebar-input-bg);
+  border-color: var(--fp-sidebar-input-border);
+  color: var(--fp-sidebar-input-text);
+}
+
+.sidebar-search .fp-input::placeholder,
+.sidebar-search.compact input::placeholder,
+.sidebar-session-search input::placeholder {
+  color: var(--fp-sidebar-input-placeholder);
+}
+
+.sidebar-session-card,
+.project-switcher-item {
+  background: var(--fp-sidebar-card-bg);
+  color: var(--fp-sidebar-row-text);
+  box-shadow: var(--fp-sidebar-card-ring);
+}
+
+.sidebar-session-card:hover {
+  background: var(--fp-sidebar-card-hover-bg);
+  box-shadow: var(--fp-sidebar-card-hover-ring);
+}
+
+.sidebar-session-card.active {
+  background: var(--fp-sidebar-card-active-bg);
+  box-shadow: var(--fp-sidebar-card-active-ring);
+}
+
+.sidebar-session-card-top {
+  color: var(--fp-sidebar-row-active-text);
+}
+
+.sidebar-session-card-copy,
+.sidebar-session-summary {
+  color: var(--fp-sidebar-row-muted);
+}
+
+.sidebar-session-time,
+.sidebar-session-meta {
+  color: var(--fp-sidebar-row-faint);
+}
+
+.sidebar-session-main {
+  color: var(--fp-sidebar-row-text);
+}
+
+.sidebar-session-main:hover,
+.sidebar-session-item.active .sidebar-session-main {
+  background: var(--fp-sidebar-row-active-bg);
+  color: var(--fp-sidebar-row-active-text);
+}
+
+.sidebar-session-item.active .sidebar-session-main {
+  box-shadow: var(--fp-sidebar-row-active-ring);
+}
+
+.sidebar-session-hint {
+  background: var(--fp-sidebar-chip-bg);
+  color: var(--fp-sidebar-chip-text);
+}
+
+.sidebar-session-action.fp-button {
+  background: var(--fp-sidebar-action-bg);
+  color: var(--fp-sidebar-action-text);
+}
+
+.sidebar-session-action:hover,
+.sidebar-tool-icon.fp-button:hover,
+.sidebar-tool-icon.active {
+  background: var(--fp-sidebar-action-hover-bg);
+  color: var(--fp-sidebar-action-hover-text);
+}
+
+.sidebar-session-menu {
+  background: var(--fp-sidebar-menu-bg);
+  border-color: var(--fp-sidebar-menu-border);
+  box-shadow: var(--fp-sidebar-menu-shadow);
+}
+
+.sidebar-session-menu-item.fp-button {
+  color: var(--fp-sidebar-row-active-text);
+}
+
+.sidebar-session-menu-item.fp-button:hover {
+  background: var(--fp-sidebar-menu-item-hover-bg);
+}
+
+.workspace-sidebar .file-tree-folder-label,
+.workspace-sidebar .file-item.tree,
+.file-item {
+  color: var(--fp-file-tree-text);
+}
+
+.workspace-sidebar .file-tree-folder-label {
+  color: var(--fp-file-tree-folder-text);
+}
+
+.workspace-sidebar .file-tree-folder-label:hover,
+.workspace-sidebar .file-item.tree:hover,
+.file-item:hover,
+.file-tree-folder-label:hover {
+  background: var(--fp-file-tree-hover-bg);
+  color: var(--fp-file-tree-active-text);
+}
+
+.workspace-sidebar .file-item.active,
+.file-item.active {
+  background: var(--fp-file-tree-active-bg);
+  color: var(--fp-file-tree-active-text);
+}
+
+.project-tab-shell.active {
+  background: var(--fp-project-tab-shell-bg-active);
+  box-shadow: var(--fp-project-tab-shell-ring-active);
+}
+
+.project-tab-shell:hover {
+  background: var(--fp-project-tab-shell-bg-hover);
+  box-shadow: var(--fp-project-tab-shell-ring-hover);
+}
+
+.agent-composer-shell {
+  background: var(--fp-agent-composer-bg);
+  border-color: var(--fp-agent-composer-border);
+  box-shadow: var(--fp-agent-composer-shadow);
+  color: var(--text);
+}
+
+.agent-composer-textarea {
+  color: var(--text);
+}
+
+.agent-composer-textarea::placeholder {
+  color: var(--text-faint);
+}
+
+.agent-composer-icon-button:hover,
+.agent-permission-trigger:hover,
+.agent-combo-trigger:hover,
+.agent-engine-connection-indicator:hover {
+  background: var(--fp-agent-control-hover-bg);
+}
+
+.agent-combo-trigger,
+.agent-engine-connection-indicator,
+.agent-menu-segmented button,
+.agent-agent-menu-foot span {
+  background: var(--fp-agent-control-bg);
+  border-color: var(--fp-agent-composer-border);
+}
+
+.agent-plus-menu,
+.agent-agent-menu,
+.agent-context-popover,
+.agent-runtime-menu {
+  background: var(--fp-agent-popover-bg);
+  border-color: var(--fp-agent-popover-border);
+  box-shadow: var(--fp-agent-popover-shadow);
+}
+
+.agent-context-upload-button:hover,
+.agent-menu-option-list button:hover,
+.agent-menu-option-list button.selected,
+.agent-runtime-menu button:hover {
+  background: var(--fp-agent-menu-option-hover-bg);
+}
+
+.agent-menu-section,
+.agent-agent-menu-foot {
+  border-top-color: var(--fp-agent-menu-section-border);
+}
+
+.agent-agent-menu input {
+  background: var(--fp-agent-menu-input-bg);
+  border-color: var(--fp-agent-popover-border);
+  color: var(--text);
+}
+
+.agent-provider-model-editor,
+.engine-status-path,
+.engine-status-row {
+  background: var(--fp-agent-control-bg);
+  border-color: var(--fp-agent-composer-border);
+}
+
+.agent-context-ring span {
+  background: var(--fp-agent-context-dot-ring);
+}
+
+.agent-engine-connection-dot {
+  border-color: var(--fp-agent-context-dot-ring);
+}
+
+.file-inspector-panel {
+  background: var(--fp-file-inspector-panel-bg);
+}
+
+.file-inspector-body {
+  background: var(--fp-file-inspector-body-bg);
+}
+
+.file-editor-shell,
+.file-editor-code-area {
+  background: var(--fp-file-editor-bg);
+}
+
+.file-editor-gutter {
+  background: var(--fp-file-editor-gutter-bg);
+  border-right-color: var(--fp-file-editor-gutter-border);
+  color: var(--fp-file-editor-gutter-text);
+}
+
+.agent-column,
+.settings-list-panel,
+.settings-detail-panel,
+.skills-page,
+.placeholder-page,
+.provider-channel-card,
+.provider-channel-list,
+.provider-detail-card,
+.skill-card,
+.plugin-list-card,
+.asset-summary-card,
+.snapshot-card,
+.cli-tool-card,
+.asset-library-card,
+.asset-library-empty,
+.asset-generation-output,
+.asset-card,
+.progress-card,
+.file-change-card,
+.mcp-server-row,
+.memory-file-row,
+.memory-editor-panel,
+.notification-task-row,
+.web-search-quality-panel,
+.web-search-toggle-row label,
+.runtime-run-row,
+.claude-runtime-status,
+.claude-session-row,
+.runtime-card,
+.runtime-capability-panel,
+.runtime-run-panel,
+.runtime-empty-state,
+.runtime-capability-matrix,
+.pptx-slide-card {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.agent-body,
+.markdown-preview,
+.binary-preview-fallback,
+.html-preview-frame,
+.pptx-preview-frame,
+.mcp-registry-note,
+.agent-provider-model-editor {
+  background: var(--panel-muted);
+  border-color: var(--line);
+  color: var(--text);
 }

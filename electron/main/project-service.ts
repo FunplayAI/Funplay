@@ -406,12 +406,6 @@ export async function restoreSessionCheckpoint(state: AppState, projectId: strin
   updated = appendProjectAssistantMessage(updated, {
     sessionId: restoredSession.id,
     assistantMessage: restoreSummary,
-    assistantContentBlocks: [
-      {
-        type: 'text',
-        text: restoreSummary
-      }
-    ],
     assistantMetadata: {
       intent: 'chat'
     },
@@ -536,15 +530,6 @@ export function createProjectSession(state: AppState, projectId: string, title?:
       `已创建新会话“${session.title}”。`,
       '你可以直接输入新的需求、问题或任务，我会基于当前项目继续协助。'
     ]),
-    assistantContentBlocks: [
-      {
-        type: 'text',
-        text: buildSessionOperationMessage([
-          `已创建新会话“${session.title}”。`,
-          '你可以直接输入新的需求、问题或任务，我会基于当前项目继续协助。'
-        ])
-      }
-    ],
     assistantMetadata: {
       intent: 'chat'
     },
@@ -594,15 +579,6 @@ export function renameProjectSession(state: AppState, projectId: string, session
       `当前会话已重命名为“${nextTitle}”。`,
       targetSession.title !== nextTitle ? `原名称：${targetSession.title}` : ''
     ]),
-    assistantContentBlocks: [
-      {
-        type: 'text',
-        text: buildSessionOperationMessage([
-          `当前会话已重命名为“${nextTitle}”。`,
-          targetSession.title !== nextTitle ? `原名称：${targetSession.title}` : ''
-        ])
-      }
-    ],
     assistantMetadata: {
       intent: 'chat'
     },
@@ -839,15 +815,6 @@ export function deleteProjectSession(state: AppState, projectId: string, session
       `已删除会话“${deletedSession.title}”。`,
       current.activeSessionId === sessionId ? '已自动切换到当前会话。' : ''
     ]),
-    assistantContentBlocks: [
-      {
-        type: 'text',
-        text: buildSessionOperationMessage([
-          `已删除会话“${deletedSession.title}”。`,
-          current.activeSessionId === sessionId ? '已自动切换到当前会话。' : ''
-        ])
-      }
-    ],
     assistantMetadata: {
       intent: 'chat'
     },

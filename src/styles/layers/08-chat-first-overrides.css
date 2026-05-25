@@ -722,7 +722,7 @@
 .workspace-sidebar .file-tree-folder-label,
 .workspace-sidebar .file-item.tree {
   width: 100%;
-  min-height: 28px;
+  min-height: var(--fp-control-height);
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -732,6 +732,7 @@
   color: rgba(31, 41, 55, 0.68);
   font-size: 13px;
   font-weight: 600;
+  line-height: var(--fp-space-5);
   text-align: left;
 }
 
@@ -755,6 +756,8 @@
   gap: 7px;
   min-width: 0;
   width: 100%;
+  min-height: var(--fp-space-5);
+  line-height: var(--fp-space-5);
   overflow: visible;
 }
 
@@ -772,6 +775,8 @@
 
 .file-tree-folder-caret {
   width: 10px;
+  height: var(--fp-space-5);
+  flex: 0 0 auto;
   display: inline-grid;
   place-items: center;
   color: rgba(31, 41, 55, 0.42);
@@ -786,11 +791,12 @@
 
 .workspace-sidebar .file-tree-folder-icon {
   width: 18px;
-  height: 15px;
+  height: 18px;
   flex: 0 0 18px;
   display: inline-grid;
   place-items: center;
   color: #8b949e;
+  align-self: center;
 }
 
 .workspace-sidebar .file-tree-folder-icon svg,
@@ -822,6 +828,7 @@
   display: inline-grid;
   place-items: center;
   color: #7b8490;
+  align-self: center;
 }
 
 .file-type-icon svg path,
@@ -840,7 +847,7 @@
   letter-spacing: 0.15px;
   text-anchor: middle;
   dominant-baseline: middle;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: Arial, Helvetica, sans-serif;
 }
 
 .file-type-icon.ts svg rect,
@@ -909,6 +916,14 @@
 .file-item-label {
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  min-height: var(--fp-space-5);
+  padding-block: 0;
+  line-height: var(--fp-space-5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   text-align: left;
 }
 
@@ -1049,6 +1064,24 @@
   background: var(--fp-app-settings-panel-bg);
 }
 
+.app-settings-section.provider-settings-embedded {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--ui-radius-panel);
+  background: var(--fp-app-settings-panel-bg);
+}
+
+.app-settings-section.provider-settings-embedded .provider-settings-page,
+.app-settings-section.provider-settings-embedded .mcp-registry-settings,
+.app-settings-section.provider-settings-embedded .settings-list-panel {
+  background: transparent;
+}
+
+.app-settings-section.provider-settings-embedded .provider-channel-list,
+.app-settings-section.provider-settings-embedded .provider-channel-row {
+  background: transparent;
+}
+
 .app-settings-section strong {
   color: var(--text);
 }
@@ -1078,19 +1111,55 @@
     align-items: stretch;
     gap: 8px;
     overflow: auto hidden;
-    padding: 6px;
+    padding: 5px;
+    border-radius: 999px;
   }
 
   .app-settings-sidebar-title {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    padding: 0 8px;
+    display: none;
   }
 
   .app-settings-nav-item {
-    flex: 0 0 158px;
-    min-height: 54px;
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 36px;
+    padding: 0 10px;
+    border-radius: 999px;
+  }
+
+  .app-settings-nav-item.fp-button {
+    width: auto;
+  }
+
+  .app-settings-nav-item .fp-button-label {
+    width: auto;
+    grid-template-columns: auto minmax(0, max-content);
+    align-items: center;
+    gap: 7px;
+  }
+
+  .app-settings-nav-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+  }
+
+  .app-settings-nav-copy {
+    display: block;
+  }
+
+  .app-settings-nav-copy strong {
+    max-width: 112px;
+    display: block;
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .app-settings-nav-copy span {
+    display: none;
   }
 
   .project-settings-page {
@@ -1100,26 +1169,61 @@
 
   .project-settings-sidebar {
     min-height: auto;
-    gap: 10px;
-    padding: 14px;
+    gap: 0;
+    padding: 8px 12px;
     border-right: 0;
-    border-bottom: 1px solid rgba(60, 60, 67, 0.12);
+    border-bottom: 1px solid var(--fp-project-settings-border);
   }
 
   .project-settings-sidebar-header {
-    padding: 0;
+    display: none;
   }
 
   .project-settings-nav {
     display: flex;
     gap: 8px;
     overflow: auto hidden;
-    padding-bottom: 2px;
+    padding: 0 0 2px;
   }
 
   .project-settings-nav-item {
-    flex: 0 0 178px;
-    min-height: 54px;
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 36px;
+    padding: 0 10px;
+    border-radius: 999px;
+  }
+
+  .project-settings-nav-item.fp-button {
+    width: auto;
+  }
+
+  .project-settings-nav-item .fp-button-label {
+    width: auto;
+    grid-template-columns: auto minmax(0, max-content);
+    gap: 7px;
+  }
+
+  .project-settings-nav-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+  }
+
+  .project-settings-nav-copy {
+    display: block;
+  }
+
+  .project-settings-nav-copy strong {
+    max-width: 108px;
+    display: block;
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  .project-settings-nav-copy span,
+  .project-settings-nav-badge {
+    display: none;
   }
 
   .project-settings-detail-header {
@@ -1130,6 +1234,12 @@
     padding: 16px;
   }
 
+  .asset-generation-center,
+  .asset-generation-form-grid,
+  .asset-generation-form-grid.compact {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .provider-preset-card-grid,
   .provider-role-model-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -1138,39 +1248,6 @@
   .provider-preset-card-grid {
     max-height: 220px;
   }
-}
-
-.app-settings-scope-strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 10px;
-  border: 1px solid rgba(99, 102, 241, 0.16);
-  border-radius: 12px;
-  background: rgba(99, 102, 241, 0.06);
-}
-
-.app-settings-scope-strip > span {
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.app-settings-scope-strip > span > strong {
-  overflow: hidden;
-  font-size: 12px;
-  font-weight: 850;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-settings-scope-strip > span > em,
-.app-settings-scope-strip > strong {
-  color: var(--text-soft);
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 800;
 }
 
 .app-settings-divider {

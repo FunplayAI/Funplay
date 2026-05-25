@@ -143,24 +143,6 @@
   animation: processing-spinner-rotate 0.8s linear infinite;
 }
 
-.file-tree-toggle span:first-child {
-  width: 16px;
-  height: 18px;
-  border: 2px solid currentColor;
-  border-radius: 4px;
-}
-
-.file-tree-toggle span:last-child {
-  position: absolute;
-  left: 12px;
-  top: 9px;
-  width: 2px;
-  height: 16px;
-  border-radius: 2px;
-  background: currentColor;
-  opacity: 0.85;
-}
-
 .app-settings-toggle {
   margin-left: 4px;
 }
@@ -1055,6 +1037,15 @@
   margin: 0 0 14px;
 }
 
+.markdown-preview hr {
+  width: 100%;
+  height: 2px;
+  margin: 22px 0;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0.24), rgba(15, 23, 42, 0.08));
+}
+
 .markdown-preview ul {
   padding-left: 20px;
 }
@@ -1212,8 +1203,42 @@
   background: #fff;
 }
 
-.asset-preview-frame.audio audio {
-  width: min(100%, 520px);
+.audio-waveform-preview {
+  --fp-audio-waveform-bg: color-mix(in srgb, var(--brand, #6258f6) 8%, #ffffff);
+  --fp-audio-waveform-baseline: rgba(99, 102, 241, 0.22);
+  --fp-audio-waveform-fill: #f59e0b;
+  --fp-audio-waveform-progress: rgba(79, 70, 229, 0.94);
+  width: min(100%, 760px);
+  display: grid;
+  gap: 16px;
+}
+
+.audio-waveform-preview canvas {
+  width: 100%;
+  height: 220px;
+  display: block;
+  overflow: hidden;
+  border-radius: 0;
+  border: 1px solid rgba(99, 102, 241, 0.14);
+  background: var(--fp-audio-waveform-bg);
+}
+
+.audio-waveform-preview audio {
+  width: 100%;
+}
+
+.audio-waveform-preview.compact {
+  width: 100%;
+  gap: 8px;
+}
+
+.audio-waveform-preview.compact canvas {
+  height: 72px;
+  border-radius: 10px;
+}
+
+.audio-waveform-preview.compact audio {
+  height: 28px;
 }
 
 .pdf-preview-shell {

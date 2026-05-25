@@ -218,8 +218,7 @@ function buildClaudeRecentTurnsForPrompt(params: GenericAgentRuntimeParams, cove
     .slice(-CLAUDE_CONTEXT_RECENT_MESSAGE_KEEP)
     .map((message, index, array) => ({
       ...message,
-      content: normalizeClaudeHistoryMessageContent(message, array.length - 1 - index),
-      contentBlocks: undefined
+      content: normalizeClaudeHistoryMessageContent(message, array.length - 1 - index)
     }));
   return buildSessionConversationTurns(recentMessages, 6);
 }

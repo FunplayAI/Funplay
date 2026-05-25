@@ -126,6 +126,18 @@ export function decideAgentCoreLoopOutcome(input: AgentCoreLoopDecisionInput): A
     };
   }
 
+  if (input.requestedContinuation) {
+    return {
+      outcome: 'continue_after_tools',
+      nextState: 'building_model_input',
+      terminal: false,
+      reason: [
+        `Host requested continuation: ${input.requestedContinuation.reason}.`,
+        input.requestedContinuation.detail
+      ].filter(Boolean).join(' ')
+    };
+  }
+
   if (input.shouldCompact) {
     return {
       outcome: 'compact_context',
@@ -195,84 +207,6 @@ function partId(prefix: string, stableId: string | undefined, sequence: number):
   return stableId ? `${prefix}:${stableId}` : `${prefix}:${sequence}`;
 }
 
-export function chatContentBlocksToAgentCoreParts(
-  blocks: ChatContentBlock[] | undefined,
-  options: AgentCorePartConversionOptions = {}
-): AgentCoreMessagePart[] {
-  if (!blocks?.length) {
-    return [];
-  }
-  return blocks.map((block, index): AgentCoreMessagePart => {
-    const sequence = sequenceAt(options, index);
-    if (block.type === 'text') {
-      return {
-        ...partBase('assistant_text', partId('chat_text', block.id, sequence), sequence, options),
-        kind: 'assistant_text',
-        text: block.text
-      };
-    }
-    if (block.type === 'thinking') {
-      return {
-        ...partBase('assistant_thinking', partId('chat_thinking', block.id, sequence), sequence, options),
-        kind: 'assistant_thinking',
-        thinking: block.thinking,
-        title: block.title
-      };
-    }
-    if (block.type === 'tool_use') {
-      return {
-        ...partBase('tool_call', partId('chat_tool_call', block.toolUseId, sequence), sequence, options),
-        kind: 'tool_call',
-        toolUseId: block.toolUseId,
-        name: block.name,
-        input: block.input,
-        status: block.status ?? 'completed'
-      };
-    }
-    if (block.type === 'tool_result') {
-      if (block.isError) {
-        return {
-          ...partBase('tool_error', partId('chat_tool_error', block.toolUseId, sequence), sequence, options),
-          kind: 'tool_error',
-          toolUseId: block.toolUseId,
-          error: block.content,
-          failureKind: block.edit?.failureKind ?? block.mcp?.failureKind,
-          recoveryHint: block.edit?.recoveryHint,
-          changedFiles: block.changedFiles,
-          command: block.command,
-          terminal: block.terminal,
-          browser: block.browser,
-          edit: block.edit,
-          mcp: block.mcp,
-          artifacts: block.artifacts,
-          transaction: block.transaction
-        };
-      }
-      return {
-        ...partBase('tool_result', partId('chat_tool_result', block.toolUseId, sequence), sequence, options),
-        kind: 'tool_result',
-        toolUseId: block.toolUseId,
-        content: block.content,
-        changedFiles: block.changedFiles,
-        command: block.command,
-        terminal: block.terminal,
-        browser: block.browser,
-        edit: block.edit,
-        mcp: block.mcp,
-        artifacts: block.artifacts,
-        transaction: block.transaction
-      };
-    }
-    return {
-      ...partBase('system_event', partId('chat_fallback', block.id, sequence), sequence, options),
-      kind: 'system_event',
-      title: 'Fallback response',
-      summary: block.text,
-      metadata: block.reason ? { reason: block.reason } : undefined
-    };
-  });
-}
-
 export function agentCorePartsToChatContentBlocks(parts: AgentCoreMessagePart[] | undefined): ChatContentBlock[] {
   if (!parts?.length) {
     return [];
@@ -299,6 +233,9 @@ export function agentCorePartsToChatContentBlocks(parts: AgentCoreMessagePart[] 
           type: 'tool_use',
           toolUseId: part.toolUseId,
           name: part.name,
+          title: part.title,
+          summary: part.summary,
+          activity: part.activity,
           input: part.input,
           status: part.status
         }];
@@ -392,7 +329,7 @@ function agentCorePartToPlainText(part: AgentCoreMessagePart, includeToolDetails
     return [part.title, part.summary ?? ''].filter(Boolean).join('\n');
   }
   if (part.kind === 'usage') {
-    return `Usage: ${part.usage.totalTokens}`;
+    return '';
   }
   return '';
 }
@@ -438,6 +375,9 @@ export function promptStreamEventToAgentCoreParts(
 ): AgentCoreMessagePart[] {
   const sequence = sequenceAt(options, 0);
   const withEventTime = { ...options, createdAt: event.startedAt };
+  if (event.type === 'agent_core_parts') {
+    return event.parts;
+  }
   if (event.type === 'delta') {
     return event.delta
       ? [{
@@ -460,6 +400,9 @@ export function promptStreamEventToAgentCoreParts(
       kind: 'tool_call',
       toolUseId: event.toolUseId,
       name: event.name,
+      title: event.title,
+      summary: event.summary,
+      activity: event.activity,
       input: event.input,
       status: event.status
     }];
@@ -570,6 +513,9 @@ export function runtimeEventToAgentCoreParts(
 ): AgentCoreMessagePart[] {
   const sequence = sequenceAt(options, 0);
   const withEventTime = { ...options, createdAt: event.createdAt };
+  if (event.type === 'agent_core_parts' && event.agentCoreParts?.length) {
+    return event.agentCoreParts;
+  }
   if (event.type === 'text_delta' && event.streamDelta) {
     return [{
       ...partBase('assistant_text', partId('runtime_text', event.id, sequence), sequence, withEventTime),
@@ -590,6 +536,9 @@ export function runtimeEventToAgentCoreParts(
       kind: 'tool_call',
       toolUseId: event.toolUse.toolUseId,
       name: event.toolUse.name,
+      title: event.toolUse.title,
+      summary: event.toolUse.summary,
+      activity: event.toolUse.activity,
       input: event.toolUse.input,
       status: event.toolUse.status
     }];

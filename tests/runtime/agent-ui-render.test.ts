@@ -6,6 +6,7 @@ import { ChatComposer } from '../../src/components/chat/ChatComposer.tsx';
 import { ChatTranscriptMessage, StreamingTranscriptMessage, getMessagePlainText } from '../../src/components/chat/ConversationMessage.tsx';
 import { MessageList } from '../../src/components/chat/MessageList.tsx';
 import { buildCompletedMessageProcessTools, pairStreamingToolExecutions, summarizeToolResult } from '../../src/components/chat/tool-activity.tsx';
+import { buildTranscriptViewItems } from '../../src/components/chat/transcript/transcript-view-model.ts';
 import { AgentWorkbench } from '../../src/components/layout/AgentWorkbench.tsx';
 import { FileInspectorPanel, SidebarPanel } from '../../src/components/layout/WorkspacePanels.tsx';
 import { AppSettingsModal } from '../../src/components/modals/AppSettingsModal.tsx';
@@ -19,8 +20,9 @@ import { WelcomeScreen } from '../../src/components/pages/WelcomeScreen.tsx';
 import { OnboardingScreen } from '../../src/components/pages/OnboardingScreen.tsx';
 import { WebSearchSettingsPage } from '../../src/components/pages/WebSearchSettingsPage.tsx';
 import { ProviderSettingsPage, RuntimeDoctorDialog } from '../../src/components/pages/ProviderSettingsPage.tsx';
+import { AssetProviderSettingsPage } from '../../src/components/pages/AssetProviderSettingsPage.tsx';
 import { ProjectAgentRunsSettings, ProjectAgentSettings, ProjectSettingsPage, ProjectTokenUsageSettings } from '../../src/components/pages/ProjectSettingsPage.tsx';
-import { McpManagementPage, McpRawAuditCard, McpRawDiagnosticsCard, McpToolSnapshotCard, PluginListCard, ServerListRow, formatMcpCapabilitySummary, formatMcpPolicySummary } from '../../src/components/pages/McpManagementPage.tsx';
+import { McpManagementPage, McpRawAuditCard, McpRawDiagnosticsCard, McpToolSnapshotCard, PluginListCard, ServerListRow } from '../../src/components/pages/McpManagementPage.tsx';
 import { McpRegistrySettingsPage } from '../../src/components/pages/McpRegistrySettingsPage.tsx';
 import { McpPluginModal, ProviderEditor } from '../../src/components/settings-modals.tsx';
 import {
@@ -46,6 +48,7 @@ test('titlebar shows update button before current run changes when an update is 
   assert.match(html, /fp-app-shell/);
   assert.match(html, /fp-button[^"]*titlebar-update-toggle/);
   assert.match(html, /fp-icon-button titlebar-icon-button file-tree-toggle/);
+  assert.match(html, /lucide-panel-left-open/);
   assert.match(html, /fp-icon-button titlebar-icon-button titlebar-changes-toggle/);
   assert.match(html, /fp-icon-button titlebar-icon-button app-settings-toggle/);
   assert.match(html, /fp-button[^"]*project-tab active/);
@@ -55,6 +58,13 @@ test('titlebar shows update button before current run changes when an update is 
   assert.doesNotMatch(html, /<button[^>]*class="titlebar-icon-button/);
   assert.doesNotMatch(html, /<button[^>]*class="project-tab(?:\s|")/);
   assert.doesNotMatch(html, /<button[^>]*class="project-tab-close/);
+});
+
+test('titlebar left sidebar toggle uses a clear close icon while sidebar is open', () => {
+  const html = renderAppShell(null, { leftCollapsed: false });
+
+  assert.match(html, /fp-icon-button titlebar-icon-button file-tree-toggle active/);
+  assert.match(html, /lucide-panel-left-close/);
 });
 
 test('titlebar hides update button when no update is available', () => {
@@ -219,6 +229,8 @@ test('chat composer exposes provider and Build/Plan controls without inline mode
   assert.match(buildHtml, /agent-permission-trigger full-access/);
   assert.match(buildHtml, /agent-combo-trigger/);
   assert.match(buildHtml, /agent-send-button/);
+  assert.match(buildHtml, /data-composer-state="idle"/);
+  assert.match(richHtml, /data-composer-state="drafting"/);
   assert.match(buildHtml, /fp-textarea agent-composer-textarea/);
   assert.doesNotMatch(buildHtml, /<textarea[^>]*class="agent-composer-textarea/);
   assert.equal(buildHtml.includes('prototype-primary'), false);
@@ -278,21 +290,31 @@ test('assistant structured tool-only message does not render pseudo tool text as
     role: 'assistant',
     content: '[Previous tool call] inspect_workspace_context input={"projectName":"Rogue"}',
     createdAt: new Date().toISOString(),
-    contentBlocks: [
-      {
-        type: 'tool_use',
-        toolUseId: 'tool_history',
-        name: 'inspect_workspace_context',
-        input: {
-          projectName: 'Rogue'
+    metadata: {
+      agentCoreParts: [
+        {
+          id: 'part_history_call',
+          kind: 'tool_call',
+          sequence: 0,
+          createdAt: '2026-05-20T00:00:00.000Z',
+          toolUseId: 'tool_history',
+          name: 'inspect_workspace_context',
+          input: {
+            projectName: 'Rogue'
+          },
+          status: 'completed'
+        },
+        {
+          id: 'part_history_result',
+          kind: 'tool_result',
+          sequence: 1,
+          createdAt: '2026-05-20T00:00:01.000Z',
+          toolUseId: 'tool_history',
+          toolName: 'inspect_workspace_context',
+          content: 'Workspace context inspected.'
         }
-      },
-      {
-        type: 'tool_result',
-        toolUseId: 'tool_history',
-        content: 'Workspace context inspected.'
-      }
-    ]
+      ]
+    }
   };
 
   const html = renderZh(createElement(ChatTranscriptMessage, {
@@ -378,8 +400,7 @@ test('completed message process summary prefers Agent Core parts over operation 
           content: 'README content'
         }
       ]
-    },
-    contentBlocks: []
+    }
   });
 
   assert.equal(tools.length, 1);
@@ -409,23 +430,13 @@ test('completed message process summary treats Agent Core parts as authoritative
           text: '只保留 canonical Agent Core 正文。'
         }
       ]
-    },
-    contentBlocks: [
-      {
-        type: 'tool_use',
-        toolUseId: 'legacy_content_tool',
-        name: 'write_file',
-        input: {
-          path: 'index.html'
-        }
-      }
-    ]
+    }
   });
 
   assert.equal(tools.length, 0);
 });
 
-test('completed message process summary preserves operation log transactions', () => {
+test('completed message process summary ignores operation log without Agent Core parts', () => {
   const tools = buildCompletedMessageProcessTools({
     metadata: {
       operationLog: [
@@ -449,42 +460,96 @@ test('completed message process summary preserves operation log transactions', (
           }
         }
       ]
-    },
-    contentBlocks: []
+    }
   });
 
-  assert.equal(tools[0]?.result?.transaction?.eventCount, 4);
+  assert.equal(tools.length, 0);
 });
 
-test('completed message process summary preserves historical content block transactions', () => {
-  const tools = buildCompletedMessageProcessTools({
-    contentBlocks: [
-      {
-        type: 'tool_use',
-        toolUseId: 'tool_read',
-        name: 'read_file',
-        input: {
-          path: 'README.md'
-        },
-        status: 'completed'
+test('transcript view model groups Agent Core tool parts before final answer', () => {
+  const items = buildTranscriptViewItems([
+    {
+      id: 'tool_call',
+      kind: 'tool_call',
+      createdAt: '2026-05-20T00:00:00.000Z',
+      sequence: 0,
+      toolUseId: 'tool_read',
+      name: 'read_file',
+      input: {
+        path: 'README.md'
       },
-      {
-        type: 'tool_result',
-        toolUseId: 'tool_read',
-        content: 'README content',
-        transaction: {
-          id: 'tool_txn:tool_read',
+      status: 'completed'
+    },
+    {
+      id: 'tool_result',
+      kind: 'tool_result',
+      createdAt: '2026-05-20T00:00:01.000Z',
+      sequence: 1,
+      toolUseId: 'tool_read',
+      toolName: 'read_file',
+      content: 'README content'
+    },
+    {
+      id: 'final_text',
+      kind: 'assistant_text',
+      createdAt: '2026-05-20T00:00:02.000Z',
+      sequence: 2,
+      text: '完成。'
+    }
+  ]);
+
+  assert.equal(items.length, 2);
+  const first = items[0];
+  const second = items[1];
+  assert.equal(first?.kind, 'tool_group');
+  assert.equal(second?.kind, 'assistant_text');
+  if (first?.kind !== 'tool_group' || second?.kind !== 'assistant_text') {
+    throw new Error('Unexpected transcript view item types.');
+  }
+  assert.equal(first.status, 'completed');
+  assert.equal(first.collapseBeforeAssistantText, true);
+  assert.equal(first.tools[0]?.result?.content, 'README content');
+  assert.equal(second.copyText, '完成。');
+});
+
+test('completed message process summary preserves Agent Core transactions', () => {
+  const tools = buildCompletedMessageProcessTools({
+    metadata: {
+      agentCoreParts: [
+        {
+          id: 'part_read',
+          kind: 'tool_call',
+          createdAt: '2026-05-15T00:00:00.000Z',
+          sequence: 0,
+          toolUseId: 'tool_read',
+          name: 'read_file',
+          input: {
+            path: 'README.md'
+          },
+          status: 'completed'
+        },
+        {
+          id: 'part_read_result',
+          kind: 'tool_result',
+          createdAt: '2026-05-15T00:00:01.000Z',
+          sequence: 1,
           toolUseId: 'tool_read',
           toolName: 'read_file',
-          toolClass: 'workspace',
-          phase: 'completed',
-          status: 'completed',
-          eventCount: 3,
-          startedAt: '2026-05-15T00:00:00.000Z',
-          updatedAt: '2026-05-15T00:00:01.000Z'
+          content: 'README content',
+          transaction: {
+            id: 'tool_txn:tool_read',
+            toolUseId: 'tool_read',
+            toolName: 'read_file',
+            toolClass: 'workspace',
+            phase: 'completed',
+            status: 'completed',
+            eventCount: 3,
+            startedAt: '2026-05-15T00:00:00.000Z',
+            updatedAt: '2026-05-15T00:00:01.000Z'
+          }
         }
-      }
-    ]
+      ]
+    }
   });
 
   assert.equal(tools[0]?.result?.transaction?.toolName, 'read_file');
@@ -511,18 +576,12 @@ test('assistant pseudo tool-only raw content is not rendered or searchable as fi
   assert.equal(getMessagePlainText(message, false), '');
 });
 
-test('completed assistant transcript shows per-turn token usage in the message header', () => {
+test('completed assistant transcript keeps token usage in developer mode only', () => {
   const message: ChatMessage = {
     id: 'msg_token_usage',
     role: 'assistant',
     content: '已完成。',
     createdAt: '2026-05-12T00:00:02.000Z',
-    contentBlocks: [
-      {
-        type: 'text',
-        text: '已完成。'
-      }
-    ],
     metadata: {
       agentStartedAt: '2026-05-12T00:00:00.000Z',
       agentFinishedAt: '2026-05-12T00:00:02.000Z',
@@ -546,11 +605,22 @@ test('completed assistant transcript shows per-turn token usage in the message h
   }));
 
   assert.match(html, /已处理 2s/);
-  assert.match(html, /Token 1\.6k/);
-  assert.match(html, /输入 1\.2k/);
-  assert.match(html, /输出 340/);
-  assert.match(html, /缓存 100/);
-  assert.match(html, /2 次/);
+  assert.doesNotMatch(html, /Token 1\.6k/);
+  assert.doesNotMatch(html, /输入 1\.2k/);
+
+  const developerHtml = renderZh(createElement(ChatTranscriptMessage, {
+    message,
+    openablePaths: [],
+    searchQuery: '',
+    developerMode: true,
+    onOpenPath: noop
+  }));
+
+  assert.match(developerHtml, /Token 1\.6k/);
+  assert.match(developerHtml, /输入 1\.2k/);
+  assert.match(developerHtml, /输出 340/);
+  assert.match(developerHtml, /缓存 100/);
+  assert.match(developerHtml, /2 次/);
 });
 
 test('streaming transcript shows unified thinking status and structured tool activity', () => {
@@ -635,6 +705,8 @@ test('streaming transcript shows unified thinking status and structured tool act
   assert.match(html, /mcp__unity__unity_echo/);
   assert.match(html, /permission=ask/);
   assert.match(html, /funplay-browser\.png/);
+  assert.match(html, /tool-detail-disclosure/);
+  assert.match(html, /tool-detail-trigger/);
   assert.equal(html.includes('正在执行兼容工具调用'), false);
   assert.equal(html.includes('正在执行工具调用'), false);
   assert.equal(html.includes('查看细节'), false);
@@ -673,6 +745,63 @@ test('completed transcript inline controls render through shared buttons', () =>
   assert.doesNotMatch(html, /<button[^>]*class="chat-inline-link/);
   assert.doesNotMatch(html, /<button[^>]*class="chat-inline-file/);
   assert.doesNotMatch(html, /<button[^>]*class="chat-code-copy/);
+});
+
+test('plain text fenced blocks render without a labeled code chrome', () => {
+  const message: ChatMessage = {
+    id: 'msg_plain_text_fence',
+    role: 'assistant',
+    content: [
+      '已修改文件',
+      '',
+      '```text',
+      'index.html',
+      'style.css',
+      'game.js',
+      '```'
+    ].join('\n'),
+    createdAt: new Date().toISOString()
+  };
+  const html = renderZh(createElement(ChatTranscriptMessage, {
+    message,
+    openablePaths: [],
+    searchQuery: '',
+    developerMode: false,
+    onOpenPath: noop
+  }));
+
+  assert.match(html, /chat-plain-text-block/);
+  assert.match(html, /index\.html/);
+  assert.doesNotMatch(html, /chat-code-language/);
+  assert.doesNotMatch(html, /chat-code-copy/);
+});
+
+test('standalone markdown thematic breaks render as visible separators', () => {
+  const message: ChatMessage = {
+    id: 'msg_markdown_dividers',
+    role: 'assistant',
+    content: [
+      '项目目标',
+      '是否适合后续做成移动端游戏',
+      '---',
+      '2. 市场定位',
+      '目标市场',
+      '---',
+      '3. 核心卖点'
+    ].join('\n'),
+    createdAt: new Date().toISOString()
+  };
+  const html = renderZh(createElement(ChatTranscriptMessage, {
+    message,
+    openablePaths: [],
+    searchQuery: '',
+    developerMode: false,
+    onOpenPath: noop
+  }));
+
+  assert.equal((html.match(/chat-rich-divider/g) ?? []).length, 2);
+  assert.match(html, /<hr[^>]*class="chat-rich-divider"/);
+  assert.doesNotMatch(html, />---</);
 });
 
 test('composer live status renders running animation and task checklist above input', () => {
@@ -981,7 +1110,62 @@ test('streaming transcript can render directly from Agent Core parts', () => {
   assert.match(html, /我会先写入口文件/);
   assert.match(html, /index\.html/);
   assert.match(html, /已更新 index\.html/);
+  assert.match(html, /chat-assistant-answer/);
   assert.equal(html.includes('[Tool]'), false);
+});
+
+test('agent core tool process collapses before final answer text', () => {
+  const html = renderZh(createElement(StreamingTranscriptMessage, {
+    prompt: '修复测试',
+    content: '',
+    thinkingContent: '',
+    toolUses: [],
+    toolResults: [],
+    stages: [],
+    activityItems: [],
+    agentCoreParts: [
+      {
+        id: 'stream_tool_call_failed',
+        kind: 'tool_call',
+        createdAt: '2026-05-16T00:00:01.000Z',
+        sequence: 0,
+        toolUseId: 'tool_test',
+        name: 'run_command',
+        input: {
+          command: 'npm test'
+        },
+        status: 'failed'
+      },
+      {
+        id: 'stream_tool_error',
+        kind: 'tool_error',
+        createdAt: '2026-05-16T00:00:02.000Z',
+        sequence: 1,
+        toolUseId: 'tool_test',
+        toolName: 'run_command',
+        error: '测试失败。'
+      },
+      {
+        id: 'stream_final_text',
+        kind: 'assistant_text',
+        createdAt: '2026-05-16T00:00:03.000Z',
+        sequence: 2,
+        text: '结论：需要先修复断言。'
+      }
+    ],
+    statusMessage: '正在思考中...',
+    developerMode: false,
+    openablePaths: [],
+    onOpenPath: noop
+  }));
+
+  const toolIndex = html.indexOf('chat-tool-activity failed collapsed');
+  const finalTextIndex = html.indexOf('结论：需要先修复断言');
+  assert.ok(toolIndex >= 0);
+  assert.ok(finalTextIndex > toolIndex);
+  assert.doesNotMatch(html, /有操作失败/);
+  assert.doesNotMatch(html, /操作失败/);
+  assert.doesNotMatch(html, /1 个失败/);
 });
 
 test('streaming transcript merges multiple tools at the same text boundary', () => {
@@ -1105,6 +1289,55 @@ test('streaming transcript merges multiple tools at the same text boundary', () 
   assert.equal(html.includes('Previous tool call'), false);
 });
 
+test('streaming process timeline collapses tool details before final text', () => {
+  const html = renderZh(createElement(StreamingTranscriptMessage, {
+    prompt: '检查失败原因',
+    content: '结论：测试失败来自快照不匹配。',
+    thinkingContent: '',
+    toolUses: [
+      {
+        toolUseId: 'tool_test_failed',
+        name: 'run_command',
+        input: {
+          command: 'npm test'
+        },
+        status: 'failed'
+      }
+    ],
+    toolResults: [
+      {
+        toolUseId: 'tool_test_failed',
+        content: 'Snapshot failed',
+        isError: true
+      }
+    ],
+    stages: [],
+    activityItems: [
+      {
+        id: 'tool:tool_test_failed',
+        type: 'tool',
+        offset: 0,
+        status: 'failed',
+        title: 'tool_failed',
+        toolUseIds: ['tool_test_failed'],
+        createdAt: '2026-05-11T00:00:00.000Z'
+      }
+    ],
+    statusMessage: '正在思考中...',
+    developerMode: false,
+    openablePaths: [],
+    onOpenPath: noop
+  }));
+
+  const toolIndex = html.indexOf('chat-tool-activity failed collapsed');
+  const finalTextIndex = html.indexOf('结论：测试失败来自快照不匹配');
+  assert.ok(toolIndex >= 0);
+  assert.ok(finalTextIndex > toolIndex);
+  assert.doesNotMatch(html, /有操作失败/);
+  assert.doesNotMatch(html, /操作失败/);
+  assert.doesNotMatch(html, /1 个失败/);
+});
+
 test('streaming transcript renders todo tool as task list activity', () => {
   const intro = '我先拆一下任务。\n\n';
   const html = renderZh(createElement(StreamingTranscriptMessage, {
@@ -1177,41 +1410,72 @@ test('completed assistant transcript can replay persisted process text with inli
     role: 'assistant',
     content: final,
     createdAt: new Date().toISOString(),
-    contentBlocks: [
-      {
-        type: 'tool_use',
-        toolUseId: 'tool_read_config',
-        name: 'read_file',
-        input: {
-          path: 'config.json'
-        },
-        status: 'completed'
-      },
-      {
-        type: 'tool_result',
-        toolUseId: 'tool_read_config',
-        content: 'config fixture'
-      },
-      {
-        type: 'tool_use',
-        toolUseId: 'tool_write_config',
-        name: 'write_file',
-        input: {
-          path: 'config.json'
-        },
-        status: 'completed'
-      },
-      {
-        type: 'tool_result',
-        toolUseId: 'tool_write_config',
-        content: '已写入 config.json (42 bytes)'
-      },
-      {
-        type: 'text',
-        text: final
-      }
-    ],
     metadata: {
+      agentCoreParts: [
+        {
+          id: 'part_first_text',
+          kind: 'assistant_text',
+          sequence: 0,
+          createdAt: '2026-05-11T00:00:00.000Z',
+          text: first
+        },
+        {
+          id: 'part_read_config',
+          kind: 'tool_call',
+          sequence: 1,
+          createdAt: '2026-05-11T00:00:01.000Z',
+          toolUseId: 'tool_read_config',
+          name: 'read_file',
+          input: {
+            path: 'config.json'
+          },
+          status: 'completed'
+        },
+        {
+          id: 'part_read_config_result',
+          kind: 'tool_result',
+          sequence: 2,
+          createdAt: '2026-05-11T00:00:02.000Z',
+          toolUseId: 'tool_read_config',
+          toolName: 'read_file',
+          content: 'config fixture'
+        },
+        {
+          id: 'part_second_text',
+          kind: 'assistant_text',
+          sequence: 3,
+          createdAt: '2026-05-11T00:00:03.000Z',
+          text: second
+        },
+        {
+          id: 'part_write_config',
+          kind: 'tool_call',
+          sequence: 4,
+          createdAt: '2026-05-11T00:00:04.000Z',
+          toolUseId: 'tool_write_config',
+          name: 'write_file',
+          input: {
+            path: 'config.json'
+          },
+          status: 'completed'
+        },
+        {
+          id: 'part_write_config_result',
+          kind: 'tool_result',
+          sequence: 5,
+          createdAt: '2026-05-11T00:00:05.000Z',
+          toolUseId: 'tool_write_config',
+          toolName: 'write_file',
+          content: '已写入 config.json (42 bytes)'
+        },
+        {
+          id: 'part_final_text',
+          kind: 'assistant_text',
+          sequence: 6,
+          createdAt: '2026-05-11T00:00:06.000Z',
+          text: final
+        }
+      ],
       agentProcessText: `${first}${second}${final}`,
       agentProcessActivities: [
         {
@@ -1521,7 +1785,7 @@ test('long task stream renders partial reply, tool states, approvals, user input
   assert.match(html, /SQLite 还是 Postgres/);
   assert.match(html, /src\/server\.ts/);
   assert.match(html, /src\/queue\.ts/);
-  assert.match(html, /有操作失败/);
+  assert.doesNotMatch(html, /有操作失败/);
   assert.match(html, /context_mismatch/);
   assert.match(html, /阶段失败：验证测试/);
   assert.match(html, /QueueFactory is not exported/);
@@ -1719,7 +1983,7 @@ test('project Agent runs settings render recovery and verification summaries', (
   assert.equal(html.includes('prototype-secondary'), false);
 });
 
-test('project Agent settings render global project session scope hierarchy', () => {
+test('project Agent settings render direct session and policy controls', () => {
   const activeSession: ProjectSession = {
     id: 'session_main',
     title: '主会话',
@@ -1761,19 +2025,16 @@ test('project Agent settings render global project session scope hierarchy', () 
     sessionModel: 'mimo-v2.5-pro',
     sessionRuntimeId: 'native',
     sessionEffort: 'high',
-    globalPermissionMode: 'full-access',
     globalRuntimeStrategy: 'native',
     onUpdatePermissionMode: noopAsync,
     onUpdateSessionRuntime: noopAsync
   }));
 
-  assert.match(html, /设置作用域/);
-  assert.match(html, /全局默认/);
-  assert.match(html, /项目默认/);
-  assert.match(html, /当前会话/);
-  assert.match(html, /生效配置/);
-  assert.match(html, /应用设置/);
-  assert.match(html, /Rogue/);
+  assert.doesNotMatch(html, /设置作用域/);
+  assert.match(html, /当前会话运行/);
+  assert.doesNotMatch(html, /项目 Agent 策略/);
+  assert.doesNotMatch(html, /全局默认/);
+  assert.doesNotMatch(html, /跟随全局默认/);
   assert.match(html, /主会话/);
   assert.match(html, /Xiaomi MiMo/);
   assert.match(html, /mimo-v2\.5-pro/);
@@ -1794,7 +2055,7 @@ test('project Agent settings render global project session scope hierarchy', () 
   assert.doesNotMatch(html, /<button[^>]*class="active"[^>]*>Native/);
 });
 
-test('provider settings show preset-first operational provider cards', () => {
+test('provider settings render provider rows with separate details navigation', () => {
   const html = renderZh(createElement(ProviderSettingsPage, {
     providers: [provider, secondaryProvider],
     providerTests: {},
@@ -1804,6 +2065,7 @@ test('provider settings show preset-first operational provider cards', () => {
     onDeleteProvider: noop,
     onTestProvider: noop,
     onSetDefaultProvider: noop,
+    onToggleProvider: noop,
     embedded: true
   }));
 
@@ -1813,18 +2075,67 @@ test('provider settings show preset-first operational provider cards', () => {
   assert.match(html, /已配置 2 个 Provider/);
   assert.match(html, /默认：Xiaomi MiMo/);
   assert.match(html, /OpenAI 兼容/);
-  assert.match(html, /Chat Completions/);
-  assert.match(html, /默认模型/);
-  assert.match(html, /Base URL/);
-  assert.match(html, /API Key/);
-  assert.match(html, /未配置/);
-  assert.match(html, /启用/);
-  assert.match(html, /诊断/);
-  assert.match(html, /设默认/);
-  assert.match(html, /fp-surface/);
-  assert.match(html, /fp-badge/);
+  assert.match(html, /详情/);
+  assert.match(html, /停用 Provider/);
+  assert.match(html, /provider-channel-list/);
+  assert.match(html, /provider-channel-row/);
+  assert.match(html, /settings-row-detail-button/);
+  assert.match(html, /fp-toggle-switch/);
   assert.match(html, /fp-button-primary/);
-  assert.match(html, /fp-button-danger/);
+  assert.match(html, /fp-button-secondary/);
+  assert.doesNotMatch(html, /Base URL/);
+  assert.doesNotMatch(html, /API Key/);
+  assert.doesNotMatch(html, /provider-settings-layout/);
+  assert.doesNotMatch(html, /provider-channel-row selected/);
+  assert.doesNotMatch(html, /provider-action-button/);
+  assert.doesNotMatch(html, /fp-button-danger/);
+});
+
+test('asset provider settings share the config list and details navigation contract', () => {
+  const html = renderZh(createElement(AssetProviderSettingsPage, {
+    providers: [{
+      id: 'asset_provider_openai',
+      name: 'OpenAI Images',
+      adapter: 'openai-image' as const,
+      enabled: true,
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: '',
+      hasStoredApiKey: true,
+      model: 'gpt-image-2',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }, {
+      id: 'asset_provider_comfy',
+      name: 'ComfyUI',
+      adapter: 'comfyui' as const,
+      enabled: false,
+      baseUrl: 'http://127.0.0.1:8188',
+      apiKey: '',
+      model: '',
+      workflowPath: 'workflow.json',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }],
+    onAddProvider: noop,
+    onEditProvider: noop,
+    onDeleteProvider: noop,
+    onToggleProvider: noop,
+    embedded: true
+  }));
+
+  assert.match(html, /素材 Provider/);
+  assert.match(html, /添加素材 Provider/);
+  assert.match(html, /OpenAI Images/);
+  assert.match(html, /gpt-image-2/);
+  assert.match(html, /ComfyUI/);
+  assert.match(html, /搜索配置/);
+  assert.match(html, /排序/);
+  assert.match(html, /config-list-panel/);
+  assert.match(html, /config-list-toolbar/);
+  assert.match(html, /settings-row-detail-button/);
+  assert.match(html, /fp-toggle-switch/);
+  assert.doesNotMatch(html, /编辑素材 Provider/);
+  assert.doesNotMatch(html, /Base URL/);
 });
 
 test('web search settings render through the shared UI component system', () => {
@@ -2049,7 +2360,7 @@ test('MCP raw audit card renders recent diagnostic outcomes', () => {
   assert.match(html, /错误：Resource not found/);
 });
 
-test('MCP server list row renders operational status and policy summary', () => {
+test('MCP server list row renders compact details navigation and toggle', () => {
   const plugin: McpPlugin = {
     id: 'mcp_unity',
     name: 'Unity MCP',
@@ -2070,26 +2381,18 @@ test('MCP server list row renders operational status and policy summary', () => 
     plugin,
     selected: true,
     checked: true,
-    scopeLabel: '项目',
-    connectionStatus: {
-      pluginId: plugin.id,
-      transport: 'http',
-      status: 'online',
-      initializeCount: 1,
-      lastError: 'stale schema'
-    },
-    capabilitySummary: formatMcpCapabilitySummary('zh-CN', 3, 2, 1, 1),
-    policySummary: formatMcpPolicySummary('zh-CN', plugin),
     onSelect: noop,
     onToggle: noop
   }));
 
   assert.match(html, /Unity MCP/);
-  assert.match(html, /在线/);
-  assert.match(html, /能力：Tools 3 · Resources 2 · Prompts 1 · Templates 1/);
-  assert.match(html, /策略：默认 ask \/ 风险 write · 覆盖 1/);
-  assert.match(html, /stale schema/);
-  assert.match(html, /mcp-status-dot online/);
+  assert.match(html, /mcp-server-row-main/);
+  assert.match(html, /详情/);
+  assert.match(html, /settings-row-detail-button/);
+  assert.doesNotMatch(html, /stale schema/);
+  assert.doesNotMatch(html, /能力：Tools 3 · Resources 2 · Prompts 1 · Templates 1/);
+  assert.doesNotMatch(html, /策略：默认 ask \/ 风险 write · 覆盖 1/);
+  assert.doesNotMatch(html, /mcp-status-dot online/);
   assert.match(html, /fp-toggle-switch/);
   assert.match(html, /fp-switch/);
 });
@@ -2204,14 +2507,20 @@ test('MCP management pages render shared action controls', () => {
   assert.match(projectHtml, /fp-button-primary/);
   assert.match(projectHtml, /fp-button-secondary/);
   assert.match(projectHtml, /fp-button[^"]*mcp-server-row-main/);
-  assert.match(projectHtml, /fp-icon-button/);
+  assert.match(projectHtml, /settings-row-detail-button/);
+  assert.match(projectHtml, /详情/);
   assert.match(projectHtml, /fp-toggle-switch/);
+  assert.doesNotMatch(projectHtml, /服务端信息/);
+  assert.doesNotMatch(projectHtml, /Raw 诊断/);
   assert.match(registryHtml, /MCP Registry/);
   assert.match(registryHtml, /添加 Server|Add server/);
   assert.match(registryHtml, /fp-button-primary/);
-  assert.match(registryHtml, /fp-button-danger/);
+  assert.match(registryHtml, /settings-row-detail-button/);
   assert.match(registryHtml, /fp-button[^"]*mcp-server-row-main/);
   assert.match(registryHtml, /fp-toggle-switch/);
+  assert.doesNotMatch(registryHtml, /服务端信息/);
+  assert.doesNotMatch(registryHtml, /Raw 诊断/);
+  assert.doesNotMatch(registryHtml, /fp-button-danger/);
   assert.match(pluginCardHtml, /fp-button[^"]*plugin-list-card selected/);
   assert.doesNotMatch(projectHtml, /<button[^>]*class="mcp-server-row-main/);
   assert.doesNotMatch(pluginCardHtml, /<button[^>]*class="plugin-list-card/);
@@ -2266,6 +2575,10 @@ test('runtime doctor renders direct provider repair guidance', () => {
   }));
 
   assert.match(html, /建议修复顺序/);
+  assert.match(html, /runtime-doctor-status-board/);
+  assert.match(html, /runtime-doctor-status-grid/);
+  assert.match(html, /runtime-doctor-status-card error/);
+  assert.match(html, /data-status-card="auth"/);
   assert.match(html, /补全认证配置/);
   assert.match(html, /切换 API Mode/);
   assert.match(html, /检查 Base URL 与网络/);
@@ -2630,6 +2943,59 @@ test('HTML inspector warns when a project entry requires a dev server', () => {
   assert.equal(html.includes('funplayPreviewMode=fit'), false);
 });
 
+test('Markdown file preview renders standalone thematic breaks as horizontal rules', () => {
+  const project = {
+    id: 'project_markdown_preview',
+    name: 'Bird',
+    sessions: [],
+    mcpBindings: {},
+    chat: [],
+    activity: [],
+    assets: [],
+    tasks: [],
+    memory: {},
+    contextSummary: {},
+    blueprint: {}
+  } as unknown as Project;
+  const draft = [
+    '# 核心玩法一句话',
+    '',
+    '玩家通过画线规划飞行路线。',
+    '',
+    '---',
+    '',
+    '## 2. 市场定位'
+  ].join('\n');
+  const html = renderZh(createElement(FileInspectorPanel, {
+    file: {
+      id: 'Bird_Nest_Rescue_策划案.md',
+      label: 'Bird_Nest_Rescue_策划案.md',
+      path: 'Bird_Nest_Rescue_策划案.md',
+      content: draft,
+      isBinary: false,
+      mimeType: 'text/markdown',
+      size: draft.length
+    },
+    project,
+    draft,
+    mode: 'preview',
+    width: 420,
+    isDirty: false,
+    isSaving: false,
+    saveError: '',
+    savedAt: '',
+    onDraftChange: noop,
+    onModeChange: noop,
+    onClose: noop,
+    onSave: noop,
+    onReset: noop
+  }));
+
+  assert.match(html, /markdown-preview/);
+  assert.match(html, /<hr\s*\/?>/);
+  assert.doesNotMatch(html, />---<\/p>/);
+});
+
 test('project settings shell marks selected settings category and renders only the active page', () => {
   const project = {
     id: 'project_settings_shell',
@@ -2662,7 +3028,6 @@ test('project settings shell marks selected settings category and renders only t
     connectionStatuses: {},
     pluginError: '',
     isRefreshing: false,
-    globalPermissionMode: 'full-access',
     globalRuntimeStrategy: 'native',
     projectBindings: [],
     skillDraft: {
@@ -2717,7 +3082,9 @@ test('project settings shell marks selected settings category and renders only t
 
   assert.match(html, /项目设置分类/);
   assert.match(html, /fp-button[^"]*project-settings-nav-item active/);
-  assert.match(html, /aria-current="page"[^>]*><span class="fp-button-label"><span class="project-settings-nav-copy"><strong>引擎项目/);
+  assert.match(html, /aria-current="page"[^>]*title="引擎项目 · 路径、平台、运行状态/);
+  assert.match(html, /project-settings-nav-icon/);
+  assert.match(html, /<span class="project-settings-nav-copy"><strong>引擎项目/);
   assert.match(html, /运行状态/);
   assert.equal(html.includes('Agent 运行概览'), false);
   assert.doesNotMatch(html, /<button[^>]*class="project-settings-nav-item/);
@@ -2740,7 +3107,6 @@ test('app settings modal is a semantic dialog and opens directly to provider set
     theme: 'light',
     language: 'zh-CN',
     developerMode: false,
-    permissionMode: 'full-access',
     runtimeStrategy: 'native',
     aiSettings: {
       defaultProviderId: provider.id,
@@ -2782,7 +3148,6 @@ test('app settings modal is a semantic dialog and opens directly to provider set
     onChangeTheme: noop,
     onChangeLanguage: noop,
     onChangeDeveloperMode: noop,
-    onChangePermissionMode: noop,
     onChangeRuntimeStrategy: noop,
     onUpdateWebSearchSettings: noopAsync,
     onCreateProvider: noopAsync,
@@ -2863,7 +3228,6 @@ test('app settings memory center renders shared search and editor controls', () 
     theme: 'light',
     language: 'zh-CN',
     developerMode: false,
-    permissionMode: 'full-access',
     runtimeStrategy: 'native',
     aiSettings: {
       defaultProviderId: provider.id,
@@ -2905,7 +3269,6 @@ test('app settings memory center renders shared search and editor controls', () 
     onChangeTheme: noop,
     onChangeLanguage: noop,
     onChangeDeveloperMode: noop,
-    onChangePermissionMode: noop,
     onChangeRuntimeStrategy: noop,
     onUpdateWebSearchSettings: noopAsync,
     onCreateProvider: noopAsync,
@@ -3127,13 +3490,19 @@ test('historical orphan tool results render a compact summary until expanded', (
     role: 'assistant',
     content: longToolResult,
     createdAt: new Date().toISOString(),
-    contentBlocks: [
-      {
-        type: 'tool_result',
-        toolUseId: 'tool_long',
-        content: longToolResult
-      }
-    ]
+    metadata: {
+      agentCoreParts: [
+        {
+          id: 'part_tool_long_result',
+          kind: 'tool_result',
+          sequence: 0,
+          createdAt: '2026-05-20T00:00:00.000Z',
+          toolUseId: 'tool_long',
+          toolName: 'tool_long',
+          content: longToolResult
+        }
+      ]
+    }
   };
   const html = renderZh(createElement(ChatTranscriptMessage, {
     message,
@@ -3144,13 +3513,12 @@ test('historical orphan tool results render a compact summary until expanded', (
   }));
 
   assert.match(html, /tool summary line/);
-  assert.match(html, /显示完整工具结果/);
-  assert.match(html, /fp-button[^"]*chat-tool-result-expand/);
-  assert.doesNotMatch(html, /<button[^>]*class="chat-tool-result-expand/);
+  assert.match(html, /已处理 1 个工具/);
+  assert.match(html, /tool_long/);
   assert.doesNotMatch(html, /TAIL_SHOULD_NOT_RENDER_BY_DEFAULT/);
 });
 
-test('assets page empty state surfaces project file discovery hints', () => {
+test('assets page empty state stays focused without a duplicate discovery side panel', () => {
   const project = {
     id: 'project_assets',
     name: 'Rogue',
@@ -3204,13 +3572,16 @@ test('assets page empty state surfaces project file discovery hints', () => {
     onOpenProjectFile: noop
   }));
 
-  assert.match(html, /素材扫描结果/);
-  assert.match(html, /已发现资源目录/);
-  assert.match(html, /assets\/images/);
-  assert.match(html, /assets\/audio/);
-  assert.match(html, /可识别素材/);
-  assert.match(html, /asset-category-tabs/);
-  assert.match(html, /fp-button[^"]*active/);
+  assert.match(html, /暂无素材/);
+  assert.match(html, /0 个当前素材 · 0 个素材总计 · 0 个项目文件可识别/);
+  assert.doesNotMatch(html, /素材扫描结果/);
+  assert.doesNotMatch(html, /asset-library-inspector/);
+  assert.doesNotMatch(html, /assets\/images/);
+  assert.doesNotMatch(html, /asset-category-tabs/);
+  assert.match(html, /project-settings-page/);
+  assert.match(html, /project-settings-sidebar/);
+  assert.match(html, /aria-label="素材库分类"/);
+  assert.match(html, /fp-button[^"]*project-settings-nav-item active/);
 });
 
 test('assets page renders asset cards through shared buttons', () => {
@@ -3244,6 +3615,71 @@ test('assets page renders asset cards through shared buttons', () => {
   }));
 
   assert.match(html, /player\.png/);
+  assert.match(html, /asset-library-detail/);
   assert.match(html, /fp-button[^"]*asset-library-card/);
   assert.doesNotMatch(html, /<button[^>]*class="asset-library-card/);
+});
+
+test('asset library grid excludes generation jobs from the project asset view', () => {
+  const project = {
+    id: 'project_assets_jobs',
+    name: 'Rogue',
+    sessions: [],
+    mcpBindings: {},
+    chat: [],
+    activity: [],
+    assets: [],
+    tasks: [],
+    memory: {},
+    contextSummary: {},
+    blueprint: {},
+    assetGenerationJobs: [{
+      id: 'job_splash',
+      projectId: 'project_assets_jobs',
+      title: 'Generated Splash',
+      kind: 'image_2d',
+      prompt: 'a splash screen',
+      providerId: 'asset_provider_openai',
+      providerName: 'OpenAI Images',
+      providerAdapter: 'openai-image',
+      references: [],
+      outputSpec: {},
+      status: 'completed',
+      progress: 1,
+      createdBy: 'user',
+      outputs: [{
+        id: 'output_splash',
+        name: 'splash.png',
+        kind: 'image_2d',
+        path: 'assets/generated/images/splash.png',
+        mimeType: 'image/png',
+        format: 'png',
+        size: 1024
+      }],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString()
+    }]
+  } as unknown as Project;
+  const html = renderZh(createElement(AssetsPage, {
+    project,
+    projectFiles: [
+      {
+        id: 'file_player',
+        name: 'player.png',
+        path: 'assets/images/player.png',
+        type: 'file',
+        size: 2048,
+        modifiedAt: new Date().toISOString()
+      }
+    ],
+    assetGenerationProviders: [],
+    onOpenAsset: noop,
+    onOpenProjectFile: noop
+  }));
+
+  assert.match(html, /player\.png/);
+  assert.match(html, /生成记录/);
+  assert.doesNotMatch(html, /Generated Splash/);
+  assert.doesNotMatch(html, /asset-generation-job/);
 });

@@ -5,6 +5,7 @@ import type { AgentRuntimeCapabilityReport, AgentRuntimeStatus, AgentReplayLog, 
 import type { PromptStreamEvent, PromptStreamHandle, AgentUserInputResponse } from './stream';
 import type { PromptAttachment } from './chat';
 import type { AppNotification, AppUpdateSnapshot, ScheduledNotificationTask, ClaudeRuntimeSetupStatus, ClaudeSessionSummary, ClaudeSessionImportResult, RuntimeDoctorResult } from './app';
+import type { AssetGenerationProviderConfig, AssetGenerationProviderInput, AssetGenerationProviderProfile, AssetGenerationRequest } from './asset-generation';
 
 export interface AppState {
   settings: UnitySettings;
@@ -13,6 +14,7 @@ export interface AppState {
   providers: AiProvider[];
   mcpSettings: McpSettings;
   mcpPlugins: McpPlugin[];
+  assetGenerationProviders: AssetGenerationProviderConfig[];
   projects: Project[];
 }
 
@@ -23,6 +25,7 @@ export interface BootstrapPayload {
   providers: AiProvider[];
   mcpSettings: McpSettings;
   mcpPlugins: McpPlugin[];
+  assetGenerationProviders: AssetGenerationProviderConfig[];
   projects: Project[];
 }
 
@@ -56,6 +59,14 @@ export interface FunPlayApi {
   createProject: (input: CreateProjectInput) => Promise<Project>;
   deleteProject: (projectId: string, deleteSourceFiles?: boolean) => Promise<DeleteProjectResult>;
   listProjectFiles: (projectId: string) => Promise<ProjectFileEntry[]>;
+  listAssetGenerationProviders: () => Promise<AssetGenerationProviderProfile[]>;
+  createAssetGenerationProvider: (input: AssetGenerationProviderInput) => Promise<AssetGenerationProviderConfig>;
+  updateAssetGenerationProvider: (providerId: string, input: AssetGenerationProviderInput) => Promise<AssetGenerationProviderConfig>;
+  deleteAssetGenerationProvider: (providerId: string) => Promise<{ success: true }>;
+  generateAsset: (projectId: string, input: AssetGenerationRequest) => Promise<Project>;
+  importGeneratedAsset: (projectId: string, jobId: string) => Promise<Project>;
+  cancelAssetGenerationJob: (projectId: string, jobId: string) => Promise<Project>;
+  onAssetGenerationProjectUpdated: (listener: (project: Project) => void) => () => void;
   readProjectFile: (projectId: string, filePath: string) => Promise<ProjectFileContent>;
   writeProjectFile: (projectId: string, filePath: string, content: string) => Promise<ProjectFileContent>;
   openProjectFile: (projectId: string, filePath: string) => Promise<{ success: true }>;
@@ -120,8 +131,6 @@ export interface FunPlayApi {
   createSnapshot: (projectId: string, note: string) => Promise<Project>;
   previewSessionCheckpoint: (projectId: string, snapshotId: string) => Promise<SessionCheckpointPreview>;
   restoreSessionCheckpoint: (projectId: string, snapshotId: string) => Promise<Project>;
-  executeProjectPlan: (projectId: string) => Promise<Project>;
-  startExecutePlanStream: (projectId: string) => Promise<PromptStreamHandle>;
   updateProjectMcpConfig: (projectId: string, kind: McpPluginKind, pluginId: string) => Promise<Project>;
   updateProjectMcpServers: (projectId: string, pluginIds: string[]) => Promise<Project>;
   updateSettings: (settings: Partial<UnitySettings>) => Promise<UnitySettings>;

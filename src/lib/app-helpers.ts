@@ -1,4 +1,5 @@
 import { formatProjectDocument } from '../../shared/planner';
+import { agentCorePartsToPlainText } from '../../shared/agent-core-v2';
 import { ensureProjectSessions } from '../../shared/project-sessions';
 import {
   type AgentOperationRecord,
@@ -173,11 +174,8 @@ export function formatAppUpdateStatus(status: AppUpdateSnapshot['status'], langu
 }
 
 export function formatAppUpdateFeedSource(source: AppUpdateSnapshot['feedSource'], language: LanguagePreference): string {
-  if (source === 'env') {
-    return localize(language, '环境变量更新源', 'Environment Feed');
-  }
   if (source === 'embedded') {
-    return localize(language, '打包内置更新源', 'Packaged Feed');
+    return localize(language, 'GitHub Releases', 'GitHub Releases');
   }
   return localize(language, '未配置', 'Not Configured');
 }
@@ -424,9 +422,10 @@ export function buildSessionListState(input: {
   }
 
   const latestMessage = latestAssistantMessage ?? [...input.session.chat].reverse().find((message) => message.role === 'user');
+  const latestSummary = latestMessage ? truncateInlineText(extractSessionMessagePreview(latestMessage), 64) : '';
   return {
     mode: 'idle',
-    summary: latestMessage ? truncateInlineText(extractSessionMessagePreview(latestMessage), 64) : localize(input.language, '等待新的消息', 'Waiting for the next message')
+    summary: latestSummary || localize(input.language, '等待新的消息', 'Waiting for the next message')
   };
 }
 
@@ -509,23 +508,14 @@ export function extractSessionMessagePreview(message: Project['sessions'][number
     return message.metadata.activitySummary;
   }
 
-  if (message.contentBlocks?.length) {
-    const blockText = message.contentBlocks
-      .map((block) => {
-        if (block.type === 'text') return block.text;
-        if (block.type === 'thinking') return block.thinking;
-        if (block.type === 'tool_use') return block.name;
-        if (block.type === 'tool_result') return block.content;
-        return block.text;
-      })
-      .filter(Boolean)
-      .join(' ');
-    if (blockText.trim()) {
-      return blockText;
+  if (message.metadata?.agentCoreParts?.length) {
+    const agentCoreText = agentCorePartsToPlainText(message.metadata.agentCoreParts, false);
+    if (agentCoreText.trim()) {
+      return agentCoreText;
     }
   }
 
-  return message.content;
+  return stripInternalSessionPreviewNoise(message.content);
 }
 
 export function truncateInlineText(value: string, maxLength: number): string {
@@ -536,32 +526,35 @@ export function truncateInlineText(value: string, maxLength: number): string {
   return `${normalized.slice(0, Math.max(0, maxLength - 1))}…`;
 }
 
+function stripInternalSessionPreviewNoise(value: string): string {
+  const visibleLines = value
+    .split(/\r?\n/)
+    .filter((line) => !isUsagePreviewLine(line))
+    .join('\n')
+    .trim();
+  const normalized = visibleLines.replace(/\s+/g, ' ').trim();
+  if (!normalized || isUsageOnlyPreview(normalized)) {
+    return '';
+  }
+  return visibleLines;
+}
+
+function isUsagePreviewLine(value: string): boolean {
+  return /^Usage:\s*[\d,.]+(?:[kKmM])?$/i.test(value.trim());
+}
+
+function isUsageOnlyPreview(value: string): boolean {
+  return /^(?:Usage:\s*[\d,.]+(?:[kKmM])?\s*)+$/i.test(value.trim());
+}
+
 export function isCancellationMessage(value: string): boolean {
   return /取消|cancell?ed|stopped/i.test(value);
 }
 
 export function buildAssetLibraryCategories(
-  generatedAssetSpecs: Project['assets'],
   existingAssetFiles: AssetLibraryFileItem[],
   language: LanguagePreference
 ): AssetLibraryCategory[] {
-  const generatedItems = generatedAssetSpecs
-    .filter((asset) => asset.status !== 'planned')
-    .sort((left, right) => assetStatusRank(right.status) - assetStatusRank(left.status) || left.name.localeCompare(right.name))
-    .map((asset): AssetLibraryFileItem => ({
-      id: `generated:${asset.id}`,
-      source: 'generated',
-      openId: `asset-${asset.id}`,
-      name: asset.name,
-      path: `generated-assets/${asset.type}/${slugifyAssetName(asset.name)}.md`,
-      description: asset.prompt,
-      meta: `${assetTypeLabel(asset.type)} · ${asset.notes}`,
-      category: mapGeneratedAssetCategory(asset.type),
-      statusKind: asset.status,
-      statusLabel: formatAssetStatus(asset.status),
-      previewable: true
-    }));
-
   const labels: Record<AssetLibraryCategoryId, string> = {
     image: localize(language, '图片 / UI', 'Images / UI'),
     audio: localize(language, '音频', 'Audio'),
@@ -569,13 +562,12 @@ export function buildAssetLibraryCategories(
     animation: localize(language, '动画', 'Animation')
   };
   const order: AssetLibraryCategoryId[] = ['image', 'audio', 'model', 'animation'];
-  const allItems = [...generatedItems, ...existingAssetFiles];
 
   return order
     .map((id) => ({
       id,
       label: labels[id],
-      items: allItems.filter((item) => item.category === id)
+      items: existingAssetFiles.filter((item) => item.category === id)
     }))
     .filter((category) => category.items.length > 0);
 }

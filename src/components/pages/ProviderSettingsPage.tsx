@@ -1,10 +1,10 @@
-import { useState, type JSX } from 'react';
-import { Activity, BadgeCheck, Pencil, Plus, RefreshCw, Save, Stethoscope, TestTube2, Trash2 } from 'lucide-react';
-import type { AiProvider, AiTestResult, RuntimeDoctorFinding, RuntimeDoctorResult, RuntimeRepairAction } from '../../../shared/types';
+import { useEffect, useState, type JSX } from 'react';
+import { Activity, BadgeCheck, ChevronLeft, Plus, RefreshCw, Save, Settings2, Stethoscope, TestTube2, Trash2 } from 'lucide-react';
+import type { AiProvider, AiProviderInput, AiTestResult, RuntimeDoctorFinding, RuntimeDoctorResult, RuntimeRepairAction } from '../../../shared/types';
 import { resolveProviderTokenLimits } from '../../../shared/provider-catalog';
 import { localize, useUiLanguage, type UiLanguage } from '../../i18n';
 import { ModalShell } from '../settings-modals';
-import { Badge, Button, Surface, TextAreaField } from '../ui/index';
+import { Badge, Button, ConfigDetailActionBar, ConfigListPanel, TextAreaField, ToggleSwitch, type ConfigDetailAction, type ConfigListItem } from '../ui/index';
 
 export function ProviderSettingsPage(props: {
   providers: AiProvider[];
@@ -15,6 +15,7 @@ export function ProviderSettingsPage(props: {
   onDeleteProvider: (providerId: string) => void;
   onTestProvider: (providerId: string) => void;
   onSetDefaultProvider: (providerId: string) => void;
+  onToggleProvider: (provider: AiProvider, enabled: boolean) => void;
   embedded?: boolean;
 }): JSX.Element {
   const language = useUiLanguage();
@@ -25,6 +26,35 @@ export function ProviderSettingsPage(props: {
   const [doctorLoading, setDoctorLoading] = useState(false);
   const [doctorError, setDoctorError] = useState('');
   const [doctorExport, setDoctorExport] = useState('');
+  const [detailProviderId, setDetailProviderId] = useState('');
+  const detailProvider = props.providers.find((provider) => provider.id === detailProviderId) ?? null;
+  const providerItems: ConfigListItem[] = props.providers.map((provider) => ({
+    id: provider.id,
+    title: provider.name,
+    subtitle: provider.isDefault ? t('默认 Provider', 'Default provider') : formatProviderProtocol(provider, language),
+    description: [provider.model, provider.baseUrl].filter(Boolean).join(' · '),
+    statusLabel: provider.enabled ? t('启用', 'Enabled') : t('停用', 'Disabled'),
+    statusTone: provider.enabled ? 'success' : 'neutral',
+    enabled: provider.enabled,
+    meta: [
+      provider.protocol === 'openai-compatible' ? formatProviderApiMode(provider, language) : provider.protocol,
+      provider.hasStoredApiKey ? t('密钥已保存', 'Key saved') : t('缺少密钥', 'Missing key')
+    ],
+    searchText: [provider.protocol, provider.apiMode, provider.model, provider.baseUrl, provider.notes].filter(Boolean).join(' ')
+  }));
+  useEffect(() => {
+    if (detailProviderId && !props.providers.some((provider) => provider.id === detailProviderId)) {
+      setDetailProviderId('');
+    }
+  }, [detailProviderId, props.providers]);
+
+  function openProviderDetail(provider: AiProvider): void {
+    setDetailProviderId(provider.id);
+  }
+
+  function closeProviderDetail(): void {
+    setDetailProviderId('');
+  }
 
   async function runDoctor(provider: AiProvider, live = false): Promise<void> {
     setDoctorProvider(provider);
@@ -95,82 +125,51 @@ export function ProviderSettingsPage(props: {
             <span>{defaultProvider ? t(`默认：${defaultProvider.name}`, `Default: ${defaultProvider.name}`) : t('未设置默认 Provider', 'No default provider')}</span>
           </div>
         </div>
-        <Button variant="primary" onClick={props.onAddProvider} leadingIcon={<Plus size={15} aria-hidden="true" />}>
+        <Button
+          variant="primary"
+          className="provider-add-button"
+          onClick={props.onAddProvider}
+          leadingIcon={<Plus size={15} aria-hidden="true" />}
+        >
           {t('添加 Provider', 'Add Provider')}
         </Button>
       </div>
-      <div className="provider-channel-grid">
-        {props.providers.length === 0 ? <div className="empty-note">{t('暂无 Provider，请先添加。', 'No providers yet. Add one first.')}</div> : null}
-        {props.providers.map((provider) => {
-          const tokenLimits = resolveProviderTokenLimits(provider);
-          return (
-            <Surface key={provider.id} className="provider-channel-card">
-            <div className="provider-channel-top">
-              <div>
-                <strong>{provider.name}</strong>
-                <div className="provider-channel-subtitle">
-                  <span>{formatProviderProtocol(provider, language)}</span>
-                  {provider.protocol === 'openai-compatible' ? <span>{formatProviderApiMode(provider, language)}</span> : null}
-                </div>
-              </div>
-              <span className={`status-dot ${provider.enabled ? 'green' : 'gray'}`} />
-            </div>
-            <div className="provider-channel-summary">
-              <div>
-                <span>{t('默认模型', 'Default Model')}</span>
-                <strong>{provider.model || t('未配置', 'Not Configured')}</strong>
-              </div>
-              <div>
-                <span>Base URL</span>
-                <strong>{provider.baseUrl || t('未配置', 'Not Configured')}</strong>
-              </div>
-              <div>
-                <span>API Key</span>
-                <strong>{provider.hasStoredApiKey ? t('已保存', 'Saved') : t('未配置', 'Missing')}</strong>
-              </div>
-              <div>
-                <span>{t('上下文窗口', 'Context Window')}</span>
-                <strong>{formatEffectiveTokenLimit(tokenLimits.effectiveContextWindowTokens, tokenLimits.configuredContextWindowTokens, language)}</strong>
-              </div>
-              <div>
-                <span>{t('输出上限', 'Max Output')}</span>
-                <strong>{formatEffectiveTokenLimit(tokenLimits.effectiveMaxOutputTokens, tokenLimits.configuredMaxOutputTokens, language)}</strong>
-              </div>
-            </div>
-            <div className="tag-row provider-channel-tags">
-              <Badge>{provider.authStyle ?? 'api_key'}</Badge>
-              <Badge tone={provider.enabled ? 'success' : 'neutral'}>{provider.enabled ? t('启用', 'Enabled') : t('停用', 'Disabled')}</Badge>
-              {provider.isDefault ? <Badge tone="brand">{t('默认', 'Default')}</Badge> : null}
-            </div>
-            <div className="provider-card-actions">
-              <Button variant="secondary" size="sm" onClick={() => props.onEditProvider(provider)} leadingIcon={<Pencil size={13} aria-hidden="true" />}>
-                {t('编辑', 'Edit')}
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => props.onTestProvider(provider.id)} leadingIcon={<TestTube2 size={14} aria-hidden="true" />}>
-                {t('测试', 'Test')}
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => void runDoctor(provider)} leadingIcon={<Stethoscope size={14} aria-hidden="true" />}>
-                {t('诊断', 'Doctor')}
-              </Button>
-              {!provider.isDefault ? (
-                <Button variant="secondary" size="sm" onClick={() => props.onSetDefaultProvider(provider.id)} leadingIcon={<BadgeCheck size={14} aria-hidden="true" />}>
-                  {t('设默认', 'Set Default')}
-                </Button>
-              ) : null}
-              <Button variant="danger" size="sm" onClick={() => props.onDeleteProvider(provider.id)} leadingIcon={<Trash2 size={14} aria-hidden="true" />}>
-                {t('删除', 'Delete')}
-              </Button>
-            </div>
-            {tokenLimits.modelId ? (
-              <div className="helper-copy">
-                {t(`模型预设：${tokenLimits.displayName || tokenLimits.modelId}`, `Model preset: ${tokenLimits.displayName || tokenLimits.modelId}`)}
-              </div>
-            ) : null}
-            {props.providerTests[provider.id] ? <div className="helper-copy">{props.providerTests[provider.id].message}</div> : null}
-            </Surface>
-          );
-        })}
-      </div>
+      {detailProvider ? (
+        <div className="settings-detail-panel provider-settings-detail-route">
+          <ProviderDetail
+            provider={detailProvider}
+            providerTest={props.providerTests[detailProvider.id]}
+            language={language}
+            onBack={closeProviderDetail}
+            onEdit={() => props.onEditProvider(detailProvider)}
+            onDelete={() => props.onDeleteProvider(detailProvider.id)}
+            onTest={() => props.onTestProvider(detailProvider.id)}
+            onDoctor={() => void runDoctor(detailProvider)}
+            onSetDefault={() => props.onSetDefaultProvider(detailProvider.id)}
+          />
+        </div>
+      ) : (
+        <ConfigListPanel
+          className="provider-settings-list-panel"
+          items={providerItems}
+          emptyTitle={t('暂无 Provider', 'No providers yet')}
+          emptyDescription={t('添加一个模型服务后，就可以在所有项目里使用。', 'Add a model service to use it across projects.')}
+          onOpenItem={(providerId) => {
+            const provider = props.providers.find((item) => item.id === providerId);
+            if (provider) openProviderDetail(provider);
+          }}
+          renderItemActions={(item) => {
+            const provider = props.providers.find((candidate) => candidate.id === item.id);
+            return provider ? (
+              <ToggleSwitch
+                label={provider.enabled ? t('停用 Provider', 'Disable provider') : t('启用 Provider', 'Enable provider')}
+                checked={provider.enabled}
+                onCheckedChange={(enabled) => props.onToggleProvider(provider, enabled)}
+              />
+            ) : null;
+          }}
+        />
+      )}
       {doctorProvider ? (
         <RuntimeDoctorDialog
           provider={doctorProvider}
@@ -190,6 +189,120 @@ export function ProviderSettingsPage(props: {
           }}
         />
       ) : null}
+    </div>
+  );
+}
+
+function providerToInput(provider: AiProvider, overrides: Partial<AiProviderInput> = {}): AiProviderInput {
+  return {
+    name: provider.name,
+    protocol: provider.protocol,
+    apiMode: provider.protocol === 'openai-compatible' ? provider.apiMode ?? 'chat' : undefined,
+    authStyle: provider.authStyle,
+    baseUrl: provider.baseUrl,
+    apiKey: '',
+    model: provider.model,
+    upstreamModel: provider.upstreamModel,
+    headers: provider.headers,
+    envOverrides: provider.envOverrides,
+    claudeCodeCompatible: provider.claudeCodeCompatible,
+    claudeRoleModels: provider.claudeRoleModels,
+    availableModels: provider.availableModels,
+    sdkProxyOnly: provider.sdkProxyOnly,
+    providerMeta: provider.providerMeta,
+    contextWindowTokens: provider.contextWindowTokens,
+    maxOutputTokens: provider.maxOutputTokens,
+    requestTimeoutMs: provider.requestTimeoutMs,
+    chunkTimeoutMs: provider.chunkTimeoutMs,
+    enabled: provider.enabled,
+    notes: provider.notes,
+    ...overrides
+  };
+}
+
+export function buildProviderToggleInput(provider: AiProvider, enabled: boolean): AiProviderInput {
+  return providerToInput(provider, { enabled });
+}
+
+function ProviderDetail(props: {
+  provider: AiProvider;
+  providerTest?: AiTestResult;
+  language: UiLanguage;
+  onBack: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onTest: () => void;
+  onDoctor: () => void;
+  onSetDefault: () => void;
+}): JSX.Element {
+  const t = (zh: string, en: string): string => localize(props.language, zh, en);
+  const tokenLimits = resolveProviderTokenLimits(props.provider);
+  const primaryActions: ConfigDetailAction[] = [
+    { id: 'edit', label: t('编辑', 'Edit'), icon: <Settings2 size={14} aria-hidden="true" />, onAction: props.onEdit },
+    { id: 'test', label: t('测试', 'Test'), icon: <TestTube2 size={14} aria-hidden="true" />, onAction: props.onTest },
+    { id: 'doctor', label: t('诊断', 'Doctor'), icon: <Stethoscope size={14} aria-hidden="true" />, onAction: props.onDoctor }
+  ];
+  const secondaryActions: ConfigDetailAction[] = [
+    ...(!props.provider.isDefault
+      ? [{ id: 'default', label: t('设默认', 'Set Default'), icon: <BadgeCheck size={14} aria-hidden="true" />, onAction: props.onSetDefault }]
+      : []),
+    { id: 'delete', label: t('删除', 'Delete'), tone: 'danger', icon: <Trash2 size={14} aria-hidden="true" />, onAction: props.onDelete }
+  ];
+
+  return (
+    <div className="provider-channel-detail">
+      <div className="settings-header compact">
+        <div>
+          <Button variant="ghost" size="sm" className="settings-detail-back-button" onClick={props.onBack} leadingIcon={<ChevronLeft size={14} aria-hidden="true" />}>
+            {t('返回', 'Back')}
+          </Button>
+          <h2>{props.provider.name}</h2>
+          <p>{props.provider.notes || `${formatProviderProtocol(props.provider, props.language)} · ${props.provider.model || t('未配置模型', 'No model configured')}`}</p>
+        </div>
+        <ConfigDetailActionBar actions={primaryActions} />
+      </div>
+
+      <div className="provider-channel-detail-grid">
+        <div className="provider-detail-card">
+          <span>{t('默认模型', 'Default Model')}</span>
+          <strong>{props.provider.model || t('未配置', 'Not Configured')}</strong>
+        </div>
+        <div className="provider-detail-card">
+          <span>Base URL</span>
+          <strong>{props.provider.baseUrl || t('未配置', 'Not Configured')}</strong>
+        </div>
+        <div className="provider-detail-card">
+          <span>API Key</span>
+          <strong>{props.provider.hasStoredApiKey ? t('已保存', 'Saved') : t('未配置', 'Missing')}</strong>
+        </div>
+        <div className="provider-detail-card">
+          <span>{t('上下文窗口', 'Context Window')}</span>
+          <strong>{formatEffectiveTokenLimit(tokenLimits.effectiveContextWindowTokens, tokenLimits.configuredContextWindowTokens, props.language)}</strong>
+        </div>
+        <div className="provider-detail-card">
+          <span>{t('输出上限', 'Max Output')}</span>
+          <strong>{formatEffectiveTokenLimit(tokenLimits.effectiveMaxOutputTokens, tokenLimits.configuredMaxOutputTokens, props.language)}</strong>
+        </div>
+      </div>
+
+      <div className="tag-row provider-channel-tags">
+        <Badge>{formatProviderProtocol(props.provider, props.language)}</Badge>
+        {props.provider.protocol === 'openai-compatible' ? <Badge>{formatProviderApiMode(props.provider, props.language)}</Badge> : null}
+        <Badge>{props.provider.authStyle ?? 'api_key'}</Badge>
+        <Badge tone={props.provider.enabled ? 'success' : 'neutral'}>{props.provider.enabled ? t('启用', 'Enabled') : t('停用', 'Disabled')}</Badge>
+        {props.provider.isDefault ? <Badge tone="brand">{t('默认', 'Default')}</Badge> : null}
+      </div>
+
+      {tokenLimits.modelId ? (
+        <div className="helper-copy">
+          {t(`模型预设：${tokenLimits.displayName || tokenLimits.modelId}`, `Model preset: ${tokenLimits.displayName || tokenLimits.modelId}`)}
+        </div>
+      ) : null}
+      {props.providerTest ? <div className="helper-copy">{props.providerTest.message}</div> : null}
+
+      <div className="provider-card-actions">
+        <ConfigDetailActionBar actions={secondaryActions} />
+      </div>
     </div>
   );
 }
@@ -410,16 +523,22 @@ export function RuntimeDoctorDialog(props: {
       {props.loading ? <div className="helper-copy">{t('诊断中…', 'Running diagnostics...')}</div> : null}
       {props.error ? <div className="error-text">{props.error}</div> : null}
       {repairGuidance.length > 0 ? (
-        <div className="runtime-doctor-guidance">
-          <strong>{t('建议修复顺序', 'Suggested Repair Order')}</strong>
-          <div className="runtime-doctor-guidance-list">
+        <div className="runtime-doctor-guidance runtime-doctor-status-board">
+          <div className="runtime-doctor-status-head">
+            <strong>{t('建议修复顺序', 'Suggested Repair Order')}</strong>
+            <span>{t(`${repairGuidance.length} 项需要处理`, `${repairGuidance.length} item${repairGuidance.length > 1 ? 's' : ''} to review`)}</span>
+          </div>
+          <div className="runtime-doctor-guidance-list runtime-doctor-status-grid">
             {repairGuidance.map((item) => (
-              <section key={item.key} className={`runtime-doctor-guidance-item ${item.severity}`}>
-                <div>
+              <section key={item.key} className={`runtime-doctor-guidance-item runtime-doctor-status-card ${item.severity}`} data-status-card={item.key}>
+                <div className="runtime-doctor-status-card-top">
+                  <Badge tone={item.severity === 'error' ? 'danger' : item.severity === 'warn' ? 'warning' : 'neutral'}>{severityLabel(item.severity)}</Badge>
                   <strong>{item.title}</strong>
-                  <span>{item.detail}</span>
                 </div>
-                <em>{item.action}</em>
+                <div className="runtime-doctor-status-card-body">
+                  <span>{item.detail}</span>
+                  <em>{item.action}</em>
+                </div>
               </section>
             ))}
           </div>

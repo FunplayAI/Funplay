@@ -1,4 +1,4 @@
-import { runtimeEventToAgentCoreParts } from '../../../shared/agent-core-v2';
+import { runtimeEventToAgentCoreParts } from '../agent-core/index';
 import type { AgentCoreMessagePart, AgentCorePartKind, AgentReplayAgentCoreDebugger, AgentReplayLog, AgentReplayMetrics, AgentRuntimeEvent, AgentRuntimeStatus, RuntimeUsageTotals } from '../../../shared/types';
 
 const REPLAY_SECRET_PATTERNS = [

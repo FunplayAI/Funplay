@@ -7,6 +7,7 @@ import type {
   AgentToolEditMetrics,
   AgentToolMcpResult,
   AgentToolTerminalResult,
+  AgentToolTransactionResultSource,
   AgentToolTransactionSummary,
   ChatMediaBlock
 } from '../../../shared/types';
@@ -39,6 +40,8 @@ export type ToolExecutorTransactionPhase =
 
 export type ToolExecutorTransactionStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
+export type ToolExecutorTransactionResultSource = AgentToolTransactionResultSource;
+
 export type ToolExecutorTransactionEventType =
   | 'created'
   | 'validation_passed'
@@ -52,11 +55,14 @@ export type ToolExecutorTransactionEventType =
   | 'execution_completed'
   | 'execution_failed'
   | 'execution_timed_out'
+  | 'result_recorded'
   | 'cancelled';
 
 export interface ToolExecutorTransactionResult {
   content: string;
   isError?: boolean;
+  failureKind?: string;
+  recoveryHint?: string;
   media?: ChatMediaBlock[];
   changedFiles?: AgentToolChangedFile[];
   command?: AgentToolCommandResult;
@@ -65,6 +71,7 @@ export interface ToolExecutorTransactionResult {
   edit?: AgentToolEditMetrics;
   mcp?: AgentToolMcpResult;
   artifacts?: AgentToolArtifact[];
+  searchText?: string;
 }
 
 export type ToolExecutorTransactionResultLike = Omit<ToolExecutorTransactionResult, 'content'> & {
@@ -117,6 +124,7 @@ export interface ToolExecutorTransaction {
   input?: Record<string, unknown>;
   status: ToolExecutorTransactionStatus;
   phase: ToolExecutorTransactionPhase;
+  resultSource?: ToolExecutorTransactionResultSource;
   createdAt: string;
   updatedAt: string;
   timeoutMs?: number;
@@ -137,6 +145,7 @@ export interface CreateToolExecutorTransactionInput {
   toolClass: ToolExecutorToolClass;
   input?: Record<string, unknown>;
   timeoutMs?: number;
+  resultSource?: ToolExecutorTransactionResultSource;
   permission?: ToolExecutorPermissionSnapshot;
   checkpoint?: ToolExecutorCheckpointSnapshot;
   createdAt?: string;
@@ -191,6 +200,7 @@ export function createToolExecutorTransaction(input: CreateToolExecutorTransacti
     input: input.input,
     status: 'pending',
     phase: 'created',
+    resultSource: input.resultSource,
     createdAt,
     updatedAt: createdAt,
     timeoutMs: input.timeoutMs,
@@ -243,23 +253,28 @@ export function completeToolExecutorTransaction(
     createdAt?: string;
     summary?: string;
     metadata?: Record<string, unknown>;
+    eventType?: ToolExecutorTransactionEventType;
+    phase?: ToolExecutorTransactionPhase;
+    status?: ToolExecutorTransactionStatus;
+    resultSource?: ToolExecutorTransactionResultSource;
   } = {}
 ): ToolExecutorTransaction {
   const createdAt = options.createdAt ?? nowIso();
-  const status: ToolExecutorTransactionStatus = result.isError ? 'failed' : 'completed';
-  const phase: ToolExecutorTransactionPhase = result.isError ? 'failed' : 'completed';
-  const eventType: ToolExecutorTransactionEventType = result.isError ? 'execution_failed' : 'execution_completed';
+  const status: ToolExecutorTransactionStatus = options.status ?? (result.isError ? 'failed' : 'completed');
+  const phase: ToolExecutorTransactionPhase = options.phase ?? (result.isError ? 'failed' : 'completed');
+  const eventType: ToolExecutorTransactionEventType = options.eventType ?? (result.isError ? 'execution_failed' : 'execution_completed');
   const error: ToolExecutorTransactionError | undefined = result.isError
     ? {
         message: result.content,
-        failureKind: result.edit?.failureKind ?? result.mcp?.failureKind,
-        recoveryHint: result.edit?.recoveryHint
+        failureKind: result.failureKind ?? result.edit?.failureKind ?? result.mcp?.failureKind,
+        recoveryHint: result.recoveryHint ?? result.edit?.recoveryHint
       }
     : undefined;
   const next: ToolExecutorTransaction = {
     ...transaction,
     status,
     phase,
+    resultSource: options.resultSource ?? transaction.resultSource,
     result,
     error,
     updatedAt: createdAt
@@ -283,6 +298,8 @@ export function normalizeToolExecutorTransactionResult(input: ToolExecutorTransa
   return {
     content: input.content ?? input.summary ?? '',
     isError: input.isError,
+    failureKind: input.failureKind,
+    recoveryHint: input.recoveryHint,
     media: input.media,
     changedFiles: input.changedFiles,
     command: input.command,
@@ -290,7 +307,8 @@ export function normalizeToolExecutorTransactionResult(input: ToolExecutorTransa
     browser: input.browser,
     edit: input.edit,
     mcp: input.mcp,
-    artifacts: input.artifacts
+    artifacts: input.artifacts,
+    searchText: input.searchText
   };
 }
 
@@ -301,6 +319,7 @@ export function failToolExecutorTransaction(
     createdAt?: string;
     timedOut?: boolean;
     metadata?: Record<string, unknown>;
+    resultSource?: ToolExecutorTransactionResultSource;
   } = {}
 ): ToolExecutorTransaction {
   const createdAt = options.createdAt ?? nowIso();
@@ -314,6 +333,7 @@ export function failToolExecutorTransaction(
     ...transaction,
     status: 'failed',
     phase,
+    resultSource: options.resultSource ?? transaction.resultSource,
     result,
     error,
     updatedAt: createdAt
@@ -426,6 +446,7 @@ export function createToolExecutorTransactionSummary(transaction: ToolExecutorTr
     toolClass: transaction.toolClass,
     phase: transaction.phase,
     status: transaction.status,
+    resultSource: transaction.resultSource,
     eventCount: transaction.events.length,
     startedAt: transaction.createdAt,
     updatedAt: transaction.updatedAt,

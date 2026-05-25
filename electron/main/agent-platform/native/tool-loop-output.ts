@@ -9,6 +9,15 @@ export function formatInterruptedToolResult(error: unknown): string {
   ].filter(Boolean).join('\n');
 }
 
+export function formatFailedToolResult(error: unknown): string {
+  const detail = error instanceof Error ? error.message : String(error);
+  return [
+    '[Error]',
+    'Tool execution failed before returning a result.',
+    detail ? `Cause: ${detail}` : ''
+  ].filter(Boolean).join('\n');
+}
+
 export function isAbortLikeError(error: unknown, abortSignal?: AbortSignal): boolean {
   return Boolean(
     abortSignal?.aborted ||
@@ -42,6 +51,7 @@ export function normalizeToolOutputForStream(output: unknown): {
   edit?: WorkspaceToolActionResult['edit'];
   mcp?: WorkspaceToolActionResult['mcp'];
   artifacts?: WorkspaceToolActionResult['artifacts'];
+  searchText?: string;
 } {
   if (output && typeof output === 'object' && !Array.isArray(output)) {
     const record = output as {
@@ -55,6 +65,7 @@ export function normalizeToolOutputForStream(output: unknown): {
       edit?: unknown;
       mcp?: unknown;
       artifacts?: unknown;
+      searchText?: unknown;
     };
     return {
       summary: typeof record.summary === 'string' ? record.summary : stringifyToolOutput(output),
@@ -66,7 +77,8 @@ export function normalizeToolOutputForStream(output: unknown): {
       browser: record.browser && typeof record.browser === 'object' && !Array.isArray(record.browser) ? record.browser as WorkspaceToolActionResult['browser'] : undefined,
       edit: record.edit && typeof record.edit === 'object' && !Array.isArray(record.edit) ? record.edit as WorkspaceToolActionResult['edit'] : undefined,
       mcp: record.mcp && typeof record.mcp === 'object' && !Array.isArray(record.mcp) ? record.mcp as WorkspaceToolActionResult['mcp'] : undefined,
-      artifacts: Array.isArray(record.artifacts) ? record.artifacts as WorkspaceToolActionResult['artifacts'] : undefined
+      artifacts: Array.isArray(record.artifacts) ? record.artifacts as WorkspaceToolActionResult['artifacts'] : undefined,
+      searchText: typeof record.searchText === 'string' ? record.searchText : undefined
     };
   }
 

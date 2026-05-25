@@ -1,7 +1,8 @@
 {
   "name": "funplay",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
+  "license": "MIT",
   "description": "AI game creation desktop workspace for macOS + Unity.",
   "type": "module",
   "main": "out/main/index.js",
@@ -20,14 +21,15 @@
     "agent:platform-v3-benchmark": "node scripts/agent-platform-v3-benchmark.mjs",
     "agent:skills-v2-benchmark": "node scripts/agent-skills-v2-benchmark.mjs",
     "agent:mcp-compatibility": "node --experimental-strip-types --import ./tests/register-ts-loader.mjs --test --test-name-pattern \"unity mcp client reuses initialization|mcp connection manager reconnects|unity mcp client exposes prompt|unity mcp optional capability|mcp tool elicitation|mcp compatibility matrix|mcp stdio transport|mcp stdio lifecycle|mcp stdio crash|mcp streamable http transport|mcp sse transport\" tests/runtime/unity-onboarding.test.ts",
-    "agent:roadmap-audit": "node scripts/agent-roadmap-audit.mjs",
     "agent:browser-smoke": "sh -c 'NODE_OPTIONS=\"--experimental-strip-types --import ./tests/register-ts-loader.mjs\" electron scripts/agent-browser-smoke.mjs'",
     "ui:smoke": "node scripts/desktop-ui-smoke.mjs",
     "ui:electron-smoke": "electron scripts/desktop-ui-electron-smoke",
     "ui:maturity-gate": "node scripts/desktop-ui-maturity-gate.mjs",
     "runtime:maturity-gate": "node scripts/runtime-maturity-gate.mjs",
     "runtime:maturity-gate:live": "node scripts/runtime-maturity-gate.mjs --require-live",
+    "release:audit": "node scripts/release-config-audit.mjs",
     "release:gate": "node scripts/release-gate.mjs",
+    "release:verify-mac-updates": "node scripts/merge-mac-update-metadata.mjs --verify release/latest-mac.yml --check-artifacts",
     "runtime:pptx:check": "node scripts/prepare-pptx-runtime.mjs --check",
     "runtime:pptx:prepare": "node scripts/prepare-pptx-runtime.mjs",
     "ensure:claude-sdk:darwin-x64": "node scripts/ensure-claude-sdk-darwin-x64.mjs",
@@ -35,11 +37,12 @@
     "predist": "npm run rebuild:native",
     "dist": "npm run dist:mac:arm64",
     "dist:mac": "npm run dist:mac:arm64",
-    "dist:mac:arm64": "npm run build && electron-builder --mac --arm64",
-    "dist:mac:x64": "npm run ensure:claude-sdk:darwin-x64 && npm run build && electron-builder --mac --x64",
+    "dist:mac:arm64": "npm run build && electron-builder --mac --arm64 --publish never",
+    "dist:mac:x64": "npm run ensure:claude-sdk:darwin-x64 && npm run build && electron-builder --mac --x64 --publish never",
+    "dist:mac:split": "node scripts/build-mac-split-release.mjs",
     "dist:mac:intel": "npm run dist:mac:x64",
     "dist:win": "npm run dist:win:x64",
-    "dist:win:x64": "npm run build && electron-builder --win --x64",
+    "dist:win:x64": "npm run build && electron-builder --win --x64 --publish never",
     "check:native": "node scripts/ensure-electron-native.mjs",
     "rebuild:native": "node scripts/ensure-electron-native.mjs",
     "rebuild:native:force": "node scripts/ensure-electron-native.mjs --force"
@@ -52,8 +55,10 @@
     },
     "publish": [
       {
-        "provider": "generic",
-        "url": "https://color-button-sort-puzzle.oss-us-west-1.aliyuncs.com/CDN/funplay-updates/"
+        "provider": "github",
+        "owner": "FunplayAI",
+        "repo": "Funplay",
+        "releaseType": "draft"
       }
     ],
     "icon": "resources/icon",

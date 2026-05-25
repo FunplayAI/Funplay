@@ -30,7 +30,6 @@ import type {
 
 export type AgentRuntimeCapabilityKey =
   | 'conversation'
-  | 'executePlan'
   | 'toolLoop'
   | 'nativeToolCalling'
   | 'legacyJsonLoop'
@@ -52,7 +51,6 @@ export type AgentRuntimeCapabilityKey =
 
 export interface AgentRuntimeCapabilities {
   conversation: boolean;
-  executePlan: boolean;
   toolLoop: boolean;
   nativeToolCalling: boolean;
   legacyJsonLoop: boolean;
@@ -132,6 +130,13 @@ export type AgentToolTransactionPhase =
 
 export type AgentToolTransactionStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
+export type AgentToolTransactionResultSource =
+  | 'executed'
+  | 'cached'
+  | 'validation_failed'
+  | 'synthetic_failure'
+  | 'interrupted';
+
 export interface AgentToolTransactionSummary {
   id: string;
   toolUseId: string;
@@ -140,6 +145,7 @@ export interface AgentToolTransactionSummary {
   toolClass: AgentToolTransactionClass;
   phase: AgentToolTransactionPhase;
   status: AgentToolTransactionStatus;
+  resultSource?: AgentToolTransactionResultSource;
   eventCount: number;
   startedAt: string;
   updatedAt: string;
@@ -461,6 +467,7 @@ export type AgentRuntimeEventType =
   | 'tool_result'
   | 'tool_boundary'
   | 'agent_core_state'
+  | 'agent_core_parts'
   | 'context_summary'
   | 'todo_update'
   | 'permission_request'
@@ -579,6 +586,9 @@ export interface AgentRuntimeEvent {
   toolUse?: {
     toolUseId: string;
     name: string;
+    title?: string;
+    summary?: string;
+    activity?: string;
     input?: Record<string, unknown>;
     status: 'pending' | 'running' | 'completed' | 'failed';
   };
@@ -598,6 +608,7 @@ export interface AgentRuntimeEvent {
   };
   toolBoundary?: AgentRuntimeToolBoundary;
   coreState?: AgentCoreStateMachineSnapshot;
+  agentCoreParts?: AgentCoreMessagePart[];
   providerStep?: AgentCoreProviderStepResult;
   contextSummary?: {
     summary: string;

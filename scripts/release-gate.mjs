@@ -8,27 +8,33 @@ const reportDir = join(repoRoot, 'out/release-gate');
 
 const gates = [
   {
-    id: 'build',
-    title: 'Production TypeScript and Electron build',
-    command: 'npm run build',
-    timeoutMs: 600_000
+    id: 'release-audit',
+    title: 'Open-source release configuration audit',
+    command: 'npm run release:audit',
+    timeoutMs: 30_000
   },
   {
-    id: 'runtime-tests',
-    title: 'Runtime regression tests',
-    command: 'npm test',
-    timeoutMs: 600_000
+    id: 'ui-smoke',
+    title: 'Static desktop UI release smoke',
+    command: 'npm run ui:smoke',
+    timeoutMs: 120_000
   },
   {
-    id: 'agent-e2e',
-    title: 'Agent E2E benchmark harness',
-    command: 'npm run agent:e2e',
+    id: 'ui-electron-smoke',
+    title: 'Real Electron desktop UI release smoke',
+    command: 'npm run ui:electron-smoke',
     timeoutMs: 300_000
   },
   {
-    id: 'claude-live-e2e',
-    title: 'Live Claude SDK E2E benchmark',
-    command: 'npm run agent:e2e:claude-live',
+    id: 'ui-maturity',
+    title: 'Desktop UI maturity gate',
+    command: 'npm run ui:maturity-gate',
+    timeoutMs: 120_000
+  },
+  {
+    id: 'runtime-maturity',
+    title: 'Runtime dry maturity gate',
+    command: 'npm run runtime:maturity-gate',
     timeoutMs: 900_000
   }
 ];

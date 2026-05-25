@@ -7,15 +7,13 @@ import { tmpdir } from 'node:os';
 import type { AppState, PromptStreamEvent } from '../../shared/types.ts';
 import { appendProjectConversationTurn, getActiveProjectSession, replaceProjectSession } from '../../shared/project-sessions.ts';
 import { getRuntimeRun, initializeStore, listRuntimeRuns, setState, getState, upsertRuntimeRun } from '../../electron/main/store.ts';
-import { cancelAgentExecutionPlanStream, respondToAgentPermissionRequest, respondToAgentUserInputRequest, resumeAgentRun, startAgentExecutionPlanStream, startAgentPromptStream } from '../../electron/main/agent-platform/stream-manager.ts';
-import { registerActiveStream } from '../../electron/main/agent-platform/stream-lifecycle.ts';
-import { registerPendingPermission } from '../../electron/main/agent-platform/permission-registry.ts';
+import { respondToAgentPermissionRequest, respondToAgentUserInputRequest, resumeAgentRun, startAgentPromptStream } from '../../electron/main/agent-platform/stream-manager.ts';
 import { buildResumeContextForRun } from '../../electron/main/agent-platform/stream-resume.ts';
 import { recordActiveRunAgentCoreState, recordActiveRunSkillActivation, recordActiveRunStreamDelta, recordActiveRunTimelineEntry, recordActiveRunToolResult, recordActiveRunToolUse, recordActiveRunUsage, registerActiveRun, unregisterActiveRun, updateActiveRunStatus, updateActiveRunToolBoundary } from '../../electron/main/agent-platform/run-registry.ts';
 import { makeStageHandler, makeToolUseHandler } from '../../electron/main/agent-platform/stream-event-dispatcher.ts';
 import { makePermissionHandlers, makeUserInputHandlers } from '../../electron/main/agent-platform/stream-interactions.ts';
 import { executeAgentToolAction } from '../../electron/main/agent-platform/workspace-tools.ts';
-import { buildExecutionPlanProject, buildMcpPlugin, buildProject, buildState, startTestMcpServer, waitForFinalStreamEvent } from './test-helpers.ts';
+import { buildProject, buildState, waitForFinalStreamEvent } from './test-helpers.ts';
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return Promise.race([
@@ -25,252 +23,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
     })
   ]);
 }
-
-test('execute-plan stream starts and completes under stream-manager ownership', async () => {
-  const userDataPath = await mkdtemp(join(tmpdir(), 'funplay-store-execute-stream-'));
-  try {
-    await initializeStore(userDataPath);
-    const project = buildExecutionPlanProject();
-    await setState({
-      ...getState(),
-      projects: [project]
-    });
-
-    let handleStreamId = '';
-    const finalEvent = await waitForFinalStreamEvent(async (dispatchEvent) => {
-      const handle = startAgentExecutionPlanStream({
-        getState,
-        persistState: setState,
-        projectId: project.id,
-        dispatchEvent
-      });
-      handleStreamId = handle.streamId;
-    });
-
-    assert.equal(handleStreamId.length > 0, true);
-    assert.equal(finalEvent.type, 'completed');
-  } finally {
-    await rm(userDataPath, { recursive: true, force: true });
-  }
-});
-
-test('execute-plan stream projects tool work into Agent Core state and ordered parts', async () => {
-  const userDataPath = await mkdtemp(join(tmpdir(), 'funplay-store-execute-core-'));
-  const server = await startTestMcpServer();
-  try {
-    await initializeStore(userDataPath);
-    const plugin = buildMcpPlugin(server.baseUrl);
-    const project = {
-      ...buildExecutionPlanProject(),
-      mcpBindings: {
-        engine: plugin.id
-      },
-      currentExecutionPlan: {
-        summary: 'Run test execution plan',
-        rationale: 'Ensure execute-plan stream works.',
-        actions: [
-          {
-            id: 'action_test_plan',
-            pluginKind: 'engine' as const,
-            title: 'Read Unity context',
-            objective: 'Exercise the execute-plan Agent Core projection.',
-            suggestedTools: [],
-            inputs: [],
-            operations: [
-              {
-                type: 'resource_read' as const,
-                target: 'unity://project/context'
-              }
-            ],
-            successCriteria: [],
-            status: 'planned' as const
-          }
-        ]
-      }
-    };
-    await setState({
-      ...getState(),
-      ...(buildState(project) as AppState),
-      mcpPlugins: [plugin]
-    });
-
-    const events: PromptStreamEvent[] = [];
-    let handleStreamId = '';
-    const finalEvent = await waitForFinalStreamEvent(async (dispatchEvent) => {
-      const handle = startAgentExecutionPlanStream({
-        getState,
-        persistState: setState,
-        projectId: project.id,
-        dispatchEvent: (event) => {
-          events.push(event);
-          dispatchEvent(event);
-        }
-      });
-      handleStreamId = handle.streamId;
-    });
-
-    assert.equal(finalEvent.type, 'completed');
-    const coreStage = events.find((event) => event.type === 'stage' && event.stageId === 'stage:execute_plan_agent_core_v2');
-    assert.equal(coreStage?.type, 'stage');
-    assert.equal((coreStage?.input?.coreState as { state?: string } | undefined)?.state, 'building_model_input');
-    const persistedRun = listRuntimeRuns(project.id).find((run) => run.streamId === handleStreamId);
-    assert.equal(persistedRun?.events?.some((event) => event.type === 'agent_core_state'), true);
-
-    const updatedProject = getState().projects.find((item) => item.id === project.id);
-    const assistantMessage = updatedProject ? getActiveProjectSession(updatedProject).chat.at(-1) : undefined;
-    const parts = assistantMessage?.metadata?.agentCoreParts ?? [];
-    const toolCallIndex = parts.findIndex((part) => part.kind === 'tool_call' && part.name === 'read_resource');
-    const toolResultIndex = parts.findIndex((part) => part.kind === 'tool_result' && part.toolUseId === (parts[toolCallIndex]?.kind === 'tool_call' ? parts[toolCallIndex].toolUseId : undefined));
-    const finalTextIndex = parts.findIndex((part) => part.kind === 'assistant_text' && Boolean(part.final));
-
-    assert.ok(toolCallIndex >= 0);
-    assert.ok(toolResultIndex > toolCallIndex);
-    assert.ok(finalTextIndex > toolResultIndex);
-    assert.equal(parts[toolCallIndex]?.kind === 'tool_call' ? parts[toolCallIndex].status : undefined, 'completed');
-    assert.match(parts[toolResultIndex]?.kind === 'tool_result' ? parts[toolResultIndex].content : '', /resource:unity:\/\/project\/context/);
-    assert.equal(parts[toolResultIndex]?.kind === 'tool_result' ? parts[toolResultIndex].mcp?.operation : undefined, 'read_resource');
-    assert.equal(parts[toolResultIndex]?.kind === 'tool_result' ? parts[toolResultIndex].mcp?.target : undefined, 'unity://project/context');
-    assert.equal(parts[toolResultIndex]?.kind === 'tool_result' ? parts[toolResultIndex].mcp?.pluginId : undefined, plugin.id);
-    assert.equal(parts[toolResultIndex]?.kind === 'tool_result' ? parts[toolResultIndex].transaction?.toolClass : undefined, 'mcp');
-    assert.equal(parts[toolResultIndex]?.kind === 'tool_result' ? parts[toolResultIndex].transaction?.status : undefined, 'completed');
-    assert.equal(parts[toolResultIndex]?.kind === 'tool_result' ? parts[toolResultIndex].transaction?.eventCount : undefined, 3);
-    const toolResultEvent = events.find((event) => event.type === 'tool_result' && event.toolUseId === (parts[toolCallIndex]?.kind === 'tool_call' ? parts[toolCallIndex].toolUseId : undefined));
-    assert.equal(toolResultEvent?.type, 'tool_result');
-    assert.equal(toolResultEvent?.type === 'tool_result' ? toolResultEvent.mcp?.target : undefined, 'unity://project/context');
-    assert.equal(toolResultEvent?.type === 'tool_result' ? toolResultEvent.transaction?.toolClass : undefined, 'mcp');
-    const persistedToolResultEvent = persistedRun?.events?.find((event) => event.type === 'tool_result' && event.toolResult?.toolUseId === (parts[toolCallIndex]?.kind === 'tool_call' ? parts[toolCallIndex].toolUseId : undefined));
-    assert.equal(persistedToolResultEvent?.type === 'tool_result' ? persistedToolResultEvent.toolResult?.transaction?.toolClass : undefined, 'mcp');
-  } finally {
-    await server.close();
-    await rm(userDataPath, { recursive: true, force: true });
-  }
-});
-
-test('execute-plan stream projects denied write permission into Agent Core parts', async () => {
-  const userDataPath = await mkdtemp(join(tmpdir(), 'funplay-store-execute-permission-core-'));
-  const server = await startTestMcpServer();
-  try {
-    await initializeStore(userDataPath);
-    const plugin = buildMcpPlugin(server.baseUrl);
-    const baseProject = buildExecutionPlanProject();
-    const activeSession = getActiveProjectSession(baseProject);
-    const projectWithReadOnlyPermission = replaceProjectSession(
-      baseProject,
-      {
-        ...activeSession,
-        runtimeOverrides: {
-          ...activeSession.runtimeOverrides,
-          permissionMode: 'read-only'
-        }
-      },
-      activeSession.id
-    );
-    const project = {
-      ...projectWithReadOnlyPermission,
-      mcpBindings: {
-        engine: plugin.id
-      },
-      currentExecutionPlan: {
-        summary: 'Run write execution plan',
-        rationale: 'Ensure execute-plan permission projection works.',
-        actions: [
-          {
-            id: 'action_write_plan',
-            pluginKind: 'engine' as const,
-            title: 'Modify Unity scene',
-            objective: 'Exercise denied write permission projection.',
-            suggestedTools: [],
-            inputs: [],
-            operations: [
-              {
-                type: 'tool_call' as const,
-                target: 'execute_code',
-                arguments: {
-                  code: 'UnityEditor.EditorSceneManager.MarkSceneDirty(UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());'
-                }
-              }
-            ],
-            successCriteria: [],
-            status: 'planned' as const
-          }
-        ]
-      }
-    };
-    await setState({
-      ...getState(),
-      ...(buildState(project) as AppState),
-      mcpPlugins: [plugin]
-    });
-
-    const events: PromptStreamEvent[] = [];
-    const finalEvent = await waitForFinalStreamEvent(async (dispatchEvent) => {
-      startAgentExecutionPlanStream({
-        getState,
-        persistState: setState,
-        projectId: project.id,
-        dispatchEvent: (event) => {
-          events.push(event);
-          dispatchEvent(event);
-        }
-      });
-    });
-
-    assert.equal(finalEvent.type, 'completed');
-    const updatedProject = getState().projects.find((item) => item.id === project.id);
-    const assistantMessage = updatedProject ? getActiveProjectSession(updatedProject).chat.at(-1) : undefined;
-    const parts = assistantMessage?.metadata?.agentCoreParts ?? [];
-    const permissionIndex = parts.findIndex((part) => part.kind === 'permission_request' && part.toolName === 'execute_plan_unity_write');
-    const errorIndex = parts.findIndex((part) => part.kind === 'tool_error' && part.toolName === 'execute_plan_unity_write');
-    const finalTextIndex = parts.findIndex((part) => part.kind === 'assistant_text' && Boolean(part.final));
-
-    assert.ok(permissionIndex >= 0);
-    assert.ok(errorIndex > permissionIndex);
-    assert.ok(finalTextIndex > errorIndex);
-    assert.match(parts[errorIndex]?.kind === 'tool_error' ? parts[errorIndex].error : '', /read-only 模式下阻止写操作|写入权限未获批准/);
-    assert.equal(parts[errorIndex]?.kind === 'tool_error' ? parts[errorIndex].transaction?.toolName : undefined, 'execute_plan_unity_write');
-    assert.equal(parts[errorIndex]?.kind === 'tool_error' ? parts[errorIndex].transaction?.permission?.decision : undefined, 'deny');
-    assert.equal(parts[errorIndex]?.kind === 'tool_error' ? parts[errorIndex].transaction?.checkpoint?.policy : undefined, 'external_best_effort');
-    assert.equal(events.some((event) => event.type === 'stage' && event.stageId === 'stage:execute_plan_agent_core_v2'), true);
-  } finally {
-    await server.close();
-    await rm(userDataPath, { recursive: true, force: true });
-  }
-});
-
-test('execute-plan cancellation clears pending permission requests for the stream', async () => {
-  const userDataPath = await mkdtemp(join(tmpdir(), 'funplay-store-execute-cancel-permission-'));
-  try {
-    await initializeStore(userDataPath);
-    const streamId = `planstream_cancel_permission_${Date.now()}`;
-    const controller = new AbortController();
-    registerActiveStream({
-      kind: 'execute-plan',
-      streamId,
-      projectId: 'project_cancel_permission',
-      sessionId: 'session_cancel_permission',
-      startedAt: new Date(0).toISOString(),
-      controller
-    });
-    const permission = registerPendingPermission({
-      requestId: 'perm_cancel_permission',
-      streamId,
-      projectId: 'project_cancel_permission',
-      sessionId: 'session_cancel_permission',
-      title: 'Allow test permission?',
-      detail: 'Pending permission used to verify execute-plan cancellation cleanup.',
-      risk: 'high',
-      toolName: 'execute_plan_unity_write',
-      createdAt: new Date(0).toISOString()
-    });
-
-    cancelAgentExecutionPlanStream(streamId);
-
-    assert.equal(controller.signal.aborted, true);
-    assert.equal(await withTimeout(permission, 250, 'permission cancellation timed out'), 'deny');
-  } finally {
-    await rm(userDataPath, { recursive: true, force: true });
-  }
-});
 
 test('user input requests and resolutions persist in runtime event logs', async () => {
   const userDataPath = await mkdtemp(join(tmpdir(), 'funplay-store-user-input-events-'));
@@ -496,8 +248,8 @@ test('conversation stream dispatches usage events and persists run totals', asyn
   }
 });
 
-test('chat content blocks and operation log persist through SQLite reload', async () => {
-  const userDataPath = await mkdtemp(join(tmpdir(), 'funplay-store-chat-blocks-'));
+test('Agent Core parts and operation log persist through SQLite reload', async () => {
+  const userDataPath = await mkdtemp(join(tmpdir(), 'funplay-store-agent-core-'));
   try {
     await initializeStore(userDataPath);
     const updatedAt = new Date().toISOString();
@@ -505,30 +257,39 @@ test('chat content blocks and operation log persist through SQLite reload', asyn
     project = appendProjectConversationTurn(project, {
       userMessage: '请读取文件并总结',
       assistantMessage: '我已经总结完成。',
-      assistantContentBlocks: [
-        {
-          type: 'tool_use',
-          toolUseId: 'tool_readme',
-          name: 'read_file',
-          input: {
-            path: 'README.md'
-          },
-          status: 'completed'
-        },
-        {
-          type: 'tool_result',
-          toolUseId: 'tool_readme',
-          content: 'README 内容摘要',
-          isError: false
-        },
-        {
-          type: 'text',
-          text: '我已经总结完成。'
-        }
-      ],
       assistantMetadata: {
         agentStartedAt: updatedAt,
         agentFinishedAt: updatedAt,
+        agentCoreParts: [
+          {
+            id: 'part_readme',
+            kind: 'tool_call',
+            sequence: 0,
+            createdAt: updatedAt,
+            toolUseId: 'tool_readme',
+            name: 'read_file',
+            input: {
+              path: 'README.md'
+            },
+            status: 'completed'
+          },
+          {
+            id: 'part_readme_result',
+            kind: 'tool_result',
+            sequence: 1,
+            createdAt: updatedAt,
+            toolUseId: 'tool_readme',
+            toolName: 'read_file',
+            content: 'README 内容摘要'
+          },
+          {
+            id: 'part_readme_text',
+            kind: 'assistant_text',
+            sequence: 2,
+            createdAt: updatedAt,
+            text: '我已经总结完成。'
+          }
+        ],
         operationLog: [
           {
             id: 'tool_readme',
@@ -583,65 +344,15 @@ test('chat content blocks and operation log persist through SQLite reload', asyn
 
     const reloadedProject = getState().projects[0];
     const reloadedAssistant = getActiveProjectSession(reloadedProject).chat.at(-1);
-    assert.ok(reloadedAssistant?.contentBlocks);
     assert.deepEqual(
-      reloadedAssistant?.contentBlocks?.map((block) => block.type),
-      ['tool_use', 'tool_result', 'text']
+      reloadedAssistant?.metadata?.agentCoreParts?.map((part) => part.kind),
+      ['tool_call', 'tool_result', 'assistant_text']
     );
     assert.equal(reloadedAssistant?.metadata?.agentProcessText, undefined);
     assert.equal(reloadedAssistant?.metadata?.agentProcessActivities, undefined);
     assert.equal(reloadedAssistant?.metadata?.operationLog?.[0]?.summary, 'README 内容摘要');
     assert.equal(reloadedProject.lastAgentRun?.operationLog?.[0]?.id, 'tool_readme');
     assert.equal(reloadedProject.lastAgentRun?.operationLog?.[0]?.summary, 'README 内容摘要');
-  } finally {
-    await rm(userDataPath, { recursive: true, force: true });
-  }
-});
-
-test('execute-plan resume restarts persisted interrupted run and clears it on completion', async () => {
-  const userDataPath = await mkdtemp(join(tmpdir(), 'funplay-store-execute-resume-'));
-  try {
-    await initializeStore(userDataPath);
-    const project = buildExecutionPlanProject();
-    await setState({
-      ...getState(),
-      projects: [project]
-    });
-
-    const sessionId = getActiveProjectSession(project).id;
-    const runId = `resume_run_${Date.now()}`;
-    const timestamp = new Date().toISOString();
-    upsertRuntimeRun({
-      id: runId,
-      kind: 'execute-plan',
-      projectId: project.id,
-      sessionId,
-      status: 'interrupted',
-      startedAt: timestamp,
-      updatedAt: timestamp,
-      inputPreview: 'Run current plan',
-      request: {
-        kind: 'execute-plan',
-        projectId: project.id,
-        sessionId,
-        inputPreview: 'Run current plan'
-      }
-    });
-
-    let resumedHandleRunId = '';
-    const finalEvent = await waitForFinalStreamEvent(async (dispatchEvent) => {
-      const handle = await resumeAgentRun({
-        getState,
-        persistState: setState,
-        runId,
-        dispatchEvent
-      });
-      resumedHandleRunId = handle.resumedFromRunId ?? '';
-    });
-
-    assert.equal(resumedHandleRunId, runId);
-    assert.equal(finalEvent.type, 'completed');
-    assert.equal(getRuntimeRun(runId), undefined);
   } finally {
     await rm(userDataPath, { recursive: true, force: true });
   }

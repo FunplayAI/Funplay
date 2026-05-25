@@ -71,7 +71,6 @@ electron/preload/        Secure bridge exposed to the renderer
 shared/                  Cross-process types and shared planner/provider logic
 tests/                   Runtime and E2E tests
 scripts/                 Build, E2E, and release-gate helpers
-docs/                   Active architecture and improvement notes
 resources/               App icons and downloadable runtime assets
 ```
 
@@ -87,10 +86,37 @@ Common development environment variables:
 
 Provider API keys stay in the main process secret store and are not sent to the renderer.
 
+## Release And Updates
+
+FunPlay publishes desktop updates through [GitHub Releases](https://github.com/FunplayAI/Funplay/releases). Packaged builds use the GitHub provider configured in `package.json#build.publish`; development builds do not use a private update feed override.
+
+For macOS release checks:
+
+```bash
+npm run dist:mac:split
+npm run release:verify-mac-updates
+npm run rebuild:native:force
+```
+
+For Windows x64:
+
+```bash
+npm run dist:win:x64
+npm run rebuild:native:force
+```
+
+Release publishing requires `GH_TOKEN` in the publishing environment. macOS signing and notarization still require Apple Developer credentials.
+
+The repository also includes a tag-based GitHub Actions release workflow. Pushing a tag such as `v0.3.0` builds macOS arm64/x64 and Windows x64 artifacts, verifies macOS update metadata, and creates or updates a draft GitHub Release. Required maintainer secrets:
+
+- `APPLE_ID`
+- `APPLE_TEAM_ID`
+- `APPLE_APP_SPECIFIC_PASSWORD`
+- `MAC_CSC_LINK`
+- `MAC_CSC_KEY_PASSWORD`
+
 ## Documentation
 
-- [Architecture and improvement plan](docs/agent-architecture-improvement-plan.md)
-- [Claude Code working notes](CLAUDE.md)
 - [Runtime asset notes](resources/runtime/README.md)
 
 ## Development Notes
@@ -113,4 +139,4 @@ FunPlay is under active development. The current implementation is strongest in:
 
 ## License
 
-No license has been published yet. Treat the repository as source-available until a license file is added.
+FunPlay is licensed under the [MIT License](LICENSE).

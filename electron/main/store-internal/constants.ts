@@ -6,7 +6,8 @@ export const SETTINGS_KEYS = {
   unity: 'unity_settings',
   ai: 'ai_settings',
   agent: 'agent_settings',
-  mcp: 'mcp_settings'
+  mcp: 'mcp_settings',
+  assetGenerationProviders: 'asset_generation_providers'
 } as const;
 
 export function createDefaultSettings(defaultProjectDirectory = '~/Downloads'): UnitySettings {

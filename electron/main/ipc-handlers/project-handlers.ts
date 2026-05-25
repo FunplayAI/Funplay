@@ -38,11 +38,8 @@ import {
 import { listProjectFiles, readProjectFile, resolveProjectFileAbsolutePath, writeProjectFile } from '../project-file-service';
 import { startProjectHtmlPreviewServer, stopProjectHtmlPreviewServer } from '../project-preview-dev-server';
 import {
-  cancelAgentExecutionPlanStream,
-  executeAgentExecutionPlan,
   respondToAgentPermissionRequest,
-  respondToAgentUserInputRequest,
-  startAgentExecutionPlanStream
+  respondToAgentUserInputRequest
 } from '../agent-platform/stream-manager';
 import { cancelChatPromptStream, startChatPromptStream } from '../chat-stream-service';
 import { syncProjectFileWatchers } from '../project-file-watcher';
@@ -231,7 +228,6 @@ export function registerProjectHandlers(ipcMain: IpcMain, ctx: HandlerContext): 
 
   ipcMain.handle('projects:cancelPromptStream', async (_, streamId: unknown) => {
     const validatedStreamId = validateIpcInput(projectIdSchema, streamId, 'projects:cancelPromptStream(streamId)');
-    cancelAgentExecutionPlanStream(validatedStreamId);
     return cancelChatPromptStream(validatedStreamId);
   });
 
@@ -301,21 +297,5 @@ export function registerProjectHandlers(ipcMain: IpcMain, ctx: HandlerContext): 
     );
     await ctx.setState({ ...state });
     return project;
-  });
-
-  ipcMain.handle('projects:executePlan', async (_, projectId: unknown) => {
-    const state = ctx.getState();
-    const project = await executeAgentExecutionPlan(state, validateIpcInput(projectIdSchema, projectId, 'projects:executePlan'));
-    await ctx.setState({ ...state });
-    return project;
-  });
-
-  ipcMain.handle('projects:startExecutePlanStream', async (_, projectId: unknown) => {
-    return startAgentExecutionPlanStream({
-      getState: ctx.getState,
-      persistState: ctx.setState,
-      projectId: validateIpcInput(projectIdSchema, projectId, 'projects:startExecutePlanStream(projectId)'),
-      dispatchEvent: ctx.dispatchPromptStreamEvent
-    });
   });
 }

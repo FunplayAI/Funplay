@@ -12,6 +12,7 @@ import type {
   AgentUserInputResponse,
   AppNotificationPriority,
   AppState,
+  AssetGenerationKind,
   ChatMediaBlock,
   EngineProjectDimension,
   EnvironmentActionKind,
@@ -182,6 +183,29 @@ export type WorkspaceToolAction =
       model?: string;
       fileName?: string;
       title?: string;
+    }
+  | {
+      type: 'list_asset_generation_capabilities';
+      kind?: AssetGenerationKind;
+    }
+  | {
+      type: 'generate_asset';
+      title: string;
+      kind: AssetGenerationKind;
+      prompt: string;
+      negativePrompt?: string;
+      providerId?: string;
+      count?: number;
+      width?: number;
+      height?: number;
+      durationSeconds?: number;
+      transparentBackground?: boolean;
+      reason?: string;
+    }
+  | {
+      type: 'import_generated_asset';
+      jobId: string;
+      reason?: string;
     }
   | {
       type: 'summarize_directory';

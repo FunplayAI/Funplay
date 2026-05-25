@@ -486,25 +486,38 @@ test('Claude history normalizer preserves prior tools as metadata markers', () =
     content: '',
     createdAt: new Date().toISOString(),
     ordinal: 1,
-    contentBlocks: [
-      {
-        type: 'thinking',
-        thinking: 'I should inspect the project.'
-      },
-      {
-        type: 'tool_use',
-        toolUseId: 'toolu_read',
-        name: 'Read',
-        input: {
-          file_path: 'src/App.tsx'
+    metadata: {
+      agentCoreParts: [
+        {
+          id: 'part_reasoning',
+          kind: 'assistant_thinking',
+          sequence: 0,
+          createdAt: '2026-05-20T00:00:00.000Z',
+          thinking: 'I should inspect the project.'
+        },
+        {
+          id: 'part_tool_read',
+          kind: 'tool_call',
+          sequence: 1,
+          createdAt: '2026-05-20T00:00:01.000Z',
+          toolUseId: 'toolu_read',
+          name: 'Read',
+          input: {
+            file_path: 'src/App.tsx'
+          },
+          status: 'completed'
+        },
+        {
+          id: 'part_tool_read_result',
+          kind: 'tool_result',
+          sequence: 2,
+          createdAt: '2026-05-20T00:00:02.000Z',
+          toolUseId: 'toolu_read',
+          toolName: 'Read',
+          content: 'const App = () => null;'
         }
-      },
-      {
-        type: 'tool_result',
-        toolUseId: 'toolu_read',
-        content: 'const App = () => null;'
-      }
-    ]
+      ]
+    }
   });
 
   assert.match(content, /<prior-reasoning>/);

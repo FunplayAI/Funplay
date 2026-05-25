@@ -450,16 +450,6 @@ body {
     padding: 18px;
   }
 
-  .asset-browser-header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .asset-category-tabs {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
   .skills-toolbar {
     align-items: stretch;
     flex-direction: column;

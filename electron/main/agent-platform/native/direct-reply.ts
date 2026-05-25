@@ -6,6 +6,13 @@ import { createNativeRuntimeSystemPrompt, createNativeRuntimeUserPrompt } from '
 import { normalizeModelReplyText } from './text';
 import { normalizeAiSdkUsage, normalizeOpenAiUsage } from '../usage';
 import type { GenericAgentRuntimeParams } from '../types';
+import {
+  emitRuntimeStatus,
+  emitRuntimeTextDelta,
+  emitRuntimeThinkingDelta,
+  emitRuntimeUsage
+} from '../runtime-event-emitter';
+import type { AgentCoreMessagePart } from '../../../../shared/types';
 
 function trimDetail(value: string, maxLength = 4000): string {
   const normalized = value.trim();
@@ -90,9 +97,9 @@ function emitNativeDirectUsage(params: GenericAgentRuntimeParams, usage: unknown
     : normalizeAiSdkUsage(usage as Parameters<typeof normalizeAiSdkUsage>[0], {
         provider: params.provider?.id,
         model: params.provider?.model
-      });
+  });
   if (normalized) {
-    params.onUsage?.(normalized);
+    emitRuntimeUsage(params, normalized);
   }
 }
 
@@ -103,12 +110,30 @@ export function emitReplyAsDeltas(params: GenericAgentRuntimeParams, reply: stri
   for (let index = 0; index < normalizedReply.length; index += chunkSize) {
     const delta = normalizedReply.slice(index, index + chunkSize);
     accumulated += delta;
-    params.onTextDelta?.(delta, accumulated);
+    emitRuntimeTextDelta(params, delta, accumulated);
   }
 }
 
+function emitDirectReplyAgentCoreParts(params: GenericAgentRuntimeParams, reply: string): void {
+  const normalizedReply = normalizeModelReplyText(reply);
+  if (!normalizedReply.trim()) {
+    return;
+  }
+  const part: AgentCoreMessagePart = {
+    id: `direct_reply:${params.turnId ?? params.activeRunId ?? 'turn'}:text`,
+    kind: 'assistant_text',
+    sequence: 0,
+    createdAt: new Date().toISOString(),
+    runId: params.activeRunId,
+    turnId: params.turnId,
+    text: normalizedReply,
+    final: true
+  };
+  params.onAgentCoreParts?.([part]);
+}
+
 export async function runNativeDirectChatReply(params: GenericAgentRuntimeParams): Promise<string> {
-  params.onStatus?.('streaming', '正在生成回复…');
+  emitRuntimeStatus(params, 'streaming', '正在生成回复…');
   const providerAbort = createProviderRequestAbort(params.abortSignal, params.provider);
   if (params.provider?.protocol === 'openai-compatible') {
     let streamedText = false;
@@ -124,15 +149,18 @@ export async function runNativeDirectChatReply(params: GenericAgentRuntimeParams
       abortSignal: providerAbort.signal,
       onDelta: (delta, accumulated) => {
         streamedText = true;
-        params.onTextDelta?.(delta, accumulated);
+        emitRuntimeTextDelta(params, delta, accumulated);
       },
-      onReasoningDelta: params.onThinkingDelta
+      onReasoningDelta: (delta, accumulated) => {
+        emitRuntimeThinkingDelta(params, delta, accumulated);
+      }
     });
     emitNativeDirectUsage(params, result.usage);
     const reply = normalizeModelReplyText(result.text);
     if (!streamedText) {
       emitReplyAsDeltas(params, reply);
     }
+    emitDirectReplyAgentCoreParts(params, reply);
     return reply;
   }
 
@@ -158,5 +186,6 @@ export async function runNativeDirectChatReply(params: GenericAgentRuntimeParams
     throw createModelOutputError('模型返回了空回复。', describeGenerateTextResult(result), 'MODEL_EMPTY_RESPONSE');
   }
   emitReplyAsDeltas(params, reply);
+  emitDirectReplyAgentCoreParts(params, reply);
   return reply;
 }

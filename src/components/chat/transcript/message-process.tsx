@@ -1,8 +1,8 @@
 import { Fragment, type JSX, type ReactNode } from 'react';
 import type { AgentCoreMessagePart, AgentPermissionImpact, ChatMessage } from '../../../../shared/types';
 import { localize, useUiLanguage } from '../../../i18n';
-import { orderAgentCoreParts } from './message-plain-text';
 import { renderChatContent } from './chat-markdown';
+import { buildTranscriptViewItems, type TranscriptViewItem } from './transcript-view-model';
 import {
   type ToolExecutionEntry,
   type StageExecutionEntry,
@@ -10,13 +10,12 @@ import {
   ToolActivityGroup,
   StreamActivityTrail,
   StageTimeline,
-  buildToolsFromContentBlocks,
   buildCompletedMessageProcessTools,
   shouldExpandToolByDefault
 } from '../tool-activity';
 
 export function hasStructuredToolBlocks(message: ChatMessage): boolean {
-  return Boolean(message.contentBlocks?.some((block) => block.type === 'tool_use' || block.type === 'tool_result'));
+  return Boolean(message.metadata?.agentCoreParts?.some((part) => part.kind === 'tool_call' || part.kind === 'tool_result' || part.kind === 'tool_error'));
 }
 
 export function hasRenderableProcessTimeline(message: ChatMessage): boolean {
@@ -28,10 +27,6 @@ export function hasRenderableAgentCoreParts(message: ChatMessage): boolean {
 }
 
 export function buildMessageProcessTools(message: ChatMessage): ToolExecutionEntry[] {
-  const contentBlockTools = buildToolsFromContentBlocks(message.contentBlocks);
-  if (contentBlockTools.length > 0) {
-    return contentBlockTools;
-  }
   return buildCompletedMessageProcessTools(message);
 }
 
@@ -42,128 +37,37 @@ export function renderAgentCoreParts(input: {
   searchQuery: string;
   onOpenPath: (path: string) => void;
 }): ReactNode[] {
-  const entries: Array<
-    | { type: 'node'; node: ReactNode; key: string }
-    | { type: 'tool'; tool: ToolExecutionEntry; key: string }
-  > = [];
-  const toolsById = new Map<string, ToolExecutionEntry>();
+  return buildTranscriptViewItems(input.parts)
+    .map((item) => renderTranscriptViewItem(item, input))
+    .filter((node): node is ReactNode => Boolean(node));
+}
 
-  for (const part of orderAgentCoreParts(input.parts)) {
-    if (part.kind === 'assistant_text') {
-      entries.push({
-        type: 'node',
-        key: part.id,
-        node: renderChatContent(part.text, input.openablePaths, input.searchQuery, input.onOpenPath)
-      });
-      continue;
-    }
-    if (part.kind === 'assistant_thinking') {
-      if (input.developerMode) {
-        entries.push({
-          type: 'node',
-          key: part.id,
-          node: <AgentCoreContextBlock title="Thinking" content={part.thinking} />
-        });
-      }
-      continue;
-    }
-    if (part.kind === 'tool_call') {
-      const tool: ToolExecutionEntry = {
-        id: part.toolUseId,
-        name: part.name,
-        status: part.status,
-        input: part.input
-      };
-      toolsById.set(part.toolUseId, tool);
-      entries.push({
-        type: 'tool',
-        key: part.id,
-        tool
-      });
-      continue;
-    }
-    if (part.kind === 'tool_result' || part.kind === 'tool_error') {
-      const existing = toolsById.get(part.toolUseId);
-      const tool = existing ?? {
-        id: part.toolUseId,
-        name: part.toolName ?? part.toolUseId,
-        status: part.kind === 'tool_error' ? 'failed' as const : 'completed' as const
-      };
-      tool.status = part.kind === 'tool_error' ? 'failed' : 'completed';
-      tool.result = {
-        content: part.kind === 'tool_error' ? part.error : part.content,
-        isError: part.kind === 'tool_error',
-        changedFiles: part.changedFiles,
-        browser: part.browser,
-        edit: part.edit,
-        mcp: part.mcp,
-        artifacts: part.artifacts,
-        transaction: part.transaction
-      };
-      if (!existing) {
-        toolsById.set(part.toolUseId, tool);
-        entries.push({
-          type: 'tool',
-          key: part.id,
-          tool
-        });
-      }
-      continue;
-    }
-    if (part.kind === 'context_summary') {
-      entries.push({
-        type: 'node',
-        key: part.id,
-        node: <AgentCoreContextBlock title="上下文摘要" content={part.summary} />
-      });
-      continue;
-    }
-    if (part.kind === 'todo_update') {
-      entries.push({
-        type: 'node',
-        key: part.id,
-        node: <AgentCoreTodoBlock items={part.items} />
-      });
-      continue;
-    }
-    if (part.kind === 'run_error') {
-      entries.push({
-        type: 'node',
-        key: part.id,
-        node: <AgentCoreContextBlock title="运行错误" content={part.error} tone="error" />
-      });
-      continue;
-    }
-    if (part.kind === 'system_event' && part.metadata?.type === 'skill_activation') {
-      entries.push({
-        type: 'node',
-        key: part.id,
-        node: <AgentCoreContextBlock title="已激活 Skill" content={[part.title, part.summary].filter(Boolean).join('\n')} />
-      });
-    }
+function renderTranscriptViewItem(item: TranscriptViewItem, input: {
+  developerMode: boolean;
+  openablePaths: string[];
+  searchQuery: string;
+  onOpenPath: (path: string) => void;
+}): ReactNode {
+  if (item.kind === 'assistant_text') {
+    return (
+      <div className="chat-assistant-answer" key={`core-node-${item.id}`}>
+        {renderChatContent(item.text, input.openablePaths, input.searchQuery, input.onOpenPath)}
+      </div>
+    );
   }
-
-  const nodes: ReactNode[] = [];
-  for (let index = 0; index < entries.length; index += 1) {
-    const entry = entries[index];
-    if (entry.type === 'node') {
-      nodes.push(<Fragment key={`core-node-${entry.key}`}>{entry.node}</Fragment>);
-      continue;
-    }
-    const tools: ToolExecutionEntry[] = [entry.tool];
-    const groupKey = entry.key;
-    while (entries[index + 1]?.type === 'tool') {
-      index += 1;
-      const nextEntry = entries[index];
-      if (nextEntry.type === 'tool') {
-        tools.push(nextEntry.tool);
-      }
-    }
-    nodes.push(
+  if (item.kind === 'assistant_thinking') {
+    return input.developerMode
+      ? <Fragment key={`core-node-${item.id}`}><AgentCoreContextBlock title={item.title} content={item.thinking} /></Fragment>
+      : null;
+  }
+  if (item.kind === 'tool_group') {
+    return (
       <ToolActivityGroup
-        key={`core-tool-${groupKey}`}
-        tools={tools}
-        defaultOpen={tools.some(shouldExpandToolByDefault)}
+        key={`core-tool-${item.id}`}
+        tools={item.tools}
+        defaultOpen={item.tools.some(shouldExpandToolByDefault)}
+        collapseBeforeAssistantText={item.collapseBeforeAssistantText}
+        showDiagnosticMeta={input.developerMode}
         openablePaths={input.openablePaths}
         searchQuery={input.searchQuery}
         onOpenPath={input.onOpenPath}
@@ -171,7 +75,30 @@ export function renderAgentCoreParts(input: {
       />
     );
   }
-  return nodes;
+  if (item.kind === 'context_summary') {
+    return <Fragment key={`core-node-${item.id}`}><AgentCoreContextBlock title="上下文摘要" content={item.summary} /></Fragment>;
+  }
+  if (item.kind === 'todo_update') {
+    return <Fragment key={`core-node-${item.id}`}><AgentCoreTodoBlock items={item.items} /></Fragment>;
+  }
+  if (item.kind === 'permission_request') {
+    return (
+      <Fragment key={`core-node-${item.id}`}>
+        <AgentCoreContextBlock title="等待权限确认" content={[item.toolName, item.reason].filter(Boolean).join('\n')} tone={item.risk === 'high' ? 'error' : undefined} />
+        <PermissionImpactBlock impact={item.impact} />
+      </Fragment>
+    );
+  }
+  if (item.kind === 'user_input_request') {
+    return <Fragment key={`core-node-${item.id}`}><AgentCoreContextBlock title="等待用户回答" content={item.question} /></Fragment>;
+  }
+  if (item.kind === 'run_error') {
+    return <Fragment key={`core-node-${item.id}`}><AgentCoreContextBlock title="运行错误" content={item.error} tone="error" /></Fragment>;
+  }
+  if (item.kind === 'system_event' && (input.developerMode || item.status === 'failed' || item.compactSummary)) {
+    return <Fragment key={`core-node-${item.id}`}><AgentCoreContextBlock title={item.title} content={item.summary ?? ''} tone={item.status === 'failed' ? 'error' : undefined} /></Fragment>;
+  }
+  return null;
 }
 
 export function renderProcessTimeline(input: {
@@ -180,6 +107,7 @@ export function renderProcessTimeline(input: {
   toolExecutions: ToolExecutionEntry[];
   visibleStages: StageExecutionEntry[];
   autoExpandActiveToolGroup?: boolean;
+  developerMode?: boolean;
   openablePaths: string[];
   searchQuery: string;
   onOpenPath: (path: string) => void;
@@ -202,9 +130,9 @@ export function renderProcessTimeline(input: {
       return;
     }
     nodes.push(
-      <Fragment key={`process-text-${nodes.length}-${start}-${end}`}>
+      <div className="chat-assistant-answer" key={`process-text-${nodes.length}-${start}-${end}`}>
         {renderChatContent(slice, input.openablePaths, input.searchQuery, input.onOpenPath)}
-      </Fragment>
+      </div>
     );
   };
 
@@ -232,12 +160,15 @@ export function renderProcessTimeline(input: {
       }
       if (tools.length > 0) {
         const activeToolGroup = Boolean(input.autoExpandActiveToolGroup && offset === content.length);
+        const hasAssistantTextAfterToolGroup = content.slice(offset).trim().length > 0;
         nodes.push(
           <ToolActivityGroup
             key={`process-tool-${toolActivities.map((item) => item.id).join(':')}`}
             tools={tools}
             defaultOpen={tools.some(shouldExpandToolByDefault)}
             active={activeToolGroup}
+            collapseBeforeAssistantText={hasAssistantTextAfterToolGroup}
+            showDiagnosticMeta={input.developerMode}
             openablePaths={input.openablePaths}
             searchQuery={input.searchQuery}
             onOpenPath={input.onOpenPath}
@@ -267,6 +198,7 @@ export function renderProcessTimeline(input: {
         tools={unplacedTools}
         defaultOpen={unplacedTools.some(shouldExpandToolByDefault)}
         active={Boolean(input.autoExpandActiveToolGroup && content.length === 0)}
+        showDiagnosticMeta={input.developerMode}
         openablePaths={input.openablePaths}
         searchQuery={input.searchQuery}
         onOpenPath={input.onOpenPath}

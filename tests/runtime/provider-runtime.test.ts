@@ -12,7 +12,6 @@ import {
 } from '../../electron/main/mcp-plugin-service.ts';
 import { nativeRuntime } from '../../electron/main/agent-platform/native/runtime.ts';
 import { claudeCodeSdkRuntime } from '../../electron/main/agent-platform/claude/runtime.ts';
-import { executionPlanRuntime } from '../../electron/main/agent-platform/execution-plan-runtime.ts';
 import { listAgentRuntimeCapabilities } from '../../electron/main/agent-runtime-capability-service.ts';
 import { registerGenericAgentRuntime, resolveGenericAgentRuntime } from '../../electron/main/agent-platform/runtime-registry.ts';
 
@@ -79,7 +78,7 @@ test('default agent settings use native runtime and build permissions', () => {
   assert.equal(DEFAULT_AGENT_SETTINGS.permissionMode, 'full-access');
 });
 
-test('runtime capabilities expose native, Claude, and execute-plan boundaries', () => {
+test('runtime capabilities expose native and Claude boundaries', () => {
   assert.equal(nativeRuntime.capabilities.nativeToolCalling, true);
   assert.equal(nativeRuntime.capabilities.legacyJsonLoop, false);
   assert.equal(nativeRuntime.capabilities.hostControlledWrites, true);
@@ -99,16 +98,10 @@ test('runtime capabilities expose native, Claude, and execute-plan boundaries', 
   assert.equal(claudeCodeSdkRuntime.capabilities.exactlyOnceStream, true);
   assert.equal(claudeCodeSdkRuntime.capabilities.liveE2EGated, true);
 
-  assert.equal(executionPlanRuntime.capabilities.executePlan, true);
-  assert.equal(executionPlanRuntime.capabilities.toolCheckpoint, true);
-  assert.equal(executionPlanRuntime.capabilities.resume, true);
-  assert.equal(executionPlanRuntime.capabilities.toolResume, true);
-  assert.equal(executionPlanRuntime.capabilities.hostControlledWrites, true);
-
   const reports = listAgentRuntimeCapabilities();
   assert.deepEqual(
     reports.map((report) => report.id).sort(),
-    ['claude-code-sdk', 'execute-plan', 'native']
+    ['claude-code-sdk', 'native']
   );
   assert.equal(reports.find((report) => report.id === 'native')?.capabilities.hostControlledWrites, true);
   assert.equal(reports.find((report) => report.id === 'claude-code-sdk')?.capabilities.externalProcess, true);

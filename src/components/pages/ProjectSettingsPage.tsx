@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type JSX } from 'react';
+import { Bot, Cpu, Gauge, History, Plug, Sparkles, type LucideIcon } from 'lucide-react';
 import { PROJECT_SESSION_RUNTIME_OPTIONS, getProjectSessionRuntimeLabel } from '../../../shared/agent-runtimes';
 import type {
   AgentPermissionMode,
@@ -63,7 +64,6 @@ export function ProjectSettingsPage(props: {
   connectionStatuses: Record<string, McpConnectionSnapshot>;
   pluginError: string;
   isRefreshing: boolean;
-  globalPermissionMode: AgentPermissionMode;
   globalRuntimeStrategy: AgentRuntimeStrategy;
   projectBindings: ProjectMcpBindingDraft;
   skillDraft: ProjectAgentSkillDraft;
@@ -139,24 +139,28 @@ export function ProjectSettingsPage(props: {
     label: string;
     description: string;
     badge: string;
+    Icon: LucideIcon;
   }> = [
     {
       id: 'engine',
       label: t('引擎项目', 'Engine Project'),
       description: t('路径、平台、运行状态', 'Path, platform, runtime'),
-      badge: props.project?.engine?.platform ? formatPlatformLabel(props.project.engine.platform) : t('未绑定', 'Unbound')
+      badge: props.project?.engine?.platform ? formatPlatformLabel(props.project.engine.platform) : t('未绑定', 'Unbound'),
+      Icon: Cpu
     },
     {
       id: 'agent',
       label: 'Agent',
       description: t('模型、Runtime 与项目策略', 'Model, runtime, project policy'),
-      badge: props.activeSession ? getProjectSessionRuntimeLabel(props.sessionRuntimeId) : t('未选择', 'No Session')
+      badge: props.activeSession ? getProjectSessionRuntimeLabel(props.sessionRuntimeId) : t('未选择', 'No Session'),
+      Icon: Bot
     },
     {
       id: 'usage',
       label: t('用量', 'Usage'),
       description: t('项目 Token 统计', 'Project token usage'),
-      badge: formatTokenCount(projectUsage.totalTokens, language)
+      badge: formatTokenCount(projectUsage.totalTokens, language),
+      Icon: Gauge
     },
     {
       id: 'runs',
@@ -164,19 +168,22 @@ export function ProjectSettingsPage(props: {
       description: t('历史、恢复与验证', 'History, recovery, verification'),
       badge: projectRuns.resumableRunCount > 0
         ? t(`${projectRuns.resumableRunCount} 可恢复`, `${projectRuns.resumableRunCount} resumable`)
-        : formatNumber(projectRuns.trackedRunCount, language)
+        : formatNumber(projectRuns.trackedRunCount, language),
+      Icon: History
     },
     {
       id: 'mcp',
       label: 'MCP',
       description: t('项目级 Server 与运行检查', 'Project servers and runtime checks'),
-      badge: t(`${projectMcpServerCount} 启用`, `${projectMcpServerCount} enabled`)
+      badge: t(`${projectMcpServerCount} 启用`, `${projectMcpServerCount} enabled`),
+      Icon: Plug
     },
     {
       id: 'skills',
       label: 'Skills',
       description: t('用户赋予 Agent 的项目技能', 'User-provided agent skills'),
-      badge: t(`${props.project?.agentPolicy?.skills?.filter((skill) => skill.enabled).length ?? 0} 启用`, `${props.project?.agentPolicy?.skills?.filter((skill) => skill.enabled).length ?? 0} enabled`)
+      badge: t(`${props.project?.agentPolicy?.skills?.filter((skill) => skill.enabled).length ?? 0} 启用`, `${props.project?.agentPolicy?.skills?.filter((skill) => skill.enabled).length ?? 0} enabled`),
+      Icon: Sparkles
     }
   ];
   const activeItem = settingsNavItems.find((item) => item.id === props.tab) ?? settingsNavItems[0];
@@ -197,8 +204,12 @@ export function ProjectSettingsPage(props: {
               variant="ghost"
               className={`project-settings-nav-item ${props.tab === item.id ? 'active' : ''}`}
               aria-current={props.tab === item.id ? 'page' : undefined}
+              title={`${item.label} · ${item.description} · ${item.badge}`}
               onClick={() => props.onTabChange(item.id)}
             >
+              <span className="project-settings-nav-icon" aria-hidden="true">
+                <item.Icon size={15} />
+              </span>
               <span className="project-settings-nav-copy">
                 <strong>{item.label}</strong>
                 <span>{item.description}</span>
@@ -232,7 +243,6 @@ export function ProjectSettingsPage(props: {
               sessionModel={props.sessionModel}
               sessionRuntimeId={props.sessionRuntimeId}
               sessionEffort={props.sessionEffort}
-              globalPermissionMode={props.globalPermissionMode}
               globalRuntimeStrategy={props.globalRuntimeStrategy}
               onUpdatePermissionMode={props.onUpdateProjectPermissionMode}
               onUpdateSessionRuntime={props.onUpdateSessionRuntime}
@@ -566,7 +576,6 @@ export function ProjectAgentSettings(props: {
   sessionModel?: string;
   sessionRuntimeId?: ProjectSessionRuntimeId;
   sessionEffort: ProjectSessionEffort;
-  globalPermissionMode: AgentPermissionMode;
   globalRuntimeStrategy: AgentRuntimeStrategy;
   onUpdatePermissionMode: (permissionMode: AgentPermissionMode) => Promise<void>;
   onUpdateSessionRuntime: (runtime: SessionRuntimeUpdate) => Promise<void>;
@@ -575,14 +584,10 @@ export function ProjectAgentSettings(props: {
   const t = (zh: string, en: string): string => localize(language, zh, en);
   const [modelDraft, setModelDraft] = useState(props.sessionModel ?? '');
   const projectPermissionMode = props.project?.agentPolicy?.permissionMode;
-  const effectivePermissionMode = projectPermissionMode ?? props.globalPermissionMode;
-  const defaultProvider = props.providers.find((provider) => provider.id === props.defaultProviderId) ?? props.providers.find((provider) => provider.isDefault) ?? props.activeProvider;
   const providerOverrideActive = Boolean(
     props.sessionProviderId && props.sessionProviderId !== (props.defaultProviderId || '')
   );
   const activeProviderLabel = props.activeProvider?.name ?? t('本地规划器', 'Local Planner');
-  const defaultProviderLabel = defaultProvider?.name ?? t('未配置', 'Not Configured');
-  const defaultModelLabel = defaultProvider?.model || t('未配置', 'Not Configured');
   const activeModelLabel = props.sessionModel || props.activeProvider?.model || t('本地规划器', 'Local Planner');
   const globalRuntimeLabel = formatRuntimeStrategyLabel(props.globalRuntimeStrategy, language);
   const runtimeLabel = props.sessionRuntimeId
@@ -631,91 +636,6 @@ export function ProjectAgentSettings(props: {
 
   return (
     <div className="engine-settings-grid">
-      <div className="agent-settings-wide-card">
-        <Card title={t('设置作用域', 'Settings Scope')}>
-          <div className="agent-settings-scope-flow" aria-label={t('设置覆盖顺序', 'Settings override order')}>
-            <span>{t('全局默认', 'Global Default')}</span>
-            <strong aria-hidden="true">→</strong>
-            <span>{t('项目默认', 'Project Default')}</span>
-            <strong aria-hidden="true">→</strong>
-            <span>{t('当前会话', 'Current Session')}</span>
-          </div>
-          <div className="agent-settings-scope-grid">
-            <div className="agent-settings-scope-step">
-              <div className="agent-settings-scope-header">
-                <span>{t('全局默认', 'Global Default')}</span>
-                <strong>{t('应用设置', 'App Settings')}</strong>
-              </div>
-              <dl>
-                <div>
-                  <dt>Provider</dt>
-                  <dd>{defaultProviderLabel}</dd>
-                </div>
-                <div>
-                  <dt>{t('模型', 'Model')}</dt>
-                  <dd>{defaultModelLabel}</dd>
-                </div>
-                <div>
-                  <dt>Runtime</dt>
-                  <dd>{globalRuntimeLabel}</dd>
-                </div>
-                <div>
-                  <dt>{t('模式', 'Mode')}</dt>
-                  <dd>{formatPermissionModeLabel(props.globalPermissionMode, language)}</dd>
-                </div>
-              </dl>
-            </div>
-            <div className="agent-settings-scope-step">
-              <div className="agent-settings-scope-header">
-                <span>{t('项目默认', 'Project Default')}</span>
-                <strong>{props.project?.name || t('未选择项目', 'No Project')}</strong>
-              </div>
-              <dl>
-                <div>
-                  <dt>{t('模式', 'Mode')}</dt>
-                  <dd>
-                    {projectPermissionMode
-                      ? formatPermissionModeLabel(projectPermissionMode, language)
-                      : t('跟随全局默认', 'Follow Global Default')}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Provider</dt>
-                  <dd>{t('跟随全局默认', 'Follow Global Default')}</dd>
-                </div>
-                <div>
-                  <dt>Runtime</dt>
-                  <dd>{t('跟随全局默认', 'Follow Global Default')}</dd>
-                </div>
-              </dl>
-            </div>
-            <div className="agent-settings-scope-step active">
-              <div className="agent-settings-scope-header">
-                <span>{t('当前会话', 'Current Session')}</span>
-                <strong>{props.activeSession?.title || t('未选择会话', 'No Session')}</strong>
-              </div>
-              <dl>
-                <div>
-                  <dt>{t('生效配置', 'Effective Config')}</dt>
-                  <dd>{formatPermissionModeLabel(effectivePermissionMode, language)} · {runtimeLabel}</dd>
-                </div>
-                <div>
-                  <dt>Provider</dt>
-                  <dd>{providerOverrideActive ? activeProviderLabel : t(`默认 · ${activeProviderLabel}`, `Default · ${activeProviderLabel}`)}</dd>
-                </div>
-                <div>
-                  <dt>{t('模型', 'Model')}</dt>
-                  <dd>{activeModelLabel}</dd>
-                </div>
-                <div>
-                  <dt>{t('智能强度', 'Effort')}</dt>
-                  <dd>{formatEffortLabel(props.sessionEffort, language)}</dd>
-                </div>
-              </dl>
-            </div>
-          </div>
-        </Card>
-      </div>
       <Card title={t('当前会话运行', 'Current Session Runtime')}>
         <InfoRow label={t('会话', 'Session')} value={props.activeSession?.title || t('未选择', 'No Session')} />
         <InfoRow
@@ -817,17 +737,17 @@ export function ProjectAgentSettings(props: {
           </div>
         </div>
       </Card>
-      <Card title={t('项目 Agent 策略', 'Project Agent Policy')}>
-        <InfoRow label={t('全局默认', 'Global Default')} value={formatPermissionModeLabel(props.globalPermissionMode, language)} />
-        <InfoRow label={t('项目默认', 'Project Default')} value={projectPermissionMode ? formatPermissionModeLabel(projectPermissionMode, language) : t('跟随全局默认', 'Follow Global Default')} />
-        <InfoRow label={t('当前生效', 'Effective Mode')} value={formatPermissionModeLabel(effectivePermissionMode, language)} />
-      </Card>
       <Card title={t('Agent 模式', 'Agent Mode')}>
         <div className="helper-copy">
-          {t(
-            'Build 用于直接开发；Plan 用于只读探索和方案规划，写文件会被拒绝，运行命令前会确认。',
-            'Build is for direct development; Plan is for read-only exploration and planning, rejects file writes, and asks before running commands.'
-          )}
+          {projectPermissionMode
+            ? t(
+                '当前项目已选择 Agent 模式；当前会话仍可在聊天输入区临时切换。',
+                'This project has an Agent mode selected; the current session can still switch from the chat composer.'
+              )
+            : t(
+                '为当前项目选择 Build 或 Plan。Build 用于直接开发；Plan 用于只读探索和方案规划。',
+                'Choose Build or Plan for this project. Build is for direct development; Plan is for read-only exploration and planning.'
+              )}
         </div>
         <div className="segmented-options">
           {permissionOptions.map(([mode, label]) => (
@@ -835,7 +755,7 @@ export function ProjectAgentSettings(props: {
               key={mode}
               size="compact"
               variant="ghost"
-              className={`settings-choice-button ${effectivePermissionMode === mode ? 'active' : ''}`}
+              className={`settings-choice-button ${projectPermissionMode === mode ? 'active' : ''}`}
               disabled={!props.project}
               onClick={() => void props.onUpdatePermissionMode(mode)}
             >
@@ -846,15 +766,6 @@ export function ProjectAgentSettings(props: {
       </Card>
     </div>
   );
-}
-
-function formatPermissionModeLabel(mode: AgentPermissionMode, language: UiLanguage): string {
-  const labels: Record<AgentPermissionMode, string> = {
-    'full-access': localize(language, 'Build', 'Build'),
-    ask: localize(language, '询问确认', 'Ask'),
-    'read-only': localize(language, 'Plan', 'Plan')
-  };
-  return labels[mode];
 }
 
 function formatRuntimeStrategyLabel(strategy: AgentRuntimeStrategy, language: UiLanguage): string {
@@ -1087,9 +998,6 @@ function countRepeatedToolResults(run: AgentRuntimeStatus): number {
 }
 
 function formatRunKind(kind: AgentRuntimeStatus['kind'], language: UiLanguage): string {
-  if (kind === 'execute-plan') {
-    return localize(language, '执行计划', 'Execution Plan');
-  }
   if (kind === 'bootstrap') {
     return localize(language, '初始化', 'Bootstrap');
   }

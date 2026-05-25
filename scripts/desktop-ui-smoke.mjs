@@ -93,12 +93,18 @@ function assertNotMatches(source, pattern, label) {
 
 const appSource = await readRepoFile('src/App.tsx');
 const modalSource = await readRepoFile('src/components/settings-modals.tsx');
+const appSettingsModalSource = await readRepoFile('src/components/modals/AppSettingsModal.tsx');
+const appSettingsAiProviderSectionSource = await readRepoFile('src/components/modals/AppSettingsAiProviderSection.tsx');
+const appSettingsAssetProviderSectionSource = await readRepoFile('src/components/modals/AppSettingsAssetProviderSection.tsx');
 const sidebarSource = await readRepoFile('src/components/layout/WorkspacePanels.tsx');
 const projectSettingsSource = await readRepoFile('src/components/pages/ProjectSettingsPage.tsx');
+const messageListSource = await readRepoFile('src/components/chat/MessageList.tsx');
+const chatMarkdownSource = await readRepoFile('src/components/chat/transcript/chat-markdown.tsx');
+const agentCoreSource = await readRepoFile('shared/agent-core-v2.ts');
+const appHelpersSource = await readRepoFile('src/lib/app-helpers.ts');
 const componentSources = await readComponentSources();
 const stylesSource = await readSlicedStyles();
 const uiTestSource = await readRepoFile('tests/runtime/agent-ui-render.test.ts');
-const uiPlan = await readRepoFile('docs/desktop-ui-improvement-plan.md');
 
 assertIncludes(appSource, 'data-workspace-section={section}', 'workspace section marker');
 assertIncludes(appSource, 'role="main"', 'workspace main role');
@@ -109,7 +115,6 @@ assertIncludes(sidebarSource, 'aria-current={props.activeNavId === item.id ? \'p
 assertIncludes(projectSettingsSource, 'aria-current={props.tab === item.id ? \'page\' : undefined}', 'project settings aria-current');
 assertMatches(uiTestSource, /workspace sidebar navigation marks the active section semantically/, 'workspace nav render test');
 assertMatches(uiTestSource, /app settings modal is a semantic dialog/, 'modal render test');
-assertMatches(uiPlan, /\| U5-1 \| Add a repeatable desktop UI smoke entry/, 'U5-1 plan row');
 assertNotMatches(componentSources, /prototype-|className=(?:"field\b|'field\b|\{`field\b)|settings-field|skill-form-row|app-settings-check-row/, 'legacy UI class emissions');
 assertNotMatches(stylesSource, /prototype-|\.field\b|settings-field|skill-form-row|app-settings-check-row/, 'legacy UI selector aliases');
 assertIncludes(stylesSource, '@media (prefers-reduced-motion: reduce)', 'reduced-motion media query');
@@ -122,6 +127,21 @@ assertIncludes(stylesSource, '@media (forced-colors: active)', 'forced-colors me
 assertIncludes(stylesSource, 'accent-color: Highlight', 'forced-colors accent color');
 assertIncludes(stylesSource, '.command-palette-item[aria-selected=\'true\']', 'forced-colors command palette selection coverage');
 assertIncludes(stylesSource, 'outline: 2px solid Highlight !important', 'forced-colors focus outline');
+assertMatches(agentCoreSource, /part\.kind === 'usage'[\s\S]*?return '';/, 'Agent Core usage metadata stays out of plain text projection');
+assertIncludes(appHelpersSource, 'stripInternalSessionPreviewNoise', 'session preview internal-noise stripping');
+assertIncludes(stylesSource, '.provider-card-actions .fp-button-icon', 'Provider action icon reset');
+assertMatches(stylesSource, /\.provider-card-actions \.fp-button-icon,[\s\S]*?background: transparent;/, 'Provider action inner capsules stay transparent');
+assertMatches(stylesSource, /\.file-item-label[\s\S]*?line-height: var\(--fp-space-5\)/, 'file tree label clipping guard');
+assertMatches(stylesSource, /\.agent-composer-footer[\s\S]*?align-items: center;[\s\S]*?min-height: var\(--fp-control-height\)/, 'composer footer alignment guard');
+assertIncludes(stylesSource, '.runtime-doctor-status-card', 'Runtime Doctor status card styling');
+assertIncludes(messageListSource, '<IconButton', 'scroll-to-bottom renders as icon button');
+assertIncludes(chatMarkdownSource, 'chat-plain-text-block', 'plain text fences skip labeled code chrome');
+assertMatches(stylesSource, /\.chat-transcript-bubble\.assistant \.chat-transcript-meta[\s\S]*?align-items: center;/, 'assistant meta row vertical alignment');
+assertIncludes(projectSettingsSource, 'project-settings-nav-icon', 'project settings navigation uses compact icon affordances');
+assertNotMatches(componentSources, /asset-library-inspector/, 'asset library duplicate side inspector');
+assertMatches(appSettingsAiProviderSectionSource, /editorOpen[\s\S]*?<ProviderEditor[\s\S]*?return \([\s\S]*?<ProviderSettingsPage/, 'provider editor replaces the provider list while adding or editing');
+assertMatches(appSettingsAssetProviderSectionSource, /editorOpen[\s\S]*?<AssetProviderEditor[\s\S]*?return \([\s\S]*?<AssetProviderSettingsPage/, 'asset provider editor replaces the provider list while adding or editing');
+assertMatches(stylesSource, /@media \(max-width: 860px\), \(max-height: 680px\)[\s\S]*?\.app-settings-nav-copy span[\s\S]*?display: none;/, 'compact app settings navigation hides verbose descriptions');
 
 // U45-2g: Forbid component-level `:root[data-theme='dark']` selectors in
 // `src/styles.css`. Theme-aware values must flow through tokens defined in
@@ -133,7 +153,7 @@ assertIncludes(stylesSource, 'outline: 2px solid Highlight !important', 'forced-
 const darkComponentOverrideCount = (stylesSource.match(/:root\[data-theme='dark'\]\s+[.\w]/g) ?? []).length;
 if (darkComponentOverrideCount > 0) {
   throw new Error(
-    `Desktop UI smoke failed: src/styles.css contains ${darkComponentOverrideCount} component-level :root[data-theme='dark'] selectors. Theme-dependent styling must reference a token from src/styles/tokens.css (or a :where()-based fallback). See docs/desktop-ui-improvement-plan.md Phase U45-2 for the migration pattern.`
+    `Desktop UI smoke failed: src/styles.css contains ${darkComponentOverrideCount} component-level :root[data-theme='dark'] selectors. Theme-dependent styling must reference a token from src/styles/tokens.css or a :where()-based fallback.`
   );
 }
 
@@ -141,7 +161,21 @@ const tokensCssSource = await readRepoFile('src/styles/tokens.css');
 assertIncludes(tokensCssSource, '--fp-color-gray-50', 'tokens.css raw color scale');
 assertIncludes(tokensCssSource, "--fp-body-background", 'tokens.css body background token');
 assertIncludes(tokensCssSource, "--fp-elevated-card-bg", 'tokens.css elevated card token');
+assertIncludes(tokensCssSource, "--fp-workspace-sidebar-bg", 'tokens.css workspace sidebar token');
+assertIncludes(tokensCssSource, "--fp-agent-composer-bg", 'tokens.css agent composer token');
+assertIncludes(tokensCssSource, "--fp-chat-code-card-bg", 'tokens.css chat markdown code token');
+assertIncludes(tokensCssSource, "--fp-chat-user-bubble-bg", 'tokens.css chat user bubble token');
+assertIncludes(tokensCssSource, "--fp-project-settings-page-bg", 'tokens.css project settings shell token');
+assertIncludes(tokensCssSource, "--fp-asset-generation-panel-bg", 'tokens.css asset generation panel token');
 assertIncludes(tokensCssSource, ":root[data-theme='dark']", 'tokens.css dark theme overrides');
+assertMatches(stylesSource, /\.workspace-sidebar[\s\S]*?background: var\(--fp-workspace-sidebar-bg\)/, 'workspace sidebar uses theme token surface');
+assertMatches(stylesSource, /\.agent-composer-shell[\s\S]*?background: var\(--fp-agent-composer-bg\)/, 'agent composer uses theme token surface');
+assertMatches(stylesSource, /\.chat-code-card[\s\S]*?background: var\(--fp-chat-code-card-bg\)/, 'chat markdown code card uses theme token surface');
+assertMatches(stylesSource, /\.chat-transcript-bubble\.user[\s\S]*?background: var\(--fp-chat-user-bubble-bg\)/, 'chat user bubble uses theme token surface');
+assertMatches(stylesSource, /\.project-settings-page[\s\S]*?background: var\(--fp-project-settings-page-bg\)/, 'project settings shell uses theme token surface');
+assertMatches(stylesSource, /\.project-settings-detail-header[\s\S]*?background: var\(--fp-project-settings-detail-header-bg\)/, 'project settings header uses theme token surface');
+assertMatches(stylesSource, /\.asset-library-card[\s\S]*?background: var\(--fp-asset-card-bg\)/, 'asset library cards use theme token surface');
+assertMatches(stylesSource, /\.asset-generation-form,[\s\S]*?\.asset-generation-job[\s\S]*?background: var\(--fp-asset-generation-panel-bg\)/, 'asset generation panels use theme token surface');
 
 // U46: CSS architecture integrity. The monolithic src/styles.css was sliced
 // into src/styles/{base,components,layers} in source order; src/styles/index.css
@@ -201,6 +235,12 @@ const report = [
   '- CSS no longer contains legacy prototype/form selector aliases.',
   '- CSS defines a global reduced-motion contract for transitions, command palette, and running status animation.',
   '- CSS defines color-scheme and forced-colors contracts for high-contrast accessibility.',
+  '- Session previews strip internal runtime usage metadata before rendering summaries.',
+  '- Provider action buttons reset nested label/icon capsules and Runtime Doctor renders status cards.',
+  '- File tree and composer controls keep token-backed line-height/alignment guards.',
+  '- Assistant replies keep header metadata aligned, plain text fences avoid labeled code chrome, and the scroll-to-bottom affordance is icon-only.',
+  '- Project/App Settings compact navigation uses icon tabs instead of clipped cards; Assets avoids duplicate side inspector panels.',
+  '- Provider add/edit mode replaces the Provider list instead of stacking two workflows.',
   '- CSS carries zero component-level `:root[data-theme=\'dark\']` overrides; theme values flow through `src/styles/tokens.css`.',
   '- CSS is sliced under `src/styles/{base,components,layers}` with an ordered `index.css` barrel; the monolithic `src/styles.css` is gone.',
   '- Component stylesheets under `src/components` are CSS Modules (`*.module.css`).',

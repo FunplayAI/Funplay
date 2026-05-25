@@ -1,3 +1,5 @@
+import type { AgentCoreMessagePart } from '../../../shared/types';
+
 export type RuntimeTaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 
 export interface RuntimeTaskItem {
@@ -35,6 +37,43 @@ export function buildRuntimeTaskSummaryFromTools(tools: RuntimeTaskToolSource[])
     return summarizeRuntimeTasks(items);
   }
   return null;
+}
+
+export function buildRuntimeTaskSummaryFromAgentCoreParts(parts: AgentCoreMessagePart[] | undefined): RuntimeTaskSummary | null {
+  if (!parts?.length) {
+    return null;
+  }
+  const toolInputs = new Map<string, RuntimeTaskToolSource>();
+  const tools: RuntimeTaskToolSource[] = [];
+  for (const part of [...parts].sort((left, right) => {
+    if (left.sequence !== right.sequence) {
+      return left.sequence - right.sequence;
+    }
+    return left.createdAt.localeCompare(right.createdAt);
+  })) {
+    if (part.kind === 'tool_call') {
+      const source: RuntimeTaskToolSource = {
+        name: part.name,
+        input: part.input
+      };
+      toolInputs.set(part.toolUseId, source);
+      tools.push(source);
+      continue;
+    }
+    if (part.kind === 'tool_result' || part.kind === 'tool_error') {
+      const existing = toolInputs.get(part.toolUseId);
+      const content = part.kind === 'tool_error' ? part.error : part.content;
+      if (existing) {
+        existing.resultContent = content;
+      } else if (part.toolName) {
+        tools.push({
+          name: part.toolName,
+          resultContent: content
+        });
+      }
+    }
+  }
+  return buildRuntimeTaskSummaryFromTools(tools);
 }
 
 export function isTodoListTool(name: string): boolean {

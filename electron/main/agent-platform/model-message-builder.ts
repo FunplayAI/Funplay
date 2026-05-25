@@ -4,11 +4,8 @@ import type {
   ToolContent
 } from 'ai';
 import { ensureProjectSessions } from '../../../shared/project-sessions';
-import type { ChatContentBlock, ChatMessage, Project, ProjectSession } from '../../../shared/types';
-import {
-  compactNativeToolResultBlock,
-  filterNativeMessagesAfterSummaryBoundary
-} from './native/context-handoff';
+import type { AgentCoreMessagePart, ChatMessage, Project, ProjectSession } from '../../../shared/types';
+import { filterNativeMessagesAfterSummaryBoundary } from './native/context-handoff';
 
 type AssistantContentPart = Exclude<AssistantContent, string>[number];
 type ToolContentPart = ToolContent[number];
@@ -129,26 +126,24 @@ function appendToolResult(messages: ModelMessage[], part: ToolContentPart): void
 }
 
 function getUserMessageText(message: ChatMessage): string {
-  if (!message.contentBlocks?.length) {
-    return message.content;
-  }
+  return message.content;
+}
 
-  const text = message.contentBlocks
-    .map((block) => {
-      if (block.type === 'text') {
-        return block.text;
-      }
+function sortAgentCoreParts(parts: AgentCoreMessagePart[] | undefined): AgentCoreMessagePart[] {
+  return parts?.length
+    ? [...parts].sort((left, right) => {
+        if (left.sequence !== right.sequence) {
+          return left.sequence - right.sequence;
+        }
+        return left.createdAt.localeCompare(right.createdAt);
+      })
+    : [];
+}
 
-      if (block.type === 'fallback') {
-        return block.text;
-      }
-
-      return '';
-    })
-    .filter(hasText)
-    .join('\n\n');
-
-  return text || message.content;
+function getAssistantMessageAgentCoreParts(message: ChatMessage): AgentCoreMessagePart[] {
+  return message.role === 'assistant'
+    ? sortAgentCoreParts(message.metadata?.agentCoreParts)
+    : [];
 }
 
 function createTextPart(text: string): AssistantContentPart {
@@ -191,20 +186,16 @@ function summarizeToolInput(input: Record<string, unknown> | undefined): string 
   }
 }
 
-function summarizeToolResult(block: Extract<ChatContentBlock, { type: 'tool_result' }>): string {
-  const content = compactWhitespace(block.content);
-  const mediaText = block.media?.length ? ` media=${block.media.length}` : '';
-  const status = block.isError ? 'error' : 'ok';
+function summarizeToolResultPart(part: Extract<AgentCoreMessagePart, { kind: 'tool_result' | 'tool_error' }>): string {
+  const content = compactWhitespace(part.kind === 'tool_error' ? part.error : part.content);
+  const mediaText = part.artifacts?.length ? ` artifacts=${part.artifacts.length}` : '';
+  const status = part.kind === 'tool_error' ? 'error' : 'ok';
   return `${status}${mediaText}: ${truncateMiddle(content || '(empty)', MAX_COMPRESSED_TOOL_RESULT_CHARS)}`;
 }
 
-function summarizeAssistantTextBlocks(blocks: ChatContentBlock[]): string {
-  const text = blocks
-    .map((block) => {
-      if (block.type === 'text') return block.text;
-      if (block.type === 'fallback') return block.text;
-      return '';
-    })
+function summarizeAssistantTextParts(parts: AgentCoreMessagePart[]): string {
+  const text = parts
+    .map((part) => part.kind === 'assistant_text' ? part.text : '')
     .filter(hasText)
     .map(compactWhitespace)
     .filter(Boolean)
@@ -213,20 +204,22 @@ function summarizeAssistantTextBlocks(blocks: ChatContentBlock[]): string {
   return truncateMiddle(text, MAX_COMPRESSED_TEXT_CHARS);
 }
 
-function summarizeAssistantTools(blocks: ChatContentBlock[]): string[] {
-  const toolUses = new Map<string, Extract<ChatContentBlock, { type: 'tool_use' }>>();
-  for (const block of blocks) {
-    if (block.type === 'tool_use') {
-      toolUses.set(block.toolUseId, block);
+function summarizeAssistantTools(parts: AgentCoreMessagePart[]): string[] {
+  const toolUses = new Map<string, Extract<AgentCoreMessagePart, { kind: 'tool_call' }>>();
+  for (const part of parts) {
+    if (part.kind === 'tool_call') {
+      toolUses.set(part.toolUseId, part);
     }
   }
 
-  return blocks
-    .filter((block): block is Extract<ChatContentBlock, { type: 'tool_result' }> => block.type === 'tool_result')
-    .map((block) => {
-      const toolUse = toolUses.get(block.toolUseId);
-      const toolName = toolUse?.name ?? `unknown:${block.toolUseId}`;
-      return `- ${toolName} input=${summarizeToolInput(toolUse?.input)} result=${summarizeToolResult(block)}`;
+  return parts
+    .filter((part): part is Extract<AgentCoreMessagePart, { kind: 'tool_result' | 'tool_error' }> =>
+      part.kind === 'tool_result' || part.kind === 'tool_error'
+    )
+    .map((part) => {
+      const toolUse = toolUses.get(part.toolUseId);
+      const toolName = toolUse?.name ?? part.toolName ?? `unknown:${part.toolUseId}`;
+      return `- ${toolName} input=${summarizeToolInput(toolUse?.input)} result=${summarizeToolResultPart(part)}`;
     });
 }
 
@@ -265,17 +258,18 @@ function buildCompressedHistorySummary(chat: ChatMessage[]): string | undefined 
       currentUserText = '';
     }
 
-    if (!message.contentBlocks?.length) {
+    const assistantParts = getAssistantMessageAgentCoreParts(message);
+    if (!assistantParts.length) {
       lines.push(`Assistant: ${truncateMiddle(compactWhitespace(message.content), MAX_COMPRESSED_TEXT_CHARS)}`);
       continue;
     }
 
-    const assistantText = summarizeAssistantTextBlocks(message.contentBlocks);
+    const assistantText = summarizeAssistantTextParts(assistantParts);
     if (assistantText) {
       lines.push(`Assistant: ${assistantText}`);
     }
 
-    const toolLines = summarizeAssistantTools(message.contentBlocks);
+    const toolLines = summarizeAssistantTools(assistantParts);
     if (toolLines.length > 0) {
       lines.push('Tools:');
       lines.push(...toolLines.slice(0, 12));
@@ -294,41 +288,67 @@ function buildCompressedHistorySummary(chat: ChatMessage[]): string | undefined 
 
 function compactOlderNativeToolResults(chat: ChatMessage[]): ChatMessage[] {
   return chat.map((message) => {
-    if (!message.contentBlocks?.some((block) => block.type === 'tool_result')) {
+    const parts = message.metadata?.agentCoreParts;
+    if (!parts?.some((part) => part.kind === 'tool_result' || part.kind === 'tool_error')) {
       return message;
     }
     return {
       ...message,
-      contentBlocks: message.contentBlocks.map((block) =>
-        block.type === 'tool_result' ? compactNativeToolResultBlock(block) : block
-      )
+      metadata: {
+        ...message.metadata,
+        agentCoreParts: parts.map(compactNativeToolResultPart)
+      }
     };
   });
 }
 
-function createOrphanToolResultText(block: Extract<ChatContentBlock, { type: 'tool_result' }>): AssistantContentPart {
+function compactNativeToolResultPart(part: AgentCoreMessagePart): AgentCoreMessagePart {
+  if (part.kind === 'tool_result') {
+    return {
+      ...part,
+      content: [
+        '[Native tool result compacted]',
+        truncateMiddle(compactWhitespace(part.content) || '(empty)', 700)
+      ].join(' ')
+    };
+  }
+  if (part.kind === 'tool_error') {
+    return {
+      ...part,
+      error: [
+        '[Native tool result compacted]',
+        'status=error',
+        truncateMiddle(compactWhitespace(part.error) || '(empty)', 700)
+      ].join(' ')
+    };
+  }
+  return part;
+}
+
+function createOrphanToolResultText(part: Extract<AgentCoreMessagePart, { kind: 'tool_result' | 'tool_error' }>): AssistantContentPart {
+  const content = part.kind === 'tool_error' ? part.error : part.content;
   return createTextPart(
     [
-      `[Unmatched Tool Result] ${block.toolUseId}`,
-      block.isError ? 'Status: error' : '',
-      block.content
+      `[Unmatched Tool Result] ${part.toolUseId}`,
+      part.kind === 'tool_error' ? 'Status: error' : '',
+      content
     ]
       .filter(hasText)
       .join('\n')
   );
 }
 
-function createIncompleteToolResult(block: Extract<ChatContentBlock, { type: 'tool_use' }>): ToolContentPart {
-  const status = block.status ?? 'pending';
+function createIncompleteToolResult(part: Extract<AgentCoreMessagePart, { kind: 'tool_call' }>): ToolContentPart {
+  const status = part.status ?? 'pending';
   return {
     type: 'tool-result',
-    toolCallId: block.toolUseId,
-    toolName: block.name,
+    toolCallId: part.toolUseId,
+    toolName: part.name,
     output: {
       type: 'text',
       value: [
         '[Error]',
-        `Tool call ${block.name} did not return a recorded result before the run was interrupted.`,
+        `Tool call ${part.name} did not return a recorded result before the run was interrupted.`,
         `Recorded status: ${status}.`,
         'Treat this prior tool call as failed; retry it only if the user request still requires it.'
       ].join('\n')
@@ -336,15 +356,17 @@ function createIncompleteToolResult(block: Extract<ChatContentBlock, { type: 'to
   };
 }
 
-function appendAssistantMessageFromBlocks(
+function appendAssistantMessageFromAgentCoreParts(
   messages: ModelMessage[],
-  blocks: ChatContentBlock[],
+  parts: AgentCoreMessagePart[],
   toolCallNames: Map<string, string>
 ): void {
   const completedToolUseIds = new Set(
-    blocks
-      .filter((block): block is Extract<ChatContentBlock, { type: 'tool_result' }> => block.type === 'tool_result')
-      .map((block) => block.toolUseId)
+    parts
+      .filter((part): part is Extract<AgentCoreMessagePart, { kind: 'tool_result' | 'tool_error' }> =>
+        part.kind === 'tool_result' || part.kind === 'tool_error'
+      )
+      .map((part) => part.toolUseId)
   );
   let assistantParts: AssistantContentPart[] = [];
 
@@ -353,57 +375,57 @@ function appendAssistantMessageFromBlocks(
     assistantParts = [];
   };
 
-  for (const block of blocks) {
-    if (block.type === 'text') {
-      if (hasText(block.text)) {
-        assistantParts.push(createTextPart(block.text));
+  for (const part of parts) {
+    if (part.kind === 'assistant_text') {
+      if (hasText(part.text)) {
+        assistantParts.push(createTextPart(part.text));
       }
       continue;
     }
 
-    if (block.type === 'fallback') {
-      if (hasText(block.text)) {
-        assistantParts.push(createTextPart(block.text));
+    if (part.kind === 'assistant_thinking') {
+      if (hasText(part.thinking)) {
+        assistantParts.push(createReasoningPart(part.thinking));
       }
       continue;
     }
 
-    if (block.type === 'thinking') {
-      if (hasText(block.thinking)) {
-        assistantParts.push(createReasoningPart(block.thinking));
-      }
-      continue;
-    }
-
-    if (block.type === 'tool_use') {
-      toolCallNames.set(block.toolUseId, block.name);
+    if (part.kind === 'tool_call') {
+      toolCallNames.set(part.toolUseId, part.name);
       assistantParts.push({
         type: 'tool-call',
-        toolCallId: block.toolUseId,
-        toolName: block.name,
-        input: block.input ?? {}
+        toolCallId: part.toolUseId,
+        toolName: part.name,
+        input: part.input ?? {}
       });
-      if (!completedToolUseIds.has(block.toolUseId)) {
+      if (!completedToolUseIds.has(part.toolUseId)) {
         flushAssistantParts();
-        appendToolResult(messages, createIncompleteToolResult(block));
+        appendToolResult(messages, createIncompleteToolResult(part));
       }
       continue;
     }
 
-    const toolName = toolCallNames.get(block.toolUseId);
+    if (part.kind !== 'tool_result' && part.kind !== 'tool_error') {
+      if (part.kind === 'run_error' && hasText(part.error)) {
+        assistantParts.push(createTextPart(`[Run Error]\n${part.error}`));
+      }
+      continue;
+    }
+
+    const toolName = toolCallNames.get(part.toolUseId) ?? part.toolName;
     if (!toolName) {
-      assistantParts.push(createOrphanToolResultText(block));
+      assistantParts.push(createOrphanToolResultText(part));
       continue;
     }
 
     flushAssistantParts();
     appendToolResult(messages, {
       type: 'tool-result',
-      toolCallId: block.toolUseId,
+      toolCallId: part.toolUseId,
       toolName,
       output: {
         type: 'text',
-        value: block.isError ? `[Error]\n${block.content}` : block.content
+        value: part.kind === 'tool_error' ? `[Error]\n${part.error}` : part.content
       }
     });
   }
@@ -421,13 +443,14 @@ export function buildModelMessagesFromChat(chat: ChatMessage[]): ModelMessage[] 
       continue;
     }
 
-    if (!message.contentBlocks?.length) {
+    const assistantParts = getAssistantMessageAgentCoreParts(message);
+    if (!assistantParts.length) {
       appendAssistantText(messages, message.content);
       continue;
     }
 
     const beforeLength = messages.length;
-    appendAssistantMessageFromBlocks(messages, message.contentBlocks, toolCallNames);
+    appendAssistantMessageFromAgentCoreParts(messages, assistantParts, toolCallNames);
 
     if (messages.length === beforeLength && hasText(message.content)) {
       appendAssistantText(messages, message.content);

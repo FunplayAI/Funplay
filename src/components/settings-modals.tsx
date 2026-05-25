@@ -329,7 +329,7 @@ export function ProviderEditor(props: {
   const language = useUiLanguage();
   const modelListId = useId();
   const upstreamModelListId = useId();
-  const initialDraft = useMemo(() => createProviderDraft(props.provider), [props.provider]);
+  const initialDraft = useMemo(() => createProviderDraft(props.provider), [props.provider?.id]);
   const [draft, setDraft] = useState<ProviderDraft>(initialDraft);
   useEffect(() => {
     setDraft(initialDraft);

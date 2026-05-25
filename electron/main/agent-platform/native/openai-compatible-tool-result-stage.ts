@@ -1,11 +1,8 @@
-import type { AgentRunControllerSnapshot } from '../agent-run-controller';
 import { ProjectInstructionTracker } from '../project-instruction-tracker';
 import type { GenericAgentRuntimeParams } from '../types';
-import type {
-  AgentCoreState,
-  AiProviderApiMode
-} from '../../../../shared/types';
+import type { AgentCoreProviderStepResult, AiProviderApiMode } from '../../../../shared/types';
 import type { OpenAiCompatibleToolStepResult } from '../../openai-compatible-client';
+import type { ProviderRuntimeController } from '../provider-runtime-events';
 import {
   createEditFailureRecoveryPrompt,
   type NativeEditFailureRecovery
@@ -48,20 +45,20 @@ export async function recordOpenAiCompatibleToolResultStage(input: {
   state: NativeToolLoopState;
   stepIndex: number;
   stepResult: OpenAiCompatibleToolStepResult;
+  providerStep: AgentCoreProviderStepResult;
   processTextStream: NativeProcessTextStream;
   stepStream: NativeProcessTextStepStream;
   toolPool: NativeToolPool;
   instructionTracker: ProjectInstructionTracker;
-  recordRunControllerProviderStep: () => AgentRunControllerSnapshot;
-  recordRunControllerToolResult: (toolResult: NativeRunControllerToolResult) => unknown;
-  transitionCoreState: (to: AgentCoreState, reason: string) => void;
+  providerController: ProviderRuntimeController;
   emitCoreStateStage: (status: 'running' | 'completed' | 'failed', summary: string) => void;
 }): Promise<OpenAiCompatibleToolResultStageDecision> {
-  const controllerSnapshot = input.recordRunControllerProviderStep();
-  input.transitionCoreState('collecting_tool_calls', `Provider step ${input.stepIndex + 1} 完成，finishReason=${input.state.finishReason ?? 'unknown'}，toolCalls=${input.stepResult.toolCalls.length}。`);
+  const controllerSnapshot = input.providerController.recordProviderStep({
+    providerStep: input.providerStep
+  }).runController;
   if (controllerSnapshot.nextAction !== 'execute_tools') {
     input.processTextStream.discard(input.stepStream);
-    input.transitionCoreState('failed', `Agent Run Controller 返回了无法在工具分支处理的动作：${controllerSnapshot.nextAction}。`);
+    input.providerController.failRun(`Agent Run Controller 返回了无法在工具分支处理的动作：${controllerSnapshot.nextAction}。`);
     input.callbacks?.emitStage?.({
       stageId: 'stage:native_tool_stream',
       title: '执行兼容 Tool Loop',
@@ -77,10 +74,10 @@ export async function recordOpenAiCompatibleToolResultStage(input: {
     input.emitCoreStateStage('failed', 'Agent Run Controller 返回了工具分支无法处理的动作。');
     return {
       action: 'return',
-      result: createNativeToolLoopRunResult(input.state, controllerSnapshot.coreState)
+      result: createNativeToolLoopRunResult(input.state, controllerSnapshot.coreState, controllerSnapshot.parts)
     };
   }
-  input.transitionCoreState('executing_tools', `Provider 返回 ${input.stepResult.toolCalls.length} 个 tool call，进入工具执行。`);
+  input.providerController.toolExecutionStarted(`Provider 返回 ${input.stepResult.toolCalls.length} 个 tool call，进入工具执行。`);
 
   if (input.stepResult.toolCallRepair?.type === 'textual_tool_marker') {
     input.callbacks?.emitStage?.({
@@ -109,18 +106,21 @@ export async function recordOpenAiCompatibleToolResultStage(input: {
       stepIndex: input.stepIndex,
       state: input.state,
       callbacks: input.callbacks,
+      abortSignal: input.params.abortSignal,
       toolPool: input.toolPool,
       instructionTracker: input.instructionTracker,
-      recordRunControllerToolResult: input.recordRunControllerToolResult
+      recordRunControllerToolResult: (toolResult: NativeRunControllerToolResult) => input.providerController.recordToolResult({
+        toolResult
+      })
     })).editFailureRecoveries);
   } catch (error) {
     if (isAbortLikeError(error, input.params.abortSignal)) {
-      input.transitionCoreState('interrupted_resumable', '工具执行被中断，已把未完成工具记录为结构化错误结果。');
+      input.providerController.interruptRun('工具执行被中断，已把未完成工具记录为结构化错误结果。');
       input.emitCoreStateStage('failed', 'Agent Core v2 状态机记录可恢复中断。');
       throw error;
     }
   }
-  input.transitionCoreState('recording_tool_results', `已记录第 ${input.stepIndex + 1} 步工具结果。`);
+  input.providerController.toolResultsRecorded(`已记录第 ${input.stepIndex + 1} 步工具结果。`);
 
   if (
     editFailureRecoveries.length > 0 &&
@@ -156,7 +156,6 @@ export async function recordOpenAiCompatibleToolResultStage(input: {
       }
     });
   }
-  input.transitionCoreState('continuing_after_tools', '工具结果已进入上下文，准备回放给模型。');
 
   input.callbacks?.emitStage?.({
     stageId: 'stage:native_tool_stream',
@@ -171,7 +170,7 @@ export async function recordOpenAiCompatibleToolResultStage(input: {
       usage: input.state.usage
     }
   });
-  input.transitionCoreState('building_model_input', '工具结果已记录，构建下一轮 provider 输入。');
+  input.providerController.providerInputReady('工具结果已记录，构建下一轮 provider 输入。');
   return {
     action: 'continue',
     nextStepIndex: input.stepIndex + 1

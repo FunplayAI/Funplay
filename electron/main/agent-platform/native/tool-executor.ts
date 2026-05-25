@@ -9,13 +9,16 @@ import {
   createToolExecutorTransaction,
   normalizeToolExecutorTransactionResult,
   type ToolExecutorToolClass,
-  type ToolExecutorTransaction
+  type ToolExecutorTransaction,
+  type ToolExecutorTransactionResultSource
 } from '../tool-executor';
 
 export type NativeWorkspaceToolOutput = {
   ok?: boolean;
   summary?: string;
   isError?: boolean;
+  failureKind?: string;
+  recoveryHint?: string;
   media?: WorkspaceToolActionResult['media'];
   changedFiles?: WorkspaceToolActionResult['changedFiles'];
   command?: WorkspaceToolActionResult['command'];
@@ -24,11 +27,22 @@ export type NativeWorkspaceToolOutput = {
   edit?: WorkspaceToolActionResult['edit'];
   mcp?: WorkspaceToolActionResult['mcp'];
   artifacts?: WorkspaceToolActionResult['artifacts'];
+  searchText?: string;
 };
 
 export interface NativeWorkspaceToolTransactionCallbacks {
   emitToolUse?: GenericAgentRuntimeParams['onToolUse'];
   emitToolResult?: GenericAgentRuntimeParams['onToolResult'];
+}
+
+export type NativeWorkspaceToolResultSource = ToolExecutorTransactionResultSource;
+
+export interface NativeWorkspaceToolValidationResult {
+  status: 'passed' | 'failed';
+  summary?: string;
+  failureKind?: string;
+  recoveryHint?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface NativeWorkspaceToolTransactionHooks {
@@ -45,6 +59,8 @@ export interface NativeWorkspaceToolTransactionInput {
   callbacks?: NativeWorkspaceToolTransactionCallbacks;
   hooks?: NativeWorkspaceToolTransactionHooks;
   precomputedResult?: NativeWorkspaceToolOutput;
+  resultSource?: NativeWorkspaceToolResultSource;
+  validation?: NativeWorkspaceToolValidationResult;
 }
 
 function inferNativeWorkspaceToolClass(toolName: string): ToolExecutorToolClass {
@@ -76,6 +92,29 @@ function inferNativeWorkspaceToolClass(toolName: string): ToolExecutorToolClass 
     return 'checkpoint';
   }
   return 'workspace';
+}
+
+function defaultNativeWorkspaceToolValidation(input: {
+  resultSource: NativeWorkspaceToolResultSource;
+  toolName: string;
+  summary: string;
+  toolResult: NativeWorkspaceToolOutput;
+}): NativeWorkspaceToolValidationResult | undefined {
+  if (input.resultSource === 'validation_failed') {
+    return {
+      status: 'failed',
+      summary: input.summary,
+      failureKind: input.toolResult.failureKind ?? input.toolResult.edit?.failureKind ?? input.toolResult.mcp?.failureKind,
+      recoveryHint: input.toolResult.recoveryHint ?? input.toolResult.edit?.recoveryHint
+    };
+  }
+  if (input.resultSource === 'executed' || input.resultSource === 'synthetic_failure' || input.resultSource === 'interrupted') {
+    return {
+      status: 'passed',
+      summary: `${input.toolName} input accepted.`
+    };
+  }
+  return undefined;
 }
 
 export function stringifyNativeToolOutput(output: unknown): string {
@@ -121,16 +160,20 @@ export function recordNativeWorkspaceToolTransactionResult(input: Omit<NativeWor
   toolResult: NativeWorkspaceToolOutput;
   transaction: ToolExecutorTransaction;
 } {
+  const resultSource = input.resultSource ?? 'executed';
+  const summary = input.toolResult.summary ?? stringifyNativeToolOutput(input.toolResult);
+  const validation = input.validation ?? defaultNativeWorkspaceToolValidation({
+    resultSource,
+    toolName: input.toolName,
+    summary,
+    toolResult: input.toolResult
+  });
   let transaction = createToolExecutorTransaction({
     toolUseId: input.toolUseId,
     toolName: input.toolName,
     toolClass: inferNativeWorkspaceToolClass(input.toolName),
-    input: input.input
-  });
-  transaction = advanceToolExecutorTransaction(transaction, {
-    phase: 'executing',
-    eventType: 'execution_started',
-    summary: `Executing ${input.toolName}.`
+    input: input.input,
+    resultSource
   });
   input.hooks?.onStart?.();
   input.callbacks?.emitToolUse?.({
@@ -139,12 +182,76 @@ export function recordNativeWorkspaceToolTransactionResult(input: Omit<NativeWor
     input: input.input,
     status: 'running'
   });
-  const summary = input.toolResult.summary ?? stringifyNativeToolOutput(input.toolResult);
-  transaction = completeToolExecutorTransaction(transaction, normalizeToolExecutorTransactionResult({
-    ...input.toolResult,
-    content: summary,
-    isError: Boolean(input.toolResult.isError)
-  }));
+  if (validation?.status === 'failed') {
+    transaction = completeToolExecutorTransaction(transaction, normalizeToolExecutorTransactionResult({
+      ...input.toolResult,
+      content: summary,
+      isError: true,
+      failureKind: input.toolResult.failureKind ?? validation.failureKind,
+      recoveryHint: input.toolResult.recoveryHint ?? validation.recoveryHint
+    }), {
+      eventType: 'validation_failed',
+      phase: 'failed',
+      status: 'failed',
+      summary: validation.summary ?? summary,
+      resultSource,
+      metadata: {
+        resultSource,
+        validationStatus: validation.status,
+        ...validation.metadata
+      }
+    });
+  } else {
+    if (validation?.status === 'passed') {
+      transaction = advanceToolExecutorTransaction(transaction, {
+        phase: 'validating',
+        eventType: 'validation_passed',
+        summary: validation.summary ?? `${input.toolName} input accepted.`,
+        metadata: {
+          resultSource,
+          validationStatus: validation.status,
+          ...validation.metadata
+        }
+      });
+    }
+    if (resultSource === 'cached') {
+      transaction = completeToolExecutorTransaction(transaction, normalizeToolExecutorTransactionResult({
+        ...input.toolResult,
+        content: summary,
+        isError: Boolean(input.toolResult.isError),
+        failureKind: input.toolResult.failureKind,
+        recoveryHint: input.toolResult.recoveryHint
+      }), {
+        eventType: 'result_recorded',
+        summary,
+        resultSource,
+        metadata: {
+          resultSource
+        }
+      });
+    } else {
+      transaction = advanceToolExecutorTransaction(transaction, {
+        phase: 'executing',
+        eventType: 'execution_started',
+        summary: `Executing ${input.toolName}.`,
+        metadata: {
+          resultSource
+        }
+      });
+      transaction = completeToolExecutorTransaction(transaction, normalizeToolExecutorTransactionResult({
+        ...input.toolResult,
+        content: summary,
+        isError: Boolean(input.toolResult.isError),
+        failureKind: input.toolResult.failureKind,
+        recoveryHint: input.toolResult.recoveryHint
+      }), {
+        resultSource,
+        metadata: {
+          resultSource
+        }
+      });
+    }
+  }
   const transactionSummary = createToolExecutorTransactionSummary(transaction);
   input.callbacks?.emitToolResult?.({
     toolUseId: input.toolUseId,
@@ -188,6 +295,8 @@ export async function executeNativeWorkspaceToolTransaction(input: NativeWorkspa
     input: input.input,
     callbacks: input.callbacks,
     hooks: input.hooks,
+    resultSource: input.resultSource ?? (input.precomputedResult ? 'cached' : 'executed'),
+    validation: input.validation,
     toolResult
   });
 }

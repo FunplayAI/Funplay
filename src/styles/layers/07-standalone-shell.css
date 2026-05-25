@@ -28,6 +28,23 @@
   -webkit-app-region: no-drag;
 }
 
+.app-bootstrap-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--fp-space-6);
+  background: var(--fp-workspace-shell-bg);
+  color: var(--text-soft);
+  font-size: var(--fp-text-md);
+  font-weight: 700;
+  text-align: center;
+  -webkit-app-region: drag;
+}
+
+.app-bootstrap-screen .bootstrap-error-card {
+  -webkit-app-region: no-drag;
+}
+
 .welcome-screen,
 .onboarding-screen {
   flex: 1 1 auto;

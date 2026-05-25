@@ -12,6 +12,8 @@ import {
   isPdfFile,
   isVideoFile,
 } from './file-type-detection';
+import { AudioWaveformPreview } from './audio-waveform-preview';
+export { AudioWaveformPreview } from './audio-waveform-preview';
 
 export interface ProjectFileItem {
   id: string;
@@ -47,7 +49,7 @@ export function renderFilePreview(
   if (isAudioFile(path)) {
     return file.previewDataUrl ? (
       <div className="asset-preview-frame audio">
-        <audio controls src={file.previewDataUrl} />
+        <AudioWaveformPreview src={file.previewDataUrl} />
       </div>
     ) : (
       <BinaryPreviewFallback file={file} project={project} />
@@ -57,7 +59,7 @@ export function renderFilePreview(
   if (isVideoFile(path)) {
     return file.previewDataUrl ? (
       <div className="asset-preview-frame video">
-        <video controls src={file.previewDataUrl} />
+        <video controls preload="metadata" src={file.previewDataUrl} />
       </div>
     ) : (
       <BinaryPreviewFallback file={file} project={project} />
@@ -410,6 +412,13 @@ function renderMarkdownPreview(markdown: string): string {
     if (!line.trim()) {
       flushParagraph();
       flushList();
+      continue;
+    }
+
+    if (/^([-*_])(?:\s*\1){2,}\s*$/.test(line.trim())) {
+      flushParagraph();
+      flushList();
+      html.push('<hr />');
       continue;
     }
 

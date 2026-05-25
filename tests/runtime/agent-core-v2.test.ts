@@ -3,16 +3,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   agentCoreStateTransitions,
+  agentCorePartsToPlainText,
   agentCorePartsToChatContentBlocks,
   canTransitionAgentCoreState,
-  chatContentBlocksToAgentCoreParts,
   createAgentCoreStateMachine,
   decideAgentCoreLoopOutcome,
   isTerminalAgentCoreState,
   promptStreamEventToAgentCoreParts,
   runtimeEventToAgentCoreParts
 } from '../../shared/agent-core-v2.ts';
-import type { AgentCoreMessagePart, AgentCoreProviderStepResult, ChatContentBlock, PromptStreamEvent, AgentRuntimeEvent } from '../../shared/types.ts';
+import type { AgentCoreMessagePart, AgentCoreProviderStepResult, PromptStreamEvent, AgentRuntimeEvent } from '../../shared/types.ts';
 
 test('Agent Core v2 state table has explicit terminal states', () => {
   assert.equal(isTerminalAgentCoreState('completed'), true);
@@ -74,6 +74,29 @@ test('Agent Core v2 continues when stop contains tool calls', () => {
   assert.equal(decision.outcome, 'continue_after_tools');
   assert.equal(decision.nextState, 'executing_tools');
   assert.equal(decision.terminal, false);
+});
+
+test('Agent Core v2 owns host requested continuation decisions', () => {
+  const decision = decideAgentCoreLoopOutcome({
+    providerFinishReason: 'stop',
+    toolCallCount: 0,
+    hasFinalText: true,
+    hasPendingPermission: false,
+    hasPendingUserInput: false,
+    shouldCompact: false,
+    shouldVerify: false,
+    cancelled: false,
+    interrupted: false,
+    requestedContinuation: {
+      reason: 'partial_write',
+      detail: 'Assistant promised another file write.'
+    }
+  });
+
+  assert.equal(decision.outcome, 'continue_after_tools');
+  assert.equal(decision.nextState, 'building_model_input');
+  assert.equal(decision.terminal, false);
+  assert.match(decision.reason, /partial_write/);
 });
 
 test('Agent Core v2 pauses before executing tools that need permission or input', () => {
@@ -163,6 +186,16 @@ test('Agent Core v2 platform parts cover text, tool, pause, todo, context, usage
   ]);
 });
 
+test('Agent Core v2 plain text projection omits token usage metadata', () => {
+  const parts: AgentCoreMessagePart[] = [
+    { id: 'p1', kind: 'assistant_text', createdAt: 'now', sequence: 1, text: '完成。' },
+    { id: 'p2', kind: 'usage', createdAt: 'now', sequence: 2, usage: { inputTokens: 10, outputTokens: 3, totalTokens: 13, recordedAt: 'now' } }
+  ];
+
+  assert.equal(agentCorePartsToPlainText(parts, false), '完成。');
+  assert.equal(agentCorePartsToPlainText([parts[1] as AgentCoreMessagePart], true), '');
+});
+
 test('Agent Core v2 provider step result is protocol-neutral', () => {
   const step: AgentCoreProviderStepResult = {
     text: 'Need to inspect.',
@@ -181,62 +214,7 @@ test('Agent Core v2 provider step result is protocol-neutral', () => {
   assert.equal(step.finishReason, 'tool_calls');
 });
 
-test('Agent Core v2 maps chat content blocks into ordered parts', () => {
-  const blocks: ChatContentBlock[] = [
-    { type: 'text', text: 'hello' },
-    { type: 'tool_use', toolUseId: 'tool_1', name: 'read_file', status: 'running', input: { path: 'README.md' } },
-    {
-      type: 'tool_result',
-      toolUseId: 'tool_1',
-      content: 'done',
-      changedFiles: [{ path: 'README.md', operation: 'modified' }],
-      transaction: {
-        id: 'tool_txn:tool_1',
-        toolUseId: 'tool_1',
-        toolName: 'read_file',
-        toolClass: 'workspace',
-        phase: 'completed',
-        status: 'completed',
-        eventCount: 3,
-        startedAt: '2026-05-15T00:00:00.000Z',
-        updatedAt: '2026-05-15T00:00:01.000Z'
-      }
-    },
-    {
-      type: 'tool_result',
-      toolUseId: 'tool_2',
-      content: 'missing',
-      isError: true,
-      edit: { strategy: 'search_replace', patchFirst: false, preflight: 'failed', failureKind: 'missing_match' },
-      transaction: {
-        id: 'tool_txn:tool_2',
-        toolUseId: 'tool_2',
-        toolName: 'edit_file',
-        toolClass: 'workspace',
-        phase: 'failed',
-        status: 'failed',
-        eventCount: 4,
-        startedAt: '2026-05-15T00:00:00.000Z',
-        updatedAt: '2026-05-15T00:00:01.000Z'
-      }
-    }
-  ];
-  const parts = chatContentBlocksToAgentCoreParts(blocks, {
-    runId: 'run_1',
-    startingSequence: 10,
-    createdAt: '2026-05-15T00:00:00.000Z'
-  });
-
-  assert.deepEqual(parts.map((part) => part.sequence), [10, 11, 12, 13]);
-  assert.deepEqual(parts.map((part) => part.kind), ['assistant_text', 'tool_call', 'tool_result', 'tool_error']);
-  assert.equal(parts[1]?.runId, 'run_1');
-  assert.equal(parts[2]?.kind === 'tool_result' ? parts[2].changedFiles?.[0]?.path : '', 'README.md');
-  assert.equal(parts[2]?.kind === 'tool_result' ? parts[2].transaction?.eventCount : 0, 3);
-  assert.equal(parts[3]?.kind === 'tool_error' ? parts[3].failureKind : '', 'missing_match');
-  assert.equal(parts[3]?.kind === 'tool_error' ? parts[3].transaction?.status : '', 'failed');
-});
-
-test('Agent Core v2 projects parts back to legacy chat content blocks', () => {
+test('Agent Core v2 projects parts to transient chat content block views', () => {
   const parts: AgentCoreMessagePart[] = [
     {
       id: 'part_text',
@@ -362,6 +340,28 @@ test('Agent Core v2 maps runtime event log entries into parts', () => {
   assert.equal(parts[0]?.kind === 'tool_result' ? parts[0].toolName : '', 'write_file');
   assert.equal(parts[0]?.kind === 'tool_result' ? parts[0].changedFiles?.[0]?.operation : '', 'modified');
   assert.equal(parts[0]?.kind === 'tool_result' ? parts[0].transaction?.eventCount : 0, 3);
+});
+
+test('Agent Core v2 maps persisted Agent Core ledger events without re-projecting them', () => {
+  const event: AgentRuntimeEvent = {
+    id: 'event_agent_core_parts',
+    type: 'agent_core_parts',
+    createdAt: '2026-05-15T00:00:00.000Z',
+    agentCoreParts: [
+      {
+        id: 'controller_part_1',
+        kind: 'assistant_text',
+        sequence: 7,
+        createdAt: '2026-05-15T00:00:00.000Z',
+        text: 'controller-owned answer'
+      }
+    ]
+  };
+  const parts = runtimeEventToAgentCoreParts(event);
+
+  assert.equal(parts[0]?.id, 'controller_part_1');
+  assert.equal(parts[0]?.sequence, 7);
+  assert.equal(parts[0]?.kind === 'assistant_text' ? parts[0].text : '', 'controller-owned answer');
 });
 
 test('Agent Core v2 maps tool boundary transactions into system parts', () => {

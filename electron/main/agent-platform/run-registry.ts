@@ -1,5 +1,6 @@
 import type {
   AgentCoreProviderStepResult,
+  AgentCoreMessagePart,
   AgentCoreStateMachineSnapshot,
   AgentOperationStatus,
   AgentRunKind,
@@ -165,7 +166,7 @@ export function registerActiveRun(params: {
     kind: params.kind,
     projectId: params.projectId,
     sessionId: params.sessionId,
-    runtimeId: params.request.runtimeId ?? (params.request.kind === 'execute-plan' ? 'execute-plan' : undefined),
+    runtimeId: params.request.runtimeId,
     providerId: params.request.providerId,
     model: params.request.model,
     permissionMode: params.request.permissionMode,
@@ -277,6 +278,26 @@ export function recordActiveRunAgentCoreState(runId: string, input: {
     coreState: input.coreState,
     providerStep: input.providerStep,
     statusMessage: input.coreState.history.at(-1)?.reason
+  });
+  activeRunsById.set(runId, updated);
+  persistRuntimeRun(updated);
+}
+
+export function recordActiveRunAgentCoreParts(runId: string, parts: AgentCoreMessagePart[]): void {
+  const run = activeRunsById.get(runId);
+  if (!run || parts.length === 0) {
+    return;
+  }
+
+  const updated: ActiveAgentRun = {
+    ...run,
+    updatedAt: nowIso()
+  };
+  updated.events = appendRuntimeEvent(updated, {
+    type: 'agent_core_parts',
+    status: updated.status,
+    statusMessage: `Agent Core ledger updated: ${parts.length} part(s).`,
+    agentCoreParts: parts
   });
   activeRunsById.set(runId, updated);
   persistRuntimeRun(updated);

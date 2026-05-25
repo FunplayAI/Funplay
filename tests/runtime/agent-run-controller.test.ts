@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAgentRunController } from '../../electron/main/agent-platform/agent-run-controller.ts';
+import {
+  createAgentCoreRunEngine,
+  createAgentCoreRuntimeBridge,
+  createAgentRunController,
+  summarizeAgentRunControllerSnapshot
+} from '../../electron/main/agent-core/index.ts';
 import type { AgentCoreMessagePart } from '../../shared/types.ts';
 
 function fixedClock(): () => string {
@@ -497,7 +502,174 @@ test('Agent Run Controller supports host-forced continuation after no-tool text'
   assert.equal(snapshot.lastDecision?.terminal, false);
   assert.equal(snapshot.lastContinuation?.reason, 'partial_write');
   assert.match(snapshot.lastDecision?.reason ?? '', /partial_write/);
-  assert.equal(snapshot.parts.at(-1)?.kind === 'assistant_text' ? snapshot.parts.at(-1)?.final : undefined, false);
+  const textPart = snapshot.parts.find((part) => part.kind === 'assistant_text');
+  const continuationPart = snapshot.parts.find((part) => part.kind === 'system_event' && part.metadata?.type === 'continuation');
+  assert.equal(textPart?.kind === 'assistant_text' ? textPart.final : undefined, false);
+  assert.equal(continuationPart?.kind === 'system_event' ? continuationPart.metadata?.reason : undefined, 'partial_write');
+});
+
+test('Agent Core boundary summarizes run controller snapshots consistently', () => {
+  const controller = createAgentRunController({
+    createdAt: fixedClock()
+  });
+  controller.start();
+  const snapshot = controller.recordProviderStep({
+    providerStep: {
+      text: 'Next I will edit src/app.ts.',
+      finishReason: 'stop',
+      toolCalls: []
+    },
+    forceContinuation: {
+      reason: 'partial_write',
+      detail: 'Assistant promised a file edit.'
+    }
+  });
+
+  assert.deepEqual(summarizeAgentRunControllerSnapshot(snapshot), {
+    state: 'building_model_input',
+    nextAction: 'build_model_input',
+    providerStepCount: 1,
+    partCount: 2,
+    pendingToolUseIds: [],
+    completedToolUseIds: [],
+    lastDecision: {
+      outcome: 'continue_after_tools',
+      nextState: 'building_model_input',
+      terminal: false,
+      reason: 'Host requested continuation: partial_write. Assistant promised a file edit.'
+    },
+    lastContinuation: {
+      reason: 'partial_write',
+      detail: 'Assistant promised a file edit.'
+    }
+  });
+});
+
+test('Agent Core runtime bridge owns state and run controller projection', () => {
+  const stages: Array<Record<string, unknown>> = [];
+  const bridge = createAgentCoreRuntimeBridge({
+    callbacks: {
+      emitStage: (stage) => stages.push(stage)
+    },
+    guardTransitions: true,
+    initialState: 'initializing',
+    stageId: 'stage:test_agent_core'
+  });
+
+  bridge.submitEvent({
+    type: 'context',
+    phase: 'loading_started',
+    reason: 'load context'
+  });
+  bridge.submitEvent({
+    type: 'provider',
+    phase: 'input_ready',
+    reason: 'build provider input'
+  });
+  const providerSnapshot = bridge.submitEvent({
+    type: 'provider',
+    phase: 'step_recorded',
+    providerStep: {
+      finishReason: 'tool_calls',
+      toolCalls: [{
+        toolUseId: 'tool_bridge_1',
+      name: 'read_file',
+      input: {
+        path: 'README.md'
+        }
+      }]
+    }
+  });
+  assert.equal(providerSnapshot.runController.nextAction, 'execute_tools');
+  bridge.submitEvent({
+    type: 'tool',
+    phase: 'execution_started',
+    reason: 'execute bridge tool'
+  });
+  const toolSnapshot = bridge.submitEvent({
+    type: 'tool',
+    phase: 'result_recorded',
+    toolResult: {
+      toolUseId: 'tool_bridge_1',
+      toolName: 'read_file',
+      content: 'ok'
+    }
+  });
+  assert.equal(toolSnapshot.runController.nextAction, 'build_model_input');
+  bridge.emitCoreStateStage('running', 'bridge snapshot');
+
+  assert.equal(stages.length, 1);
+  assert.equal(stages[0]?.stageId, 'stage:test_agent_core');
+  assert.deepEqual((stages[0]?.input as { runController?: unknown })?.runController, {
+    state: 'building_model_input',
+    nextAction: 'build_model_input',
+    providerStepCount: 1,
+    partCount: 2,
+    pendingToolUseIds: [],
+    completedToolUseIds: ['tool_bridge_1'],
+    lastDecision: {
+      outcome: 'continue_after_tools',
+      nextState: 'executing_tools',
+      terminal: false,
+      reason: 'Provider returned tool calls; tool results must be executed and replayed before final completion.'
+    },
+    lastContinuation: undefined
+  });
+});
+
+test('Agent Core run engine applies provider and tool boundary events', () => {
+  const engine = createAgentCoreRunEngine({
+    guardTransitions: true,
+    initialState: 'initializing'
+  });
+
+  engine.submitEvent({
+    type: 'provider',
+    phase: 'input_ready',
+    reason: 'build input'
+  });
+  engine.submitEvent({
+    type: 'provider',
+    phase: 'step_started',
+    reason: 'start provider'
+  });
+  const providerSnapshot = engine.submitEvent({
+    type: 'provider',
+    phase: 'step_recorded',
+    providerStep: {
+      finishReason: 'tool_calls',
+      toolCalls: [{
+        toolUseId: 'tool_engine_1',
+        name: 'read_file',
+        input: {
+          path: 'README.md'
+        }
+      }]
+    }
+  });
+
+  assert.equal(providerSnapshot.runController.nextAction, 'execute_tools');
+  assert.equal(providerSnapshot.runController.pendingToolUseIds[0], 'tool_engine_1');
+  assert.equal(providerSnapshot.coreState.state, 'executing_tools');
+
+  engine.submitEvent({
+    type: 'tool',
+    phase: 'execution_started',
+    reason: 'execute tools'
+  });
+  const toolSnapshot = engine.submitEvent({
+    type: 'tool',
+    phase: 'result_recorded',
+    toolResult: {
+      toolUseId: 'tool_engine_1',
+      toolName: 'read_file',
+      content: 'README'
+    }
+  });
+
+  assert.equal(toolSnapshot.coreState.state, 'building_model_input');
+  assert.equal(toolSnapshot.runController.nextAction, 'build_model_input');
+  assert.deepEqual(toolSnapshot.runController.completedToolUseIds, ['tool_engine_1']);
 });
 
 test('Agent Run Controller owns incomplete todo continuation decisions', () => {
@@ -525,7 +697,10 @@ test('Agent Run Controller owns incomplete todo continuation decisions', () => {
   assert.equal(snapshot.nextAction, 'build_model_input');
   assert.equal(snapshot.coreState.state, 'building_model_input');
   assert.equal(snapshot.lastContinuation?.reason, 'incomplete_todo');
-  assert.equal(snapshot.parts.at(-1)?.kind === 'assistant_text' ? snapshot.parts.at(-1)?.final : undefined, false);
+  const textPart = snapshot.parts.find((part) => part.kind === 'assistant_text');
+  const continuationPart = snapshot.parts.find((part) => part.kind === 'system_event' && part.metadata?.type === 'continuation');
+  assert.equal(textPart?.kind === 'assistant_text' ? textPart.final : undefined, false);
+  assert.equal(continuationPart?.kind === 'system_event' ? continuationPart.metadata?.reason : undefined, 'incomplete_todo');
 });
 
 test('Agent Run Controller owns partial write continuation decisions', () => {
@@ -553,7 +728,10 @@ test('Agent Run Controller owns partial write continuation decisions', () => {
   assert.equal(snapshot.nextAction, 'build_model_input');
   assert.equal(snapshot.coreState.state, 'building_model_input');
   assert.equal(snapshot.lastContinuation?.reason, 'partial_write');
-  assert.equal(snapshot.parts.at(-1)?.kind === 'assistant_text' ? snapshot.parts.at(-1)?.final : undefined, false);
+  const textPart = snapshot.parts.find((part) => part.kind === 'assistant_text');
+  const continuationPart = snapshot.parts.find((part) => part.kind === 'system_event' && part.metadata?.type === 'continuation');
+  assert.equal(textPart?.kind === 'assistant_text' ? textPart.final : undefined, false);
+  assert.equal(continuationPart?.kind === 'system_event' ? continuationPart.metadata?.reason : undefined, 'partial_write');
 });
 
 test('Agent Run Controller exposes length continuation as controller state', () => {
@@ -572,7 +750,10 @@ test('Agent Run Controller exposes length continuation as controller state', () 
   assert.equal(snapshot.nextAction, 'build_model_input');
   assert.equal(snapshot.coreState.state, 'building_model_input');
   assert.equal(snapshot.lastContinuation?.reason, 'length');
-  assert.equal(snapshot.parts.at(-1)?.kind === 'assistant_text' ? snapshot.parts.at(-1)?.final : undefined, false);
+  const textPart = snapshot.parts.find((part) => part.kind === 'assistant_text');
+  const continuationPart = snapshot.parts.find((part) => part.kind === 'system_event' && part.metadata?.type === 'continuation');
+  assert.equal(textPart?.kind === 'assistant_text' ? textPart.final : undefined, false);
+  assert.equal(continuationPart?.kind === 'system_event' ? continuationPart.metadata?.reason : undefined, 'length');
 });
 
 test('Agent Run Controller owns context compression trigger and summary recording', () => {
@@ -587,7 +768,7 @@ test('Agent Run Controller owns context compression trigger and summary recordin
       goal: 'Build the runtime loop',
       completedWork: ['Controller integrated'],
       unfinishedWork: ['Replay UI parity'],
-      changedFiles: ['electron/main/agent-platform/agent-run-controller.ts'],
+      changedFiles: ['electron/main/agent-core/controller.ts'],
       decisions: ['Host owns permissions'],
       constraints: ['No prompt-level authority'],
       failedTools: ['edit_file context mismatch'],

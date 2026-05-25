@@ -10,6 +10,7 @@ import type {
   ChatMediaBlock
 } from './chat';
 import type { AgentToolTransactionSummary, RuntimeUsage, RuntimeUsageTotals } from './agent';
+import type { AgentCoreMessagePart } from './agent-core';
 import type { RuntimeDiagnosticSeverity, RuntimeRecoveryAction } from './diagnostics';
 
 export type PromptStreamPhase = 'starting' | 'thinking' | 'streaming' | 'completed' | 'cancelled' | 'error';
@@ -106,6 +107,9 @@ export interface PromptStreamToolUseEvent {
   sessionId: string;
   toolUseId: string;
   name: string;
+  title?: string;
+  summary?: string;
+  activity?: string;
   input?: Record<string, unknown>;
   status: 'pending' | 'running' | 'completed' | 'failed';
   startedAt: string;
@@ -290,6 +294,15 @@ export interface PromptStreamUsageEvent {
   startedAt: string;
 }
 
+export interface PromptStreamAgentCorePartsEvent {
+  type: 'agent_core_parts';
+  streamId: string;
+  projectId: string;
+  sessionId: string;
+  parts: AgentCoreMessagePart[];
+  startedAt: string;
+}
+
 export type PromptStreamEvent =
   | PromptStreamStatusEvent
   | PromptStreamDeltaEvent
@@ -305,6 +318,7 @@ export type PromptStreamEvent =
   | PromptStreamUserInputRequestEvent
   | PromptStreamUserInputResolvedEvent
   | PromptStreamUsageEvent
+  | PromptStreamAgentCorePartsEvent
   | PromptStreamCompleteEvent
   | PromptStreamCancelledEvent
   | PromptStreamErrorEvent;

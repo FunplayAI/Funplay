@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import type { AiProvider, AppState, Project } from '../../../shared/types';
+import type { AiProvider, AppState, AssetGenerationProviderConfig, Project } from '../../../shared/types';
 import { ensureProjectSessions } from '../../../shared/project-sessions';
 import { SETTINGS_KEYS } from './constants';
 import { serializeMcpPluginRecord, serializeProjectRecord, serializeProviderRecord } from './project-records';
@@ -49,11 +49,10 @@ function syncNormalizedProjectData(database: Database.Database, projects: Projec
       session_id,
       role,
       content,
-      content_blocks_json,
       created_at,
       metadata_json,
       sort_order
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertRun = database.prepare(`
@@ -95,7 +94,6 @@ function syncNormalizedProjectData(database: Database.Database, projects: Projec
           session.id,
           message.role,
           message.content,
-          message.contentBlocks ? JSON.stringify(message.contentBlocks) : null,
           message.createdAt,
           message.metadata ? JSON.stringify(message.metadata) : null,
           typeof message.ordinal === 'number' && Number.isFinite(message.ordinal) ? Math.floor(message.ordinal) : index
@@ -129,12 +127,18 @@ export function persistStateSync(database: Database.Database, state: AppState): 
     apiKey: '',
     hasStoredApiKey: provider.hasStoredApiKey ?? Boolean(provider.apiKey.trim())
   }));
+  const persistedAssetGenerationProviders: AssetGenerationProviderConfig[] = (state.assetGenerationProviders ?? []).map((provider) => ({
+    ...provider,
+    apiKey: '',
+    hasStoredApiKey: provider.hasStoredApiKey ?? Boolean(provider.apiKey.trim())
+  }));
 
   const transaction = database.transaction((snapshot: AppState) => {
     writeSetting(database, SETTINGS_KEYS.unity, snapshot.settings);
     writeSetting(database, SETTINGS_KEYS.ai, snapshot.aiSettings);
     writeSetting(database, SETTINGS_KEYS.agent, snapshot.agentSettings);
     writeSetting(database, SETTINGS_KEYS.mcp, snapshot.mcpSettings);
+    writeSetting(database, SETTINGS_KEYS.assetGenerationProviders, persistedAssetGenerationProviders);
 
     deleteMissingRows(database, 'providers', persistedProviders.map((provider) => provider.id));
     for (const provider of persistedProviders) {
@@ -315,6 +319,8 @@ export function persistStateSync(database: Database.Database, state: AppState): 
             blueprint_json,
             tasks_json,
             assets_json,
+            asset_generation_jobs_json,
+            asset_generation_presets_json,
             activity_json,
             snapshots_json,
             memory_json,
@@ -322,7 +328,7 @@ export function persistStateSync(database: Database.Database, state: AppState): 
             current_execution_plan_json,
             last_executed_plan_json
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             template_id = excluded.template_id,
@@ -341,6 +347,8 @@ export function persistStateSync(database: Database.Database, state: AppState): 
             blueprint_json = excluded.blueprint_json,
             tasks_json = excluded.tasks_json,
             assets_json = excluded.assets_json,
+            asset_generation_jobs_json = excluded.asset_generation_jobs_json,
+            asset_generation_presets_json = excluded.asset_generation_presets_json,
             activity_json = excluded.activity_json,
             snapshots_json = excluded.snapshots_json,
             memory_json = excluded.memory_json,
@@ -367,6 +375,8 @@ export function persistStateSync(database: Database.Database, state: AppState): 
           serializedProject.blueprint_json,
           serializedProject.tasks_json,
           serializedProject.assets_json,
+          serializedProject.asset_generation_jobs_json,
+          serializedProject.asset_generation_presets_json,
           serializedProject.activity_json,
           serializedProject.snapshots_json,
           serializedProject.memory_json,

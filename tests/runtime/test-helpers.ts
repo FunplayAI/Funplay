@@ -90,6 +90,7 @@ export function buildState(project: Project) {
     ],
     mcpSettings: {},
     mcpPlugins: [],
+    assetGenerationProviders: [],
     projects: [project]
   };
 }
@@ -606,30 +607,6 @@ export async function executeNativeWorkspaceTool(
   };
   assert.equal(typeof selectedTool.execute, 'function');
   return await selectedTool.execute(input, {}) as Record<string, unknown>;
-}
-
-export function buildExecutionPlanProject(): Project {
-  const project = buildProject();
-  return {
-    ...project,
-    currentExecutionPlan: {
-      summary: 'Run test execution plan',
-      rationale: 'Ensure execute-plan stream works.',
-      actions: [
-        {
-          id: 'action_test_plan',
-          pluginKind: 'engine',
-          title: 'Run test action',
-          objective: 'Exercise the execute-plan path.',
-          suggestedTools: [],
-          inputs: [],
-          operations: [],
-          successCriteria: [],
-          status: 'planned'
-        }
-      ]
-    }
-  };
 }
 
 export async function waitForFinalStreamEvent(executor: (dispatchEvent: (event: PromptStreamEvent) => void) => Promise<void> | void): Promise<PromptStreamEvent> {

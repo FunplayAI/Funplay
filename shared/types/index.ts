@@ -3,6 +3,7 @@ export * from './chat';
 export * from './unity';
 export * from './provider';
 export * from './project';
+export * from './asset-generation';
 export * from './agent';
 export * from './agent-core';
 export * from './stream';

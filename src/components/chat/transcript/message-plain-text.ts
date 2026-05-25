@@ -1,7 +1,5 @@
-import type { AgentCoreMessagePart, ChatContentBlock, ChatMessage } from '../../../../shared/types';
+import type { AgentCoreMessagePart, ChatMessage } from '../../../../shared/types';
 
-const TOOL_RESULT_SUMMARY_CHARS = 900;
-const TOOL_RESULT_SUMMARY_LINES = 8;
 const PSEUDO_TOOL_TEXT_LINE_PATTERNS = [
   /^\s*\[Previous tool call\](?:\s|$)/i,
   /^\s*\[Previous tool result\](?:\s|$)/i,
@@ -28,15 +26,7 @@ export function getMessagePlainText(message: ChatMessage, includeToolDetails = t
     }
   }
 
-  const blocks = message.contentBlocks;
-  if (!blocks?.length) {
-    return getRenderableMessageFallbackContent(message);
-  }
-
-  const visibleBlocks = message.role === 'assistant' && !includeToolDetails
-    ? blocks.filter((block) => block.type === 'text' || block.type === 'fallback')
-    : blocks;
-  return visibleBlocks.map((block) => getBlockPlainText(block)).filter(Boolean).join('\n\n');
+  return getRenderableMessageFallbackContent(message);
 }
 
 function isPseudoToolTextLine(value: string): boolean {
@@ -116,41 +106,4 @@ function getAgentCorePartPlainText(part: AgentCoreMessagePart, includeToolDetail
     return includeToolDetails ? part.question : '';
   }
   return '';
-}
-
-function getBlockPlainText(block: ChatContentBlock): string {
-  if (block.type === 'text') return block.text;
-  if (block.type === 'thinking') return '';
-  if (block.type === 'tool_use') return `${block.name}\n${block.input ? JSON.stringify(block.input, null, 2) : ''}`.trim();
-  if (block.type === 'tool_result') return block.content;
-  return block.text;
-}
-
-export function summarizeToolResultBlockContent(content: string): {
-  text: string;
-  truncated: boolean;
-} {
-  const normalized = content.replace(/\r\n/g, '\n').trim();
-  if (!normalized) {
-    return {
-      text: '',
-      truncated: false
-    };
-  }
-
-  const lines = normalized.split('\n');
-  const lineLimited = lines.slice(0, TOOL_RESULT_SUMMARY_LINES).join('\n');
-  const text = truncateInlineText(lineLimited, TOOL_RESULT_SUMMARY_CHARS);
-  return {
-    text,
-    truncated: normalized.length > text.length || lines.length > TOOL_RESULT_SUMMARY_LINES
-  };
-}
-
-function truncateInlineText(value: string, maxLength: number): string {
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-  return `${normalized.slice(0, Math.max(0, maxLength - 1))}…`;
 }

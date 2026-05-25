@@ -1,6 +1,10 @@
 import { createGenericAgentRuntimeCapabilities } from '../runtime-capabilities';
+import {
+  createGenericAgentRuntimeEventQueue,
+  drainGenericAgentRuntimeEventQueue
+} from '../runtime-event-stream';
 import { runNativeConversationTurn } from './loop';
-import type { GenericAgentRuntime, GenericAgentRuntimeParams, GenericAgentRuntimeResult } from '../types';
+import type { GenericAgentRuntime, GenericAgentRuntimeParams, GenericAgentRuntimeStreamEvent } from '../types';
 
 const activeNativeControllers = new Map<string, AbortController>();
 
@@ -12,7 +16,7 @@ function resolveNativeInterruptKeys(params: GenericAgentRuntimeParams): string[]
   ].filter((value): value is string => Boolean(value));
 }
 
-async function executeNativeTurn(params: GenericAgentRuntimeParams): Promise<GenericAgentRuntimeResult> {
+async function executeNativeTurn(params: GenericAgentRuntimeParams) {
   const controller = new AbortController();
   const keys = resolveNativeInterruptKeys(params);
   for (const key of keys) {
@@ -33,6 +37,34 @@ async function executeNativeTurn(params: GenericAgentRuntimeParams): Promise<Gen
       }
     }
   }
+}
+
+async function* executeNativeEventStream(params: GenericAgentRuntimeParams): AsyncIterable<GenericAgentRuntimeStreamEvent> {
+  const queue = createGenericAgentRuntimeEventQueue();
+  void executeNativeTurn({
+    ...params,
+    emitRuntimeEvent: (event) => queue.push(event),
+    onStatus: undefined,
+    onTextDelta: undefined,
+    onThinkingDelta: undefined,
+    onToolUse: undefined,
+    onToolResult: undefined,
+    onStage: undefined,
+    onPermissionRequest: (request) => queue.push({ type: 'permission_request', request }),
+    onUserInputRequest: (request) => queue.push({ type: 'user_input_request', request }),
+    onUsage: undefined,
+    onAgentCoreParts: (parts) => queue.push({ type: 'agent_core_parts', parts }),
+    onLifecycleHook: (hook) => queue.push({ type: 'lifecycle_hook', hook })
+  })
+    .then((result) => {
+      queue.push({ type: 'result', result });
+      queue.close();
+    })
+    .catch((error) => {
+      queue.fail(error);
+      queue.close();
+    });
+  yield* drainGenericAgentRuntimeEventQueue(queue);
 }
 
 export const nativeRuntime: GenericAgentRuntime = {
@@ -63,5 +95,5 @@ export const nativeRuntime: GenericAgentRuntime = {
     }
     activeNativeControllers.clear();
   },
-  executeTurn: executeNativeTurn
+  executeEventStream: executeNativeEventStream
 };

@@ -1,14 +1,16 @@
-import type { AgentRunControllerSnapshot } from '../agent-run-controller';
 import type { GenericAgentRuntimeParams } from '../types';
-import type { AgentCoreState } from '../../../../shared/types';
-import {
-  createIncompleteTodoContinuationPrompt,
-  createLengthContinuationPrompt
-} from './continuation-policy';
+import type { AgentCoreProviderStepResult } from '../../../../shared/types';
+import type { ProviderRuntimeController } from '../provider-runtime-events';
 import type {
   NativeAiSdkLoopState,
   NativeAiSdkProviderStepResult
 } from './ai-sdk-provider-step';
+import {
+  applyNativeNoToolProviderContinuationCoreEffect,
+  applyNativeNoToolProviderTerminalCoreEffect,
+  createNativeNoToolProviderContinuationContext,
+  resolveNativeNoToolProviderCompletionEffect
+} from './provider-step-completion';
 import type { NativeToolLoopCallbacks } from './tool-loop-controller';
 import type { NativeToolLoopRunResult } from './tool-loop-state';
 
@@ -19,41 +21,13 @@ export type NativeAiSdkCompletionStageDecision =
   | {
       action: 'return';
       result: NativeToolLoopRunResult;
-    };
-
-function emitNativeAiSdkToolStreamCompleted(input: {
-  callbacks?: NativeToolLoopCallbacks;
-  loopState: NativeAiSdkLoopState;
-  providerStep: NativeAiSdkProviderStepResult;
-  usage?: unknown;
-  suffix?: string;
-}): void {
-  input.callbacks?.emitStage?.({
-    stageId: 'stage:native_tool_stream',
-    title: '执行真实 Tool Loop',
-    target: 'stage:native_tool_stream',
-    status: 'completed',
-    summary: [
-      `完成 ${input.loopState.stepCount} 步`,
-      input.providerStep.finishReason ? `finishReason=${input.providerStep.finishReason}` : '',
-      input.loopState.toolCalls.length > 0 ? `tools=${input.loopState.toolCalls.join(', ')}` : 'tools=none',
-      input.suffix
-    ]
-      .filter(Boolean)
-      .join('；'),
-    input: {
-      step: input.loopState.stepCount,
-      finishReason: input.providerStep.finishReason,
-      toolsUsed: [...input.loopState.toolCalls],
-      usage: input.usage
-    }
-  });
-}
+};
 
 function createNativeAiSdkRunResult(input: {
   loopState: NativeAiSdkLoopState;
   providerStep: NativeAiSdkProviderStepResult;
   coreState?: NativeToolLoopRunResult['coreState'];
+  agentCoreParts?: NativeToolLoopRunResult['agentCoreParts'];
 }): NativeToolLoopRunResult {
   return {
     assistantMessage: input.providerStep.finalCandidate,
@@ -62,7 +36,8 @@ function createNativeAiSdkRunResult(input: {
     toolCalls: input.loopState.toolCalls,
     streamedText: input.loopState.streamedText,
     usage: input.providerStep.usage,
-    coreState: input.coreState
+    coreState: input.coreState,
+    agentCoreParts: input.agentCoreParts
   };
 }
 
@@ -72,58 +47,49 @@ export function completeNativeAiSdkProviderStep(input: {
   includeWriteTools: boolean;
   loopState: NativeAiSdkLoopState;
   providerStep: NativeAiSdkProviderStepResult;
-  recordRunControllerProviderStep: (options?: {
-    continuation?: {
-      includeWriteTools?: boolean;
-      permissionMode?: string;
-      assistantMessage?: string;
-      incompleteTodo?: {
-        incompleteCount: number;
-        hasInProgress?: boolean;
-      };
-    };
-  }) => AgentRunControllerSnapshot;
-  transitionCoreState: (to: AgentCoreState, reason: string) => void;
-  markCoreCompleted: (reason: string) => void;
-  markCoreFailed: (reason: string) => void;
+  providerController: ProviderRuntimeController;
   emitCoreStateStage: (status: 'running' | 'completed' | 'failed', summary: string) => void;
 }): NativeAiSdkCompletionStageDecision {
   const { finishReason, responseMessages, finalCandidate } = input.providerStep;
-  const controllerSnapshot = input.recordRunControllerProviderStep({
-    continuation: {
-      includeWriteTools: input.includeWriteTools,
-      permissionMode: input.params.permission.mode,
-      assistantMessage: finalCandidate,
-      incompleteTodo: input.loopState.latestTodoSnapshot
-        ? {
-            incompleteCount: input.loopState.latestTodoSnapshot.incompleteItems.length,
-            hasInProgress: input.loopState.latestTodoSnapshot.hasInProgress
-          }
-        : undefined
-    }
-  });
-  if (controllerSnapshot.lastContinuation?.reason === 'incomplete_todo' && input.loopState.latestTodoSnapshot) {
-    input.loopState.incompleteTodoContinuationCount += 1;
-    const continuationPrompt = createIncompleteTodoContinuationPrompt(input.loopState.latestTodoSnapshot, finalCandidate);
-    input.callbacks?.emitStage?.({
-      stageId: 'stage:native_incomplete_todo_continuation',
-      title: '续跑未完成任务清单',
-      target: 'stage:native_incomplete_todo_continuation',
-      status: 'completed',
-      summary: '模型结束时仍有 in_progress/pending todo，已要求继续调用工具完成剩余步骤。',
-      input: {
-        continuation: input.loopState.incompleteTodoContinuationCount,
-        incompleteItems: input.loopState.latestTodoSnapshot.incompleteItems,
-        finishReason
+  const latestTodoSnapshot = input.loopState.latestTodoSnapshot;
+  const {
+    controllerSnapshot,
+    effect: completionEffect
+  } = resolveNativeNoToolProviderCompletionEffect({
+    runtime: 'ai-sdk',
+    providerStep: input.providerStep.providerStep,
+    includeWriteTools: input.includeWriteTools,
+    permissionMode: input.params.permission.mode,
+    finalCandidate,
+    latestTodoSnapshot,
+    partialWriteContinuationCount: input.loopState.partialWriteContinuationCount,
+    continuationCounters: input.loopState,
+    stepNumber: input.loopState.stepCount,
+    finishReason,
+    recordRunControllerProviderStep: (options: {
+      providerStep: AgentCoreProviderStepResult;
+      continuation?: ReturnType<typeof createNativeNoToolProviderContinuationContext>;
+    }) => input.providerController.recordProviderStep({
+      providerStep: options.providerStep,
+      options: {
+        continuation: options.continuation
       }
+    }).runController
+  });
+
+  if (completionEffect.action === 'continue') {
+    applyNativeNoToolProviderContinuationCoreEffect({
+      effect: completionEffect,
+      counters: input.loopState,
+      emitStage: input.callbacks?.emitStage,
+      prepareNextProviderInput: (reason) => input.providerController.providerInputReady(reason)
     });
-    input.transitionCoreState('building_model_input', 'Todo 仍有未完成项，继续下一轮 AI SDK provider step。');
     input.loopState.messages = [
       ...input.loopState.messages,
       ...responseMessages,
       {
         role: 'user',
-        content: continuationPrompt
+        content: completionEffect.prompt
       }
     ];
     input.loopState.assistantMessage = '';
@@ -132,88 +98,87 @@ export function completeNativeAiSdkProviderStep(input: {
     };
   }
 
-  if (controllerSnapshot.nextAction === 'build_model_input' && controllerSnapshot.lastContinuation?.reason === 'length') {
-    input.callbacks?.emitStage?.({
-      stageId: 'stage:native_length_continuation',
-      title: '续跑长度截断回复',
-      target: 'stage:native_length_continuation',
-      status: 'completed',
-      summary: 'AI SDK provider 返回 length 截断，已继续下一轮；length 不是真正完成态。',
-      input: {
-        step: input.loopState.stepCount,
-        finishReason,
-        assistantMessage: finalCandidate
-      }
-    });
-    input.transitionCoreState('building_model_input', 'AI SDK provider 返回 length 截断，继续下一轮 provider step。');
-    input.loopState.messages = [
-      ...input.loopState.messages,
-      ...responseMessages,
-      {
-        role: 'user',
-        content: createLengthContinuationPrompt(finalCandidate)
-      }
-    ];
-    input.loopState.assistantMessage = '';
-    return {
-      action: 'continue'
-    };
-  }
-
-  if (controllerSnapshot.nextAction === 'fail') {
-    emitNativeAiSdkToolStreamCompleted({
-      callbacks: input.callbacks,
-      loopState: input.loopState,
-      providerStep: input.providerStep,
+  if (completionEffect.action === 'fail') {
+    applyNativeNoToolProviderTerminalCoreEffect({
+      effect: completionEffect,
+      runtime: 'ai-sdk',
+      stepCount: input.loopState.stepCount,
+      finishReason,
+      toolCalls: input.loopState.toolCalls,
       usage: input.providerStep.usage,
-      suffix: 'controllerAction=fail'
+      emitStage: input.callbacks?.emitStage,
+      markFailed: (reason) => input.providerController.failRun(reason),
+      markCompleted: (reason) => input.providerController.completeRun(reason),
+      emitCoreStateStage: input.emitCoreStateStage
     });
-    input.markCoreFailed(controllerSnapshot.lastDecision?.reason ?? 'AI SDK provider 没有产出可完成的最终步骤。');
-    input.emitCoreStateStage('failed', 'Agent Run Controller 判定 AI SDK Native 工具循环失败。');
     return {
       action: 'return',
       result: createNativeAiSdkRunResult({
         loopState: input.loopState,
         providerStep: input.providerStep,
-        coreState: controllerSnapshot.coreState
+        coreState: controllerSnapshot.coreState,
+        agentCoreParts: controllerSnapshot.parts
       })
     };
   }
 
-  if (controllerSnapshot.nextAction !== 'complete') {
-    emitNativeAiSdkToolStreamCompleted({
-      callbacks: input.callbacks,
-      loopState: input.loopState,
-      providerStep: input.providerStep,
+  if (completionEffect.action === 'unsupported') {
+    applyNativeNoToolProviderTerminalCoreEffect({
+      effect: completionEffect,
+      runtime: 'ai-sdk',
+      stepCount: input.loopState.stepCount,
+      finishReason,
+      toolCalls: input.loopState.toolCalls,
       usage: input.providerStep.usage,
-      suffix: `controllerAction=${controllerSnapshot.nextAction}`
+      emitStage: input.callbacks?.emitStage,
+      markFailed: (reason) => input.providerController.failRun(reason),
+      markCompleted: (reason) => input.providerController.completeRun(reason),
+      emitCoreStateStage: input.emitCoreStateStage
     });
-    input.markCoreFailed(`Agent Run Controller 返回了无法完成的动作：${controllerSnapshot.nextAction}。`);
-    input.emitCoreStateStage('failed', 'Agent Run Controller 返回了 AI SDK 分支无法完成的动作。');
     return {
       action: 'return',
       result: createNativeAiSdkRunResult({
         loopState: input.loopState,
         providerStep: input.providerStep,
-        coreState: controllerSnapshot.coreState
+        coreState: controllerSnapshot.coreState,
+        agentCoreParts: controllerSnapshot.parts
       })
     };
   }
 
-  emitNativeAiSdkToolStreamCompleted({
-    callbacks: input.callbacks,
-    loopState: input.loopState,
-    providerStep: input.providerStep,
-    usage: input.providerStep.usage
-  });
-  input.markCoreCompleted('AI SDK provider stop 且没有待处理工具，产出最终回复。');
-  input.emitCoreStateStage('completed', 'Agent Core v2 状态机完成本轮 AI SDK Native 工具循环。');
+  if (completionEffect.action === 'complete') {
+    applyNativeNoToolProviderTerminalCoreEffect({
+      effect: completionEffect,
+      runtime: 'ai-sdk',
+      stepCount: input.loopState.stepCount,
+      finishReason,
+      toolCalls: input.loopState.toolCalls,
+      usage: input.providerStep.usage,
+      emitStage: input.callbacks?.emitStage,
+      markFailed: (reason) => input.providerController.failRun(reason),
+      markCompleted: (reason) => input.providerController.completeRun(reason),
+      emitCoreStateStage: input.emitCoreStateStage
+    });
+    return {
+      action: 'return',
+      result: createNativeAiSdkRunResult({
+        loopState: input.loopState,
+        providerStep: input.providerStep,
+        coreState: controllerSnapshot.coreState,
+        agentCoreParts: controllerSnapshot.parts
+      })
+    };
+  }
+
+  input.providerController.failRun('Unhandled provider completion effect.');
+  input.emitCoreStateStage('failed', 'AI SDK completion stage reached an unhandled provider effect.');
   return {
     action: 'return',
-    result: createNativeAiSdkRunResult({
-      loopState: input.loopState,
-      providerStep: input.providerStep,
-      coreState: controllerSnapshot.coreState
-    })
-  };
-}
+      result: createNativeAiSdkRunResult({
+        loopState: input.loopState,
+        providerStep: input.providerStep,
+        coreState: controllerSnapshot.coreState,
+        agentCoreParts: controllerSnapshot.parts
+      })
+    };
+  }

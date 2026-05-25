@@ -109,6 +109,8 @@ export interface ProjectStructuredRow {
   blueprint_json: string;
   tasks_json: string;
   assets_json: string;
+  asset_generation_jobs_json: string | null;
+  asset_generation_presets_json: string | null;
   activity_json: string;
   snapshots_json: string;
   memory_json: string;
@@ -135,7 +137,6 @@ export interface MessageRow {
   session_id: string;
   role: 'user' | 'assistant';
   content: string;
-  content_blocks_json: string | null;
   created_at: string;
   metadata_json: string | null;
   sort_order: number;
@@ -144,7 +145,7 @@ export interface MessageRow {
 export interface AgentRunRow {
   id: string;
   project_id: string;
-  mode: 'bootstrap' | 'update' | 'execute-plan';
+  mode: 'bootstrap' | 'update';
   input: string;
   status: 'completed' | 'fallback' | 'failed';
   used_provider_id: string | null;
@@ -195,7 +196,7 @@ export interface RuntimeRunRow {
 }
 
 export interface PersistedRuntimeRunRequest {
-  kind: 'conversation' | 'execute-plan';
+  kind: 'conversation';
   projectId: string;
   sessionId?: string;
   runtimeId?: AgentRuntimeReportId;

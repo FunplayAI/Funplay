@@ -10,6 +10,8 @@ import {
   type StreamSessionLabels,
   type StreamSessionState
 } from '../../src/lib/stream-session-manager.ts';
+import { restoreMissingRuntimeStreams } from '../../src/hooks/agent-runtime-stream-restore.ts';
+import type { AgentRuntimeStatus } from '../../shared/types.ts';
 
 const labels: StreamSessionLabels = {
   streaming: 'streaming',
@@ -152,7 +154,81 @@ test('stream manager tracks pending user input per active stream', () => {
   assert.equal(getStreamSessionForSession('project_a', 'session_1')?.statusMessage, 'user input submitted');
 });
 
-test('stream manager mirrors live text and tools into Agent Core parts', () => {
+test('stream manager restores running streams from runtime status after renderer reload', () => {
+  clearStreamSessions();
+  const status: AgentRuntimeStatus = {
+    id: 'run_1',
+    kind: 'conversation',
+    projectId: 'project_a',
+    sessionId: 'session_1',
+    streamId: 'stream_restored',
+    startedAt: '2026-04-22T08:00:00.000Z',
+    updatedAt: '2026-04-22T08:00:03.000Z',
+    status: 'running',
+    statusMessage: 'Still running',
+    canResume: false,
+    inputPreview: 'build the scene',
+    events: [
+      {
+        id: 'evt_text',
+        type: 'text_delta',
+        createdAt: '2026-04-22T08:00:01.000Z',
+        status: 'running',
+        streamDelta: {
+          contentPreview: 'Working...',
+          contentLength: 10
+        }
+      },
+      {
+        id: 'evt_tool',
+        type: 'tool_use',
+        createdAt: '2026-04-22T08:00:02.000Z',
+        status: 'running',
+        toolUse: {
+          toolUseId: 'tool_1',
+          name: 'read_file',
+          title: 'Read file',
+          input: { path: 'src/App.tsx' },
+          status: 'running'
+        }
+      },
+      {
+        id: 'evt_permission',
+        type: 'permission_request',
+        createdAt: '2026-04-22T08:00:03.000Z',
+        status: 'running',
+        permissionRequest: {
+          requestId: 'perm_1',
+          title: 'Allow edit?',
+          detail: 'edit src/App.tsx',
+          risk: 'medium',
+          toolName: 'edit_file'
+        }
+      }
+    ]
+  };
+
+  restoreMissingRuntimeStreams([status]);
+  const restored = getStreamSessionForSession('project_a', 'session_1');
+  assert.equal(restored?.streamId, 'stream_restored');
+  assert.equal(restored?.prompt, 'build the scene');
+  assert.equal(restored?.statusMessage, 'Still running');
+  assert.equal(restored?.pendingPermission?.requestId, 'perm_1');
+  assert.ok(restored?.agentCoreParts?.some((part) => part.kind === 'tool_call' && part.title === 'Read file'));
+
+  applyPromptStreamEventToManager({
+    type: 'delta',
+    streamId: 'stream_restored',
+    projectId: 'project_a',
+    sessionId: 'session_1',
+    delta: 'done',
+    content: 'Working...done',
+    startedAt: '2026-04-22T08:00:00.000Z'
+  }, labels);
+  assert.equal(getStreamSessionForSession('project_a', 'session_1')?.content, 'Working...done');
+});
+
+test('stream manager accepts authoritative Agent Core parts from the main runtime ledger', () => {
   clearStreamSessions();
   seedStreamSession(stream({
     streamId: 'stream_agent_core_parts',
@@ -170,6 +246,10 @@ test('stream manager mirrors live text and tools into Agent Core parts', () => {
     content: '我先读取文件。',
     startedAt: '2026-04-22T08:00:01.000Z'
   }, labels);
+  const liveParts = getStreamSessionForSession('project_a', 'session_1')?.agentCoreParts ?? [];
+  assert.equal(getStreamSessionForSession('project_a', 'session_1')?.agentCorePartsAuthoritative, undefined);
+  assert.deepEqual(liveParts.map((part) => part.kind), ['assistant_text']);
+  assert.equal(liveParts[0]?.kind === 'assistant_text' ? liveParts[0].text : '', '我先读取文件。');
   applyPromptStreamEventToManager({
     type: 'tool_use',
     streamId: 'stream_agent_core_parts',
@@ -192,8 +272,45 @@ test('stream manager mirrors live text and tools into Agent Core parts', () => {
     content: 'README content',
     startedAt: '2026-04-22T08:00:03.000Z'
   }, labels);
+  applyPromptStreamEventToManager({
+    type: 'agent_core_parts',
+    streamId: 'stream_agent_core_parts',
+    projectId: 'project_a',
+    sessionId: 'session_1',
+    startedAt: '2026-04-22T08:00:04.000Z',
+    parts: [
+      {
+        id: 'ledger_text',
+        kind: 'assistant_text',
+        sequence: 0,
+        createdAt: '2026-04-22T08:00:01.000Z',
+        text: '我先读取文件。'
+      },
+      {
+        id: 'ledger_tool_call',
+        kind: 'tool_call',
+        sequence: 1,
+        createdAt: '2026-04-22T08:00:02.000Z',
+        toolUseId: 'tool_read',
+        name: 'read_file',
+        input: {
+          path: 'README.md'
+        },
+        status: 'completed'
+      },
+      {
+        id: 'ledger_tool_result',
+        kind: 'tool_result',
+        sequence: 2,
+        createdAt: '2026-04-22T08:00:03.000Z',
+        toolUseId: 'tool_read',
+        content: 'README content'
+      }
+    ]
+  }, labels);
 
   const parts = getStreamSessionForSession('project_a', 'session_1')?.agentCoreParts ?? [];
+  assert.equal(getStreamSessionForSession('project_a', 'session_1')?.agentCorePartsAuthoritative, true);
   assert.deepEqual(parts.map((part) => part.kind), ['assistant_text', 'tool_call', 'tool_result']);
   assert.equal(parts[0]?.kind === 'assistant_text' ? parts[0].text : '', '我先读取文件。');
   assert.equal(parts[1]?.kind === 'tool_call' ? parts[1].name : '', 'read_file');

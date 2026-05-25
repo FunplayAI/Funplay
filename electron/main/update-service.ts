@@ -19,8 +19,6 @@ const { autoUpdater } = nodeRequire('electron-updater') as { autoUpdater: AppUpd
 type UpdateStatusDispatch = (snapshot: AppUpdateSnapshot) => void;
 type UpdateNotificationDispatch = (input: { title: string; body: string; priority?: 'low' | 'normal' | 'urgent' }) => void | Promise<void>;
 
-const configuredFeedUrl = process.env.FUNPLAY_UPDATE_FEED_URL?.trim();
-const allowDevUpdates = process.env.FUNPLAY_UPDATE_ALLOW_DEV === '1' || Boolean(configuredFeedUrl);
 const supportedPlatforms = new Set<NodeJS.Platform>(['darwin', 'win32', 'linux']);
 export const APP_UPDATE_STARTUP_CHECK_DELAY_MS = 8000;
 export const APP_UPDATE_PERIODIC_CHECK_INTERVAL_MS = 1000 * 60 * 60 * 6;
@@ -56,17 +54,6 @@ export function initializeAppUpdateService(options: {
     error: (...args: unknown[]) => console.error('[updates]', ...args),
     debug: (...args: unknown[]) => console.debug('[updates]', ...args)
   };
-
-  if (allowDevUpdates && !app.isPackaged) {
-    autoUpdater.forceDevUpdateConfig = true;
-  }
-
-  if (configuredFeedUrl) {
-    autoUpdater.setFeedURL({
-      provider: 'generic',
-      url: configuredFeedUrl
-    });
-  }
 
   autoUpdater.on('checking-for-update', () => {
     updateSnapshot({
@@ -318,10 +305,7 @@ function canCheckForUpdates(): boolean {
   if (!supportedPlatforms.has(process.platform)) {
     return false;
   }
-  if (configuredFeedUrl) {
-    return true;
-  }
-  return app.isPackaged || allowDevUpdates;
+  return app.isPackaged;
 }
 
 function shouldSkipAutomaticCheck(): boolean {
@@ -332,9 +316,6 @@ function shouldSkipAutomaticCheck(): boolean {
 }
 
 function resolveFeedSource(): AppUpdateSnapshot['feedSource'] {
-  if (configuredFeedUrl) {
-    return 'env';
-  }
   if (app.isPackaged) {
     return 'embedded';
   }
@@ -345,7 +326,7 @@ function buildNotConfiguredMessage(): string {
   if (!supportedPlatforms.has(process.platform)) {
     return `当前平台 ${process.platform} 暂不支持自动更新。`;
   }
-  return '当前运行环境没有配置更新源。正式包请在 electron-builder 中写入 publish 配置，开发态可设置 FUNPLAY_UPDATE_FEED_URL。';
+  return '当前运行环境没有配置更新源。自动更新仅在正式打包应用中使用 GitHub Releases。';
 }
 
 function normalizeUpdateInfo(info: UpdateInfo): AppUpdateInfo {

@@ -118,6 +118,8 @@ const initial: Migration = {
         blueprint_json TEXT NOT NULL,
         tasks_json TEXT NOT NULL,
         assets_json TEXT NOT NULL,
+        asset_generation_jobs_json TEXT NOT NULL DEFAULT '[]',
+        asset_generation_presets_json TEXT NOT NULL DEFAULT '[]',
         activity_json TEXT NOT NULL,
         snapshots_json TEXT NOT NULL,
         memory_json TEXT NOT NULL,
@@ -144,7 +146,6 @@ const initial: Migration = {
         session_id TEXT NOT NULL,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
-        content_blocks_json TEXT,
         created_at TEXT NOT NULL,
         metadata_json TEXT,
         sort_order INTEGER NOT NULL,
@@ -267,8 +268,9 @@ const initial: Migration = {
       );
     `);
     addColumnIfMissing(database, 'projects', 'agent_policy_json', 'TEXT');
+    addColumnIfMissing(database, 'projects', 'asset_generation_jobs_json', "TEXT NOT NULL DEFAULT '[]'");
+    addColumnIfMissing(database, 'projects', 'asset_generation_presets_json', "TEXT NOT NULL DEFAULT '[]'");
     addColumnIfMissing(database, 'agent_runs', 'operation_log_json', 'TEXT');
-    addColumnIfMissing(database, 'messages', 'content_blocks_json', 'TEXT');
     addColumnIfMissing(database, 'chat_sessions', 'runtime_json', 'TEXT');
     addColumnIfMissing(database, 'runtime_runs', 'timeline_json', 'TEXT');
     addColumnIfMissing(database, 'runtime_runs', 'last_tool_boundary_json', 'TEXT');
@@ -386,6 +388,15 @@ const mcpRawAudits: Migration = {
   }
 };
 
+const assetGenerationProjectLedger: Migration = {
+  version: 11,
+  description: 'Persist project asset generation jobs and presets',
+  up(database) {
+    addColumnIfMissing(database, 'projects', 'asset_generation_jobs_json', "TEXT NOT NULL DEFAULT '[]'");
+    addColumnIfMissing(database, 'projects', 'asset_generation_presets_json', "TEXT NOT NULL DEFAULT '[]'");
+  }
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   initial,
   usageTracking,
@@ -396,7 +407,8 @@ export const MIGRATIONS: readonly Migration[] = [
   stdioMcpPlugins,
   mcpToolPolicyConfig,
   mcpToolSnapshots,
-  mcpRawAudits
+  mcpRawAudits,
+  assetGenerationProjectLedger
 ];
 
 function readUserVersion(database: Database.Database): number {

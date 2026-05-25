@@ -57,7 +57,8 @@ test('native tool executor runs a tool transaction with ordered callbacks', asyn
   assert.equal(transaction.transaction.status, 'completed');
   assert.equal(transaction.transaction.phase, 'completed');
   assert.equal(transaction.transaction.toolClass, 'workspace');
-  assert.equal(transaction.transaction.events.map((event) => event.type).join(','), 'created,execution_started,execution_completed');
+  assert.equal(transaction.transaction.resultSource, 'executed');
+  assert.equal(transaction.transaction.events.map((event) => event.type).join(','), 'created,validation_passed,execution_started,execution_completed');
   assert.deepEqual(events, [
     'hook:start',
     'use:running',
@@ -74,17 +75,18 @@ test('native tool executor runs a tool transaction with ordered callbacks', asyn
       transactionStatus: 'completed',
       transactionPhase: 'completed',
       transactionClass: 'workspace',
-      transactionEventCount: 3
+      transactionEventCount: 4
     }
   ]);
 });
 
-test('native tool executor records precomputed and unknown tool errors', async () => {
+test('native tool executor records validation failures and unknown tool errors', async () => {
   const precomputedEvents: string[] = [];
   const precomputed = recordNativeWorkspaceToolTransactionResult({
     toolUseId: 'tool_bad',
     toolName: 'multi_edit',
     input: {},
+    resultSource: 'validation_failed',
     callbacks: {
       emitToolUse: (toolUse) => precomputedEvents.push(toolUse.status),
       emitToolResult: (toolResult) => precomputedEvents.push(toolResult.content)
@@ -92,6 +94,8 @@ test('native tool executor records precomputed and unknown tool errors', async (
     toolResult: {
       ok: false,
       isError: true,
+      failureKind: 'invalid_tool_input',
+      recoveryHint: 'Provide at least one edit.',
       summary: 'invalid input'
     }
   });
@@ -99,8 +103,12 @@ test('native tool executor records precomputed and unknown tool errors', async (
 
   assert.equal(precomputed.summary, 'invalid input');
   assert.equal(precomputed.transaction.status, 'failed');
+  assert.equal(precomputed.transaction.phase, 'failed');
+  assert.equal(precomputed.transaction.resultSource, 'validation_failed');
   assert.equal(precomputed.transaction.toolClass, 'workspace');
   assert.equal(precomputed.transaction.error?.message, 'invalid input');
+  assert.equal(precomputed.transaction.error?.failureKind, 'invalid_tool_input');
+  assert.equal(precomputed.transaction.events.map((event) => event.type).join(','), 'created,validation_failed');
   assert.deepEqual(precomputedEvents, ['running', 'invalid input', 'failed']);
   assert.equal(unknown.ok, false);
   assert.equal(unknown.isError, true);

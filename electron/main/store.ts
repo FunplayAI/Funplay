@@ -9,11 +9,13 @@ import {
   type AiSettings,
   type AgentSettings,
   type AppState,
+  type AssetGenerationProviderConfig,
   type McpRawAuditEntry,
   type McpToolSnapshot,
   type UnitySettings
 } from '../../shared/types';
 import { hydrateProvidersWithSecrets, migrateProviderSecretsFromProviders } from './provider-secret-store';
+import { hydrateAssetGenerationProvidersWithSecrets } from './asset-generation-secret-store';
 import {
   DB_FILE_NAME,
   SETTINGS_KEYS,
@@ -83,6 +85,7 @@ let memoryState: AppState = {
   agentSettings: DEFAULT_AGENT_SETTINGS,
   mcpSettings: DEFAULT_MCP_SETTINGS,
   mcpPlugins: [],
+  assetGenerationProviders: [],
   providers: [],
   projects: []
 };
@@ -141,6 +144,7 @@ export async function initializeStore(userDataPath: string, defaultProjectDirect
   const aiSettingsRow = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(SETTINGS_KEYS.ai) as SettingRow | undefined;
   const agentSettingsRow = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(SETTINGS_KEYS.agent) as SettingRow | undefined;
   const mcpSettingsRow = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(SETTINGS_KEYS.mcp) as SettingRow | undefined;
+  const assetGenerationProvidersRow = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(SETTINGS_KEYS.assetGenerationProviders) as SettingRow | undefined;
 
   const unitySettings = parseJson<UnitySettings>(
     unitySettingsRow?.value_json,
@@ -158,6 +162,10 @@ export async function initializeStore(userDataPath: string, defaultProjectDirect
     mcpSettingsRow?.value_json,
     DEFAULT_MCP_SETTINGS
   );
+  const rawAssetGenerationProviders = parseJson<AssetGenerationProviderConfig[]>(
+    assetGenerationProvidersRow?.value_json,
+    []
+  );
   const rawProviders = readProviders(db);
   const storedPlugins = readMcpPlugins(db);
   const rawProjects = readProjects(db);
@@ -167,6 +175,7 @@ export async function initializeStore(userDataPath: string, defaultProjectDirect
 
   await migrateProviderSecretsFromProviders(rawProviders);
   const hydratedProviders = await hydrateProvidersWithSecrets(rawProviders);
+  const hydratedAssetGenerationProviders = await hydrateAssetGenerationProvidersWithSecrets(rawAssetGenerationProviders);
   const normalizedProjects = hydrateProjects(rawProjects).map((project) => {
     const projectSessionRows = sessionRows.filter((row) => row.project_id === project.id);
     const projectMessageRows = messageRows.filter((row) => row.project_id === project.id);
@@ -200,6 +209,7 @@ export async function initializeStore(userDataPath: string, defaultProjectDirect
       ...mcpSettings
     },
     mcpPlugins: storedPlugins,
+    assetGenerationProviders: hydratedAssetGenerationProviders,
     providers: hydratedProviders,
     projects: normalizedProjects
   };
