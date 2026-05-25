@@ -28,7 +28,12 @@ npm run ui:electron-smoke
 npm run ui:maturity-gate
 ```
 
-For release packaging changes, run the relevant release checks documented in `docs/open-source-release-checklist.md` and `docs/mac-release-packaging.md`.
+For release packaging changes, also run:
+
+```bash
+npm run release:audit
+npm run release:gate
+```
 
 ## Native Dependency Warning
 

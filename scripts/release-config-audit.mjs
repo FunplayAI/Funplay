@@ -48,7 +48,6 @@ const requiredFiles = [
   'README.md',
   'LICENSE',
   'CONTRIBUTING.md',
-  'SECURITY.md',
   'CHANGELOG.md',
   '.github/PULL_REQUEST_TEMPLATE.md',
   '.github/ISSUE_TEMPLATE/bug_report.md',

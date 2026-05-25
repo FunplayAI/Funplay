@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "private": true,
   "license": "MIT",
-  "description": "AI game creation desktop workspace for macOS + Unity.",
+  "description": "AI game development workbench for multi-engine game creation.",
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {

@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  A project-first desktop AI workspace for game prototyping, Unity automation, and multi-provider agent runs.
+  An AI game development workbench for turning ideas into polished playable games across modern game engines.
 </p>
 
 <p align="center">
@@ -15,20 +15,33 @@
   <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License" />
 </p>
 
-Funplay is an open-source desktop app for building and iterating on game projects with AI agents. It combines a local project workspace, chat sessions, file tools, terminal execution, MCP integrations, asset generation, provider management, and release-ready desktop packaging.
+Funplay is an open-source desktop AI workspace for game creation. It is designed for people who have game ideas but do not want to wrestle with engine setup, project structure, asset pipelines, editor menus, build steps, or the hidden complexity of modern game development.
 
-The goal is not to be another generic chat client. Funplay is built around a real project folder and a visible agent run loop, so model output, tool calls, permissions, project files, checkpoints, and generated assets all stay tied to the work you are doing.
+The long-term goal is simple: describe the game you want, connect the engine and providers you trust, and let Funplay help you plan, build, test, generate assets, inspect runtime state, and keep the project moving toward a high-quality playable result.
+
+Unity is the first-class engine workflow today. The architecture is engine-aware and not locked to one editor: MCP, engine status panels, project inspectors, tool contracts, and runtime adapters are shaped so Godot, Unreal, custom web games, and other engine workflows can share the same agent workspace over time.
+
+## What Funplay Helps With
+
+- Turn rough game concepts into scoped implementation plans.
+- Create and modify project files with an agent that understands the current workspace.
+- Use AI providers for coding, planning, review, asset prompts, and multi-step tool runs.
+- Open and inspect engine projects, starting with Unity editor and Unity MCP workflows.
+- Generate and manage game assets, including 2D images, UI, textures, audio, 3D, and animation-oriented jobs.
+- Keep tool calls visible with compact summaries, detail overlays, permission checks, and recovery metadata.
+- Store projects, sessions, provider settings, generated assets, and agent run history locally.
+- Help non-specialists move through game-development decisions without needing to know every engine panel or pipeline detail first.
 
 ## Highlights
 
-- Project-first sessions with local file tree context and persistent conversation history.
-- Native agent runtime with file, patch, terminal, browser, web search, MCP, memory, notification, and checkpoint tools.
-- Claude Code SDK runtime support for users who want Claude Code-style project automation.
-- OpenAI-compatible, Anthropic, Google, Bedrock, and custom provider configuration.
-- Asset Generation Center for image, UI, texture, audio, 3D, animation, and provider-backed generation jobs.
-- Unity-oriented engine panel and MCP workflows for opening projects, checking editor state, and driving Unity tools.
-- Compact agent transcript UI with tool summaries, detail overlays, markdown/code rendering, and running-state recovery.
-- Local-first persistence through SQLite. Provider secrets stay in the main process and are not exposed to the renderer.
+- Project-first desktop workspace: sessions, files, assets, providers, and engine state live around a real local project.
+- Native agent runtime: file reading, patching, terminal, browser inspection, web search, MCP, memory, notifications, and checkpoint tools.
+- Claude Code runtime option: use Claude Code-style project automation from the same desktop shell.
+- Multi-provider setup: OpenAI-compatible providers, Anthropic, Google, Bedrock, and custom endpoints.
+- Asset Generation Center: provider-backed generation jobs with deterministic output naming and project asset discovery.
+- Engine integration layer: Unity workflow support today, with a path toward additional engines through MCP and engine adapters.
+- Local-first persistence: SQLite-backed project/session state with secrets kept in the main process.
+- Release-ready desktop packaging: macOS split-arch and Windows release automation through GitHub Releases.
 
 ## Quick Start
 
@@ -43,15 +56,16 @@ On first launch:
 
 1. Open Application Settings.
 2. Add at least one AI provider.
-3. Create or open a project.
-4. Start a session and choose the runtime, model, and permission mode.
+3. Create or open a game project.
+4. Choose the runtime, model, permission mode, and engine workflow.
+5. Start with a goal such as "make a playable web demo" or "open this Unity project and add the first level loop."
 
 ## Common Commands
 
 ```bash
 npm run dev                 # Start the desktop app in development mode
 npm run build               # Type-check and build all Electron targets
-npm run test:runtime        # Run runtime tests with the right native ABI handling
+npm run test:runtime        # Run runtime tests with native ABI handling
 npm run ui:smoke            # Renderer UI smoke checks
 npm run ui:electron-smoke   # Electron UI smoke scenarios
 npm run ui:maturity-gate    # UI maturity gate
@@ -91,18 +105,19 @@ Important boundaries:
 - Cross-process contracts belong in `shared/` and the preload bridge.
 - New IPC requires type updates, preload exposure, main handler wiring, and Zod validation.
 
-## Agent Architecture
+## Agent And Engine Architecture
 
-Funplay has two major runtime layers:
+Funplay separates runtime orchestration from provider and engine integrations:
 
 - `electron/main/agent-core/` owns runtime-agnostic orchestration: run registry, controller, permissions, event flow, checkpoints, and transcript ledger behavior.
-- `electron/main/agent-platform/` owns provider-specific runtime adapters, including the native runtime, Claude Code runtime wiring, provider event adapters, and tool infrastructure.
+- `electron/main/agent-platform/` owns provider-specific runtime adapters, tool contracts, MCP integration, engine control tools, and workspace actions.
+- `src/` projects Agent Core parts into the desktop transcript, settings pages, asset library, engine panel, and generation center.
 
-The current direction is a single Agent Core parts/message stream as the source of truth. UI, operation logs, persistence views, and tool detail panels are projections from that stream rather than separate ledgers.
+The target shape is one agent message stream as the source of truth. UI, operation logs, persistence views, and tool detail panels are projections from that stream rather than competing ledgers.
 
-## Providers And Secrets
+## Providers, Assets, And Secrets
 
-Model and asset providers are configured inside the app. API keys are stored by the main process secret store and are not sent to the renderer.
+Funplay supports separate configuration for chat/model providers, asset-generation providers, and MCP servers. API keys are stored by the main process secret store and are not sent to the renderer.
 
 Useful environment variables for development:
 
@@ -152,20 +167,14 @@ npm run ui:maturity-gate
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for repository boundaries and PR expectations.
 
-## Security
+## Project Status
 
-Funplay can access local files, run terminal commands, call external model providers, connect to MCP servers, and automate engine workflows. Please report security issues privately.
+Funplay is pre-1.0. The public release line starts at `v0.3.0`, with current stabilization focused on:
 
-See [SECURITY.md](SECURITY.md) for the reporting process and high-priority security areas.
-
-## Status
-
-Funplay is pre-1.0 and moving quickly. The public release line starts at `v0.3.0`, with the main stabilization work focused on:
-
-- agent runtime reliability
-- provider and tool contract consistency
+- multi-engine agent workflows
+- native tool reliability and permission clarity
+- provider and asset-generation contracts
 - desktop UI polish
-- asset generation workflows
 - packaging, signing, update metadata, and release automation
 
 ## License
