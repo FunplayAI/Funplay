@@ -126,5 +126,8 @@ if (!readme.includes('GitHub Releases')) {
 if (!workflow.includes('gh release') || !workflow.includes('dist:mac:split') || !workflow.includes('dist:win:x64')) {
   fail('Release audit failed: release workflow must build macOS split artifacts, Windows x64, and publish through gh release.');
 }
+if (!workflow.includes('Import macOS signing certificate') || !workflow.includes('Developer ID Application')) {
+  fail('Release audit failed: release workflow must import and validate a Developer ID Application certificate before notarization.');
+}
 
 console.log('Release config audit passed.');

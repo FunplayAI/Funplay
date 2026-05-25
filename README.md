@@ -112,7 +112,7 @@ The repository also includes a tag-based GitHub Actions release workflow. Pushin
 - `APPLE_ID`
 - `APPLE_TEAM_ID`
 - `APPLE_APP_SPECIFIC_PASSWORD`
-- `MAC_CSC_LINK`
+- `MAC_CSC_LINK` (base64-encoded `.p12` containing a Developer ID Application certificate)
 - `MAC_CSC_KEY_PASSWORD`
 
 ## Documentation

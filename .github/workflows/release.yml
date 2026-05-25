@@ -59,8 +59,7 @@ jobs:
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-      CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+      CSC_NAME: Developer ID Application
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -73,6 +72,45 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Import macOS signing certificate
+        env:
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MAC_CSC_LINK}" ]; then
+            echo "MAC_CSC_LINK must contain a base64-encoded Developer ID Application .p12 certificate."
+            exit 1
+          fi
+
+          certificate_path="$RUNNER_TEMP/funplay-mac-codesign.p12"
+          keychain_path="$RUNNER_TEMP/funplay-signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          certificate_data="$MAC_CSC_LINK"
+          case "$certificate_data" in
+            data:*base64,*) certificate_data="${certificate_data#*,}" ;;
+          esac
+
+          if ! printf '%s' "$certificate_data" | base64 -D > "$certificate_path"; then
+            echo "MAC_CSC_LINK must be base64-encoded .p12 data, not a local path."
+            exit 1
+          fi
+
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" -P "$MAC_CSC_KEY_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+          security default-keychain -s "$keychain_path"
+
+          identities="$(security find-identity -v -p codesigning "$keychain_path")"
+          echo "$identities"
+          if ! echo "$identities" | grep -q "Developer ID Application"; then
+            echo "The imported macOS certificate is not a Developer ID Application certificate."
+            exit 1
+          fi
 
       - name: Build split-architecture macOS artifacts
         run: npm run dist:mac:split
