@@ -746,23 +746,24 @@ export async function postResponsesStream(
     body: JSON.stringify(body),
     signal: requestSignal
   } satisfies RequestInit;
-  for (let attempt = 0; attempt <= HTTP_RETRY_DELAYS_MS.length; attempt += 1) {
-    let response: Response;
-    try {
-      response = await fetchOpenAiCompatible(url, requestInit, {
-        apiMode: 'responses',
-        requestBody: body,
-        abortSignal: requestSignal,
-        requestAbort
-      });
-    } catch (error) {
-      rethrowProviderRequestTimeout(error, requestAbort, {
-        apiMode: 'responses',
-        requestUrl: url,
-        requestBody: body
-      });
-    }
-    const contentType = response.headers.get('content-type') ?? '';
+  try {
+    for (let attempt = 0; attempt <= HTTP_RETRY_DELAYS_MS.length; attempt += 1) {
+      let response: Response;
+      try {
+        response = await fetchOpenAiCompatible(url, requestInit, {
+          apiMode: 'responses',
+          requestBody: body,
+          abortSignal: requestSignal,
+          requestAbort
+        });
+      } catch (error) {
+        rethrowProviderRequestTimeout(error, requestAbort, {
+          apiMode: 'responses',
+          requestUrl: url,
+          requestBody: body
+        });
+      }
+      const contentType = response.headers.get('content-type') ?? '';
 
     if (contentType.includes('text/event-stream') && response.body) {
       if (!response.ok) {
@@ -887,11 +888,14 @@ export async function postResponsesStream(
     };
   }
 
-  throw createApiError('OpenAI-compatible streaming request failed after retry attempts.', {
-    apiMode: 'responses',
-    requestUrl: url,
-    requestBody: body
-  });
+    throw createApiError('OpenAI-compatible streaming request failed after retry attempts.', {
+      apiMode: 'responses',
+      requestUrl: url,
+      requestBody: body
+    });
+  } finally {
+    requestAbort.dispose();
+  }
 }
 
 type ChatToolCallDeltaState = {
@@ -1115,23 +1119,24 @@ export async function postChatCompletionsStream(
     body: JSON.stringify(body),
     signal: requestSignal
   } satisfies RequestInit;
-  for (let attempt = 0; attempt <= HTTP_RETRY_DELAYS_MS.length; attempt += 1) {
-    let response: Response;
-    try {
-      response = await fetchOpenAiCompatible(url, requestInit, {
-        apiMode: 'chat',
-        requestBody: body,
-        abortSignal: requestSignal,
-        requestAbort
-      });
-    } catch (error) {
-      rethrowProviderRequestTimeout(error, requestAbort, {
-        apiMode: 'chat',
-        requestUrl: url,
-        requestBody: body
-      });
-    }
-    const contentType = response.headers.get('content-type') ?? '';
+  try {
+    for (let attempt = 0; attempt <= HTTP_RETRY_DELAYS_MS.length; attempt += 1) {
+      let response: Response;
+      try {
+        response = await fetchOpenAiCompatible(url, requestInit, {
+          apiMode: 'chat',
+          requestBody: body,
+          abortSignal: requestSignal,
+          requestAbort
+        });
+      } catch (error) {
+        rethrowProviderRequestTimeout(error, requestAbort, {
+          apiMode: 'chat',
+          requestUrl: url,
+          requestBody: body
+        });
+      }
+      const contentType = response.headers.get('content-type') ?? '';
 
     if (contentType.includes('text/event-stream') && response.body) {
       if (!response.ok) {
@@ -1250,9 +1255,12 @@ export async function postChatCompletionsStream(
     };
   }
 
-  throw createApiError('OpenAI-compatible chat streaming request failed after retry attempts.', {
-    apiMode: 'chat',
-    requestUrl: url,
-    requestBody: body
-  });
+    throw createApiError('OpenAI-compatible chat streaming request failed after retry attempts.', {
+      apiMode: 'chat',
+      requestUrl: url,
+      requestBody: body
+    });
+  } finally {
+    requestAbort.dispose();
+  }
 }

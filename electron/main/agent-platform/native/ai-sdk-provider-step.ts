@@ -220,49 +220,57 @@ export async function runNativeAiSdkProviderStep(input: {
       }
     }
   } catch (error) {
-    toolEventAdapter.collectInterruptedToolResults(error);
-    if (stepAbort.timedOut()) {
-      providerEventObserver.observe({
-        type: 'run_failed',
-        reason: 'AI SDK provider step 超时。'
+    try {
+      toolEventAdapter.collectInterruptedToolResults(error);
+      if (stepAbort.timedOut()) {
+        providerEventObserver.observe({
+          type: 'run_failed',
+          reason: 'AI SDK provider step 超时。'
+        });
+        rethrowNativeProviderStepTimeout(
+          error,
+          stepAbort,
+          'Native AI SDK provider step'
+        );
+      }
+      input.callbacks?.emitStage?.({
+        stageId: 'stage:native_tool_stream',
+        title: '执行真实 Tool Loop',
+        target: 'stage:native_tool_stream',
+        status: 'failed',
+        summary: error instanceof Error ? error.message : '真实 tool-calling 流执行失败。',
+        errorMessage: error instanceof Error ? error.message : '真实 tool-calling 流执行失败。'
       });
-      rethrowNativeProviderStepTimeout(
-        error,
-        stepAbort,
-        'Native AI SDK provider step'
-      );
+      throw error;
+    } finally {
+      stepAbort.dispose();
     }
-    input.callbacks?.emitStage?.({
-      stageId: 'stage:native_tool_stream',
-      title: '执行真实 Tool Loop',
-      target: 'stage:native_tool_stream',
-      status: 'failed',
-      summary: error instanceof Error ? error.message : '真实 tool-calling 流执行失败。',
-      errorMessage: error instanceof Error ? error.message : '真实 tool-calling 流执行失败。'
-    });
-    throw error;
   }
 
-  const finishReason = await result.finishReason;
-  const usage = await Promise.resolve(result.usage).catch(() => undefined);
-  const response = await Promise.resolve(result.response).catch(() => undefined);
-  const finalCandidate = normalizeModelReplyText(input.loopState.assistantMessage);
-  const providerStep = aiSdkStepToAgentCoreProviderStepResult({
-      text: finalCandidate,
-      thinking: input.loopState.thinking,
+  try {
+    const finishReason = await result.finishReason;
+    const usage = await Promise.resolve(result.usage).catch(() => undefined);
+    const response = await Promise.resolve(result.response).catch(() => undefined);
+    const finalCandidate = normalizeModelReplyText(input.loopState.assistantMessage);
+    const providerStep = aiSdkStepToAgentCoreProviderStepResult({
+        text: finalCandidate,
+        thinking: input.loopState.thinking,
+        finishReason,
+        usage,
+        toolCalls: input.stepState.buildCurrentToolCalls()
+      }, {
+        providerId: provider.id,
+        model: provider.model
+      });
+
+    return {
       finishReason,
       usage,
-      toolCalls: input.stepState.buildCurrentToolCalls()
-    }, {
-      providerId: provider.id,
-      model: provider.model
-    });
-
-  return {
-    finishReason,
-    usage,
-    responseMessages: (response?.messages ?? []) as ModelMessage[],
-    finalCandidate,
-    providerStep
-  };
+      responseMessages: (response?.messages ?? []) as ModelMessage[],
+      finalCandidate,
+      providerStep
+    };
+  } finally {
+    stepAbort.dispose();
+  }
 }

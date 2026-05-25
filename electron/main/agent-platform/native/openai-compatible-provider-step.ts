@@ -91,33 +91,38 @@ export async function runOpenAiCompatibleProviderStep(input: {
     type: 'provider_step_started',
     reason: `开始第 ${input.stepIndex + 1} 个 OpenAI-compatible provider step。`
   });
-  const stepResult = await generateOpenAiCompatibleStreamingToolStep({
-      provider,
-      system: createNativeRuntimeSystemPrompt(),
-      messages: stepMessages,
-      tools: input.toolPool.openAiCompatibleTools,
-      maxOutputTokens: input.maxOutputTokens,
-      abortSignal: stepAbort.signal,
-      onDelta: (delta, accumulated) => {
-        eventObserver.observe({
-          type: 'text_delta',
-          delta,
-          accumulated
-        });
-      },
-      onReasoningDelta: (delta, accumulated) => {
-        eventObserver.observe({
-          type: 'thinking_delta',
-          delta,
-          accumulated
-        });
-      }
-    })
-    .catch((error: unknown) => rethrowNativeProviderStepTimeout(
-      error,
-      stepAbort,
-      'Native OpenAI-compatible provider step'
-    ));
+  let stepResult: Awaited<ReturnType<typeof generateOpenAiCompatibleStreamingToolStep>>;
+  try {
+    stepResult = await generateOpenAiCompatibleStreamingToolStep({
+        provider,
+        system: createNativeRuntimeSystemPrompt(),
+        messages: stepMessages,
+        tools: input.toolPool.openAiCompatibleTools,
+        maxOutputTokens: input.maxOutputTokens,
+        abortSignal: stepAbort.signal,
+        onDelta: (delta, accumulated) => {
+          eventObserver.observe({
+            type: 'text_delta',
+            delta,
+            accumulated
+          });
+        },
+        onReasoningDelta: (delta, accumulated) => {
+          eventObserver.observe({
+            type: 'thinking_delta',
+            delta,
+            accumulated
+          });
+        }
+      })
+      .catch((error: unknown) => rethrowNativeProviderStepTimeout(
+        error,
+        stepAbort,
+        'Native OpenAI-compatible provider step'
+      ));
+  } finally {
+    stepAbort.dispose();
+  }
   input.state.stepCount = input.stepIndex + 1;
   input.state.finishReason = stepResult.finishReason;
   input.state.usage = stepResult.usage;

@@ -12,6 +12,7 @@ export interface ProviderRequestAbort {
   signal?: AbortSignal;
   timeoutMs: number | false;
   timedOut: () => boolean;
+  dispose: () => void;
 }
 
 function normalizeTimeoutNumber(value: unknown): number | undefined {
@@ -69,14 +70,32 @@ export function createProviderRequestAbort(
     return {
       signal: parentSignal,
       timeoutMs,
-      timedOut: () => false
+      timedOut: () => false,
+      dispose: () => undefined
     };
   }
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const timeoutController = new AbortController();
+  let didTimeout = false;
+  let disposed = false;
+  const cleanup = (): void => {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    clearTimeout(timeout);
+    parentSignal?.removeEventListener('abort', cleanup);
+  };
+  const timeout = setTimeout(() => {
+    didTimeout = true;
+    timeoutController.abort();
+    cleanup();
+  }, timeoutMs);
+  parentSignal?.addEventListener('abort', cleanup, { once: true });
   return {
-    signal: parentSignal ? AbortSignal.any([parentSignal, timeoutSignal]) : timeoutSignal,
+    signal: parentSignal ? AbortSignal.any([parentSignal, timeoutController.signal]) : timeoutController.signal,
     timeoutMs,
-    timedOut: () => timeoutSignal.aborted && !parentSignal?.aborted
+    timedOut: () => didTimeout && !parentSignal?.aborted,
+    dispose: cleanup
   };
 }
 
@@ -144,10 +163,14 @@ export function createProviderFetch(provider: AiProvider, baseFetch: typeof fetc
     const chunkTimeoutMs = resolveProviderChunkTimeoutMs(provider);
     const chunkAbortController = chunkTimeoutMs ? new AbortController() : undefined;
     const signal = combineAbortSignals([requestAbort.signal, chunkAbortController?.signal]);
-    const response = await baseFetch(input, {
-      ...(init ?? {}),
-      signal
-    });
-    return wrapSseChunkTimeout(response, chunkTimeoutMs, chunkAbortController);
+    try {
+      const response = await baseFetch(input, {
+        ...(init ?? {}),
+        signal
+      });
+      return wrapSseChunkTimeout(response, chunkTimeoutMs, chunkAbortController);
+    } finally {
+      requestAbort.dispose();
+    }
   }) as typeof fetch;
 }

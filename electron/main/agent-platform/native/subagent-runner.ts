@@ -184,19 +184,24 @@ export async function runNativeSubagent(
 
     for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
       const stepAbort = createNativeProviderStepAbort(params.abortSignal, params.provider);
-      const stepResult = await generateOpenAiCompatibleStreamingToolStep({
-          provider: params.provider,
-          system: createNativeRuntimeSystemPrompt(),
-          messages,
-          tools: compatibleToolDefinitions,
-          maxOutputTokens: 2048,
-          abortSignal: stepAbort.signal
-        })
-        .catch((error: unknown) => rethrowNativeProviderStepTimeout(
-          error,
-          stepAbort,
-          'Native subagent provider step'
-        ));
+      let stepResult: Awaited<ReturnType<typeof generateOpenAiCompatibleStreamingToolStep>>;
+      try {
+        stepResult = await generateOpenAiCompatibleStreamingToolStep({
+            provider: params.provider,
+            system: createNativeRuntimeSystemPrompt(),
+            messages,
+            tools: compatibleToolDefinitions,
+            maxOutputTokens: 2048,
+            abortSignal: stepAbort.signal
+          })
+          .catch((error: unknown) => rethrowNativeProviderStepTimeout(
+            error,
+            stepAbort,
+            'Native subagent provider step'
+          ));
+      } finally {
+        stepAbort.dispose();
+      }
       stepCount += 1;
       finishReason = stepResult.finishReason;
       const stepUsage = normalizeOpenAiUsage(stepResult.usage, {
@@ -302,6 +307,8 @@ export async function runNativeSubagent(
       subagentAbort,
       'Native subagent provider step'
     );
+  } finally {
+    subagentAbort.dispose();
   }
 
   let finishReason: string | undefined;

@@ -11,6 +11,7 @@ export interface NativeProviderStepAbort {
   signal?: AbortSignal;
   timeoutMs: number | false;
   timedOut: () => boolean;
+  dispose: () => void;
 }
 
 export function createNativeProviderStepAbort(parentSignal: AbortSignal | undefined, provider?: AiProvider): NativeProviderStepAbort {
@@ -18,7 +19,8 @@ export function createNativeProviderStepAbort(parentSignal: AbortSignal | undefi
   return {
     signal: abort.signal,
     timeoutMs: abort.timeoutMs,
-    timedOut: abort.timedOut
+    timedOut: abort.timedOut,
+    dispose: abort.dispose
   };
 }
 

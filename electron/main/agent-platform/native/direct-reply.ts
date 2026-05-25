@@ -135,10 +135,39 @@ function emitDirectReplyAgentCoreParts(params: GenericAgentRuntimeParams, reply:
 export async function runNativeDirectChatReply(params: GenericAgentRuntimeParams): Promise<string> {
   emitRuntimeStatus(params, 'streaming', '正在生成回复…');
   const providerAbort = createProviderRequestAbort(params.abortSignal, params.provider);
-  if (params.provider?.protocol === 'openai-compatible') {
-    let streamedText = false;
-    const result = await generateOpenAiCompatibleText({
-      provider: params.provider,
+  try {
+    if (params.provider?.protocol === 'openai-compatible') {
+      let streamedText = false;
+      const result = await generateOpenAiCompatibleText({
+        provider: params.provider,
+        system: createNativeRuntimeSystemPrompt(),
+        prompt: [
+          createNativeRuntimeUserPrompt(params),
+          '',
+          '请直接自然回复用户，不要输出工具决策 JSON，不要调用工具。'
+        ].join('\n'),
+        maxOutputTokens: 2048,
+        abortSignal: providerAbort.signal,
+        onDelta: (delta, accumulated) => {
+          streamedText = true;
+          emitRuntimeTextDelta(params, delta, accumulated);
+        },
+        onReasoningDelta: (delta, accumulated) => {
+          emitRuntimeThinkingDelta(params, delta, accumulated);
+        }
+      });
+      emitNativeDirectUsage(params, result.usage);
+      const reply = normalizeModelReplyText(result.text);
+      if (!streamedText) {
+        emitReplyAsDeltas(params, reply);
+      }
+      emitDirectReplyAgentCoreParts(params, reply);
+      return reply;
+    }
+
+    const model = createLanguageModel(params.provider!);
+    const result = await generateText({
+      model,
       system: createNativeRuntimeSystemPrompt(),
       prompt: [
         createNativeRuntimeUserPrompt(params),
@@ -146,46 +175,21 @@ export async function runNativeDirectChatReply(params: GenericAgentRuntimeParams
         '请直接自然回复用户，不要输出工具决策 JSON，不要调用工具。'
       ].join('\n'),
       maxOutputTokens: 2048,
-      abortSignal: providerAbort.signal,
-      onDelta: (delta, accumulated) => {
-        streamedText = true;
-        emitRuntimeTextDelta(params, delta, accumulated);
+      experimental_include: {
+        requestBody: true,
+        responseBody: true
       },
-      onReasoningDelta: (delta, accumulated) => {
-        emitRuntimeThinkingDelta(params, delta, accumulated);
-      }
+      abortSignal: providerAbort.signal
     });
     emitNativeDirectUsage(params, result.usage);
     const reply = normalizeModelReplyText(result.text);
-    if (!streamedText) {
-      emitReplyAsDeltas(params, reply);
+    if (!reply) {
+      throw createModelOutputError('模型返回了空回复。', describeGenerateTextResult(result), 'MODEL_EMPTY_RESPONSE');
     }
+    emitReplyAsDeltas(params, reply);
     emitDirectReplyAgentCoreParts(params, reply);
     return reply;
+  } finally {
+    providerAbort.dispose();
   }
-
-  const model = createLanguageModel(params.provider!);
-  const result = await generateText({
-    model,
-    system: createNativeRuntimeSystemPrompt(),
-    prompt: [
-      createNativeRuntimeUserPrompt(params),
-      '',
-      '请直接自然回复用户，不要输出工具决策 JSON，不要调用工具。'
-    ].join('\n'),
-    maxOutputTokens: 2048,
-    experimental_include: {
-      requestBody: true,
-      responseBody: true
-    },
-    abortSignal: providerAbort.signal
-  });
-  emitNativeDirectUsage(params, result.usage);
-  const reply = normalizeModelReplyText(result.text);
-  if (!reply) {
-    throw createModelOutputError('模型返回了空回复。', describeGenerateTextResult(result), 'MODEL_EMPTY_RESPONSE');
-  }
-  emitReplyAsDeltas(params, reply);
-  emitDirectReplyAgentCoreParts(params, reply);
-  return reply;
 }
