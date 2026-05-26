@@ -57,7 +57,7 @@ export function WelcomeScreen(props: {
 
             <div className="welcome-actions">
               <Button variant="primary" leadingIcon={<Plus size={15} aria-hidden="true" />} onClick={props.onCreate}>
-                {localize(language, '新建游戏项目', 'Create Game Project')}
+                {localize(language, '新建项目', 'Create Project')}
               </Button>
               <Button variant="secondary" leadingIcon={<FolderOpen size={15} aria-hidden="true" />} onClick={props.onOpenExisting}>
                 {localize(language, '打开已有项目', 'Open Existing Project')}
