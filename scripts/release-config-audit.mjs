@@ -46,6 +46,7 @@ async function gitTrackedExisting(paths) {
 
 const requiredFiles = [
   'README.md',
+  'README.zh-CN.md',
   'LICENSE',
   'CONTRIBUTING.md',
   'CHANGELOG.md',
@@ -102,11 +103,13 @@ if (forbiddenTracked.length) {
 const updateService = await readText('electron/main/update-service.ts');
 const appSettings = await readText('src/components/modals/AppSettingsModal.tsx');
 const readme = await readText('README.md');
+const readmeZhCn = await readText('README.zh-CN.md');
 const workflow = await readText('.github/workflows/release.yml');
 const searchable = [
   ['electron/main/update-service.ts', updateService],
   ['src/components/modals/AppSettingsModal.tsx', appSettings],
   ['README.md', readme],
+  ['README.zh-CN.md', readmeZhCn],
   ['.github/workflows/release.yml', workflow],
   ['package.json', JSON.stringify(packageJson, null, 2)]
 ];
@@ -118,9 +121,6 @@ for (const [path, source] of searchable) {
   }
 }
 
-if (!readme.includes('GitHub Releases')) {
-  fail('Release audit failed: README must describe GitHub Releases as the update channel.');
-}
 if (!workflow.includes('gh release') || !workflow.includes('dist:mac:split') || !workflow.includes('dist:win:x64')) {
   fail('Release audit failed: release workflow must build macOS split artifacts, Windows x64, and publish through gh release.');
 }

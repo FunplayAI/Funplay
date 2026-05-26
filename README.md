@@ -9,28 +9,32 @@
 </p>
 
 <p align="center">
+  <a href="./README.md">English</a> · <a href="./README.zh-CN.md">简体中文</a>
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Electron-41%2B-47848f?logo=electron&logoColor=white" alt="Electron" />
   <img src="https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=111111" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white" alt="TypeScript strict" />
   <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License" />
 </p>
 
-Funplay is an open-source desktop AI workspace for game creation. It is designed for people who have game ideas but do not want to wrestle with engine setup, project structure, asset pipelines, editor menus, build steps, or the hidden complexity of modern game development.
+Funplay is an open-source desktop AI workspace for game creation. It is designed for people who have strong game ideas but do not want to fight engine setup, project structure, asset pipelines, editor menus, build steps, or the hidden complexity of modern game development.
 
-The long-term goal is simple: describe the game you want, connect the engine and providers you trust, and let Funplay help you plan, build, test, generate assets, inspect runtime state, and keep the project moving toward a high-quality playable result.
+The product vision is direct: describe the game you want, connect the engine and AI providers you trust, and let Funplay help you plan, build, generate assets, inspect runtime state, test changes, and keep the project moving toward a polished playable result.
 
-Unity is the first-class engine workflow today. The architecture is engine-aware and not locked to one editor: MCP, engine status panels, project inspectors, tool contracts, and runtime adapters are shaped so Godot, Unreal, custom web games, and other engine workflows can share the same agent workspace over time.
+Unity is the first-class engine workflow today. The architecture is engine-aware and not locked to one editor: MCP, engine status panels, project inspectors, tool contracts, and runtime adapters are shaped so Godot, Unreal, custom web games, and other engine workflows can share the same AI workspace over time.
 
 ## What Funplay Helps With
 
-- Turn rough game concepts into scoped implementation plans.
+- Turn rough game concepts into scoped development plans.
+- Break down unfamiliar engine workflows into approachable steps.
 - Create and modify project files with an agent that understands the current workspace.
-- Use AI providers for coding, planning, review, asset prompts, and multi-step tool runs.
-- Open and inspect engine projects, starting with Unity editor and Unity MCP workflows.
+- Use AI providers for coding, planning, review, asset prompts, and long-running tool workflows.
+- Open and inspect engine projects, starting with Unity Editor and Unity MCP workflows.
 - Generate and manage game assets, including 2D images, UI, textures, audio, 3D, and animation-oriented jobs.
-- Keep tool calls visible with compact summaries, detail overlays, permission checks, and recovery metadata.
+- Keep tool calls visible through compact summaries, detail overlays, permission checks, and recovery metadata.
 - Store projects, sessions, provider settings, generated assets, and agent run history locally.
-- Help non-specialists move through game-development decisions without needing to know every engine panel or pipeline detail first.
 
 ## Highlights
 
@@ -41,7 +45,7 @@ Unity is the first-class engine workflow today. The architecture is engine-aware
 - Asset Generation Center: provider-backed generation jobs with deterministic output naming and project asset discovery.
 - Engine integration layer: Unity workflow support today, with a path toward additional engines through MCP and engine adapters.
 - Local-first persistence: SQLite-backed project/session state with secrets kept in the main process.
-- Release-ready desktop packaging: macOS split-arch and Windows release automation through GitHub Releases.
+- Desktop packaging automation for macOS split-architecture builds and Windows installers.
 
 ## Quick Start
 
@@ -127,27 +131,6 @@ Useful environment variables for development:
 - `BRAVE_SEARCH_API_KEY` / `BING_SEARCH_API_KEY` - enable web search providers.
 - `FUNPLAY_E2E_CLAUDE_API_KEY` + `FUNPLAY_E2E_CLAUDE_MODEL` - enable live Claude SDK E2E checks.
 
-## Release And Updates
-
-Funplay publishes desktop builds through [GitHub Releases](https://github.com/FunplayAI/Funplay/releases). The packaged app uses the GitHub provider configured in `package.json#build.publish`.
-
-The tag-based GitHub Actions release workflow builds macOS arm64/x64 and Windows x64 artifacts, verifies macOS update metadata, uploads release assets, and publishes a public GitHub Release after all gates pass.
-
-Required maintainer secrets:
-
-- `APPLE_ID`
-- `APPLE_TEAM_ID`
-- `APPLE_APP_SPECIFIC_PASSWORD`
-- `MAC_CSC_LINK` - base64-encoded `.p12` containing a Developer ID Application certificate
-- `MAC_CSC_KEY_PASSWORD`
-
-Release configuration checks:
-
-```bash
-npm run release:audit
-npm run release:gate
-```
-
 ## Contributing
 
 Small, focused pull requests are easiest to review. Before opening a PR, run:
@@ -175,7 +158,7 @@ Funplay is pre-1.0. The public release line starts at `v0.3.0`, with current sta
 - native tool reliability and permission clarity
 - provider and asset-generation contracts
 - desktop UI polish
-- packaging, signing, update metadata, and release automation
+- packaging, signing, and update metadata automation
 
 ## License
 
