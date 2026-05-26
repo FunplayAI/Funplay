@@ -10,6 +10,7 @@ This project follows a pre-1.0 release flow. Minor versions may include breaking
 
 - Simplified macOS DMG layout to show only the Funplay app and Applications shortcut, even when Finder hidden files are visible.
 - Redesigned the empty welcome screen around the game development workbench workflow with clearer project entry points and capability summaries.
+- Updated the application icon assets to use a white rounded background instead of a transparent Dock-tinted backdrop.
 
 ### Added
 
