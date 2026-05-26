@@ -80,10 +80,18 @@
 .onboarding-screen .onboarding-desktop-layout {
   flex: 1 1 auto;
   min-height: 0;
+  height: 100%;
 }
 
 .onboarding-main-panel {
+  height: 100%;
   background: transparent;
+}
+
+.onboarding-wizard-scroll {
+  min-height: 0;
+  height: 100%;
+  display: grid;
 }
 
 .standalone-app-shell .onboarding-screen {
@@ -93,10 +101,11 @@
 }
 
 .onboarding-main-panel .onboarding-body.onboarding-body-wizard {
-  min-height: auto;
+  min-height: 100%;
   padding: clamp(1rem, 2.6vh, 2rem);
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .onboarding-wizard-card {

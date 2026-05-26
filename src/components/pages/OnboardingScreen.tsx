@@ -169,7 +169,7 @@ export function OnboardingScreen(props: {
         <div className="onboarding-desktop-layout">
           {props.step === 1 && props.view === 'environment' ? (
             <div className="onboarding-main-panel">
-              <div className="onboarding-main-scroll">
+              <div className="onboarding-main-scroll onboarding-wizard-scroll">
                 <div className="onboarding-body onboarding-body-wizard">
                   <div className="onboarding-wizard-card onboarding-environment-card">
                     <aside className="onboarding-wizard-rail" aria-label={t('环境体检步骤', 'Environment check steps')}>
@@ -353,7 +353,7 @@ export function OnboardingScreen(props: {
             </div>
           ) : props.step === 1 ? (
             <div className="onboarding-main-panel">
-              <div className="onboarding-main-scroll">
+              <div className="onboarding-main-scroll onboarding-wizard-scroll">
                 <div className="onboarding-body onboarding-body-wizard">
                   <div className="onboarding-wizard-card">
                     <aside className="onboarding-wizard-rail" aria-label={t('配置步骤', 'Setup steps')}>
