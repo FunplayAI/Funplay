@@ -289,20 +289,15 @@
 .platform-logo-icon {
   --platform-brand: var(--brand);
   --platform-soft: var(--brand-soft);
-  --platform-logo-hole: color-mix(in srgb, var(--platform-soft) 76%, var(--panel));
   background: color-mix(in srgb, var(--platform-soft) 72%, transparent);
   color: var(--platform-brand);
 }
 
-.platform-logo-icon svg {
+.platform-logo-image {
   width: 1.5rem;
   height: 1.5rem;
   display: block;
-  fill: currentColor;
-}
-
-.platform-logo-icon .platform-logo-cutout {
-  fill: var(--platform-logo-hole);
+  object-fit: contain;
 }
 
 .platform-logo-unity {
@@ -362,9 +357,8 @@
 }
 
 .onboarding-wizard-card .platform-card.selected .platform-logo-icon {
-  --platform-logo-hole: var(--platform-brand);
-  background: var(--platform-brand);
-  color: #ffffff;
+  background: color-mix(in srgb, #ffffff 92%, var(--platform-soft));
+  color: var(--platform-brand);
 }
 
 .onboarding-wizard-card .setup-mode-card.disabled-card,
