@@ -21,9 +21,7 @@ import {
 } from 'lucide-react';
 import type {
   AgentRuntimeStrategy,
-  AiProvider,
-  AiProviderInput,
-  AiSettings,
+  AiProvider, AiProviderInput, AiProviderModelListRequest, AiProviderModelListResult, AiSettings,
   AiTestResult,
   AppUpdateSnapshot,
   AssetGenerationProviderConfig,
@@ -109,6 +107,7 @@ export function AppSettingsModal(props: {
   onUpdateWebSearchSettings: (settings: Partial<WebSearchSettings>) => Promise<void>;
   onCreateProvider: (input: AiProviderInput) => Promise<void>;
   onUpdateProvider: (providerId: string, input: AiProviderInput) => Promise<void>;
+  onListProviderModels: (input: AiProviderModelListRequest) => Promise<AiProviderModelListResult>;
   onDeleteProvider: (providerId: string) => void;
   onTestProvider: (providerId: string) => void;
   onSetDefaultProvider: (providerId: string) => void;
@@ -380,6 +379,7 @@ export function AppSettingsModal(props: {
               selectedProjectId={props.selectedProjectId}
               onCreateProvider={props.onCreateProvider}
               onUpdateProvider={props.onUpdateProvider}
+              onListProviderModels={props.onListProviderModels}
               onDeleteProvider={props.onDeleteProvider}
               onTestProvider={props.onTestProvider}
               onSetDefaultProvider={props.onSetDefaultProvider}

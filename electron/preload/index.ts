@@ -222,6 +222,7 @@ const api: FunPlayApi = {
   updateProvider: (providerId: string, input: AiProviderInput) => ipcRenderer.invoke('providers:update', providerId, input),
   deleteProvider: (providerId: string) => ipcRenderer.invoke('providers:delete', providerId),
   setDefaultProvider: (providerId: string) => ipcRenderer.invoke('providers:setDefault', providerId),
+  listProviderModels: (input) => ipcRenderer.invoke('providers:listModels', input),
   testProvider: (providerId: string) => ipcRenderer.invoke('providers:test', providerId),
   runProviderDoctor: (providerId: string, input?: { projectId?: string; live?: boolean }) =>
     ipcRenderer.invoke('providers:doctor', providerId, input),

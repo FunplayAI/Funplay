@@ -2097,8 +2097,8 @@ function App(): JSX.Element {
             const next = await window.funplay.updateWebSearchSettings(settings);
             setAiSettings(next);
           }}
-          onCreateProvider={handleCreateProvider}
-          onUpdateProvider={handleUpdateProvider}
+          onCreateProvider={handleCreateProvider} onUpdateProvider={handleUpdateProvider}
+          onListProviderModels={(input) => window.funplay.listProviderModels(input)}
           onDeleteProvider={(providerId) => void handleDeleteProvider(providerId)}
           onTestProvider={(providerId) => void handleTestProvider(providerId)}
           onSetDefaultProvider={(providerId) => void handleSetDefaultProvider(providerId)}

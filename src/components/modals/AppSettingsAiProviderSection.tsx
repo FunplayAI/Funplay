@@ -1,8 +1,8 @@
 import { useState, type JSX } from 'react';
-import type { AiProvider, AiProviderInput, AiTestResult } from '../../../shared/types';
+import type { AiProvider, AiProviderInput, AiProviderModelListRequest, AiProviderModelListResult, AiTestResult } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import { ProviderSettingsPage, buildProviderToggleInput } from '../pages/ProviderSettingsPage';
-import { ProviderEditor } from '../settings-modals';
+import { ProviderEditor } from './ProviderEditor';
 
 export function AppSettingsAiProviderSection(props: {
   providers: AiProvider[];
@@ -10,6 +10,7 @@ export function AppSettingsAiProviderSection(props: {
   selectedProjectId?: string;
   onCreateProvider: (input: AiProviderInput) => Promise<void>;
   onUpdateProvider: (providerId: string, input: AiProviderInput) => Promise<void>;
+  onListProviderModels: (input: AiProviderModelListRequest) => Promise<AiProviderModelListResult>;
   onDeleteProvider: (providerId: string) => void;
   onTestProvider: (providerId: string) => void;
   onSetDefaultProvider: (providerId: string) => void;
@@ -43,6 +44,7 @@ export function AppSettingsAiProviderSection(props: {
               setEditorOpen(false);
               setEditingTarget(null);
             }}
+            onListModels={props.onListProviderModels}
           />
         </div>
       </section>

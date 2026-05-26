@@ -12,7 +12,7 @@ import {
   type UnitySettings
 } from '../../shared/types';
 import { localize, type UiLanguage } from '../i18n';
-import { getFolderNameFromPath, resolveEngineProjectPath } from '../lib/app-helpers';
+import { resolveEngineProjectPath, resolveOnboardingProjectName } from '../lib/app-helpers';
 
 interface UseOnboardingParams {
   appMode: string;
@@ -172,10 +172,12 @@ export function useOnboarding(params: UseOnboardingParams) {
       input.mode === 'create' && (input.platform === 'unity' || input.platform === 'cocos' || isGenericProject)
         ? resolveEngineProjectPath(input.mode, input.projectPath, input.projectName)
         : input.projectPath.trim();
-    const resolvedName =
-      input.projectName.trim() ||
-      getFolderNameFromPath(targetProjectPath) ||
-      localize(language, '未命名项目', 'Untitled Project');
+    const resolvedName = resolveOnboardingProjectName({
+      mode: input.mode,
+      projectPath: targetProjectPath,
+      projectName: input.projectName,
+      fallback: localize(language, '未命名项目', 'Untitled Project')
+    });
 
     if (isGenericProject) {
       return {

@@ -186,6 +186,11 @@ export const aiProviderInputSchema = z.object({
   notes: optionalTrimmedString(1000)
 }).strict() satisfies z.ZodType<AiProviderInput>;
 
+export const aiProviderModelListRequestSchema = z.object({
+  providerId: optionalTrimmedString(120),
+  provider: aiProviderInputSchema
+}).strict();
+
 export const mcpPluginInputSchema = z.object({
   name: trimmedString(1, 120),
   projectId: optionalTrimmedString(120),

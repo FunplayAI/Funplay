@@ -2,12 +2,14 @@ import type { IpcMain } from 'electron';
 import type { HandlerContext } from './types';
 import {
   aiProviderInputSchema,
+  aiProviderModelListRequestSchema,
   providerIdSchema,
   runtimeDoctorInputSchema,
   runtimeRepairInputSchema,
   validateIpcInput
 } from '../ipc-validation';
 import { createProvider, deleteProvider, setDefaultProvider, updateProvider } from '../provider-service';
+import { listProviderModels } from '../provider-model-service';
 import { testProviderConnection } from '../text-generator';
 import { resolveProviderTokenLimits } from '../../../shared/provider-catalog';
 import {
@@ -64,6 +66,13 @@ export function registerProviderHandlers(ipcMain: IpcMain, ctx: HandlerContext):
     const aiSettings = setDefaultProvider(state, validateIpcInput(providerIdSchema, providerId, 'providers:setDefault'));
     await ctx.setState({ ...state });
     return aiSettings;
+  });
+
+  ipcMain.handle('providers:listModels', async (_, input: unknown) => {
+    return listProviderModels(
+      ctx.getState(),
+      validateIpcInput(aiProviderModelListRequestSchema, input, 'providers:listModels')
+    );
   });
 
   ipcMain.handle('providers:test', async (_, providerId: unknown) => {

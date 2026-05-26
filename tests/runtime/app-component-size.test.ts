@@ -35,7 +35,6 @@ const BASELINES: Record<string, number> = {
   // tool-activity.tsx split into tool/* modules by U47-4 — now 452 lines.
   // AgentChatView.tsx split into agent/* modules by U47-5 — now 371 lines.
   'src/components/pages/ProjectSettingsPage.tsx': 1035,
-  'src/components/settings-modals.tsx': 967,
   'src/components/modals/AppSettingsModal.tsx': 848,
   'src/components/chat/ChatComposer.tsx': 651
 };

@@ -24,7 +24,8 @@ import { AssetProviderSettingsPage } from '../../src/components/pages/AssetProvi
 import { ProjectAgentRunsSettings, ProjectAgentSettings, ProjectSettingsPage, ProjectTokenUsageSettings } from '../../src/components/pages/ProjectSettingsPage.tsx';
 import { McpManagementPage, McpRawAuditCard, McpRawDiagnosticsCard, McpToolSnapshotCard, PluginListCard, ServerListRow } from '../../src/components/pages/McpManagementPage.tsx';
 import { McpRegistrySettingsPage } from '../../src/components/pages/McpRegistrySettingsPage.tsx';
-import { McpPluginModal, ProviderEditor } from '../../src/components/settings-modals.tsx';
+import { ProviderEditor } from '../../src/components/modals/ProviderEditor.tsx';
+import { McpPluginModal } from '../../src/components/settings-modals.tsx';
 import {
   contextUsage,
   createUpdateSnapshot,

@@ -1,5 +1,5 @@
 import type { Project, CreateProjectInput, DeleteProjectResult, ProjectFileEntry, ProjectFileContent, ProjectAgentPolicy, ProjectSessionRuntimeId, ProjectSessionEffort, AgentPermissionMode, ProjectMemoryFileSummary, ProjectMemoryFileContent, ProjectMemoryClearScope, SessionCheckpointPreview, ProjectHtmlPreviewServerResult, ProjectHtmlPreviewServerStopResult } from './project';
-import type { AiProvider, AiSettings, AiProviderInput, AiTestResult, AiProviderAuthStyle, AgentSettings, WebSearchSettings, WebResearchMetrics, WebSearchQualityReport } from './provider';
+import type { AiProvider, AiSettings, AiProviderInput, AiProviderModelListRequest, AiProviderModelListResult, AiTestResult, AiProviderAuthStyle, AgentSettings, WebSearchSettings, WebResearchMetrics, WebSearchQualityReport } from './provider';
 import type { McpConnectionSnapshot, McpPlugin, McpRawAuditEntry, McpRawRequestResult, McpSettings, McpToolSnapshot, UnitySettings, UnityHealthResult, UnityMcpServerInfo, UnityMcpTool, UnityMcpCallResult, UnityMcpResource, UnityMcpPrompt, UnityMcpPromptResult, UnityMcpResourceTemplate, UnityMcpCompletionResult, McpPluginKind, McpPluginInput, PlatformChoice, ProjectSetupMode, EngineProjectDimension, EnvironmentDiagnostics, EnvironmentActionKind, EnvironmentActionResult, EnvironmentTask, InstalledUnityEditorOption, FolderPickerResult } from './unity';
 import type { AgentRuntimeCapabilityReport, AgentRuntimeStatus, AgentReplayLog, AgentSkillCatalogResult, AgentSkillRegistrySnapshot } from './agent';
 import type { PromptStreamEvent, PromptStreamHandle, AgentUserInputResponse } from './stream';
@@ -187,6 +187,7 @@ export interface FunPlayApi {
   updateProvider: (providerId: string, input: AiProviderInput) => Promise<AiProvider>;
   deleteProvider: (providerId: string) => Promise<{ success: true }>;
   setDefaultProvider: (providerId: string) => Promise<AiSettings>;
+  listProviderModels: (input: AiProviderModelListRequest) => Promise<AiProviderModelListResult>;
   testProvider: (providerId: string) => Promise<AiTestResult>;
   runClaudeDoctor: (input?: { providerId?: string; projectId?: string; live?: boolean }) => Promise<RuntimeDoctorResult>;
   runProviderDoctor: (providerId: string, input?: { projectId?: string; live?: boolean }) => Promise<RuntimeDoctorResult>;

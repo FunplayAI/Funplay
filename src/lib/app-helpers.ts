@@ -841,6 +841,19 @@ export function getFolderNameFromPath(projectPath: string): string {
   return projectPath.trim().replace(/\/+$/g, '').split('/').filter(Boolean).pop() ?? '';
 }
 
+export function resolveOnboardingProjectName(input: {
+  mode: ProjectSetupMode;
+  projectPath: string;
+  projectName: string;
+  fallback: string;
+}): string {
+  const folderName = getFolderNameFromPath(input.projectPath);
+  const formName = input.projectName.trim();
+  return input.mode === 'import'
+    ? folderName || formName || input.fallback
+    : formName || folderName || input.fallback;
+}
+
 export function formatAbsoluteTime(date: string): string {
   const language = getDocumentLanguage();
   return new Date(date).toLocaleString(language === 'en-US' ? 'en-US' : 'zh-CN', {

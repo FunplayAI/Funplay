@@ -653,6 +653,32 @@
   white-space: nowrap;
 }
 
+.provider-model-fetch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--fp-space-3);
+  align-items: start;
+}
+
+.provider-model-fetch-button {
+  margin-top: var(--fp-space-6);
+  white-space: nowrap;
+}
+
+.provider-model-fetch-message {
+  color: var(--text-soft);
+  font-size: var(--fp-text-xs);
+  line-height: var(--fp-leading-normal);
+}
+
+.provider-model-fetch-message.success {
+  color: var(--success);
+}
+
+.provider-model-fetch-message.error {
+  color: var(--danger);
+}
+
 .provider-advanced-section {
   padding: 10px var(--ui-density-pad);
   border: 1px solid var(--fp-elevated-card-border-line);

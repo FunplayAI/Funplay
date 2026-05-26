@@ -1,7 +1,7 @@
 import './test-helpers.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractSessionMessagePreview } from '../../src/lib/app-helpers.ts';
+import { extractSessionMessagePreview, resolveOnboardingProjectName } from '../../src/lib/app-helpers.ts';
 import type { ChatMessage } from '../../shared/types.ts';
 
 test('session message preview strips internal token usage projection', () => {
@@ -24,4 +24,22 @@ test('session message preview hides usage-only legacy content', () => {
   };
 
   assert.equal(extractSessionMessagePreview(message), '');
+});
+
+test('imported projects prefer the folder name over stale create-form names', () => {
+  assert.equal(resolveOnboardingProjectName({
+    mode: 'import',
+    projectPath: '/Users/demo/Games/Bird',
+    projectName: 'Old Form Name',
+    fallback: 'Untitled Project'
+  }), 'Bird');
+});
+
+test('created projects still prefer the explicit form name', () => {
+  assert.equal(resolveOnboardingProjectName({
+    mode: 'create',
+    projectPath: '/Users/demo/Games/Bird',
+    projectName: 'New Game',
+    fallback: 'Untitled Project'
+  }), 'New Game');
 });

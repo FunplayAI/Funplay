@@ -116,6 +116,17 @@ export interface AiProviderInput {
   notes?: string;
 }
 
+export interface AiProviderModelListRequest {
+  providerId?: string;
+  provider: AiProviderInput;
+}
+
+export interface AiProviderModelListResult {
+  models: AiProviderModel[];
+  fetchedAt: string;
+  sourceUrl: string;
+}
+
 export interface AiProviderPreset {
   id: string;
   name: string;
