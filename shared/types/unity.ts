@@ -15,6 +15,7 @@ export type EnvironmentCheckStatus = 'passed' | 'warning' | 'failed' | 'pending'
 export type EnvironmentActionKind =
   | 'install_unity_hub'
   | 'open_unity_hub'
+  | 'select_unity_hub'
   | 'install_unity_editor'
   | 'create_unity_project'
   | 'import_unity_project'
@@ -257,6 +258,7 @@ export interface UnitySettings {
   lastMessage?: string;
   lastCreatedProjectDirectory?: string;
   lastAssignedMcpPort?: number;
+  unityHubPath?: string;
 }
 
 export interface UnityHealthResult {

@@ -9,7 +9,8 @@ import type {
   EnvironmentTask,
   EnvironmentTaskStage,
   EnvironmentTaskStatus,
-  ProjectSetupMode
+  ProjectSetupMode,
+  UnitySettings
 } from '../../shared/types';
 import {
   environmentTasks,
@@ -27,6 +28,7 @@ import {
   isValidUnityProject,
   normalizeProjectPath,
   resolveTargetProjectPath,
+  getUnityHubLaunchPath,
   ensureBothInputSystemsEnabled,
   installBridgeDependency,
   configureUnityMcpPort,
@@ -45,33 +47,106 @@ const shell = electron.shell;
 
 async function commandExists(command: string): Promise<boolean> {
   try {
-    await execFileAsync('which', [command]);
+    await execFileAsync(process.platform === 'win32' ? 'where' : 'which', [command]);
     return true;
   } catch {
     return false;
   }
 }
 
-export async function startInstallUnityHubTask(): Promise<EnvironmentTask> {
+function getUnityHubInstallerUrl(): string {
+  const override = process.env.FUNPLAY_UNITY_HUB_DOWNLOAD_URL?.trim();
+  if (override) {
+    return override;
+  }
+  if (process.platform === 'darwin') {
+    return process.arch === 'arm64'
+      ? 'https://public-cdn.cloud.unity3d.com/hub/prod/UnityHubSetup-arm64.dmg'
+      : 'https://public-cdn.cloud.unity3d.com/hub/prod/UnityHubSetup-x64.dmg';
+  }
+  if (process.platform === 'win32') {
+    return 'https://public-cdn.cloud.unity3d.com/hub/prod/UnityHubSetup-x64.exe';
+  }
+  return process.env.FUNPLAY_UNITY_HUB_LINUX_PACKAGE_FORMAT === 'rpm'
+    ? 'https://public-cdn.cloud.unity3d.com/hub/prod/UnityHubSetup-x86_64.rpm'
+    : 'https://public-cdn.cloud.unity3d.com/hub/prod/UnityHubSetup-amd64.deb';
+}
+
+async function getUnityHubPackageInstallPlan(): Promise<{
+  command: string;
+  args: string[];
+  label: string;
+} | null> {
+  if (process.platform === 'darwin' && await commandExists('brew')) {
+    return {
+      command: 'brew',
+      args: ['install', '--cask', 'unity-hub'],
+      label: 'Homebrew'
+    };
+  }
+  if (process.platform === 'win32' && await commandExists('winget')) {
+    return {
+      command: 'winget',
+      args: ['install', '--id', 'Unity.UnityHub', '--exact', '--accept-source-agreements', '--accept-package-agreements'],
+      label: 'winget'
+    };
+  }
+  return null;
+}
+
+async function openUnityHubOfficialInstaller(taskId: string): Promise<void> {
+  const installerUrl = getUnityHubInstallerUrl();
+  taskStageUpdate(taskId, {
+    stage: 'waiting_manual',
+    status: 'needs_user',
+    progress: 24,
+    message: '已打开 Unity Hub 官方安装器，请完成安装后返回重新检测。',
+    log: `打开官方安装器：${installerUrl}`
+  });
+  await shell.openExternal(installerUrl);
+}
+
+function watchUnityHubInstallCompletion(taskId: string, input?: Pick<UnitySettings, 'unityHubPath'>): void {
+  const interval = setInterval(() => {
+    if (isUnityHubInstalled(input)) {
+      clearInterval(interval);
+      completeTask(taskId, 'completed', '已检测到 Unity Hub 安装完成。');
+    }
+  }, 5000);
+
+  setTimeout(() => {
+    clearInterval(interval);
+    if (environmentTasks.get(taskId)?.status !== 'completed') {
+      completeTask(taskId, 'needs_user', '请完成 Unity Hub 安装后返回重新检测。', 100);
+    }
+  }, 10 * 60 * 1000);
+}
+
+export async function startInstallUnityHubTask(input?: Pick<UnitySettings, 'unityHubPath'>): Promise<EnvironmentTask> {
   const task = createTask('install_unity_hub', '安装 Unity Hub', '正在准备安装 Unity Hub…');
   taskStageUpdate(task.id, {
     stage: 'checking',
     status: 'running',
     progress: 8,
     message: '正在检查本机安装环境…',
-    log: '开始检测 Homebrew。'
+    log: '开始检测 Unity Hub 和可用包管理器。'
   });
 
-  const hasBrew = await commandExists('brew');
-  if (hasBrew) {
+  if (isUnityHubInstalled(input)) {
+    completeTask(task.id, 'completed', '已检测到 Unity Hub。');
+    return task;
+  }
+
+  const packageInstallPlan = await getUnityHubPackageInstallPlan();
+  if (packageInstallPlan) {
     taskStageUpdate(task.id, {
       stage: 'downloading',
       progress: 18,
       message: '正在下载 Unity Hub…',
-      log: '已检测到 Homebrew，开始执行 brew install --cask unity-hub。'
+      log: `已检测到 ${packageInstallPlan.label}，开始执行 ${packageInstallPlan.command} ${packageInstallPlan.args.join(' ')}。`
     });
 
-    const child = spawn('brew', ['install', '--cask', 'unity-hub'], {
+    const child = spawn(packageInstallPlan.command, packageInstallPlan.args, {
       stdio: ['ignore', 'pipe', 'pipe']
     });
 
@@ -96,7 +171,7 @@ export async function startInstallUnityHubTask(): Promise<EnvironmentTask> {
         message: '正在校验 Unity Hub 安装结果…',
         log: '安装命令已结束，开始校验。'
       });
-      if (code === 0 && isUnityHubInstalled()) {
+      if (code === 0 && isUnityHubInstalled(input)) {
         completeTask(task.id, 'completed', 'Unity Hub 安装完成。');
       } else if (code === 0) {
         taskStageUpdate(task.id, {
@@ -106,36 +181,21 @@ export async function startInstallUnityHubTask(): Promise<EnvironmentTask> {
           message: '安装命令已完成，但尚未检测到 Unity Hub，请手动确认是否已安装。',
           log: '等待用户手动确认 Unity Hub 安装结果。'
         });
+        watchUnityHubInstallCompletion(task.id, input);
       } else {
-        completeTask(task.id, 'failed', '通过 Homebrew 安装 Unity Hub 失败，请手动安装。', 100);
+        void openUnityHubOfficialInstaller(task.id).catch((error) => {
+          taskStageUpdate(task.id, {
+            log: error instanceof Error ? error.message : String(error)
+          });
+        });
+        watchUnityHubInstallCompletion(task.id, input);
       }
     });
     return task;
   }
 
-  taskStageUpdate(task.id, {
-    stage: 'waiting_manual',
-    status: 'needs_user',
-    progress: 24,
-    message: '未检测到 Homebrew，已打开 Unity Hub 官方下载页。',
-    log: '未检测到 Homebrew，切换为官方下载安装页。'
-  });
-  await shell.openExternal('https://unity.com/download');
-
-  const interval = setInterval(() => {
-    if (isUnityHubInstalled()) {
-      clearInterval(interval);
-      completeTask(task.id, 'completed', '已检测到 Unity Hub 安装完成。');
-    }
-  }, 5000);
-
-  setTimeout(() => {
-    clearInterval(interval);
-    if (environmentTasks.get(task.id)?.status !== 'completed') {
-      completeTask(task.id, 'needs_user', '请完成 Unity Hub 安装后返回重新检测。', 100);
-    }
-  }, 10 * 60 * 1000);
-
+  await openUnityHubOfficialInstaller(task.id);
+  watchUnityHubInstallCompletion(task.id, input);
   return task;
 }
 
@@ -143,6 +203,7 @@ export async function detectRecommendedUnityVersion(input?: {
   mode?: ProjectSetupMode;
   dimension?: EngineProjectDimension;
   unityEditorVersion?: string | null;
+  unityHubPath?: string;
 }): Promise<UnityVersionRecommendation | null> {
   const preferredVersion = input?.unityEditorVersion?.trim();
   if (preferredVersion) {
@@ -152,7 +213,7 @@ export async function detectRecommendedUnityVersion(input?: {
     };
   }
 
-  const binary = getUnityHubBinary();
+  const binary = getUnityHubBinary(input);
   if (!binary) {
     return null;
   }
@@ -189,6 +250,7 @@ export async function startInstallUnityEditorTask(input?: {
   mode?: ProjectSetupMode;
   dimension?: EngineProjectDimension;
   unityEditorVersion?: string | null;
+  unityHubPath?: string;
 }): Promise<EnvironmentTask> {
   const task = createTask('install_unity_editor', '安装 Unity Editor', '正在准备安装 Unity Editor…');
   taskStageUpdate(task.id, {
@@ -199,7 +261,7 @@ export async function startInstallUnityEditorTask(input?: {
     log: '开始检查 Unity Hub。'
   });
 
-  const binary = getUnityHubBinary();
+  const binary = getUnityHubBinary(input);
   if (!binary) {
     completeTask(task.id, 'failed', '未检测到 Unity Hub，请先安装 Hub。');
     return task;
@@ -214,7 +276,7 @@ export async function startInstallUnityEditorTask(input?: {
       message: '未能自动获取推荐 Unity 版本，已打开 Unity Hub，请手动安装 LTS 版本。',
       log: '自动查询 Unity 版本失败。'
     });
-    await shell.openPath(join(binary, '../../..'));
+    await shell.openPath(getUnityHubLaunchPath(input) ?? binary);
     return task;
   }
 

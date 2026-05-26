@@ -69,6 +69,7 @@ const projectSessionEffortSchema = z.custom<ProjectSessionEffort>((value) => ['a
 const environmentActionKindSchema = z.enum([
   'install_unity_hub',
   'open_unity_hub',
+  'select_unity_hub',
   'install_unity_editor',
   'create_unity_project',
   'import_unity_project',
@@ -213,7 +214,8 @@ export const updateSettingsSchema = z.object({
   lastStatus: unityHealthStatusSchema.optional(),
   lastMessage: optionalTrimmedString(1000),
   lastCreatedProjectDirectory: optionalTrimmedString(2048),
-  lastAssignedMcpPort: z.number().int().min(1).max(65535).optional()
+  lastAssignedMcpPort: z.number().int().min(1).max(65535).optional(),
+  unityHubPath: optionalTrimmedString(2048)
 }).strict().refine((input) => Object.keys(input).length > 0, 'At least one setting must be provided.');
 
 export const updateAgentSettingsSchema = z.object({

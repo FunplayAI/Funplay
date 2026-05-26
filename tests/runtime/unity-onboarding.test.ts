@@ -29,7 +29,7 @@ import {
   listEnvironmentTasks,
   taskStageUpdate
 } from '../../electron/main/environment-task-manager.ts';
-import { listEnvironmentTasksForState } from '../../electron/main/environment-service.ts';
+import { isLikelyUnityHubPath, listEnvironmentTasksForState, resolveUnityHubBinaryPath } from '../../electron/main/environment-service.ts';
 import { buildMcpPlugin, buildProject, buildState, buildStdioMcpPlugin, readJsonRequest, sendJsonRpc, startSdkHttpMcpServer, startTestMcpServer } from './test-helpers.ts';
 
 async function startUnityMcpServer(options: { projectPath?: string } = {}): Promise<{
@@ -137,6 +137,21 @@ test('environment task updates preserve existing fields and terminal completion'
   const manual = listEnvironmentTasks().find((item) => item.id === manualTask.id);
   assert.equal(manual?.status, 'needs_user');
   assert.equal(manual?.stage, 'waiting_manual');
+});
+
+test('unity hub detection accepts a custom app path', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'funplay-unity-hub-'));
+  const hubPath = join(root, 'Unity Hub.app');
+  const binaryPath = join(hubPath, 'Contents', 'MacOS', 'Unity Hub');
+  try {
+    await mkdir(join(hubPath, 'Contents', 'MacOS'), { recursive: true });
+    await writeFile(binaryPath, '', 'utf8');
+
+    assert.equal(isLikelyUnityHubPath(hubPath), true);
+    assert.equal(resolveUnityHubBinaryPath(hubPath), binaryPath);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('agent engine control tools use generic names and return unsupported for unfinished adapters', async () => {

@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createServer } from 'node:net';
@@ -19,6 +19,7 @@ import type {
   PlatformChoice,
   ProjectRuntimeState,
   ProjectSetupMode,
+  UnitySettings,
   UnityReleaseChannel
 } from '../../shared/types';
 import { checkUnityHealth } from './unity-bridge';
@@ -61,8 +62,79 @@ export interface UnityVersionRecommendation {
   strategyLabel: string;
 }
 
-function getUnityHubCandidates(): string[] {
-  return ['/Applications/Unity Hub.app', join(process.env.HOME ?? '', 'Applications/Unity Hub.app')];
+type UnityHubInstallSource = 'standard' | 'custom';
+
+function normalizeLocalPath(localPath: string): string {
+  return localPath.trim().replace(/^~/, process.env.HOME ?? '~');
+}
+
+function getStandardUnityHubCandidates(): string[] {
+  if (process.platform === 'darwin') {
+    return ['/Applications/Unity Hub.app', join(process.env.HOME ?? '', 'Applications/Unity Hub.app')];
+  }
+  if (process.platform === 'win32') {
+    return [
+      join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Unity Hub', 'Unity Hub.exe'),
+      join(process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)', 'Unity Hub', 'Unity Hub.exe'),
+      join(process.env.LocalAppData ?? '', 'Programs', 'Unity Hub', 'Unity Hub.exe')
+    ].filter(Boolean);
+  }
+  return [
+    '/opt/unityhub/unityhub',
+    '/usr/bin/unityhub',
+    '/usr/local/bin/unityhub',
+    join(process.env.HOME ?? '', 'Applications', 'UnityHub.AppImage'),
+    join(process.env.HOME ?? '', 'Applications', 'Unity Hub.AppImage')
+  ];
+}
+
+function getUnityHubCandidates(settings?: Pick<UnitySettings, 'unityHubPath'>): Array<{ path: string; source: UnityHubInstallSource }> {
+  const candidates: Array<{ path: string; source: UnityHubInstallSource }> = getStandardUnityHubCandidates().map((path) => ({ path, source: 'standard' }));
+  const customPath = settings?.unityHubPath ? normalizeLocalPath(settings.unityHubPath) : '';
+  if (customPath) {
+    candidates.push({ path: customPath, source: 'custom' });
+  }
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    if (!candidate.path || seen.has(candidate.path)) {
+      return false;
+    }
+    seen.add(candidate.path);
+    return true;
+  });
+}
+
+export function resolveUnityHubBinaryPath(hubPath: string): string {
+  if (hubPath.endsWith('.app')) {
+    return join(hubPath, 'Contents', 'MacOS', 'Unity Hub');
+  }
+  const windowsBinary = join(hubPath, 'Unity Hub.exe');
+  if (existsSync(windowsBinary)) {
+    return windowsBinary;
+  }
+  const linuxBinary = join(hubPath, 'unityhub');
+  if (existsSync(linuxBinary)) {
+    return linuxBinary;
+  }
+  return hubPath;
+}
+
+export function isLikelyUnityHubPath(localPath: string): boolean {
+  const normalized = normalizeLocalPath(localPath);
+  if (!normalized || !existsSync(normalized)) {
+    return false;
+  }
+  const name = basename(normalized).toLowerCase();
+  if (['unity hub.app', 'unity hub.exe', 'unityhub', 'unityhub.appimage', 'unity hub.appimage'].includes(name)) {
+    return true;
+  }
+  return existsSync(join(normalized, 'Contents', 'MacOS', 'Unity Hub')) ||
+    existsSync(join(normalized, 'Unity Hub.exe')) ||
+    existsSync(join(normalized, 'unityhub'));
+}
+
+function findUnityHubInstall(settings?: Pick<UnitySettings, 'unityHubPath'>): { path: string; source: UnityHubInstallSource } | null {
+  return getUnityHubCandidates(settings).find((candidate) => isLikelyUnityHubPath(candidate.path)) ?? null;
 }
 
 export function findUnityEditorInstall(): { installed: boolean; versions: string[] } {
@@ -341,23 +413,38 @@ function formatPlatformLabel(platform: PlatformChoice): string {
   }
 }
 
-export function isUnityHubInstalled(): boolean {
-  return getUnityHubCandidates().some((path) => existsSync(path));
+export function isUnityHubInstalled(settings?: Pick<UnitySettings, 'unityHubPath'>): boolean {
+  return Boolean(findUnityHubInstall(settings));
 }
 
 function isUnityHubRunning(): boolean {
   try {
-    execFileSync('pgrep', ['-x', 'Unity Hub'], { stdio: 'ignore' });
+    if (process.platform === 'win32') {
+      const output = execFileSync('tasklist', ['/FI', 'IMAGENAME eq Unity Hub.exe'], { encoding: 'utf8' });
+      return output.toLowerCase().includes('unity hub.exe');
+    }
+    if (process.platform === 'darwin') {
+      execFileSync('pgrep', ['-x', 'Unity Hub'], { stdio: 'ignore' });
+      return true;
+    }
+    execFileSync('pgrep', ['-f', 'unityhub'], { stdio: 'ignore' });
     return true;
   } catch {
     return false;
   }
 }
 
-export function getUnityHubBinary(): string | null {
-  const candidates = getUnityHubCandidates();
-  const installedPath = candidates.find((path) => existsSync(path));
-  return installedPath ? join(installedPath, 'Contents', 'MacOS', 'Unity Hub') : null;
+export function getUnityHubBinary(settings?: Pick<UnitySettings, 'unityHubPath'>): string | null {
+  const installed = findUnityHubInstall(settings);
+  if (!installed) {
+    return null;
+  }
+  const binary = resolveUnityHubBinaryPath(installed.path);
+  return existsSync(binary) ? binary : installed.path;
+}
+
+export function getUnityHubLaunchPath(settings?: Pick<UnitySettings, 'unityHubPath'>): string | null {
+  return findUnityHubInstall(settings)?.path ?? null;
 }
 
 export const listEnvironmentTasks = listEnvironmentTasksInternal;
@@ -588,7 +675,8 @@ export async function diagnoseEnvironment(
     };
   }
 
-  const unityHubInstalled = isUnityHubInstalled();
+  const unityHubInstall = findUnityHubInstall(state.settings);
+  const unityHubInstalled = Boolean(unityHubInstall);
   const unityHubRunning = unityHubInstalled && isUnityHubRunning();
   checks.push({
     id: 'unity-hub',
@@ -598,8 +686,10 @@ export async function diagnoseEnvironment(
     detail: unityHubInstalled
       ? unityHubRunning
         ? '已检测到 Unity Hub，且当前已打开。'
-        : '已检测到 Unity Hub。'
-      : '未检测到 Unity Hub，无法继续一键安装 Editor。',
+        : unityHubInstall?.source === 'custom'
+          ? `已检测到自定义 Unity Hub：${unityHubInstall.path}`
+          : '已检测到 Unity Hub。'
+      : '未检测到 Unity Hub。可自动安装或打开当前系统的官方安装器，也可以手动选择已安装的 Unity Hub。',
     actions: unityHubInstalled
       ? unityHubRunning
         ? []
@@ -607,9 +697,14 @@ export async function diagnoseEnvironment(
       : [
           {
             id: 'install_unity_hub',
-            label: '一键安装 Unity Hub',
-            description: '打开 Unity Hub 官方下载页。',
+            label: '安装 Unity Hub',
+            description: '优先使用包管理器自动安装；不可用时打开官方安装器。',
             primary: true
+          },
+          {
+            id: 'select_unity_hub',
+            label: '选择已安装 Hub',
+            description: '如果 Unity Hub 装在非标准目录，请手动选择。'
           }
         ]
   });
@@ -915,7 +1010,9 @@ export async function runEnvironmentAction(
   const targetProjectPath = resolveTargetProjectPath(input);
   switch (input.actionId) {
     case 'install_unity_hub': {
-      const task = await startInstallUnityHubTask();
+      const task = await startInstallUnityHubTask({
+        unityHubPath: state.settings.unityHubPath
+      });
       return {
         actionId: input.actionId,
         status: 'opened',
@@ -924,27 +1021,59 @@ export async function runEnvironmentAction(
       };
     }
     case 'open_unity_hub': {
-      const candidates = getUnityHubCandidates();
-      const installedPath = candidates.find((path) => existsSync(path));
-      if (!installedPath) {
+      const installed = findUnityHubInstall(state.settings);
+      if (!installed) {
         return {
           actionId: input.actionId,
           status: 'failed',
           message: '未检测到 Unity Hub。'
         };
       }
-      await shell.openPath(installedPath);
+      await shell.openPath(installed.path);
       return {
         actionId: input.actionId,
         status: 'opened',
         message: '已尝试打开 Unity Hub。'
       };
     }
+    case 'select_unity_hub': {
+      const result = await electron.dialog.showOpenDialog({
+        title: '选择 Unity Hub',
+        message: '选择已安装的 Unity Hub 应用或可执行文件。',
+        properties: ['openFile', 'openDirectory'],
+        buttonLabel: '选择 Unity Hub'
+      });
+      const selectedPath = result.filePaths[0];
+      if (result.canceled || !selectedPath) {
+        return {
+          actionId: input.actionId,
+          status: 'failed',
+          message: '已取消选择 Unity Hub。'
+        };
+      }
+      if (!isLikelyUnityHubPath(selectedPath)) {
+        return {
+          actionId: input.actionId,
+          status: 'failed',
+          message: '选择的路径不像 Unity Hub，请选择 Unity Hub.app、Unity Hub.exe 或 unityhub 可执行文件。'
+        };
+      }
+      state.settings = {
+        ...state.settings,
+        unityHubPath: selectedPath
+      };
+      return {
+        actionId: input.actionId,
+        status: 'completed',
+        message: `已保存 Unity Hub 路径：${selectedPath}`
+      };
+    }
     case 'install_unity_editor': {
       const task = await startInstallUnityEditorTask({
         mode: input.mode,
         dimension: input.dimension,
-        unityEditorVersion: input.mode === 'import' ? readProjectUnityEditorVersion(targetProjectPath) ?? input.unityEditorVersion : input.unityEditorVersion
+        unityEditorVersion: input.mode === 'import' ? readProjectUnityEditorVersion(targetProjectPath) ?? input.unityEditorVersion : input.unityEditorVersion,
+        unityHubPath: state.settings.unityHubPath
       });
       return {
         actionId: input.actionId,
