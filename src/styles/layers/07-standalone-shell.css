@@ -15,7 +15,7 @@
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: rgba(226, 232, 240, 0.82);
+  color: var(--fp-titlebar-text);
   -webkit-app-region: drag;
 }
 
