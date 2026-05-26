@@ -38,6 +38,34 @@ import type {
 const workspaceLayoutStorageKey = 'funplay.workspace.layout.v1';
 const uiPreferencesStorageKey = 'funplay.ui.preferences.v1';
 
+function resolveSystemLanguagePreference(): LanguagePreference {
+  if (typeof navigator === 'undefined') {
+    return 'en-US';
+  }
+  const languages = [
+    ...Array.from(navigator.languages ?? []),
+    navigator.language
+  ].filter((language): language is string => typeof language === 'string' && language.trim().length > 0);
+  for (const language of languages) {
+    const normalized = language.toLowerCase();
+    if (normalized.startsWith('zh')) {
+      return 'zh-CN';
+    }
+    if (normalized.startsWith('en')) {
+      return 'en-US';
+    }
+  }
+  return 'en-US';
+}
+
+function createDefaultUiPreferences(): UiPreferences {
+  return {
+    theme: 'light',
+    language: resolveSystemLanguagePreference(),
+    developerMode: false
+  };
+}
+
 export function countProjectMessages(project: Project): number {
   return project.sessions.reduce((total, session) => total + session.chat.length, 0);
 }
@@ -932,23 +960,24 @@ export function wait(ms: number): Promise<void> {
 }
 
 export function readUiPreferences(): UiPreferences {
+  const defaults = createDefaultUiPreferences();
   if (typeof window === 'undefined') {
-    return { theme: 'light', language: 'zh-CN', developerMode: false };
+    return defaults;
   }
 
   try {
     const raw = window.localStorage.getItem(uiPreferencesStorageKey);
     if (!raw) {
-      return { theme: 'light', language: 'zh-CN', developerMode: false };
+      return defaults;
     }
     const parsed = JSON.parse(raw) as Partial<UiPreferences>;
     return {
-      theme: parsed.theme === 'light' || parsed.theme === 'dark' || parsed.theme === 'system' ? parsed.theme : 'light',
-      language: parsed.language === 'en-US' || parsed.language === 'zh-CN' ? parsed.language : 'zh-CN',
+      theme: parsed.theme === 'light' || parsed.theme === 'dark' || parsed.theme === 'system' ? parsed.theme : defaults.theme,
+      language: parsed.language === 'en-US' || parsed.language === 'zh-CN' ? parsed.language : defaults.language,
       developerMode: parsed.developerMode === true
     };
   } catch {
-    return { theme: 'light', language: 'zh-CN', developerMode: false };
+    return defaults;
   }
 }
 
