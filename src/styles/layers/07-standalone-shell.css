@@ -68,6 +68,7 @@
 
 .welcome-screen {
   padding: 28px 32px 32px;
+  background: var(--fp-workspace-shell-bg);
 }
 
 .welcome-screen .welcome-content {
@@ -86,9 +87,18 @@
     padding: 20px;
   }
 
+  .welcome-content {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
   .welcome-hero-panel,
   .welcome-list-panel {
-    min-height: 460px;
+    min-height: auto;
+  }
+
+  .welcome-list-panel {
+    grid-template-rows: auto auto auto;
   }
 }
 
@@ -100,6 +110,18 @@
 
   .welcome-hero-panel,
   .welcome-list-panel {
-    min-height: 420px;
+    min-height: auto;
+  }
+
+  .welcome-content {
+    padding: 20px;
+  }
+
+  .welcome-hero-copy h1 {
+    font-size: 38px;
+  }
+
+  .welcome-capability-grid {
+    grid-template-columns: 1fr;
   }
 }

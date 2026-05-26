@@ -181,7 +181,7 @@ test('welcome and onboarding actions render through shared buttons', () => {
   }));
   const combinedHtml = [welcomeHtml, setupHtml, environmentHtml, completeHtml].join('\n');
 
-  assert.match(welcomeHtml, /创建新项目/);
+  assert.match(welcomeHtml, /新建游戏项目/);
   assert.match(welcomeHtml, /fp-button[^"]*welcome-project/);
   assert.match(setupHtml, /进入工作台/);
   assert.match(environmentHtml, /Open Unity/);

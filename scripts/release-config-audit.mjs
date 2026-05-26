@@ -76,6 +76,23 @@ if (publish?.releaseType !== 'release') {
   fail('Release audit failed: GitHub releaseType must publish public releases after the release workflow passes.');
 }
 
+const dmg = packageJson.build?.dmg;
+if (!dmg || dmg.backgroundColor == null || dmg.background != null) {
+  fail('Release audit failed: DMG must use a flat backgroundColor instead of packaged background image files.');
+}
+if (dmg.icon !== null) {
+  fail('Release audit failed: DMG volume icon must be disabled so hidden .VolumeIcon.icns is not shown in Finder.');
+}
+const dmgContents = Array.isArray(dmg.contents) ? dmg.contents : [];
+if (
+  dmgContents.length !== 2 ||
+  dmgContents[0]?.type !== 'file' ||
+  dmgContents[1]?.type !== 'link' ||
+  dmgContents[1]?.path !== '/Applications'
+) {
+  fail('Release audit failed: DMG contents must contain only the app and the Applications shortcut.');
+}
+
 const scripts = packageJson.scripts ?? {};
 for (const scriptName of ['release:audit', 'release:gate', 'dist:mac:split', 'dist:win:x64', 'release:verify-runtime-deps', 'release:verify-mac-updates']) {
   if (!scripts[scriptName]) {

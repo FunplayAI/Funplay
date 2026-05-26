@@ -86,6 +86,27 @@
     "asarUnpack": [
       "node_modules/@anthropic-ai/claude-agent-sdk-*/**/*"
     ],
+    "dmg": {
+      "backgroundColor": "#f4f6fb",
+      "icon": null,
+      "window": {
+        "width": 540,
+        "height": 360
+      },
+      "contents": [
+        {
+          "x": 155,
+          "y": 130,
+          "type": "file"
+        },
+        {
+          "x": 385,
+          "y": 130,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "resources/icon.icns",
