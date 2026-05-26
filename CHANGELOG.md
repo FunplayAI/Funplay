@@ -6,6 +6,12 @@ This project follows a pre-1.0 release flow. Minor versions may include breaking
 
 ## Unreleased
 
+## 0.3.2
+
+### Fixed
+
+- Fixed packaged runtime dependency verification on Windows by normalizing `app.asar` entry separators before checking required runtime files.
+
 ## 0.3.1
 
 ### Fixed

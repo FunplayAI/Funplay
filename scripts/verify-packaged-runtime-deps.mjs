@@ -1,5 +1,5 @@
 import { readdir, stat } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
@@ -36,7 +36,7 @@ async function collectAsars(directory, found = []) {
 }
 
 function normalizeEntry(entry) {
-  return entry.replace(/^\/+/, '').split(sep).join('/');
+  return entry.replaceAll('\\', '/').replace(/^\/+/, '');
 }
 
 async function verifyAsar(asarPath) {
