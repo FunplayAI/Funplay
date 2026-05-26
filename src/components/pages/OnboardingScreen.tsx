@@ -1,5 +1,18 @@
 import { useEffect, useState, type JSX } from 'react';
-import { ArrowLeft, ArrowRight, CheckCircle2, FolderOpen, Search } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Box,
+  Boxes,
+  CheckCircle2,
+  Cuboid,
+  FilePlus2,
+  FolderInput,
+  FolderOpen,
+  Gamepad2,
+  Globe2,
+  Search
+} from 'lucide-react';
 import type {
   EngineProjectDimension,
   EnvironmentActionResult,
@@ -22,6 +35,23 @@ import {
 } from '../../lib/app-helpers';
 import type { LanguagePreference } from '../../lib/app-types';
 import { Button, SelectField, TextField } from '../ui/index';
+
+function PlatformCardIcon(props: { id: PlatformChoice }): JSX.Element {
+  const Icon = props.id === 'unity'
+    ? Cuboid
+    : props.id === 'cocos'
+      ? Gamepad2
+      : props.id === 'godot'
+        ? Boxes
+        : props.id === 'unreal'
+          ? Box
+          : Globe2;
+  return (
+    <span className="option-card-icon" aria-hidden="true">
+      <Icon size={18} />
+    </span>
+  );
+}
 
 export function StepIndicator(props: { step: 1 | 2 | 3 }): JSX.Element {
   return (
@@ -305,52 +335,99 @@ export function OnboardingScreen(props: {
           ) : props.step === 1 ? (
             <div className="onboarding-main-panel">
               <div className="onboarding-main-scroll">
-                <div className="onboarding-body">
-                  <div className="onboarding-fixed-header">
-                    <StepIndicator step={1} />
-                    <div>
-                      <h2>{t('选择项目来源并准备引擎项目', 'Choose a project source and prepare the engine project')}</h2>
-                    </div>
-                  </div>
-
-                  <div className="onboarding-setup-stack">
-                    <div className="onboarding-section-card">
-                      <div className="section-heading">{t('项目来源', 'Project Source')}</div>
-                      <div className="setup-mode-grid">
-                        <Button variant="ghost" size="compact" className={`setup-mode-card ${props.mode === 'create' ? 'selected' : ''}`} onClick={() => props.onModeChange('create')}>
-                          <strong>{t('新建项目', 'Create New Project')}</strong>
-                          <span>{t('从一个新的项目开始。', 'Start from a brand-new project.')}</span>
-                        </Button>
-                        <Button variant="ghost" size="compact" className={`setup-mode-card ${props.mode === 'import' ? 'selected' : ''}`} onClick={() => props.onModeChange('import')}>
-                          <strong>{t('导入已有项目', 'Import Existing Project')}</strong>
-                          <span>{t('接入已经存在的项目目录。', 'Connect an existing project folder.')}</span>
-                        </Button>
+                <div className="onboarding-body onboarding-body-wizard">
+                  <div className="onboarding-wizard-card">
+                    <aside className="onboarding-wizard-rail" aria-label={t('配置步骤', 'Setup steps')}>
+                      <StepIndicator step={1} />
+                      <div className="onboarding-rail-copy">
+                        <div className="section-heading">{t('项目配置向导', 'Project Setup')}</div>
+                        <h2>{t('选择项目入口', 'Choose how to start')}</h2>
+                        <p>{t('Funplay 会根据项目来源和引擎类型，把后续环境检查收进下一步。', 'Funplay will tailor the next environment check from your source and engine choice.')}</p>
                       </div>
-                      <div className="platform-grid">
-                        {platformCards.map((card) => (
-                          <Button
-                            key={card.id}
-                            variant="ghost"
-                            size="compact"
-                            className={`platform-card ${props.platform === card.id ? 'selected' : ''}`}
-                            onClick={() => !card.disabled && props.onPlatformChange(card.id)}
-                            disabled={card.disabled}
-                          >
-                            <div>{card.name}</div>
-                            <span>{card.description}</span>
+                      <div className="onboarding-rail-summary">
+                        <div>
+                          <span>{t('来源', 'Source')}</span>
+                          <strong>{props.mode === 'create' ? t('新建项目', 'Create') : t('导入项目', 'Import')}</strong>
+                        </div>
+                        <div>
+                          <span>{t('引擎', 'Engine')}</span>
+                          <strong>{formatPlatformLabel(props.platform)}</strong>
+                        </div>
+                        <div>
+                          <span>{t('下一步', 'Next')}</span>
+                          <strong>{isGenericProject ? t('进入工作台', 'Enter workspace') : t('环境体检', 'Environment check')}</strong>
+                        </div>
+                      </div>
+                    </aside>
+
+                    <div className="onboarding-wizard-content">
+                      <section className="onboarding-choice-section" aria-labelledby="project-source-title">
+                        <div className="onboarding-section-heading">
+                          <div>
+                            <div className="section-heading">{t('项目来源', 'Project Source')}</div>
+                            <h3 id="project-source-title">{t('你要从哪里开始？', 'Where do you want to start?')}</h3>
+                          </div>
+                          <span>{t('第 1 步 / 共 3 步', 'Step 1 of 3')}</span>
+                        </div>
+                        <div className="setup-mode-grid">
+                          <Button variant="ghost" size="compact" className={`setup-mode-card ${props.mode === 'create' ? 'selected' : ''}`} onClick={() => props.onModeChange('create')}>
+                            <span className="option-card-icon" aria-hidden="true"><FilePlus2 size={18} /></span>
+                            <span className="option-card-copy">
+                              <strong>{t('新建项目', 'Create New Project')}</strong>
+                              <span>{t('从玩法想法或空工程开始。', 'Start from a gameplay idea or blank workspace.')}</span>
+                            </span>
                           </Button>
-                        ))}
-                      </div>
-                    </div>
+                          <Button variant="ghost" size="compact" className={`setup-mode-card ${props.mode === 'import' ? 'selected' : ''}`} onClick={() => props.onModeChange('import')}>
+                            <span className="option-card-icon" aria-hidden="true"><FolderInput size={18} /></span>
+                            <span className="option-card-copy">
+                              <strong>{t('导入已有项目', 'Import Existing Project')}</strong>
+                              <span>{t('接入本机已有的游戏或 Web 项目。', 'Connect an existing local game or web project.')}</span>
+                            </span>
+                          </Button>
+                        </div>
+                      </section>
 
-                    <div className="onboarding-section-card">
+                      <section className="onboarding-choice-section" aria-labelledby="project-platform-title">
+                        <div className="onboarding-section-heading compact">
+                          <div>
+                            <div className="section-heading">{t('项目类型', 'Project Type')}</div>
+                            <h3 id="project-platform-title">{t('选择主要工作流', 'Choose the main workflow')}</h3>
+                          </div>
+                        </div>
+                        <div className="platform-grid">
+                          {platformCards.map((card) => (
+                            <Button
+                              key={card.id}
+                              variant="ghost"
+                              size="compact"
+                              className={`platform-card ${props.platform === card.id ? 'selected' : ''}`}
+                              onClick={() => !card.disabled && props.onPlatformChange(card.id)}
+                              disabled={card.disabled}
+                            >
+                              <PlatformCardIcon id={card.id} />
+                              <span className="option-card-copy">
+                                <strong>{card.name}</strong>
+                                <span>{card.description}</span>
+                              </span>
+                            </Button>
+                          ))}
+                        </div>
+                      </section>
+
                       {(props.platform === 'unity' || props.platform === 'cocos') && props.mode === 'create' ? (
-                        <>
-                          <div className="section-heading">{t('项目类型', 'Project Type')}</div>
+                        <section className="onboarding-choice-section compact" aria-labelledby="project-dimension-title">
+                          <div className="onboarding-section-heading compact">
+                            <div>
+                              <div className="section-heading">{t('维度', 'Dimension')}</div>
+                              <h3 id="project-dimension-title">{t('选择项目维度', 'Choose project dimension')}</h3>
+                            </div>
+                          </div>
                           <div className="setup-mode-grid compact">
                             <Button variant="ghost" size="compact" className={`setup-mode-card ${props.dimension === '2d' ? 'selected' : ''}`} onClick={() => props.onDimensionChange('2d')}>
-                              <strong>{t('2D 项目', '2D Project')}</strong>
-                              <span>{t('像素、横版、卡牌或其他 2D 原型。', 'Pixel art, side-scrollers, card games, or other 2D prototypes.')}</span>
+                              <span className="option-card-copy">
+                                <strong>{t('2D 项目', '2D Project')}</strong>
+                                <span>{t('像素、横版、卡牌或其他 2D 原型。', 'Pixel art, side-scrollers, card games, or other 2D prototypes.')}</span>
+                              </span>
                             </Button>
                             <Button
                               variant="ghost"
@@ -359,75 +436,86 @@ export function OnboardingScreen(props: {
                               onClick={() => props.platform === 'unity' && props.onDimensionChange('3d')}
                               disabled={props.platform !== 'unity'}
                             >
-                              <strong>{t('3D 项目', '3D Project')}</strong>
-                              <span>{props.platform === 'unity' ? t('三维场景、平台跳跃、第三人称。', '3D scenes, platformers, third-person gameplay.') : t('当前引擎暂不支持 3D。', 'This engine does not support 3D yet.')}</span>
+                              <span className="option-card-copy">
+                                <strong>{t('3D 项目', '3D Project')}</strong>
+                                <span>{props.platform === 'unity' ? t('三维场景、平台跳跃、第三人称。', '3D scenes, platformers, third-person gameplay.') : t('当前引擎暂不支持 3D。', 'This engine does not support 3D yet.')}</span>
+                              </span>
                             </Button>
                           </div>
-                        </>
+                        </section>
                       ) : null}
 
-                      <div className="onboarding-panel">
-                        <div className="section-heading">{projectSetupHeading}</div>
-                        {props.mode === 'create' ? (
-                          <TextField
-                            label={t('项目名称', 'Project Name')}
-                            value={props.projectName}
-                            onValueChange={props.onProjectNameChange}
-                            placeholder={isGenericProject ? t('例如：我的工作区', 'Example: My Workspace') : t('例如：Flappy Bird', 'Example: Flappy Bird')}
-                          />
-                        ) : null}
-                        <div className="fp-field">
-                          <span className="fp-field-label">
-                            {props.mode === 'create'
-                              ? isGenericProject
-                                ? t('项目存放目录', 'Project Destination Folder')
-                                : t('项目创建目录', 'Project Destination Folder')
-                              : t('已有项目目录', 'Existing Project Folder')}
-                          </span>
-                          <div className="inline-field">
-                            <TextField
-                              className="onboarding-path-field"
-                              label={t('项目路径', 'Project path')}
-                              inputClassName="onboarding-path-input"
-                              value={props.projectPath}
-                              onValueChange={props.onPathChange}
-                              placeholder={props.mode === 'create' ? '~/Downloads' : t('选择已有项目文件夹', 'Choose an existing project folder')}
-                            />
-                            <Button variant="secondary" leadingIcon={<FolderOpen size={14} aria-hidden="true" />} onClick={props.onBrowsePath}>
-                              {t('浏览...', 'Browse...')}
-                            </Button>
+                      <section className="onboarding-panel onboarding-project-form" aria-labelledby="project-details-title">
+                        <div className="onboarding-section-heading compact">
+                          <div>
+                            <div className="section-heading">{t('项目详情', 'Project Details')}</div>
+                            <h3 id="project-details-title">{projectSetupHeading}</h3>
                           </div>
                         </div>
-                        {isGenericProject ? (
-                          <div className="helper-copy">{t('通用项目不会绑定游戏引擎，可直接进入工作台。', 'Generic projects do not bind a game engine and can enter the workspace directly.')}</div>
-                        ) : null}
+                        <div className="onboarding-form-grid">
+                          {props.mode === 'create' ? (
+                            <TextField
+                              label={t('项目名称', 'Project Name')}
+                              value={props.projectName}
+                              onValueChange={props.onProjectNameChange}
+                              placeholder={isGenericProject ? t('例如：我的工作区', 'Example: My Workspace') : t('例如：Flappy Bird', 'Example: Flappy Bird')}
+                            />
+                          ) : null}
+                          <div className="fp-field">
+                            <span className="fp-field-label">
+                              {props.mode === 'create'
+                                ? isGenericProject
+                                  ? t('项目存放目录', 'Project Destination Folder')
+                                  : t('项目创建目录', 'Project Destination Folder')
+                                : t('已有项目目录', 'Existing Project Folder')}
+                            </span>
+                            <div className="inline-field">
+                              <TextField
+                                className="onboarding-path-field"
+                                label={t('项目路径', 'Project path')}
+                                inputClassName="onboarding-path-input"
+                                value={props.projectPath}
+                                onValueChange={props.onPathChange}
+                                placeholder={props.mode === 'create' ? '~/Downloads' : t('选择已有项目文件夹', 'Choose an existing project folder')}
+                              />
+                              <Button variant="secondary" leadingIcon={<FolderOpen size={14} aria-hidden="true" />} onClick={props.onBrowsePath}>
+                                {t('浏览...', 'Browse...')}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="onboarding-form-note">
+                          {isGenericProject
+                            ? t('通用项目不会绑定游戏引擎，可直接进入工作台。', 'Generic projects do not bind a game engine and can enter the workspace directly.')
+                            : t('引擎项目会在下一步检查编辑器、项目版本和 MCP 连接状态。', 'Engine projects continue with editor, project version, and MCP connection checks.')}
+                        </div>
                         {props.actionMessage ? <div className="helper-copy onboarding-action-message">{props.actionMessage}</div> : null}
                         {props.detectionMessage && !props.detectionOk ? <div className="helper-copy onboarding-action-message">{props.detectionMessage}</div> : null}
-                      </div>
+                      </section>
+                    </div>
+
+                    <div className="onboarding-footer-bar onboarding-wizard-footer">
+                      <Button variant="ghost" onClick={props.onSkip}>
+                        {t('跳过引导，稍后配置', 'Skip for now')}
+                      </Button>
+                      <Button
+                        variant="primary"
+                        leadingIcon={isGenericProject ? <CheckCircle2 size={14} aria-hidden="true" /> : <Search size={14} aria-hidden="true" />}
+                        loading={isGenericProject ? props.isCreatingProject : props.isChecking}
+                        onClick={isGenericProject ? props.onEnter : props.onDetect}
+                        disabled={!canStartEnvironmentCheck || props.isChecking || props.isCreatingProject}
+                      >
+                        {isGenericProject
+                          ? props.isCreatingProject
+                            ? t('创建中…', 'Creating…')
+                            : t('进入工作台', 'Enter Workspace')
+                          : props.isChecking
+                            ? t('检测中…', 'Checking…')
+                            : t('开始环境体检', 'Start Environment Check')}
+                      </Button>
                     </div>
                   </div>
                 </div>
-              </div>
-
-              <div className="onboarding-footer-bar">
-                <Button variant="ghost" onClick={props.onSkip}>
-                  {t('跳过引导，稍后配置', 'Skip for now')}
-                </Button>
-                <Button
-                  variant="primary"
-                  leadingIcon={isGenericProject ? <CheckCircle2 size={14} aria-hidden="true" /> : <Search size={14} aria-hidden="true" />}
-                  loading={isGenericProject ? props.isCreatingProject : props.isChecking}
-                  onClick={isGenericProject ? props.onEnter : props.onDetect}
-                  disabled={!canStartEnvironmentCheck || props.isChecking || props.isCreatingProject}
-                >
-                  {isGenericProject
-                    ? props.isCreatingProject
-                      ? t('创建中…', 'Creating…')
-                      : t('进入工作台', 'Enter Workspace')
-                    : props.isChecking
-                      ? t('检测中…', 'Checking…')
-                      : t('开始环境体检', 'Start Environment Check')}
-                </Button>
               </div>
             </div>
           ) : (

@@ -2,6 +2,17 @@
  * light rules (e.g. `.welcome-project { background: #fff }`) keep winning in
  * light mode, while dark mode (where no individual override exists for these
  * properties) falls through to the dark token values. */
+.standalone-app-shell,
+.standalone-shell-content {
+  background: var(--fp-workspace-shell-bg);
+}
+
+.standalone-app-shell .onboarding-screen {
+  background:
+    radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--brand-soft) 34%, transparent), transparent 34%),
+    var(--fp-workspace-shell-bg);
+}
+
 :where(
   .welcome-window,
   .onboarding-window,
