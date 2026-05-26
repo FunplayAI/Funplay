@@ -145,9 +145,10 @@
   gap: 10px;
 }
 
-.session-changes-header div {
+.session-changes-title {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
 .session-changes-header strong {
@@ -157,13 +158,14 @@
 
 .session-changes-actions {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 6px;
+  flex: 0 0 auto;
 }
 
 .session-changes-icon-button {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   flex: 0 0 auto;
   display: grid;
   place-items: center;

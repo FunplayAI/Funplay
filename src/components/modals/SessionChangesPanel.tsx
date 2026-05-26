@@ -20,7 +20,7 @@ export function SessionChangesPanel(props: {
   return (
     <section className="session-changes-panel" aria-label={localize(language, '本轮变更', 'Current Run Changes')}>
       <div className="session-changes-header">
-        <div>
+        <div className="session-changes-title">
           <strong>{localize(language, '本轮变更', 'Current Run Changes')}</strong>
           <span>
             {props.isLoading
