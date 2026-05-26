@@ -115,6 +115,9 @@ jobs:
       - name: Build split-architecture macOS artifacts
         run: npm run dist:mac:split
 
+      - name: Verify packaged runtime dependencies
+        run: npm run release:verify-runtime-deps
+
       - name: Verify macOS update metadata
         run: npm run release:verify-mac-updates
 
@@ -156,6 +159,9 @@ jobs:
 
       - name: Build Windows x64 artifacts
         run: npm run dist:win:x64
+
+      - name: Verify packaged runtime dependencies
+        run: npm run release:verify-runtime-deps
 
       - name: Restore Electron native ABI
         if: always()

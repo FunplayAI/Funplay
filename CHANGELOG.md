@@ -6,6 +6,18 @@ This project follows a pre-1.0 release flow. Minor versions may include breaking
 
 ## Unreleased
 
+## 0.3.1
+
+### Fixed
+
+- Fixed packaged macOS and Windows apps missing runtime `node_modules/*/src` JavaScript entry files required by transitive dependencies such as `@opentelemetry/api`.
+
+### Added
+
+- Added a packaged runtime dependency verification step to release builds so missing `app.asar` runtime entries fail before artifacts are uploaded.
+
+## 0.3.0
+
 ### Added
 
 - Open-source project governance files and release hardening checklist.

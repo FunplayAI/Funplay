@@ -77,7 +77,7 @@ if (publish?.releaseType !== 'release') {
 }
 
 const scripts = packageJson.scripts ?? {};
-for (const scriptName of ['release:audit', 'release:gate', 'dist:mac:split', 'dist:win:x64', 'release:verify-mac-updates']) {
+for (const scriptName of ['release:audit', 'release:gate', 'dist:mac:split', 'dist:win:x64', 'release:verify-runtime-deps', 'release:verify-mac-updates']) {
   if (!scripts[scriptName]) {
     fail(`Release audit failed: missing package script ${scriptName}.`);
   }
@@ -123,6 +123,9 @@ for (const [path, source] of searchable) {
 
 if (!workflow.includes('gh release') || !workflow.includes('dist:mac:split') || !workflow.includes('dist:win:x64')) {
   fail('Release audit failed: release workflow must build macOS split artifacts, Windows x64, and publish through gh release.');
+}
+if (!workflow.includes('release:verify-runtime-deps')) {
+  fail('Release audit failed: release workflow must verify packaged runtime dependencies before uploading artifacts.');
 }
 if (!workflow.includes('Import macOS signing certificate') || !workflow.includes('Developer ID Application')) {
   fail('Release audit failed: release workflow must import and validate a Developer ID Application certificate before notarization.');
