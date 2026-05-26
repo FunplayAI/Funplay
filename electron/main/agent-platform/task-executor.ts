@@ -329,6 +329,7 @@ export async function executeGenericConversation(task: GenericAgentConversationT
     project: currentProject,
     message: task.message,
     attachments: task.attachments,
+    uiLanguage: task.uiLanguage,
     provider: task.provider,
     plugins,
     context,

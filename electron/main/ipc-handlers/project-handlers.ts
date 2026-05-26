@@ -13,6 +13,7 @@ import {
   projectIdSchema,
   promptSchema,
   promptAttachmentsSchema,
+  uiLanguageSchema,
   updateProjectAgentPolicySchema,
   updateSessionRuntimeSchema,
   validateIpcInput,
@@ -210,11 +211,12 @@ export function registerProjectHandlers(ipcMain: IpcMain, ctx: HandlerContext): 
     return project;
   });
 
-  ipcMain.handle('projects:startPromptStream', async (_, projectId: unknown, message: unknown, sessionId: unknown, attachments: unknown) => {
+  ipcMain.handle('projects:startPromptStream', async (_, projectId: unknown, message: unknown, sessionId: unknown, attachments: unknown, uiLanguage: unknown) => {
     const validatedProjectId = validateIpcInput(projectIdSchema, projectId, 'projects:startPromptStream(projectId)');
     const validatedMessage = validateIpcInput(promptSchema, message, 'projects:startPromptStream(message)');
     const validatedSessionId = validateIpcInput(projectIdSchema.optional(), sessionId, 'projects:startPromptStream(sessionId)');
     const validatedAttachments = validateIpcInput(promptAttachmentsSchema, attachments, 'projects:startPromptStream(attachments)');
+    const validatedUiLanguage = validateIpcInput(uiLanguageSchema.optional(), uiLanguage, 'projects:startPromptStream(uiLanguage)');
     return startChatPromptStream({
       getState: ctx.getState,
       persistState: ctx.setState,
@@ -222,6 +224,7 @@ export function registerProjectHandlers(ipcMain: IpcMain, ctx: HandlerContext): 
       sessionId: validatedSessionId,
       message: validatedMessage,
       attachments: validatedAttachments,
+      uiLanguage: validatedUiLanguage,
       dispatchEvent: ctx.dispatchPromptStreamEvent
     });
   });

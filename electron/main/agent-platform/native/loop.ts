@@ -122,20 +122,24 @@ async function emitRealPluginObservations(params: GenericAgentRuntimeParams): Pr
   }
 }
 
+function runtimeLocalize(params: Pick<GenericAgentRuntimeParams, 'uiLanguage'>, zh: string, en: string): string {
+  return params.uiLanguage === 'en-US' ? en : zh;
+}
+
 function createFallbackReply(params: GenericAgentRuntimeParams, providerMissing: boolean, errorMessage?: string): string {
   if (providerMissing) {
     return [
-      '当前没有可用的 AI Provider，暂时无法生成模型回复。',
+      runtimeLocalize(params, '当前没有可用的 AI Provider，暂时无法生成模型回复。', 'No AI Provider is currently available, so Funplay cannot generate a model response yet.'),
       '',
-      '请到“应用设置 / AI Provider”配置并测试模型服务后重试。'
+      runtimeLocalize(params, '请到“应用设置 / AI Provider”配置并测试模型服务后重试。', 'Go to App Settings / AI Provider, configure and test a model service, then try again.')
     ].join('\n');
   }
 
   return [
-    '这次 AI Provider 返回了错误，未能生成回复。',
-    errorMessage ? `错误信息：${errorMessage}` : '',
+    runtimeLocalize(params, '这次 AI Provider 返回了错误，未能生成回复。', 'The AI Provider returned an error and could not generate a response.'),
+    errorMessage ? runtimeLocalize(params, `错误信息：${errorMessage}`, `Error: ${errorMessage}`) : '',
     '',
-    '请检查 Provider 配置、模型名称或网络连通性后重试。'
+    runtimeLocalize(params, '请检查 Provider 配置、模型名称或网络连通性后重试。', 'Check the Provider configuration, model name, or network connection, then try again.')
   ].filter(Boolean).join('\n');
 }
 

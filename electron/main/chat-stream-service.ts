@@ -8,6 +8,7 @@ export function startChatPromptStream(params: {
   sessionId?: string;
   message: string;
   attachments?: PromptAttachment[];
+  uiLanguage?: 'zh-CN' | 'en-US';
   dispatchEvent: (event: PromptStreamEvent) => void;
 }): PromptStreamHandle {
   return startAgentPromptStream(params);

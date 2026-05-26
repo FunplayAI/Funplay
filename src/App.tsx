@@ -1119,7 +1119,7 @@ function App(): JSX.Element {
     }
     try {
       await sessionMutationQueueRef.current;
-      const handle = await window.funplay.startPromptStream(targetProjectView.id, message, sessionId, attachments);
+      const handle = await window.funplay.startPromptStream(targetProjectView.id, message, sessionId, attachments, uiPreferences.language);
       setSessionDrafts((current) => ({ ...current, [sessionId]: '' }));
       setSessionAttachments((current) => ({ ...current, [sessionId]: [] }));
       seedPromptHandle({

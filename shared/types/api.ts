@@ -93,7 +93,7 @@ export interface FunPlayApi {
     }
   ) => Promise<Project>;
   sendPrompt: (projectId: string, message: string) => Promise<Project>;
-  startPromptStream: (projectId: string, message: string, sessionId?: string, attachments?: PromptAttachment[]) => Promise<PromptStreamHandle>;
+  startPromptStream: (projectId: string, message: string, sessionId?: string, attachments?: PromptAttachment[], uiLanguage?: 'zh-CN' | 'en-US') => Promise<PromptStreamHandle>;
   cancelPromptStream: (streamId: string) => Promise<{ success: true }>;
   respondPromptPermission: (requestId: string, decision: 'allow' | 'allow_session' | 'deny') => Promise<{ success: true }>;
   respondPromptUserInput: (requestId: string, response: AgentUserInputResponse) => Promise<{ success: true }>;

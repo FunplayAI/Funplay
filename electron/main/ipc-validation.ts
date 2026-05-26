@@ -32,6 +32,7 @@ const unityProfileSchema = z.enum(['core', 'full']);
 const unityHealthStatusSchema = z.enum(['idle', 'online', 'offline']);
 const agentPermissionModeSchema = z.enum(['full-access', 'read-only']);
 const agentRuntimeStrategySchema = z.enum(['auto', 'native', 'claude-code-sdk']);
+export const uiLanguageSchema = z.enum(['zh-CN', 'en-US']);
 const webSearchProviderSchema = z.enum(['auto', 'duckduckgo', 'brave', 'bing']);
 const assetGenerationKindSchema = z.enum([
   'image_2d',

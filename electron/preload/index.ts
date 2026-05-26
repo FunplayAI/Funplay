@@ -90,8 +90,8 @@ const api: FunPlayApi = {
   updateProjectSessionRuntime: (projectId: string, sessionId: string, runtime) =>
     ipcRenderer.invoke('projects:updateSessionRuntime', projectId, sessionId, runtime),
   sendPrompt: (projectId: string, message: string) => ipcRenderer.invoke('projects:sendPrompt', projectId, message),
-  startPromptStream: (projectId: string, message: string, sessionId?: string, attachments?: PromptAttachment[]) =>
-    ipcRenderer.invoke('projects:startPromptStream', projectId, message, sessionId, attachments),
+  startPromptStream: (projectId: string, message: string, sessionId?: string, attachments?: PromptAttachment[], uiLanguage?: 'zh-CN' | 'en-US') =>
+    ipcRenderer.invoke('projects:startPromptStream', projectId, message, sessionId, attachments, uiLanguage),
   cancelPromptStream: (streamId: string) => ipcRenderer.invoke('projects:cancelPromptStream', streamId),
   respondPromptPermission: (requestId: string, decision: 'allow' | 'allow_session' | 'deny') =>
     ipcRenderer.invoke('projects:respondPromptPermission', requestId, decision),

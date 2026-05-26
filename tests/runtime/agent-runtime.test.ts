@@ -3364,6 +3364,27 @@ test('native runtime does not short-circuit trivial greetings without a provider
   assert.equal(stages.includes('stage:tool_loop'), false);
 });
 
+test('native runtime localizes provider-missing fallback to UI language', async () => {
+  const project = buildProject('/tmp/funplay-native-provider-missing-language');
+  const result = await runRuntimeForTest(nativeRuntime, {
+    project,
+    message: 'hello',
+    uiLanguage: 'en-US',
+    provider: undefined,
+    plugins: [],
+    context: buildGenericWorkspaceContext(project, [], getActiveProjectSession(project).id, 'hello'),
+    permission: {
+      mode: 'read-only',
+      allowWriteTools: false,
+      allowSessionWriteTools: false
+    }
+  });
+
+  assert.equal(result.status, 'fallback');
+  assert.match(result.assistantMessage, /No AI Provider is currently available/);
+  assert.doesNotMatch(result.assistantMessage, /当前没有可用的 AI Provider/);
+});
+
 test('native build mode exposes write tools before intent heuristic matches', async () => {
   const projectPath = await mkdtemp(join(tmpdir(), 'funplay-native-build-tools-'));
   const originalFetch = globalThis.fetch;

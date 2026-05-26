@@ -322,6 +322,7 @@ export interface GenericAgentRuntimeParams {
   project: Project;
   message: string;
   attachments?: PromptAttachment[];
+  uiLanguage?: 'zh-CN' | 'en-US';
   provider?: AiProvider;
   plugins: McpPlugin[];
   context: GenericAgentWorkspaceContext;
@@ -495,6 +496,7 @@ export interface GenericAgentConversationTask extends GenericAgentTaskBase {
   checkpointSnapshotId?: string;
   message: string;
   attachments?: PromptAttachment[];
+  uiLanguage?: 'zh-CN' | 'en-US';
   resumeContext?: AgentRuntimeResumeContext;
   abortSignal?: AbortSignal;
   onStatus?: (phase: GenericAgentPhase, message: string) => void;

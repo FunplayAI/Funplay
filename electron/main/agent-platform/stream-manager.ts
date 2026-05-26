@@ -127,6 +127,7 @@ export function startAgentPromptStream(params: {
   sessionId?: string;
   message: string;
   attachments?: PromptAttachment[];
+  uiLanguage?: 'zh-CN' | 'en-US';
   resumedFromRunId?: string;
   resumeContext?: AgentRuntimeResumeContext;
   dispatchEvent: (event: PromptStreamEvent) => void;
@@ -245,6 +246,7 @@ export function startAgentPromptStream(params: {
         checkpointSnapshotId,
         message,
         attachments: params.attachments,
+        uiLanguage: params.uiLanguage,
         appState: stateAdapter.getState(),
         persistAppState: stateAdapter.persistState,
         resumeContext: params.resumeContext,
