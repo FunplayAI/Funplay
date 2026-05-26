@@ -398,6 +398,87 @@
   box-shadow: none;
 }
 
+.onboarding-environment-content {
+  gap: 0.875rem;
+}
+
+.onboarding-environment-card .environment-stepper-track {
+  min-height: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.75rem, 1fr));
+  gap: 0.625rem;
+  align-items: stretch;
+}
+
+.onboarding-environment-card .wizard-stepper-node {
+  display: block;
+  min-width: 0;
+}
+
+.onboarding-environment-card .wizard-step {
+  width: 100%;
+  min-height: 3.875rem;
+  padding: 0.625rem;
+  border: thin solid var(--fp-border-subtle);
+  border-radius: 0.875rem;
+  background: color-mix(in srgb, var(--panel-muted) 54%, transparent);
+  box-shadow: none;
+}
+
+.onboarding-environment-card .wizard-step.fp-button {
+  border-color: var(--fp-border-subtle);
+  transform: none;
+}
+
+.onboarding-environment-card .wizard-step.active {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand-soft) 62%, var(--panel));
+  box-shadow: inset 0 0 0 0.125rem color-mix(in srgb, var(--brand) 13%, transparent);
+}
+
+.onboarding-environment-card .wizard-step-line {
+  display: none;
+}
+
+.onboarding-environment-card .wizard-step-copy strong,
+.onboarding-environment-card .wizard-step-copy small {
+  white-space: normal;
+}
+
+.onboarding-environment-card .diagnostic-step-card {
+  min-height: 17rem;
+  padding: 1rem;
+  border: thin solid var(--fp-border-subtle);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  box-shadow: none;
+}
+
+.onboarding-environment-card .diagnostic-step-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.875rem;
+  flex-wrap: wrap;
+}
+
+.onboarding-environment-card .diagnostic-actions {
+  margin-top: 0;
+}
+
+.onboarding-environment-card .diagnostic-step-nav {
+  margin-top: 0;
+}
+
+.environment-inline-message {
+  max-height: none;
+  margin-top: 0;
+  padding: 0.625rem 0.75rem;
+  border: thin solid color-mix(in srgb, var(--brand) 16%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--brand-soft) 56%, transparent);
+}
+
 @media (max-width: 1100px) {
   .welcome-screen {
     padding: 20px;

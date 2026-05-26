@@ -160,6 +160,8 @@ export function OnboardingScreen(props: {
             `The selected Unity ${selectedUnityEditor.version} does not support the official ${props.dimension === '2d' ? '2D URP' : '3D URP'} template. Choose another installed version.`
           )
       : activeStep?.detail ?? '';
+  const passedEnvironmentChecks = steps.filter((step) => step.status === 'passed').length;
+  const environmentProgressLabel = steps.length === 0 ? t('准备中', 'Preparing') : `${passedEnvironmentChecks}/${steps.length}`;
 
   return (
     <StandaloneAppShell title={t('Funplay — 项目配置向导', 'Funplay — Project Setup Wizard')}>
@@ -168,164 +170,185 @@ export function OnboardingScreen(props: {
           {props.step === 1 && props.view === 'environment' ? (
             <div className="onboarding-main-panel">
               <div className="onboarding-main-scroll">
-                <div className="onboarding-body">
-                  <div className="onboarding-fixed-header">
-                    <StepIndicator step={2} />
-                    <div className="settings-header">
-                      <div>
+                <div className="onboarding-body onboarding-body-wizard">
+                  <div className="onboarding-wizard-card onboarding-environment-card">
+                    <aside className="onboarding-wizard-rail" aria-label={t('环境体检步骤', 'Environment check steps')}>
+                      <StepIndicator step={2} />
+                      <div className="onboarding-rail-copy">
+                        <div className="section-heading">{t('项目配置向导', 'Project Setup')}</div>
                         <h2>{t('环境体检', 'Environment Check')}</h2>
-                        <p>{t('按步骤完成引擎项目创建、打开和 Bridge 连通。', 'Complete engine project creation, opening, and Bridge connection step by step.')}</p>
+                        <p>{t('按顺序确认引擎、项目打开状态和 MCP / Bridge 连通。', 'Confirm the engine, project open state, and MCP / Bridge connection in order.')}</p>
                       </div>
-                      <Button variant="secondary" leadingIcon={<ArrowLeft size={14} aria-hidden="true" />} onClick={props.onBackToSetup}>
+                      <div className="onboarding-rail-summary">
+                        <div>
+                          <span>{t('引擎', 'Engine')}</span>
+                          <strong>{formatPlatformLabel(props.platform)}</strong>
+                        </div>
+                        <div>
+                          <span>{t('状态', 'Status')}</span>
+                          <strong>{environmentProgressLabel}</strong>
+                        </div>
+                        <div>
+                          <span>{t('当前', 'Current')}</span>
+                          <strong>{activeStep?.title ?? t('等待检查', 'Waiting')}</strong>
+                        </div>
+                      </div>
+                    </aside>
+
+                    <div className="onboarding-wizard-content onboarding-environment-content">
+                      <section className="onboarding-choice-section environment-overview-section" aria-labelledby="environment-checklist-title">
+                        <div className="onboarding-section-heading">
+                          <div>
+                            <div className="section-heading">{t('检查清单', 'Checklist')}</div>
+                            <h3 id="environment-checklist-title">{t('确认运行环境', 'Verify Runtime Environment')}</h3>
+                          </div>
+                          <span>{t('第 2 步 / 共 3 步', 'Step 2 of 3')}</span>
+                        </div>
+                        {props.actionMessage ? <div className="helper-copy onboarding-action-message environment-inline-message">{props.actionMessage}</div> : null}
+                        <div className="wizard-stepper-track environment-stepper-track">
+                          {steps.length === 0 ? <div className="empty-note">{t('正在准备环境体检结果…', 'Preparing environment check results…')}</div> : null}
+                          {steps.map((step, index) => {
+                            const unlocked = index <= highestUnlockedIndex;
+                            const completed = step.status === 'passed';
+                            const active = index === currentStepIndex;
+                            return (
+                              <div key={step.id} className="wizard-stepper-node">
+                                <Button
+                                  variant="ghost"
+                                  size="compact"
+                                  className={`wizard-step ${active ? 'active' : ''} ${completed ? 'completed' : ''} ${!unlocked ? 'locked' : ''}`}
+                                  onClick={() => {
+                                    if (unlocked) setCurrentStepIndex(index);
+                                  }}
+                                  disabled={!unlocked}
+                                >
+                                  <span className="wizard-step-index">{completed ? '✓' : index + 1}</span>
+                                  <div className="wizard-step-copy">
+                                    <strong>{t(`步骤 ${index + 1}`, `Step ${index + 1}`)}</strong>
+                                    <small>{step.title}</small>
+                                  </div>
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+
+                      {activeStep ? (
+                        <section className={`diagnostic-step-card onboarding-diagnostic-card ${activeStep.status}`}>
+                          <div className="diagnostic-step-content">
+                            <div className="diagnostic-card-top">
+                              <div>
+                                <strong>{activeStep.title}</strong>
+                                <div className="helper-copy">{activeStep.description}</div>
+                              </div>
+                              <span className={`diagnostic-status ${activeStep.status}`}>{formatDiagnosticStatus(activeStep.status)}</span>
+                            </div>
+                            {props.platform === 'unity' && props.mode === 'create' && activeStep.id === 'engine-project' ? (
+                              <SelectField
+                                className="compact"
+                                label={t('本机已安装引擎', 'Installed engine')}
+                                value={props.selectedUnityEditorVersion}
+                                options={props.unityEditors.length === 0
+                                  ? [{ value: '', label: t('未检测到可用 Unity', 'No Unity installation detected') }]
+                                  : props.unityEditors.map((editor) => ({
+                                    value: editor.version,
+                                    label: `${editor.displayName}${editor.compatible ? '' : t(' · 不支持当前模板', ' · Template unsupported')}`,
+                                    disabled: !editor.compatible
+                                  }))}
+                                onValueChange={props.onUnityEditorVersionChange}
+                              />
+                            ) : null}
+                            <div className="diagnostic-detail">{activeStepDetail}</div>
+
+                            {props.tasks[0] ? (
+                              <div className="task-inline-card">
+                                <div className="task-run-top">
+                                  <div>
+                                    <strong>{props.tasks[0].title}</strong>
+                                    <div className="helper-copy">{`${t('阶段', 'Stage')}: ${formatEnvironmentTaskStage(props.tasks[0].stage)}`}</div>
+                                  </div>
+                                  <span className={`diagnostic-status ${mapTaskStatusToDiagnostic(props.tasks[0].status)}`}>{formatEnvironmentTaskStatus(props.tasks[0].status)}</span>
+                                </div>
+                                <div className="task-run-message">{props.tasks[0].message}</div>
+                                <div className="task-run-progress">
+                                  <div className="task-run-progress-fill" style={{ width: `${props.tasks[0].progress}%` }} />
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="diagnostic-step-footer">
+                            {activeStep.actions.length > 0 ? (
+                              <div className="diagnostic-actions">
+                                {activeStep.actions.filter((action) => {
+                                  if (action.id !== 'create_unity_project') {
+                                    return true;
+                                  }
+                                  return !hiddenActionIds.has(action.id) && !props.tasks.some((task) => task.actionId === 'create_unity_project');
+                                }).map((action) => {
+                                  const disabled = busyActionIds.has(action.id);
+                                  return (
+                                    <Button
+                                      key={action.id}
+                                      className="small-action"
+                                      size="sm"
+                                      variant={action.primary ? 'primary' : 'secondary'}
+                                      loading={disabled}
+                                      onClick={() => {
+                                        if (action.id === 'create_unity_project') {
+                                          setHiddenActionIds((current) => new Set(current).add(action.id));
+                                        }
+                                        props.onRunAction(action.id);
+                                      }}
+                                      disabled={disabled}
+                                    >
+                                      {disabled ? t('处理中…', 'Processing…') : action.label}
+                                    </Button>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div />
+                            )}
+
+                            <div className="diagnostic-step-nav">
+                              <Button
+                                className="small-action"
+                                size="sm"
+                                variant="secondary"
+                                leadingIcon={<ArrowLeft size={13} aria-hidden="true" />}
+                                onClick={() => setCurrentStepIndex((current) => Math.max(current - 1, 0))}
+                                disabled={currentStepIndex === 0}
+                              >
+                                {t('上一步', 'Previous')}
+                              </Button>
+                              <Button
+                                className="small-action"
+                                size="sm"
+                                variant="secondary"
+                                trailingIcon={<ArrowRight size={13} aria-hidden="true" />}
+                                onClick={() => setCurrentStepIndex((current) => Math.min(current + 1, highestUnlockedIndex))}
+                                disabled={currentStepIndex >= highestUnlockedIndex}
+                              >
+                                {t('下一步', 'Next')}
+                              </Button>
+                            </div>
+                          </div>
+                        </section>
+                      ) : null}
+                    </div>
+
+                    <div className="onboarding-footer-bar onboarding-wizard-footer">
+                      <Button variant="ghost" leadingIcon={<ArrowLeft size={14} aria-hidden="true" />} onClick={props.onBackToSetup}>
                         {t('返回上一级', 'Back')}
+                      </Button>
+                      <Button variant="primary" trailingIcon={<ArrowRight size={14} aria-hidden="true" />} onClick={props.onNext} disabled={!props.detectionOk}>
+                        {t('完成环境准备', 'Finish Environment Setup')}
                       </Button>
                     </div>
                   </div>
-                  {props.actionMessage ? <div className="helper-copy onboarding-action-message">{props.actionMessage}</div> : null}
-                  <div className="diagnostic-stepper-shell">
-                    <div className="wizard-stepper-track">
-                      {steps.length === 0 ? <div className="empty-note">{t('正在准备环境体检结果…', 'Preparing environment check results…')}</div> : null}
-                      {steps.map((step, index) => {
-                        const unlocked = index <= highestUnlockedIndex;
-                        const completed = step.status === 'passed';
-                        const active = index === currentStepIndex;
-                        return (
-                          <div key={step.id} className="wizard-stepper-node">
-                            <Button
-                              variant="ghost"
-                              size="compact"
-                              className={`wizard-step ${active ? 'active' : ''} ${completed ? 'completed' : ''} ${!unlocked ? 'locked' : ''}`}
-                              onClick={() => {
-                                if (unlocked) setCurrentStepIndex(index);
-                              }}
-                              disabled={!unlocked}
-                            >
-                              <span className="wizard-step-index">{completed ? '✓' : index + 1}</span>
-                              <div className="wizard-step-copy">
-                                <strong>{t(`步骤 ${index + 1}`, `Step ${index + 1}`)}</strong>
-                                <small>{step.title}</small>
-                              </div>
-                            </Button>
-                            {index < steps.length - 1 ? <div className={`wizard-step-line ${index < highestUnlockedIndex ? 'active' : ''}`} /> : null}
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {activeStep ? (
-                      <div className={`diagnostic-step-card ${activeStep.status}`}>
-                        <div className="diagnostic-step-content">
-                          <div className="diagnostic-card-top">
-                            <div>
-                              <strong>{activeStep.title}</strong>
-                              <div className="helper-copy">{activeStep.description}</div>
-                            </div>
-                            <span className={`diagnostic-status ${activeStep.status}`}>{formatDiagnosticStatus(activeStep.status)}</span>
-                          </div>
-                          {props.platform === 'unity' && props.mode === 'create' && activeStep.id === 'engine-project' ? (
-                            <SelectField
-                              className="compact"
-                              label={t('本机已安装引擎', 'Installed engine')}
-                              value={props.selectedUnityEditorVersion}
-                              options={props.unityEditors.length === 0
-                                ? [{ value: '', label: t('未检测到可用 Unity', 'No Unity installation detected') }]
-                                : props.unityEditors.map((editor) => ({
-                                  value: editor.version,
-                                  label: `${editor.displayName}${editor.compatible ? '' : t(' · 不支持当前模板', ' · Template unsupported')}`,
-                                  disabled: !editor.compatible
-                                }))}
-                              onValueChange={props.onUnityEditorVersionChange}
-                            />
-                          ) : null}
-                          <div className="diagnostic-detail">{activeStepDetail}</div>
-
-                          {props.tasks[0] ? (
-                            <div className="task-inline-card">
-                              <div className="task-run-top">
-                                <div>
-                                  <strong>{props.tasks[0].title}</strong>
-                                  <div className="helper-copy">{`${t('阶段', 'Stage')}: ${formatEnvironmentTaskStage(props.tasks[0].stage)}`}</div>
-                                </div>
-                                <span className={`diagnostic-status ${mapTaskStatusToDiagnostic(props.tasks[0].status)}`}>{formatEnvironmentTaskStatus(props.tasks[0].status)}</span>
-                              </div>
-                              <div className="task-run-message">{props.tasks[0].message}</div>
-                              <div className="task-run-progress">
-                                <div className="task-run-progress-fill" style={{ width: `${props.tasks[0].progress}%` }} />
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
-
-                        <div className="diagnostic-step-footer">
-                          {activeStep.actions.length > 0 ? (
-                            <div className="diagnostic-actions">
-                              {activeStep.actions.filter((action) => {
-                                if (action.id !== 'create_unity_project') {
-                                  return true;
-                                }
-                                return !hiddenActionIds.has(action.id) && !props.tasks.some((task) => task.actionId === 'create_unity_project');
-                              }).map((action) => {
-                                const disabled = busyActionIds.has(action.id);
-                                return (
-                                  <Button
-                                    key={action.id}
-                                    className="small-action"
-                                    size="sm"
-                                    variant={action.primary ? 'primary' : 'secondary'}
-                                    loading={disabled}
-                                    onClick={() => {
-                                      if (action.id === 'create_unity_project') {
-                                        setHiddenActionIds((current) => new Set(current).add(action.id));
-                                      }
-                                      props.onRunAction(action.id);
-                                    }}
-                                    disabled={disabled}
-                                  >
-                                    {disabled ? t('处理中…', 'Processing…') : action.label}
-                                  </Button>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <div />
-                          )}
-
-                          <div className="diagnostic-step-nav">
-                            <Button
-                              className="small-action"
-                              size="sm"
-                              variant="secondary"
-                              leadingIcon={<ArrowLeft size={13} aria-hidden="true" />}
-                              onClick={() => setCurrentStepIndex((current) => Math.max(current - 1, 0))}
-                              disabled={currentStepIndex === 0}
-                            >
-                              {t('上一步', 'Previous')}
-                            </Button>
-                            <Button
-                              className="small-action"
-                              size="sm"
-                              variant="secondary"
-                              trailingIcon={<ArrowRight size={13} aria-hidden="true" />}
-                              onClick={() => setCurrentStepIndex((current) => Math.min(current + 1, highestUnlockedIndex))}
-                              disabled={currentStepIndex >= highestUnlockedIndex}
-                            >
-                              {t('下一步', 'Next')}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
                 </div>
-              </div>
-
-              <div className="onboarding-footer-bar">
-                <Button variant="ghost" leadingIcon={<ArrowLeft size={14} aria-hidden="true" />} onClick={props.onBackToSetup}>
-                  {t('返回上一级', 'Back')}
-                </Button>
-                <Button variant="primary" trailingIcon={<ArrowRight size={14} aria-hidden="true" />} onClick={props.onNext} disabled={!props.detectionOk}>
-                  {t('完成环境准备', 'Finish Environment Setup')}
-                </Button>
               </div>
             </div>
           ) : props.step === 1 ? (
