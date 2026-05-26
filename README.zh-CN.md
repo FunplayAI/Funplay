@@ -47,49 +47,6 @@ Funplay 的产品目标很直接：你描述想做的游戏，连接自己信任
 - 本地优先持久化：使用 SQLite 保存项目和会话状态，密钥保存在主进程，不暴露给渲染进程。
 - 桌面打包自动化：支持 macOS 分架构构建和 Windows 安装包。
 
-## 快速开始
-
-```bash
-npm install
-npm run dev
-```
-
-`npm run dev` 会先为 Electron ABI 重建原生依赖，然后启动 Electron Vite 开发服务器。
-
-首次启动建议：
-
-1. 打开应用设置。
-2. 添加至少一个 AI Provider。
-3. 创建或打开一个游戏项目。
-4. 选择 runtime、模型、权限模式和引擎工作流。
-5. 从一个明确目标开始，例如“做一个可玩的 Web Demo”或“打开这个 Unity 项目并加入第一关循环”。
-
-## 常用命令
-
-```bash
-npm run dev                 # 启动桌面端开发模式
-npm run build               # 类型检查并构建所有 Electron target
-npm run test:runtime        # 运行 runtime 测试，并处理原生依赖 ABI
-npm run ui:smoke            # Renderer UI smoke 检查
-npm run ui:electron-smoke   # Electron UI smoke 场景
-npm run ui:maturity-gate    # UI 成熟度检查
-npm run agent:e2e           # 确定性的 Agent E2E 检查
-```
-
-打包相关：
-
-```bash
-npm run dist:mac:split
-npm run release:verify-mac-updates
-npm run dist:win:x64
-```
-
-如果你手动运行单个 Node 测试文件，结束后需要恢复 Electron 原生依赖 ABI：
-
-```bash
-npm run rebuild:native:force
-```
-
 ## 项目结构
 
 ```text
@@ -130,6 +87,51 @@ Funplay 分别支持聊天/模型 Provider、素材生成 Provider 和 MCP Serve
 - `FUNPLAY_ALLOW_LOCAL_WEB_TOOLS=1` - 允许 Web 工具测试访问本地 URL。
 - `BRAVE_SEARCH_API_KEY` / `BING_SEARCH_API_KEY` - 启用 Web Search Provider。
 - `FUNPLAY_E2E_CLAUDE_API_KEY` + `FUNPLAY_E2E_CLAUDE_MODEL` - 启用 live Claude SDK E2E 检查。
+
+## 本地开发
+
+本地启动应用：
+
+```bash
+npm install
+npm run dev
+```
+
+`npm run dev` 会先为 Electron ABI 重建原生依赖，然后启动 Electron Vite 开发服务器。
+
+首次启动建议：
+
+1. 打开应用设置。
+2. 添加至少一个 AI Provider。
+3. 创建或打开一个游戏项目。
+4. 选择 runtime、模型、权限模式和引擎工作流。
+5. 从一个明确目标开始，例如“做一个可玩的 Web Demo”或“打开这个 Unity 项目并加入第一关循环”。
+
+常用开发命令：
+
+```bash
+npm run dev                 # 启动桌面端开发模式
+npm run build               # 类型检查并构建所有 Electron target
+npm run test:runtime        # 运行 runtime 测试，并处理原生依赖 ABI
+npm run ui:smoke            # Renderer UI smoke 检查
+npm run ui:electron-smoke   # Electron UI smoke 场景
+npm run ui:maturity-gate    # UI 成熟度检查
+npm run agent:e2e           # 确定性的 Agent E2E 检查
+```
+
+打包相关：
+
+```bash
+npm run dist:mac:split
+npm run release:verify-mac-updates
+npm run dist:win:x64
+```
+
+如果你手动运行单个 Node 测试文件，结束后需要恢复 Electron 原生依赖 ABI：
+
+```bash
+npm run rebuild:native:force
+```
 
 ## 参与贡献
 

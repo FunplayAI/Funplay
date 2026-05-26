@@ -47,49 +47,6 @@ Unity is the first-class engine workflow today. The architecture is engine-aware
 - Local-first persistence: SQLite-backed project/session state with secrets kept in the main process.
 - Desktop packaging automation for macOS split-architecture builds and Windows installers.
 
-## Quick Start
-
-```bash
-npm install
-npm run dev
-```
-
-`npm run dev` rebuilds native Electron dependencies for the correct ABI and starts the Electron Vite development server.
-
-On first launch:
-
-1. Open Application Settings.
-2. Add at least one AI provider.
-3. Create or open a game project.
-4. Choose the runtime, model, permission mode, and engine workflow.
-5. Start with a goal such as "make a playable web demo" or "open this Unity project and add the first level loop."
-
-## Common Commands
-
-```bash
-npm run dev                 # Start the desktop app in development mode
-npm run build               # Type-check and build all Electron targets
-npm run test:runtime        # Run runtime tests with native ABI handling
-npm run ui:smoke            # Renderer UI smoke checks
-npm run ui:electron-smoke   # Electron UI smoke scenarios
-npm run ui:maturity-gate    # UI maturity gate
-npm run agent:e2e           # Deterministic agent E2E checks
-```
-
-Packaging:
-
-```bash
-npm run dist:mac:split
-npm run release:verify-mac-updates
-npm run dist:win:x64
-```
-
-If you run a single Node test manually, rebuild native modules for Electron afterward:
-
-```bash
-npm run rebuild:native:force
-```
-
 ## Repository Layout
 
 ```text
@@ -130,6 +87,51 @@ Useful environment variables for development:
 - `FUNPLAY_ALLOW_LOCAL_WEB_TOOLS=1` - allow local URL fetches in web tool tests.
 - `BRAVE_SEARCH_API_KEY` / `BING_SEARCH_API_KEY` - enable web search providers.
 - `FUNPLAY_E2E_CLAUDE_API_KEY` + `FUNPLAY_E2E_CLAUDE_MODEL` - enable live Claude SDK E2E checks.
+
+## Development
+
+Start the app locally:
+
+```bash
+npm install
+npm run dev
+```
+
+`npm run dev` rebuilds native Electron dependencies for the correct ABI and starts the Electron Vite development server.
+
+On first launch:
+
+1. Open Application Settings.
+2. Add at least one AI provider.
+3. Create or open a game project.
+4. Choose the runtime, model, permission mode, and engine workflow.
+5. Start with a goal such as "make a playable web demo" or "open this Unity project and add the first level loop."
+
+Common development commands:
+
+```bash
+npm run dev                 # Start the desktop app in development mode
+npm run build               # Type-check and build all Electron targets
+npm run test:runtime        # Run runtime tests with native ABI handling
+npm run ui:smoke            # Renderer UI smoke checks
+npm run ui:electron-smoke   # Electron UI smoke scenarios
+npm run ui:maturity-gate    # UI maturity gate
+npm run agent:e2e           # Deterministic agent E2E checks
+```
+
+Packaging:
+
+```bash
+npm run dist:mac:split
+npm run release:verify-mac-updates
+npm run dist:win:x64
+```
+
+If you run a single Node test manually, rebuild native modules for Electron afterward:
+
+```bash
+npm run rebuild:native:force
+```
 
 ## Contributing
 
