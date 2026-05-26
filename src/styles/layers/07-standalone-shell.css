@@ -286,6 +286,50 @@
   color: var(--brand);
 }
 
+.platform-logo-icon {
+  --platform-brand: var(--brand);
+  --platform-soft: var(--brand-soft);
+  --platform-logo-hole: color-mix(in srgb, var(--platform-soft) 76%, var(--panel));
+  background: color-mix(in srgb, var(--platform-soft) 72%, transparent);
+  color: var(--platform-brand);
+}
+
+.platform-logo-icon svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: block;
+  fill: currentColor;
+}
+
+.platform-logo-icon .platform-logo-cutout {
+  fill: var(--platform-logo-hole);
+}
+
+.platform-logo-unity {
+  --platform-brand: #1f2937;
+  --platform-soft: #e5e7eb;
+}
+
+.platform-logo-cocos {
+  --platform-brand: #2563eb;
+  --platform-soft: #dbeafe;
+}
+
+.platform-logo-godot {
+  --platform-brand: #478cbf;
+  --platform-soft: #dff0fb;
+}
+
+.platform-logo-unreal {
+  --platform-brand: #111827;
+  --platform-soft: #e5e7eb;
+}
+
+.platform-logo-web svg {
+  fill: none;
+  stroke: currentColor;
+}
+
 .option-card-copy {
   min-width: 0;
   display: grid;
@@ -315,6 +359,12 @@
 .onboarding-wizard-card .platform-card.selected .option-card-icon {
   background: var(--brand);
   color: var(--fp-text-inverse);
+}
+
+.onboarding-wizard-card .platform-card.selected .platform-logo-icon {
+  --platform-logo-hole: var(--platform-brand);
+  background: var(--platform-brand);
+  color: #ffffff;
 }
 
 .onboarding-wizard-card .setup-mode-card.disabled-card,

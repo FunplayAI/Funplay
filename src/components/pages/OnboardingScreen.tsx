@@ -2,14 +2,10 @@ import { useEffect, useState, type JSX } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
-  Box,
-  Boxes,
   CheckCircle2,
-  Cuboid,
   FilePlus2,
   FolderInput,
   FolderOpen,
-  Gamepad2,
   Globe2,
   Search
 } from 'lucide-react';
@@ -37,20 +33,55 @@ import type { LanguagePreference } from '../../lib/app-types';
 import { Button, SelectField, TextField } from '../ui/index';
 
 function PlatformCardIcon(props: { id: PlatformChoice }): JSX.Element {
-  const Icon = props.id === 'unity'
-    ? Cuboid
-    : props.id === 'cocos'
-      ? Gamepad2
-      : props.id === 'godot'
-        ? Boxes
-        : props.id === 'unreal'
-          ? Box
-          : Globe2;
   return (
-    <span className="option-card-icon" aria-hidden="true">
-      <Icon size={18} />
+    <span className={`option-card-icon platform-logo-icon platform-logo-${props.id}`} aria-hidden="true">
+      <PlatformLogoGlyph id={props.id} />
     </span>
   );
+}
+
+function PlatformLogoGlyph(props: { id: PlatformChoice }): JSX.Element {
+  if (props.id === 'unity') {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path d="M14.5 3.1 21 6.9v7.6l-6.5 3.8-2.1-3.7 4.4-2.5V9.3l-4.4-2.5 2.1-3.7Z" />
+        <path d="M9.5 3.1 11.6 6.8 7.2 9.3v5.1l4.4 2.5-2.1 3.7L3 16.8V7.2l6.5-4.1Z" />
+        <path d="M8.2 10.2H15.8L12 16.7 8.2 10.2Z" />
+      </svg>
+    );
+  }
+
+  if (props.id === 'cocos') {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path d="M12 2.4 20.3 7.2v9.6L12 21.6 3.7 16.8V7.2L12 2.4Z" />
+        <path className="platform-logo-cutout" d="M14.8 8.6a4.35 4.35 0 1 0 0 6.8l-1.9-2.1a1.55 1.55 0 1 1 0-2.6l1.9-2.1Z" />
+        <path className="platform-logo-cutout" d="M15.4 7.2 18 8.7l-2.6 2.7-2.5-1.5 2.5-2.7Z" />
+      </svg>
+    );
+  }
+
+  if (props.id === 'godot') {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path d="M4.2 10.2 5.4 6.7 8.2 8l1.2-3.3h5.2L15.8 8l2.8-1.3 1.2 3.5 1.8 1.5-1.5 7.2H3.9l-1.5-7.2 1.8-1.5Z" />
+        <path className="platform-logo-cutout" d="M7.2 13.8a1.7 1.7 0 1 0 0-.1Zm9.6 0a1.7 1.7 0 1 0 0-.1Z" />
+        <path className="platform-logo-cutout" d="M8.2 17.1c1 1.1 2.3 1.6 3.8 1.6s2.8-.5 3.8-1.6l-1.1-1.1c-.7.7-1.6 1.1-2.7 1.1s-2-.4-2.7-1.1l-1.1 1.1Z" />
+      </svg>
+    );
+  }
+
+  if (props.id === 'unreal') {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false">
+        <circle cx="12" cy="12" r="9.2" />
+        <path className="platform-logo-cutout" d="M7 6.9h3v6.2c0 1.7.8 2.7 2.2 2.7 1.3 0 2.1-1 2.1-2.7V6.9h3v6.3c0 3.5-2 5.4-5.1 5.4S7 16.7 7 13.2V6.9Z" />
+        <path className="platform-logo-cutout" d="M15.3 16.8 18.6 19l-2.1-3.7-1.2 1.5Z" />
+      </svg>
+    );
+  }
+
+  return <Globe2 size={18} />;
 }
 
 export function StepIndicator(props: { step: 1 | 2 | 3 }): JSX.Element {
