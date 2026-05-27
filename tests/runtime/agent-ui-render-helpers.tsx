@@ -79,6 +79,7 @@ export function renderComposer(
     permissionMode,
     onDraftChange: noop,
     onPickAttachments: noop,
+    onImportAttachments: noop,
     onRemoveAttachment: noop,
     onSubmit: noop,
     onCancelStream: noop,

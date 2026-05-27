@@ -13,6 +13,7 @@ import type {
   AgentUserInputOption,
   ChatMediaBlock,
   ChatMessageProcessActivity,
+  PromptAttachment,
   ProjectSessionRuntimeId,
   PromptStreamEvent,
   PromptStreamPhase,
@@ -92,6 +93,7 @@ export interface StreamSessionState {
   projectId: string;
   sessionId: string;
   prompt: string;
+  attachments?: PromptAttachment[];
   content: string;
   thinkingContent: string;
   toolUses: StreamToolUseState[];
@@ -308,6 +310,7 @@ function withLiveAgentCoreParts(current: StreamSessionState): StreamSessionState
   const parts: AgentCoreMessagePart[] = [];
   let sequence = 0;
   const createdAt = current.startedAt;
+  const content = current.content ?? '';
   if (current.thinkingContent.trim()) {
     parts.push({
       id: `live:${current.streamId}:thinking`,
@@ -318,76 +321,177 @@ function withLiveAgentCoreParts(current: StreamSessionState): StreamSessionState
     });
     sequence += 1;
   }
-  if (current.content.trim()) {
-    parts.push({
-      id: `live:${current.streamId}:text`,
-      kind: 'assistant_text',
-      createdAt,
-      sequence,
-      text: current.content,
-      final: false
-    });
-    sequence += 1;
-  }
-  for (const tool of current.toolUses) {
-    parts.push({
-      id: `live:${current.streamId}:tool_call:${tool.toolUseId}`,
-      kind: 'tool_call',
-      createdAt,
-      sequence,
-      toolUseId: tool.toolUseId,
-      name: tool.name,
-      input: tool.input,
-      status: tool.status
-    });
-    sequence += 1;
-  }
-  const toolsById = new Map(current.toolUses.map((tool) => [tool.toolUseId, tool]));
-  for (const result of current.toolResults) {
-    const tool = toolsById.get(result.toolUseId);
-    if (result.isError) {
-      parts.push({
-        id: `live:${current.streamId}:tool_error:${result.toolUseId}`,
-        kind: 'tool_error',
-        createdAt,
-        sequence,
-        toolUseId: result.toolUseId,
-        toolName: tool?.name,
-        error: result.content,
-        changedFiles: result.changedFiles,
-        command: result.command,
-        terminal: result.terminal,
-        browser: result.browser,
-        edit: result.edit,
-        mcp: result.mcp,
-        artifacts: result.artifacts,
-        transaction: result.transaction
-      });
-    } else {
-      parts.push({
-        id: `live:${current.streamId}:tool_result:${result.toolUseId}`,
-        kind: 'tool_result',
-        createdAt,
-        sequence,
-        toolUseId: result.toolUseId,
-        toolName: tool?.name,
-        content: result.content,
-        changedFiles: result.changedFiles,
-        command: result.command,
-        terminal: result.terminal,
-        browser: result.browser,
-        edit: result.edit,
-        mcp: result.mcp,
-        artifacts: result.artifacts,
-        transaction: result.transaction
-      });
+
+  const toolUsesById = new Map(current.toolUses.map((tool) => [tool.toolUseId, tool]));
+  const toolResultsById = new Map(current.toolResults.map((result) => [result.toolUseId, result]));
+  const placedToolUseIds = new Set<string>();
+  const toolGroups = buildLiveToolActivityGroups(current);
+  let textCursor = 0;
+
+  for (const group of toolGroups) {
+    const offset = clampLiveTextOffset(group.offset, content.length);
+    sequence = pushLiveAssistantTextPart(parts, current, sequence, textCursor, offset);
+    textCursor = offset;
+    for (const toolUseId of group.toolUseIds) {
+      const tool = toolUsesById.get(toolUseId);
+      if (!tool || placedToolUseIds.has(toolUseId)) {
+        continue;
+      }
+      sequence = pushLiveToolParts(parts, current, sequence, tool, toolResultsById.get(toolUseId));
+      placedToolUseIds.add(toolUseId);
     }
-    sequence += 1;
+  }
+
+  const unplacedTools = current.toolUses.filter((tool) => !placedToolUseIds.has(tool.toolUseId));
+  if (unplacedTools.length > 0 && textCursor === 0) {
+    for (const tool of unplacedTools) {
+      sequence = pushLiveToolParts(parts, current, sequence, tool, toolResultsById.get(tool.toolUseId));
+      placedToolUseIds.add(tool.toolUseId);
+    }
+  }
+
+  sequence = pushLiveAssistantTextPart(parts, current, sequence, textCursor, content.length);
+
+  if (unplacedTools.length > 0 && textCursor > 0) {
+    for (const tool of unplacedTools) {
+      if (placedToolUseIds.has(tool.toolUseId)) {
+        continue;
+      }
+      sequence = pushLiveToolParts(parts, current, sequence, tool, toolResultsById.get(tool.toolUseId));
+      placedToolUseIds.add(tool.toolUseId);
+    }
   }
   return {
     ...current,
     agentCoreParts: parts.length > 0 ? parts : current.agentCoreParts
   };
+}
+
+function buildLiveToolActivityGroups(current: StreamSessionState): Array<{ offset: number; createdAt: string; toolUseIds: string[] }> {
+  const groups = current.activityItems
+    .filter((activity) => activity.type === 'tool' && activity.toolUseIds?.length)
+    .map((activity) => ({
+      offset: activity.offset,
+      createdAt: activity.createdAt,
+      toolUseIds: activity.toolUseIds ?? []
+    }))
+    .sort((left, right) => {
+      const offsetOrder = left.offset - right.offset;
+      if (offsetOrder !== 0) {
+        return offsetOrder;
+      }
+      return left.createdAt.localeCompare(right.createdAt);
+    });
+
+  const grouped: Array<{ offset: number; createdAt: string; toolUseIds: string[] }> = [];
+  for (const group of groups) {
+    const previous = grouped.at(-1);
+    if (previous && previous.offset === group.offset) {
+      previous.toolUseIds.push(...group.toolUseIds);
+      continue;
+    }
+    grouped.push({ ...group, toolUseIds: [...group.toolUseIds] });
+  }
+  return grouped;
+}
+
+function pushLiveAssistantTextPart(
+  parts: AgentCoreMessagePart[],
+  current: StreamSessionState,
+  sequence: number,
+  start: number,
+  end: number
+): number {
+  if (end <= start) {
+    return sequence;
+  }
+  const text = current.content.slice(start, end);
+  if (!text.trim()) {
+    return sequence;
+  }
+  parts.push({
+    id: `live:${current.streamId}:text:${start}:${end}`,
+    kind: 'assistant_text',
+    createdAt: current.startedAt,
+    sequence,
+    text,
+    final: false
+  });
+  return sequence + 1;
+}
+
+function pushLiveToolParts(
+  parts: AgentCoreMessagePart[],
+  current: StreamSessionState,
+  sequence: number,
+  tool: StreamToolUseState,
+  result: StreamToolResultState | undefined
+): number {
+  parts.push({
+    id: `live:${current.streamId}:tool_call:${tool.toolUseId}`,
+    kind: 'tool_call',
+    createdAt: current.startedAt,
+    sequence,
+    toolUseId: tool.toolUseId,
+    name: tool.name,
+    title: tool.title,
+    summary: tool.summary,
+    activity: tool.activity,
+    input: tool.input,
+    status: result?.isError ? 'failed' : result ? 'completed' : tool.status
+  });
+  sequence += 1;
+
+  if (!result) {
+    return sequence;
+  }
+
+  if (result.isError) {
+    parts.push({
+      id: `live:${current.streamId}:tool_error:${result.toolUseId}`,
+      kind: 'tool_error',
+      createdAt: current.startedAt,
+      sequence,
+      toolUseId: result.toolUseId,
+      toolName: tool.name,
+      error: result.content,
+      changedFiles: result.changedFiles,
+      command: result.command,
+      terminal: result.terminal,
+      browser: result.browser,
+      edit: result.edit,
+      mcp: result.mcp,
+      artifacts: result.artifacts,
+      transaction: result.transaction
+    });
+    return sequence + 1;
+  }
+
+  parts.push({
+    id: `live:${current.streamId}:tool_result:${result.toolUseId}`,
+    kind: 'tool_result',
+    createdAt: current.startedAt,
+    sequence,
+    toolUseId: result.toolUseId,
+    toolName: tool.name,
+    content: result.content,
+    changedFiles: result.changedFiles,
+    command: result.command,
+    terminal: result.terminal,
+    browser: result.browser,
+    edit: result.edit,
+    mcp: result.mcp,
+    artifacts: result.artifacts,
+    transaction: result.transaction
+  });
+  return sequence + 1;
+}
+
+function clampLiveTextOffset(offset: number, contentLength: number): number {
+  if (!Number.isFinite(offset)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(contentLength, Math.floor(offset)));
 }
 
 function isInlineLifecycleHookStage(stage: StreamStageState): boolean {

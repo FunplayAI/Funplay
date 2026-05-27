@@ -140,7 +140,7 @@ export async function runNativeDirectChatReply(params: GenericAgentRuntimeParams
       let streamedText = false;
       const result = await generateOpenAiCompatibleText({
         provider: params.provider,
-        system: createNativeRuntimeSystemPrompt(),
+        system: createNativeRuntimeSystemPrompt(params.uiLanguage),
         prompt: [
           createNativeRuntimeUserPrompt(params),
           '',
@@ -168,7 +168,7 @@ export async function runNativeDirectChatReply(params: GenericAgentRuntimeParams
     const model = createLanguageModel(params.provider!);
     const result = await generateText({
       model,
-      system: createNativeRuntimeSystemPrompt(),
+      system: createNativeRuntimeSystemPrompt(params.uiLanguage),
       prompt: [
         createNativeRuntimeUserPrompt(params),
         '',

@@ -42,7 +42,7 @@ import {
 import { Button, SelectField, TextAreaField, TextField } from '../ui/index';
 import { AssetGenerationJobCard } from './AssetGenerationJobCard';
 
-type AssetLibraryViewId = AssetLibraryCategoryId | 'all' | 'generate' | 'jobs';
+export type AssetLibraryViewId = AssetLibraryCategoryId | 'all' | 'generate' | 'jobs';
 
 export function AssetLibraryPreview(props: { asset: AssetLibraryFileItem; preview?: ProjectFileItem }): JSX.Element {
   const language = useUiLanguage();
@@ -94,12 +94,14 @@ export function AssetsPage(props: {
   onGenerateAsset?: (input: AssetGenerationRequest) => Promise<Project>;
   onImportGeneratedAsset?: (jobId: string) => Promise<Project>;
   onCancelAssetGenerationJob?: (jobId: string) => Promise<Project>;
+  activeViewId?: AssetLibraryViewId;
+  onActiveViewChange?: (viewId: AssetLibraryViewId) => void;
 }): JSX.Element {
   const language = useUiLanguage();
   const t = (zh: string, en: string): string => localize(language, zh, en);
   const existingAssetFiles = buildExistingAssetFileItems(props.projectFiles);
   const [assetPreviews, setAssetPreviews] = useState<Record<string, ProjectFileItem>>({});
-  const [activeAssetCategory, setActiveAssetCategory] = useState<AssetLibraryViewId>('all');
+  const [localActiveAssetCategory, setLocalActiveAssetCategory] = useState<AssetLibraryViewId>('all');
   const [generationKind, setGenerationKind] = useState<AssetGenerationKind>('image_2d');
   const [generationProviderId, setGenerationProviderId] = useState('');
   const [generationTitle, setGenerationTitle] = useState('');
@@ -122,6 +124,13 @@ export function AssetsPage(props: {
   );
   const runningGenerationCount = generationJobs.filter((job) => job.status === 'queued' || job.status === 'running').length;
   const activeGenerationCount = Math.max(runningGenerationCount, activeGenerationSubmissions);
+  const activeAssetCategory = props.activeViewId ?? localActiveAssetCategory;
+  const setActiveAssetCategory = (viewId: AssetLibraryViewId): void => {
+    props.onActiveViewChange?.(viewId);
+    if (props.activeViewId === undefined) {
+      setLocalActiveAssetCategory(viewId);
+    }
+  };
 
   useEffect(() => {
     if (!props.project) {

@@ -998,6 +998,12 @@
   color: var(--text);
 }
 
+.agent-composer-drop-overlay {
+  background: var(--fp-agent-popover-bg);
+  border-color: var(--fp-agent-popover-border);
+  color: var(--brand-strong);
+}
+
 .agent-composer-textarea {
   color: var(--text);
 }

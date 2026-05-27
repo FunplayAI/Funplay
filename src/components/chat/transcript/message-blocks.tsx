@@ -18,6 +18,7 @@ export function renderChatMessageBlocks(
     const renderedParts = renderAgentCoreParts({
       parts: message.metadata?.agentCoreParts ?? [],
       developerMode,
+      collapseCompletedToolGroups: true,
       openablePaths,
       searchQuery,
       onOpenPath

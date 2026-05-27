@@ -63,11 +63,23 @@ function formatPromptWithAttachments(message: string, attachments?: PromptAttach
   return [
     prompt || '请查看附件并根据其中内容继续处理。',
     '',
-    'Attached files copied into the current project workspace:',
+    'Attached files staged for this message:',
     ...attachmentLines,
     '',
-    'Use the listed paths when reading or referencing these attachments.'
+    'Use the listed paths when reading or referencing these attachments. Only import them into the project when the user asks to save or add them as project assets.'
   ].join('\n');
+}
+
+function getDisplayPrompt(message: string, attachments?: PromptAttachment[], uiLanguage?: 'zh-CN' | 'en-US'): string {
+  const prompt = message.trim();
+  if (prompt) {
+    return prompt;
+  }
+  return attachments?.length
+    ? uiLanguage === 'en-US'
+      ? 'Please review the attachments and continue.'
+      : '请查看附件并继续处理。'
+    : '';
 }
 
 async function persistSessionWritePermissionGrant(params: {
@@ -156,7 +168,8 @@ export function startAgentPromptStream(params: {
   const streamId = makeId('stream');
   const userMessageId = makeId('msg');
   const controller = new AbortController();
-  const message = formatPromptWithAttachments(params.message, params.attachments);
+  const displayMessage = getDisplayPrompt(params.message, params.attachments, params.uiLanguage);
+  const message = formatPromptWithAttachments(displayMessage, params.attachments);
   const checkpointProject = addSessionCheckpointSnapshot(
     stateAdapter.getState(),
     params.projectId,
@@ -245,6 +258,7 @@ export function startAgentPromptStream(params: {
         userMessageId,
         checkpointSnapshotId,
         message,
+        displayMessage,
         attachments: params.attachments,
         uiLanguage: params.uiLanguage,
         appState: stateAdapter.getState(),
@@ -302,7 +316,8 @@ export function startAgentPromptStream(params: {
     sessionId,
     startedAt,
     kind: 'conversation',
-    prompt: message,
+    prompt: displayMessage || message,
+    attachments: params.attachments,
     resumedFromRunId: params.resumedFromRunId
   };
 }

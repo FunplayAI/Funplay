@@ -272,6 +272,20 @@ test('native media tools attach and save rich media blocks', async () => {
     assert.match(absoluteAttachResult.summary, /Attached media: media\/note\.txt/);
     assert.equal(absoluteAttachResult.media?.[0]?.title, 'Absolute note');
 
+    const externalDir = await mkdtemp(join(tmpdir(), 'funplay-external-media-'));
+    const externalPath = join(externalDir, 'AppIcon.png');
+    await writeFile(externalPath, Buffer.from('external media'));
+    const externalAttachResult = await executeWorkspaceToolAction(project, {
+      type: 'media_attach_file',
+      filePath: externalPath,
+      title: 'External App Icon'
+    });
+    assert.equal(externalAttachResult.ok, true);
+    assert.match(externalAttachResult.summary, /Attached media: .*AppIcon\.png/);
+    assert.equal(externalAttachResult.media?.[0]?.localPath, externalPath);
+    assert.equal(externalAttachResult.media?.[0]?.title, 'External App Icon');
+    await rm(externalDir, { recursive: true, force: true });
+
     const saveResult = await executeWorkspaceToolAction(project, {
       type: 'media_save_base64',
       dataBase64: Buffer.from('saved media').toString('base64'),

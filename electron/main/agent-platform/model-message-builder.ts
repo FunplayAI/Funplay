@@ -4,7 +4,7 @@ import type {
   ToolContent
 } from 'ai';
 import { ensureProjectSessions } from '../../../shared/project-sessions';
-import type { AgentCoreMessagePart, ChatMessage, Project, ProjectSession } from '../../../shared/types';
+import type { AgentCoreMessagePart, ChatMessage, Project, ProjectSession, PromptAttachment } from '../../../shared/types';
 import { filterNativeMessagesAfterSummaryBoundary } from './native/context-handoff';
 
 type AssistantContentPart = Exclude<AssistantContent, string>[number];
@@ -125,8 +125,32 @@ function appendToolResult(messages: ModelMessage[], part: ToolContentPart): void
   });
 }
 
+function formatPromptAttachmentsForModel(attachments: PromptAttachment[] | undefined): string {
+  if (!attachments?.length) {
+    return '';
+  }
+
+  const lines = attachments.map((attachment, index) => {
+    const targetPath = attachment.relativePath || attachment.path;
+    const meta = [
+      attachment.kind,
+      attachment.mimeType,
+      `${attachment.size} bytes`
+    ].filter(Boolean).join(', ');
+    return `${index + 1}. ${attachment.name} -> ${targetPath}${meta ? ` (${meta})` : ''}`;
+  });
+
+  return [
+    'Attached files staged for this message:',
+    ...lines,
+    '',
+    'Use the listed paths when reading or referencing these attachments. Only import them into the project when the user asks to save or add them as project assets.'
+  ].join('\n');
+}
+
 function getUserMessageText(message: ChatMessage): string {
-  return message.content;
+  const attachmentText = formatPromptAttachmentsForModel(message.metadata?.promptAttachments);
+  return [message.content, attachmentText].filter(hasText).join('\n\n');
 }
 
 function sortAgentCoreParts(parts: AgentCoreMessagePart[] | undefined): AgentCoreMessagePart[] {

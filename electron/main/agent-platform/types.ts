@@ -495,6 +495,7 @@ export interface GenericAgentConversationTask extends GenericAgentTaskBase {
   userMessageId?: string;
   checkpointSnapshotId?: string;
   message: string;
+  displayMessage?: string;
   attachments?: PromptAttachment[];
   uiLanguage?: 'zh-CN' | 'en-US';
   resumeContext?: AgentRuntimeResumeContext;

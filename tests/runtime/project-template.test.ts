@@ -2,7 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProjectFromInput } from '../../shared/planner.ts';
 import { buildGenericWorkspaceContext } from '../../electron/main/agent-platform/context.ts';
-import { createProject, resolveProjectChatContext } from '../../electron/main/project-service.ts';
+import {
+  createProject,
+  createProjectSession,
+  deleteProjectSession,
+  renameProjectSession,
+  resolveProjectChatContext
+} from '../../electron/main/project-service.ts';
 import type { AppState, CreateProjectInput } from '../../shared/types.ts';
 import { buildProject, buildState } from './test-helpers.ts';
 
@@ -39,6 +45,13 @@ test('engine project onboarding uses a neutral prototype template', () => {
   }), /roguelike|进入房间|战斗清场/i);
 });
 
+test('project creation starts with an empty chat transcript', () => {
+  const project = createProjectFromInput(createUnityProjectInput('quiet-onboarding'));
+
+  assert.deepEqual(project.chat, []);
+  assert.deepEqual(project.sessions[0]?.chat, []);
+});
+
 test('unity project creation registers and binds the built-in Unity MCP plugin', async () => {
   const state = buildState(buildProject()) as AppState;
   state.mcpPlugins = [];
@@ -67,4 +80,24 @@ test('legacy unity project without an engine MCP binding is not mutated before a
   assert.equal(resolved.enginePlugin, undefined);
   assert.deepEqual(state.projects[0].mcpBindings, {});
   assert.deepEqual(state.mcpPlugins, []);
+});
+
+test('session management does not append chat transcript announcements', () => {
+  const project = buildProject();
+  const state = buildState(project) as AppState;
+  const originalSessionId = project.activeSessionId!;
+
+  const withNewSession = createProjectSession(state, project.id, 'Planning');
+  const newSessionId = withNewSession.activeSessionId!;
+  assert.deepEqual(withNewSession.chat, []);
+  assert.deepEqual(withNewSession.sessions.find((session) => session.id === newSessionId)?.chat, []);
+
+  const renamed = renameProjectSession(state, project.id, newSessionId, 'Production');
+  assert.deepEqual(renamed.chat, []);
+  assert.deepEqual(renamed.sessions.find((session) => session.id === newSessionId)?.chat, []);
+
+  const deleted = deleteProjectSession(state, project.id, newSessionId);
+  assert.equal(deleted.activeSessionId, originalSessionId);
+  assert.deepEqual(deleted.chat, []);
+  assert.deepEqual(deleted.sessions.find((session) => session.id === originalSessionId)?.chat, []);
 });

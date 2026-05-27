@@ -631,6 +631,36 @@ function resolveWorkspaceFilePath(rootPath: string, filePath: string): {
   };
 }
 
+function resolveReadableLocalFilePath(rootPath: string, filePath: string): {
+  absolutePath: string;
+  relativePath: string;
+} {
+  const trimmed = filePath.trim();
+  if (!trimmed || trimmed.includes('\0') || trimmed.endsWith('/') || trimmed.endsWith('\\')) {
+    throw new Error('非法文件路径。');
+  }
+
+  if (!isAbsolute(trimmed)) {
+    return resolveWorkspaceFilePath(rootPath, filePath);
+  }
+
+  const absolutePath = resolve(trimmed);
+  const workspaceRelativePath = relative(rootPath, absolutePath).replaceAll('\\', '/');
+  const relativePath =
+    workspaceRelativePath &&
+    workspaceRelativePath !== '.' &&
+    !workspaceRelativePath.startsWith('../') &&
+    workspaceRelativePath !== '..' &&
+    !isAbsolute(workspaceRelativePath)
+      ? workspaceRelativePath
+      : absolutePath;
+
+  return {
+    absolutePath,
+    relativePath
+  };
+}
+
 export async function readWorkspaceFileBytes(project: Project, filePath: string, maxBytes: number): Promise<{
   rootPath: string;
   absolutePath: string;
@@ -639,7 +669,7 @@ export async function readWorkspaceFileBytes(project: Project, filePath: string,
   size: number;
 }> {
   const rootPath = resolveProjectRootPathForProject(project);
-  const { absolutePath, relativePath } = resolveWorkspaceFilePath(rootPath, filePath);
+  const { absolutePath, relativePath } = resolveReadableLocalFilePath(rootPath, filePath);
   const fileStat = await stat(absolutePath);
   if (!fileStat.isFile()) {
     throw new Error(`目标不是文件：${relativePath}`);

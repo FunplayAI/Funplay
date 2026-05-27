@@ -41,10 +41,6 @@ function buildFreshSession(_project: Project, title?: string): ProjectSession {
   });
 }
 
-function buildSessionOperationMessage(lines: string[]): string {
-  return lines.filter(Boolean).join('\n');
-}
-
 export interface ResolvedProjectChatContext {
   index: number;
   current: Project;
@@ -516,25 +512,13 @@ export function createProjectSession(state: AppState, projectId: string, title?:
 
   const current = ensureProjectSessions(state.projects[index]);
   const session = buildFreshSession(current, title);
-  let updated: Project = {
+  const updated: Project = {
     ...current,
     updatedAt: session.updatedAt,
     sessions: [session, ...current.sessions],
     activeSessionId: session.id,
     chat: [...session.chat]
   };
-
-  updated = appendProjectAssistantMessage(updated, {
-    sessionId: session.id,
-    assistantMessage: buildSessionOperationMessage([
-      `已创建新会话“${session.title}”。`,
-      '你可以直接输入新的需求、问题或任务，我会基于当前项目继续协助。'
-    ]),
-    assistantMetadata: {
-      intent: 'chat'
-    },
-    updatedAt: session.updatedAt
-  });
 
   state.projects[index] = updated;
   return updated;
@@ -573,17 +557,6 @@ export function renameProjectSession(state: AppState, projectId: string, session
   };
 
   updated = syncProjectChatFromActiveSession(updated);
-  updated = appendProjectAssistantMessage(updated, {
-    sessionId,
-    assistantMessage: buildSessionOperationMessage([
-      `当前会话已重命名为“${nextTitle}”。`,
-      targetSession.title !== nextTitle ? `原名称：${targetSession.title}` : ''
-    ]),
-    assistantMetadata: {
-      intent: 'chat'
-    },
-    updatedAt
-  });
 
   state.projects[index] = updated;
   return state.projects[index];
@@ -802,23 +775,11 @@ export function deleteProjectSession(state: AppState, projectId: string, session
   const nextSessions = remainingSessions.length > 0 ? remainingSessions : [buildFreshSession(current)];
   const nextActiveSessionId =
     current.activeSessionId === sessionId ? nextSessions[0].id : current.activeSessionId ?? nextSessions[0].id;
-  let updated = syncProjectChatFromActiveSession({
+  const updated = syncProjectChatFromActiveSession({
     ...current,
     updatedAt: new Date().toISOString(),
     sessions: nextSessions,
     activeSessionId: nextActiveSessionId
-  });
-
-  updated = appendProjectAssistantMessage(updated, {
-    sessionId: nextActiveSessionId,
-    assistantMessage: buildSessionOperationMessage([
-      `已删除会话“${deletedSession.title}”。`,
-      current.activeSessionId === sessionId ? '已自动切换到当前会话。' : ''
-    ]),
-    assistantMetadata: {
-      intent: 'chat'
-    },
-    updatedAt: updated.updatedAt
   });
 
   state.projects[index] = updated;

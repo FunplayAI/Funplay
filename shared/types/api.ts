@@ -3,7 +3,7 @@ import type { AiProvider, AiSettings, AiProviderInput, AiProviderModelListReques
 import type { McpConnectionSnapshot, McpPlugin, McpRawAuditEntry, McpRawRequestResult, McpSettings, McpToolSnapshot, UnitySettings, UnityHealthResult, UnityMcpServerInfo, UnityMcpTool, UnityMcpCallResult, UnityMcpResource, UnityMcpPrompt, UnityMcpPromptResult, UnityMcpResourceTemplate, UnityMcpCompletionResult, McpPluginKind, McpPluginInput, PlatformChoice, ProjectSetupMode, EngineProjectDimension, EnvironmentDiagnostics, EnvironmentActionKind, EnvironmentActionResult, EnvironmentTask, InstalledUnityEditorOption, FolderPickerResult } from './unity';
 import type { AgentRuntimeCapabilityReport, AgentRuntimeStatus, AgentReplayLog, AgentSkillCatalogResult, AgentSkillRegistrySnapshot } from './agent';
 import type { PromptStreamEvent, PromptStreamHandle, AgentUserInputResponse } from './stream';
-import type { PromptAttachment } from './chat';
+import type { PromptAttachment, PromptAttachmentImportItem } from './chat';
 import type { AppNotification, AppUpdateSnapshot, ScheduledNotificationTask, ClaudeRuntimeSetupStatus, ClaudeSessionSummary, ClaudeSessionImportResult, RuntimeDoctorResult } from './app';
 import type { AssetGenerationProviderConfig, AssetGenerationProviderInput, AssetGenerationProviderProfile, AssetGenerationRequest } from './asset-generation';
 
@@ -94,6 +94,8 @@ export interface FunPlayApi {
   ) => Promise<Project>;
   sendPrompt: (projectId: string, message: string) => Promise<Project>;
   startPromptStream: (projectId: string, message: string, sessionId?: string, attachments?: PromptAttachment[], uiLanguage?: 'zh-CN' | 'en-US') => Promise<PromptStreamHandle>;
+  importPromptAttachments: (projectId: string, items: PromptAttachmentImportItem[]) => Promise<PromptAttachment[]>;
+  getPathForFile: (file: File) => string;
   cancelPromptStream: (streamId: string) => Promise<{ success: true }>;
   respondPromptPermission: (requestId: string, decision: 'allow' | 'allow_session' | 'deny') => Promise<{ success: true }>;
   respondPromptUserInput: (requestId: string, response: AgentUserInputResponse) => Promise<{ success: true }>;

@@ -188,7 +188,7 @@ export async function runNativeSubagent(
       try {
         stepResult = await generateOpenAiCompatibleStreamingToolStep({
             provider: params.provider,
-            system: createNativeRuntimeSystemPrompt(),
+            system: createNativeRuntimeSystemPrompt(params.uiLanguage),
             messages,
             tools: compatibleToolDefinitions,
             maxOutputTokens: 2048,
@@ -261,7 +261,7 @@ export async function runNativeSubagent(
   const subagentAbort = createNativeProviderStepAbort(params.abortSignal, params.provider);
   const result = streamText({
     model: createLanguageModel(params.provider),
-    system: createNativeRuntimeSystemPrompt(),
+    system: createNativeRuntimeSystemPrompt(params.uiLanguage),
     messages: [
       {
         role: 'user',

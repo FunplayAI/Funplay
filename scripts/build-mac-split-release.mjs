@@ -72,15 +72,17 @@ async function restoreReferencedArtifacts(sourceDir, metadataPath) {
 
 async function main() {
   await rm(cacheDir, { recursive: true, force: true });
-  await rm(arm64Metadata, { force: true });
-  await rm(x64Metadata, { force: true });
+  await rm(releaseDir, { recursive: true, force: true });
+  await mkdir(releaseDir, { recursive: true });
 
   await run('npm run dist:mac:arm64');
+  await run('npm run release:verify-runtime-deps');
   await copyFile(latestMetadata, arm64Metadata);
   await verifyMacUpdateMetadataFile(arm64Metadata, { requireSplit: false, checkArtifacts: true });
   await copyReferencedArtifacts(arm64Metadata, arm64CacheDir);
 
   await run('npm run dist:mac:x64');
+  await run('npm run release:verify-runtime-deps');
   await copyFile(join(arm64CacheDir, 'latest-mac.yml'), arm64Metadata);
   await restoreReferencedArtifacts(arm64CacheDir, arm64Metadata);
   await copyFile(latestMetadata, x64Metadata);

@@ -430,6 +430,10 @@ function bufferLooksBinary(buffer: Buffer): boolean {
   return false;
 }
 
+function shouldHideProjectTreeEntry(name: string): boolean {
+  return name.startsWith('.');
+}
+
 async function walkProjectFiles(rootPath: string, currentPath: string, entries: ProjectFileEntry[]): Promise<void> {
   if (entries.length >= MAX_FILE_ENTRIES) {
     return;
@@ -448,7 +452,7 @@ async function walkProjectFiles(rootPath: string, currentPath: string, entries: 
       return;
     }
 
-    if (directoryEntry.name.startsWith('.DS_Store')) {
+    if (shouldHideProjectTreeEntry(directoryEntry.name)) {
       continue;
     }
 

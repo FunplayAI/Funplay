@@ -97,7 +97,7 @@ export async function runNativeAiSdkProviderStep(input: {
   const stepAbort = createNativeProviderStepAbort(input.params.abortSignal, provider);
   const result = streamText({
     model: input.model,
-    system: createNativeRuntimeSystemPrompt(),
+    system: createNativeRuntimeSystemPrompt(input.params.uiLanguage),
     messages: input.loopState.messages,
     tools: input.toolPool.toolSet,
     activeTools: [...input.toolPool.names],

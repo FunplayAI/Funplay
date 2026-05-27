@@ -97,6 +97,43 @@ test('project file listing includes empty directories', async () => {
   }
 });
 
+test('project file listing hides dot-prefixed files and directories by default', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-hidden-files-'));
+  try {
+    await mkdir(join(projectPath, '.funplay-attachments', 'media'), { recursive: true });
+    await mkdir(join(projectPath, '.cache'), { recursive: true });
+    await mkdir(join(projectPath, 'assets'), { recursive: true });
+    await writeFile(join(projectPath, '.gitignore'), 'node_modules\n', 'utf8');
+    await writeFile(join(projectPath, '.funplay-attachments', 'media', 'pasted.png'), 'hidden', 'utf8');
+    await writeFile(join(projectPath, '.cache', 'preview.png'), 'hidden', 'utf8');
+    await writeFile(join(projectPath, 'assets', 'bird.png'), 'visible', 'utf8');
+
+    const project = ensureProjectSessions(createProjectFromInput({
+      name: 'Hidden Files',
+      templateId: 'generic-workspace',
+      artStyle: 'test',
+      pitch: 'hidden files',
+      engine: {
+        platform: 'web',
+        setupMode: 'import',
+        projectPath,
+        dimension: 'unknown'
+      }
+    }));
+
+    const entries = await listProjectFilesForProject(project);
+    assert.deepEqual(
+      entries.map((entry) => entry.path),
+      ['assets', 'assets/bird.png']
+    );
+
+    const hiddenFile = await readProjectFileForProject(project, '.gitignore');
+    assert.match(hiddenFile.content, /node_modules/);
+  } finally {
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
 test('project file preview extracts PPTX slide text and MIME type', async () => {
   const projectPath = await mkdtemp(join(tmpdir(), 'funplay-pptx-preview-'));
   const pptxRoot = join(projectPath, 'pptx-src');

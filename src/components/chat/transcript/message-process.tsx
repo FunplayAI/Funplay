@@ -2,12 +2,13 @@ import { Fragment, type JSX, type ReactNode } from 'react';
 import type { AgentCoreMessagePart, AgentPermissionImpact, ChatMessage } from '../../../../shared/types';
 import { localize, useUiLanguage } from '../../../i18n';
 import { renderChatContent } from './chat-markdown';
-import { buildTranscriptViewItems, type TranscriptViewItem } from './transcript-view-model';
+import { buildTranscriptViewItems, collapseCompletedToolGroups, type TranscriptViewItem } from './transcript-view-model';
 import {
   type ToolExecutionEntry,
   type StageExecutionEntry,
   type StreamActivityEntry,
   ToolActivityGroup,
+  ToolStepSummaryRow,
   StreamActivityTrail,
   StageTimeline,
   buildCompletedMessageProcessTools,
@@ -33,70 +34,89 @@ export function buildMessageProcessTools(message: ChatMessage): ToolExecutionEnt
 export function renderAgentCoreParts(input: {
   parts: AgentCoreMessagePart[];
   developerMode: boolean;
+  collapseCompletedToolGroups?: boolean;
   openablePaths: string[];
   searchQuery: string;
   onOpenPath: (path: string) => void;
 }): ReactNode[] {
-  return buildTranscriptViewItems(input.parts)
-    .map((item) => renderTranscriptViewItem(item, input))
-    .filter((node): node is ReactNode => Boolean(node));
+  const items = buildTranscriptViewItems(input.parts);
+  const renderItems = input.collapseCompletedToolGroups
+    ? collapseCompletedToolGroups(items)
+    : items;
+  return renderItems
+    .filter((item) => item.kind !== 'assistant_thinking' || input.developerMode)
+    .map((item) => (
+      <TranscriptItemRenderer
+        key={`core-node-${item.id}`}
+        item={item}
+        developerMode={input.developerMode}
+        openablePaths={input.openablePaths}
+        searchQuery={input.searchQuery}
+        onOpenPath={input.onOpenPath}
+      />
+    ));
 }
 
-function renderTranscriptViewItem(item: TranscriptViewItem, input: {
+export function TranscriptItemRenderer(props: {
+  item: TranscriptViewItem;
   developerMode: boolean;
   openablePaths: string[];
   searchQuery: string;
   onOpenPath: (path: string) => void;
-}): ReactNode {
+}): JSX.Element | null {
+  const { item } = props;
   if (item.kind === 'assistant_text') {
     return (
-      <div className="chat-assistant-answer" key={`core-node-${item.id}`}>
-        {renderChatContent(item.text, input.openablePaths, input.searchQuery, input.onOpenPath)}
+      <div className="chat-assistant-answer transcript-view-item" data-transcript-kind={item.displayKind} data-transcript-status={item.status}>
+        {renderChatContent(item.text, props.openablePaths, props.searchQuery, props.onOpenPath)}
       </div>
     );
   }
   if (item.kind === 'assistant_thinking') {
-    return input.developerMode
-      ? <Fragment key={`core-node-${item.id}`}><AgentCoreContextBlock title={item.title} content={item.thinking} /></Fragment>
+    return props.developerMode
+      ? <AgentCoreContextBlock item={item} title={item.title} content={item.thinking} />
       : null;
   }
   if (item.kind === 'tool_group') {
     return (
-      <ToolActivityGroup
-        key={`core-tool-${item.id}`}
-        tools={item.tools}
-        defaultOpen={item.tools.some(shouldExpandToolByDefault)}
-        collapseBeforeAssistantText={item.collapseBeforeAssistantText}
-        showDiagnosticMeta={input.developerMode}
-        openablePaths={input.openablePaths}
-        searchQuery={input.searchQuery}
-        onOpenPath={input.onOpenPath}
-        renderContent={renderChatContent}
-      />
+      <div className="transcript-view-item tool" data-transcript-kind={item.displayKind} data-transcript-status={item.status}>
+        <ToolStepSummaryRow
+          tools={item.tools}
+          stepKind={item.stepKind}
+          stepSummary={item.stepSummary}
+          status={item.status}
+          failureCount={item.failureCount}
+          runningCount={item.runningCount}
+          openablePaths={props.openablePaths}
+          searchQuery={props.searchQuery}
+          onOpenPath={props.onOpenPath}
+          renderContent={renderChatContent}
+        />
+      </div>
     );
   }
   if (item.kind === 'context_summary') {
-    return <Fragment key={`core-node-${item.id}`}><AgentCoreContextBlock title="上下文摘要" content={item.summary} /></Fragment>;
+    return <AgentCoreContextBlock item={item} title="上下文摘要" content={item.summary} />;
   }
   if (item.kind === 'todo_update') {
-    return <Fragment key={`core-node-${item.id}`}><AgentCoreTodoBlock items={item.items} /></Fragment>;
+    return <AgentCoreTodoBlock item={item} items={item.items} />;
   }
   if (item.kind === 'permission_request') {
     return (
-      <Fragment key={`core-node-${item.id}`}>
-        <AgentCoreContextBlock title="等待权限确认" content={[item.toolName, item.reason].filter(Boolean).join('\n')} tone={item.risk === 'high' ? 'error' : undefined} />
+      <Fragment>
+        <AgentCoreContextBlock item={item} title="等待权限确认" content={[item.toolName, item.reason].filter(Boolean).join('\n')} tone={item.risk === 'high' ? 'error' : undefined} />
         <PermissionImpactBlock impact={item.impact} />
       </Fragment>
     );
   }
   if (item.kind === 'user_input_request') {
-    return <Fragment key={`core-node-${item.id}`}><AgentCoreContextBlock title="等待用户回答" content={item.question} /></Fragment>;
+    return <AgentCoreContextBlock item={item} title="等待用户回答" content={item.question} />;
   }
   if (item.kind === 'run_error') {
-    return <Fragment key={`core-node-${item.id}`}><AgentCoreContextBlock title="运行错误" content={item.error} tone="error" /></Fragment>;
+    return <AgentCoreContextBlock item={item} title="运行错误" content={item.error} tone="error" />;
   }
-  if (item.kind === 'system_event' && (input.developerMode || item.status === 'failed' || item.compactSummary)) {
-    return <Fragment key={`core-node-${item.id}`}><AgentCoreContextBlock title={item.title} content={item.summary ?? ''} tone={item.status === 'failed' ? 'error' : undefined} /></Fragment>;
+  if (item.kind === 'system_event' && (props.developerMode || item.status === 'failed' || item.compactSummary)) {
+    return <AgentCoreContextBlock item={item} title={item.title} content={item.summary ?? ''} tone={item.status === 'failed' ? 'error' : undefined} />;
   }
   return null;
 }
@@ -242,16 +262,20 @@ function clampProcessOffset(offset: number, contentLength: number): number {
   return Math.max(0, Math.min(contentLength, Math.floor(offset)));
 }
 
-function AgentCoreContextBlock(props: { title: string; content: string; tone?: 'error' }): JSX.Element {
+function AgentCoreContextBlock(props: { item?: TranscriptViewItem; title: string; content: string; tone?: 'error' }): JSX.Element {
   return (
-    <div className={`chat-content-block ${props.tone === 'error' ? 'tool-result error' : 'fallback'}`}>
+    <div
+      className={`chat-content-block transcript-view-item ${props.tone === 'error' ? 'tool-result error' : 'fallback'}`}
+      data-transcript-kind={props.item?.displayKind}
+      data-transcript-status={props.item?.status}
+    >
       <div className="chat-content-block-title">{props.title}</div>
       <div className="chat-content-block-body">{props.content}</div>
     </div>
   );
 }
 
-function AgentCoreTodoBlock(props: { items: Extract<AgentCoreMessagePart, { kind: 'todo_update' }>['items'] }): JSX.Element {
+function AgentCoreTodoBlock(props: { item?: TranscriptViewItem; items: Extract<AgentCoreMessagePart, { kind: 'todo_update' }>['items'] }): JSX.Element {
   const language = useUiLanguage();
   const labels = {
     pending: localize(language, '待处理', 'Pending'),
@@ -260,7 +284,7 @@ function AgentCoreTodoBlock(props: { items: Extract<AgentCoreMessagePart, { kind
     cancelled: localize(language, '已取消', 'Cancelled')
   };
   return (
-    <div className="chat-content-block tool">
+    <div className="chat-content-block transcript-view-item tool" data-transcript-kind={props.item?.displayKind} data-transcript-status={props.item?.status}>
       <div className="chat-content-block-title">{localize(language, '任务清单', 'Task List')}</div>
       <div className="chat-content-block-body">
         <div className="chat-rich-list-block">

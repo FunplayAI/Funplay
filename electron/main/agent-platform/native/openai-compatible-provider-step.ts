@@ -95,7 +95,7 @@ export async function runOpenAiCompatibleProviderStep(input: {
   try {
     stepResult = await generateOpenAiCompatibleStreamingToolStep({
         provider,
-        system: createNativeRuntimeSystemPrompt(),
+        system: createNativeRuntimeSystemPrompt(input.params.uiLanguage),
         messages: stepMessages,
         tools: input.toolPool.openAiCompatibleTools,
         maxOutputTokens: input.maxOutputTokens,

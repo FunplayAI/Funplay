@@ -1,4 +1,4 @@
-import type { AgentPermissionMode, ChatMessage, ChatMessageMetadata, Project, ProjectAgentPolicy, ProjectSession } from './types';
+import type { AgentPermissionMode, ChatMessage, ChatMessageMetadata, Project, ProjectAgentPolicy, ProjectSession, PromptAttachment } from './types';
 import { agentCorePartsToPlainText, agentCorePartsToVisibleAssistantText } from './agent-core-v2';
 import { makeId, nowIso } from './utils';
 
@@ -369,6 +369,8 @@ export function appendProjectConversationTurn(
   input: {
     userMessageId?: string;
     userMessage: string;
+    userDisplayMessage?: string;
+    userAttachments?: PromptAttachment[];
     assistantMessage: string;
     assistantMetadata?: ChatMessageMetadata;
     updatedAt?: string;
@@ -380,9 +382,10 @@ export function appendProjectConversationTurn(
   const activeSession = getActiveProjectSession(ensured);
   const updatedAt = input.updatedAt ?? nowIso();
   const previousUserMessageCount = activeSession.chat.filter((message) => message.role === 'user').length;
+  const userDisplayMessage = input.userDisplayMessage ?? input.userMessage;
   const title =
     activeSession.autoTitle && previousUserMessageCount === 0
-      ? deriveSessionTitleFromPrompt(input.userMessage)
+      ? deriveSessionTitleFromPrompt(userDisplayMessage)
       : activeSession.title;
   const assistantMessage = deduplicateRepeatedAssistantText(input.assistantMessage);
   const baseChat = normalizeChatMessageOrdinals(activeSession.chat);
@@ -401,9 +404,14 @@ export function appendProjectConversationTurn(
       {
         id: userMessageId,
         role: 'user',
-        content: input.userMessage,
+        content: userDisplayMessage,
         createdAt: updatedAt,
-        ordinal: nextOrdinal
+        ordinal: nextOrdinal,
+        metadata: input.userAttachments?.length
+          ? {
+              promptAttachments: input.userAttachments
+            }
+          : undefined
       },
       {
         id: assistantMessageId,

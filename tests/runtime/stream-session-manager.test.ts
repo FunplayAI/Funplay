@@ -317,6 +317,53 @@ test('stream manager accepts authoritative Agent Core parts from the main runtim
   assert.equal(parts[2]?.kind === 'tool_result' ? parts[2].content : '', 'README content');
 });
 
+test('stream manager places live tool steps before text generated after the tool', () => {
+  clearStreamSessions();
+  seedStreamSession(stream({
+    streamId: 'stream_tool_before_text',
+    projectId: 'project_a',
+    sessionId: 'session_1',
+    startedAt: '2026-04-22T08:00:00.000Z'
+  }));
+
+  applyPromptStreamEventToManager({
+    type: 'tool_use',
+    streamId: 'stream_tool_before_text',
+    projectId: 'project_a',
+    sessionId: 'session_1',
+    toolUseId: 'tool_search',
+    name: 'web_search',
+    input: {
+      query: 'AI news'
+    },
+    status: 'running',
+    startedAt: '2026-04-22T08:00:01.000Z'
+  }, labels);
+  applyPromptStreamEventToManager({
+    type: 'tool_result',
+    streamId: 'stream_tool_before_text',
+    projectId: 'project_a',
+    sessionId: 'session_1',
+    toolUseId: 'tool_search',
+    content: 'Search results',
+    startedAt: '2026-04-22T08:00:02.000Z'
+  }, labels);
+  applyPromptStreamEventToManager({
+    type: 'delta',
+    streamId: 'stream_tool_before_text',
+    projectId: 'project_a',
+    sessionId: 'session_1',
+    delta: '以下是整理后的正文。',
+    content: '以下是整理后的正文。',
+    startedAt: '2026-04-22T08:00:03.000Z'
+  }, labels);
+
+  const parts = getStreamSessionForSession('project_a', 'session_1')?.agentCoreParts ?? [];
+  assert.deepEqual(parts.map((part) => part.kind), ['tool_call', 'tool_result', 'assistant_text']);
+  assert.equal(parts[0]?.kind === 'tool_call' ? parts[0].name : '', 'web_search');
+  assert.equal(parts[2]?.kind === 'assistant_text' ? parts[2].text : '', '以下是整理后的正文。');
+});
+
 test('stream manager removes completed, cancelled, and error streams after they are consumed', () => {
   clearStreamSessions();
   seedStreamSession(stream({

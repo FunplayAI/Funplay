@@ -1,8 +1,8 @@
 import type { IpcMain } from 'electron';
 import { app, dialog, type OpenDialogOptions } from 'electron';
 import type { HandlerContext } from './types';
-import { folderPickerInputSchema, validateIpcInput, projectIdSchema } from '../ipc-validation';
-import { pickPromptAttachments } from '../prompt-attachment-service';
+import { folderPickerInputSchema, validateIpcInput, projectIdSchema, promptAttachmentImportItemsSchema } from '../ipc-validation';
+import { importPromptAttachments, pickPromptAttachments } from '../prompt-attachment-service';
 
 export function registerDialogHandlers(ipcMain: IpcMain, ctx: HandlerContext): void {
   ipcMain.handle('dialog:pickProjectFolder', async (_, input: unknown) => {
@@ -30,6 +30,14 @@ export function registerDialogHandlers(ipcMain: IpcMain, ctx: HandlerContext): v
       ctx.getState(),
       validateIpcInput(projectIdSchema, projectId, 'dialog:pickPromptAttachments(projectId)'),
       ctx.mainWindow
+    );
+  });
+
+  ipcMain.handle('dialog:importPromptAttachments', async (_, projectId: unknown, items: unknown) => {
+    return importPromptAttachments(
+      ctx.getState(),
+      validateIpcInput(projectIdSchema, projectId, 'dialog:importPromptAttachments(projectId)'),
+      validateIpcInput(promptAttachmentImportItemsSchema, items, 'dialog:importPromptAttachments(items)')
     );
   });
 }

@@ -99,6 +99,8 @@ import { buildGenericWorkspaceContext } from '../../electron/main/agent-platform
 import { resolveGenericAgentRuntime } from '../../electron/main/agent-platform/runtime-registry.ts';
 import type { GenericAgentRuntime, GenericAgentRuntimeParams, GenericAgentRuntimeResult } from '../../electron/main/agent-platform/types.ts';
 import { ProjectInstructionTracker, extractNativeToolInputInstructionQuery } from '../../electron/main/agent-platform/project-instruction-tracker.ts';
+import { createNativeRuntimeSystemPrompt } from '../../electron/main/agent-platform/native/prompt.ts';
+import { createSystemPrompt as createClaudeSystemPrompt } from '../../electron/main/agent-platform/claude/prompt-builder.ts';
 import { resolveAgentProvider } from '../../electron/main/agent-platform/provider-resolver.ts';
 import { createMcpPlugin, resolveProjectPluginByKind, setActiveMcpPlugin } from '../../electron/main/mcp-plugin-service.ts';
 import {
@@ -2561,6 +2563,26 @@ test('native tool loop permission copy distinguishes build from plan', () => {
   assert.match(planInstructions, /项目写入工具未出现在工具列表/);
   assert.match(planInstructions, /host 会在执行点完成权限判断/);
   assert.doesNotMatch(planInstructions, /执行前必须获得用户确认/);
+});
+
+test('runtime prompts describe Funplay HTML preview inline script support', () => {
+  const nativePrompt = createNativeRuntimeSystemPrompt();
+  assert.match(nativePrompt, /Funplay 项目预览能力/);
+  assert.match(nativePrompt, /支持普通 HTML5\/Canvas 网页游戏所需的内联 JavaScript/);
+  assert.match(nativePrompt, /不要默认声称“嵌入式浏览器无法运行内联脚本”/);
+  assert.match(nativePrompt, /不要默认要求用户双击 HTML 或改用外部浏览器/);
+  assert.match(nativePrompt, /音频、背景音乐或 WebAudio 仍可能需要用户首次点击\/交互后才会播放/);
+  assert.match(nativePrompt, /Default response language: reply to the user in English/);
+  assert.match(createNativeRuntimeSystemPrompt('zh-CN'), /默认回复语言：请使用简体中文回答用户/);
+
+  const claudePrompt = createClaudeSystemPrompt();
+  assert.match(claudePrompt, /Funplay project preview capability/);
+  assert.match(claudePrompt, /supports inline JavaScript/);
+  assert.match(claudePrompt, /Do not claim that the embedded browser cannot run inline scripts/);
+  assert.match(claudePrompt, /Do not default to telling the user to double-click the HTML file/);
+  assert.match(claudePrompt, /Audio, background music, or WebAudio may still require the user to click\/interact once/);
+  assert.match(claudePrompt, /Default response language: reply to the user in English/);
+  assert.match(createClaudeSystemPrompt(undefined, undefined, 'zh-CN'), /默认回复语言：请使用简体中文回答用户/);
 });
 
 test('native provider step timeout follows opencode-style five minute provider boundary', () => {

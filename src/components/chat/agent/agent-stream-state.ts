@@ -8,6 +8,7 @@ import type {
   AgentToolMcpResult,
   AgentUserInputOption,
   ChatMediaBlock,
+  PromptAttachment,
   ProjectSessionRuntimeId,
   RuntimeRecoveryAction
 } from '../../../../shared/types';
@@ -17,6 +18,7 @@ export interface AgentPromptStreamState {
   projectId: string;
   sessionId: string;
   prompt: string;
+  attachments?: PromptAttachment[];
   content: string;
   thinkingContent: string;
   toolUses: Array<{

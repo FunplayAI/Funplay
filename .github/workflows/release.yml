@@ -188,10 +188,41 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: Prepare release notes
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const version = process.env.RELEASE_TAG.replace(/^v/, '');
+          const changelog = fs.readFileSync('CHANGELOG.md', 'utf8').split(/\r?\n/);
+          const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const heading = new RegExp(`^##\\s+${escapeRegExp(version)}(?:\\s|$)`);
+          const start = changelog.findIndex((line) => heading.test(line));
+          if (start < 0) {
+            throw new Error(`CHANGELOG.md does not contain a section for ${version}.`);
+          }
+          let end = changelog.length;
+          for (let index = start + 1; index < changelog.length; index += 1) {
+            if (/^##\s+\S/.test(changelog[index])) {
+              end = index;
+              break;
+            }
+          }
+          const notes = changelog.slice(start + 1, end).join('\n').trim();
+          if (!notes) {
+            throw new Error(`CHANGELOG.md section for ${version} is empty.`);
+          }
+          fs.writeFileSync('release-notes.md', `${notes}\n`, 'utf8');
+          NODE
 
       - name: Create or update release
         run: |
@@ -202,12 +233,11 @@ jobs:
             exit 1
           fi
 
-          title="Funplay ${RELEASE_TAG#v}"
-          notes=$'Automated Funplay desktop release artifacts.\n\nBuilt and verified by the release workflow.'
+          title="$RELEASE_TAG"
 
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit "$RELEASE_TAG" --draft=false --title "$title" --notes "$notes" --repo "$GITHUB_REPOSITORY"
+            gh release edit "$RELEASE_TAG" --draft=false --title "$title" --notes-file release-notes.md --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$RELEASE_TAG" "${files[@]}" --title "$title" --notes "$notes" --repo "$GITHUB_REPOSITORY"
+            gh release create "$RELEASE_TAG" "${files[@]}" --title "$title" --notes-file release-notes.md --repo "$GITHUB_REPOSITORY"
           fi

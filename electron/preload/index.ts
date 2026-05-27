@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
   AiProviderInput,
   AssetGenerationProviderInput,
@@ -92,6 +92,8 @@ const api: FunPlayApi = {
   sendPrompt: (projectId: string, message: string) => ipcRenderer.invoke('projects:sendPrompt', projectId, message),
   startPromptStream: (projectId: string, message: string, sessionId?: string, attachments?: PromptAttachment[], uiLanguage?: 'zh-CN' | 'en-US') =>
     ipcRenderer.invoke('projects:startPromptStream', projectId, message, sessionId, attachments, uiLanguage),
+  importPromptAttachments: (projectId, items) => ipcRenderer.invoke('dialog:importPromptAttachments', projectId, items),
+  getPathForFile: (file) => webUtils.getPathForFile(file),
   cancelPromptStream: (streamId: string) => ipcRenderer.invoke('projects:cancelPromptStream', streamId),
   respondPromptPermission: (requestId: string, decision: 'allow' | 'allow_session' | 'deny') =>
     ipcRenderer.invoke('projects:respondPromptPermission', requestId, decision),

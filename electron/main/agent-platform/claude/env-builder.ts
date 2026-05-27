@@ -182,7 +182,7 @@ export function createClaudeCodeCliArgs(params: GenericAgentRuntimeParams, allow
     'stream-json',
     '--include-partial-messages',
     '--append-system-prompt',
-    createSystemPrompt(params.provider, profile),
+    createSystemPrompt(params.provider, profile, params.uiLanguage),
     '--permission-mode',
     allowWriteTools ? 'bypassPermissions' : 'dontAsk',
     '--allowedTools',

@@ -202,7 +202,7 @@ export function formatAppUpdateStatus(status: AppUpdateSnapshot['status'], langu
 }
 
 export function formatAppUpdateFeedSource(source: AppUpdateSnapshot['feedSource'], language: LanguagePreference): string {
-  if (source === 'embedded') {
+  if (source === 'github' || source === 'embedded') {
     return localize(language, 'GitHub Releases', 'GitHub Releases');
   }
   return localize(language, '未配置', 'Not Configured');

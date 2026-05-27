@@ -1,4 +1,4 @@
-import type { JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import type {
   AgentCoreMessagePart,
   AgentToolArtifact,
@@ -10,7 +10,8 @@ import type {
   AgentPermissionImpact,
   AgentUserInputOption,
   ChatMediaBlock,
-  ChatMessage
+  ChatMessage,
+  PromptAttachment
 } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import { Button } from '../ui/index';
@@ -24,6 +25,7 @@ import {
   pairStreamingToolExecutions,
   buildCompletedMessageProcessTools,
   formatCompletedProcessTitle,
+  formatDuration,
   formatAbsoluteTime
 } from './tool-activity';
 import { getMessagePlainText } from './transcript/message-plain-text';
@@ -51,6 +53,7 @@ export function ChatTranscriptMessage(props: {
   const language = useUiLanguage();
   const isAssistant = props.message.role === 'assistant';
   const copyText = getMessagePlainText(props.message, props.developerMode);
+  const userAttachments = !isAssistant ? props.message.metadata?.promptAttachments ?? [] : [];
 
   return (
     <div
@@ -97,6 +100,7 @@ export function ChatTranscriptMessage(props: {
           </div>
         </div>
         <div className="chat-transcript-content">
+          {userAttachments.length > 0 ? <UserAttachmentStrip attachments={userAttachments} /> : null}
           {renderChatMessageBlocks(props.message, props.openablePaths, props.searchQuery, props.onOpenPath, props.developerMode)}
         </div>
         {isAssistant ? <AssistantMetadataPanel metadata={props.message.metadata} developerMode={props.developerMode} /> : null}
@@ -190,8 +194,27 @@ export function PendingTranscriptMessage(props: { prompt: string }): JSX.Element
   );
 }
 
+function UserAttachmentStrip(props: { attachments: PromptAttachment[] }): JSX.Element | null {
+  if (props.attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="chat-user-attachments">
+      {props.attachments.map((attachment) => (
+        <span key={attachment.id} className={`chat-user-attachment-chip ${attachment.kind}`} title={attachment.relativePath || attachment.path}>
+          {attachment.previewDataUrl ? <img src={attachment.previewDataUrl} alt="" /> : <span className="chat-user-attachment-icon" aria-hidden="true">{attachment.kind === 'image' ? 'IMG' : 'FILE'}</span>}
+          <span>{attachment.name}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function StreamingTranscriptMessage(props: {
   prompt: string;
+  attachments?: PromptAttachment[];
+  startedAt?: string;
   content: string;
   thinkingContent: string;
   toolUses: Array<{
@@ -239,6 +262,7 @@ export function StreamingTranscriptMessage(props: {
 }): JSX.Element {
   const language = useUiLanguage();
   const now = new Date().toISOString();
+  const elapsed = useElapsedDuration(props.startedAt, language);
   const agentCoreToolExecutions = props.agentCoreParts?.length
     ? buildCompletedMessageProcessTools({ agentCoreParts: props.agentCoreParts })
     : [];
@@ -279,6 +303,7 @@ export function StreamingTranscriptMessage(props: {
             <span className="chat-transcript-time">{formatAbsoluteTime(language, now)}</span>
           </div>
           <div className="chat-transcript-content">
+            {props.attachments?.length ? <UserAttachmentStrip attachments={props.attachments} /> : null}
             <div className="chat-rich-text-line">{props.prompt}</div>
           </div>
         </div>
@@ -288,7 +313,10 @@ export function StreamingTranscriptMessage(props: {
         <div className="chat-transcript-avatar assistant">AI</div>
         <div className="chat-transcript-bubble assistant pending">
           <div className="chat-transcript-meta">
-            <span className="chat-transcript-author">{localize(language, '正在处理', 'Processing')}</span>
+            <span className="chat-transcript-author">
+              {localize(language, '正在处理', 'Processing')}
+              {elapsed ? <em className="chat-transcript-elapsed">{elapsed}</em> : null}
+            </span>
             <span className="chat-transcript-time">{props.statusMessage || localize(language, '生成中…', 'Generating…')}</span>
           </div>
           <div className="chat-transcript-content">
@@ -322,4 +350,25 @@ export function StreamingTranscriptMessage(props: {
       </div>
     </>
   );
+}
+
+function useElapsedDuration(startedAt: string | undefined, language: 'zh-CN' | 'en-US'): string {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!startedAt || Number.isNaN(Date.parse(startedAt))) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [startedAt]);
+
+  if (!startedAt) {
+    return '';
+  }
+  const startedAtMs = Date.parse(startedAt);
+  if (Number.isNaN(startedAtMs)) {
+    return '';
+  }
+  return formatDuration(language, nowMs - startedAtMs);
 }

@@ -50,7 +50,7 @@ export function renderChatContent(content: string, openablePaths: string[], sear
     <>
       {blocks.map((block, index) => {
         if (block.type === 'code') {
-          return isPlainTextFence(block.language)
+          return shouldRenderFenceAsPlainText(block.language, block.content)
             ? <PlainTextBlock key={`block-${index}`} content={block.content} />
             : <ChatCodeBlock key={`block-${index}`} language={block.language} content={block.content} />;
         }
@@ -162,9 +162,38 @@ function ChatCodeBlock(props: { language?: string; content: string }): JSX.Eleme
   );
 }
 
-function isPlainTextFence(language: string | undefined): boolean {
+function shouldRenderFenceAsPlainText(language: string | undefined, content: string): boolean {
   const normalized = language?.trim().toLowerCase();
-  return normalized === 'text' || normalized === 'txt' || normalized === 'plain' || normalized === 'plaintext';
+  if (normalized === 'text' || normalized === 'txt' || normalized === 'plain' || normalized === 'plaintext') {
+    return true;
+  }
+  if (normalized && normalized !== 'code') {
+    return false;
+  }
+  return !looksLikeSourceCode(content);
+}
+
+function looksLikeSourceCode(content: string): boolean {
+  const trimmed = content.trim();
+  if (!trimmed) {
+    return false;
+  }
+  const lines = trimmed.split('\n').map((line) => line.trim()).filter(Boolean);
+  const codeLineCount = lines.filter((line) => (
+    /^(import|export|const|let|var|function|class|interface|type|enum|return|if|for|while|switch|case|break|async|await)\b/.test(line) ||
+    /^(def|class|from|import|return|if|elif|else|for|while|try|except|with)\b/.test(line) ||
+    /^<\/?[a-z][\w:-]*(\s|>|\/>)/i.test(line) ||
+    /^[.#]?[\w-]+\s*\{/.test(line) ||
+    /^[\]}),;]+$/.test(line) ||
+    /[{};]\s*$/.test(line) ||
+    /=>/.test(line) ||
+    /^\s*["']?[\w-]+["']?\s*:\s*["'{[\d]/.test(line)
+  )).length;
+  const codeRatio = codeLineCount / Math.max(lines.length, 1);
+  if (codeRatio >= 0.34) {
+    return true;
+  }
+  return /```/.test(trimmed) || /\b(document|window|canvas|getElementById|addEventListener|console\.log|npm\s+\w+|pnpm\s+\w+|yarn\s+\w+)\b/.test(trimmed);
 }
 
 function parseChatBlocks(content: string): ParsedChatBlock[] {

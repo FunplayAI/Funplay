@@ -400,6 +400,8 @@ export async function executeGenericConversation(task: GenericAgentConversationT
   let nextProject = appendProjectConversationTurn(currentProject, {
     userMessageId: task.userMessageId,
     userMessage: task.message,
+    userDisplayMessage: task.displayMessage,
+    userAttachments: task.attachments,
     assistantMessage: result.assistantMessage,
     assistantMetadata: {
       ...result.assistantMetadata,

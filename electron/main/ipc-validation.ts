@@ -10,6 +10,7 @@ import type {
   AssetGenerationProviderInput,
   AssetGenerationRequest,
   PromptAttachment,
+  PromptAttachmentImportItem,
   ProjectSessionEffort,
   ProjectSessionRuntimeId,
   WebSearchSettings
@@ -357,6 +358,14 @@ export const promptAttachmentSchema = z.object({
   previewDataUrl: optionalTrimmedString(12 * 1024 * 1024)
 }).strict() satisfies z.ZodType<PromptAttachment>;
 export const promptAttachmentsSchema = z.array(promptAttachmentSchema).max(12).default([]);
+export const promptAttachmentImportItemSchema = z.object({
+  name: optionalTrimmedString(255),
+  path: optionalTrimmedString(4096),
+  mimeType: optionalTrimmedString(120),
+  size: z.number().int().nonnegative().max(100 * 1024 * 1024).optional(),
+  dataUrl: optionalTrimmedString(140 * 1024 * 1024)
+}).strict().refine((value) => Boolean(value.path || value.dataUrl), 'Attachment import item requires path or dataUrl') satisfies z.ZodType<PromptAttachmentImportItem>;
+export const promptAttachmentImportItemsSchema = z.array(promptAttachmentImportItemSchema).max(12).default([]);
 export const filePathSchema = trimmedString(1, 2048).refine((value) => !value.startsWith('/'), 'Only project-relative file paths are allowed.');
 export const projectFileContentSchema = z.string().max(500_000);
 export const memoryFilePathSchema = trimmedString(1, 2048)

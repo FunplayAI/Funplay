@@ -15,6 +15,8 @@ import {
   BUILTIN_WEB_SYSTEM_PROMPT,
   CLAUDE_NATIVE_WEB_SYSTEM_PROMPT
 } from '../builtin-mcp';
+import { FUNPLAY_HTML_PREVIEW_CAPABILITY_PROMPT_EN } from '../preview-capabilities';
+import { createResponseLanguageContextLine, createResponseLanguageInstruction, type RuntimeUiLanguage } from '../response-language';
 import type { GenericAgentRuntimeParams } from '../types';
 import type {
   ClaudeMcpProfile,
@@ -40,7 +42,7 @@ export function shouldUseClaudeNativeWeb(provider?: AiProvider): boolean {
   return provider.protocol === 'anthropic' && !provider.sdkProxyOnly;
 }
 
-export function createSystemPrompt(provider?: AiProvider, profile?: ClaudeMcpProfile): string {
+export function createSystemPrompt(provider?: AiProvider, profile?: ClaudeMcpProfile, uiLanguage?: RuntimeUiLanguage): string {
   const includeWeb = profile?.includeWeb ?? true;
   const includeMemory = profile?.includeMemory ?? true;
   const includeMedia = profile?.includeMedia ?? true;
@@ -55,6 +57,8 @@ export function createSystemPrompt(provider?: AiProvider, profile?: ClaudeMcpPro
     'Do not claim to have changed files unless the tool output confirms it.',
     'Prefer reading only the minimum files needed for the current user request.',
     'For multi-step work, use TodoWrite to keep a short visible task list.',
+    FUNPLAY_HTML_PREVIEW_CAPABILITY_PROMPT_EN,
+    createResponseLanguageInstruction(uiLanguage),
     'When using Claude Code Read, omit optional parameters that have no value. In particular, never pass pages as an empty string; omit pages entirely unless you need a concrete 1-indexed range such as "1-5" or "3". If Read fails because pages is invalid, retry once without pages.',
     'If project instructions are provided in the user prompt, follow them with higher priority than these defaults.',
     '',
@@ -234,6 +238,7 @@ export function createUserPrompt(params: GenericAgentRuntimeParams, options: {
 
   return [
     'Current workspace context:',
+    createResponseLanguageContextLine(params.uiLanguage),
     JSON.stringify(
       {
         projectName: params.context.projectName,

@@ -4,7 +4,6 @@ import type {
   AiProjectPlan,
   AiProjectUpdate,
   AssetItem,
-  ChatMessage,
   ChatMessageMetadata,
   CreateProjectInput,
   GameTemplateId,
@@ -330,33 +329,6 @@ function buildAssets(input: CreateProjectInput): AssetItem[] {
   }));
 }
 
-function buildWelcomeMessage(project: Project): ChatMessage {
-  if (project.templateId === 'generic-workspace' || project.engine?.platform === 'web') {
-    return {
-      id: makeId('msg'),
-      role: 'assistant',
-      createdAt: project.createdAt,
-      content: `已进入《${project.name}》工作区。你可以直接提问、整理需求，或从左侧文件树打开文件进行查看、编辑和预览。`
-    };
-  }
-
-  if (project.templateId === 'engine-game-prototype') {
-    return {
-      id: makeId('msg'),
-      role: 'assistant',
-      createdAt: project.createdAt,
-      content: `已进入《${project.name}》引擎项目工作区。我会先确认项目结构与运行环境，再根据你的具体目标推进实现和验证。`
-    };
-  }
-
-  return {
-    id: makeId('msg'),
-    role: 'assistant',
-    createdAt: project.createdAt,
-    content: `已为《${project.name}》生成首版项目蓝图。我会优先推进 ${project.blueprint.coreLoop[0]} → ${project.blueprint.coreLoop[1]} 的体验闭环，并同步整理资源清单与 Unity 实装任务。`
-  };
-}
-
 function buildInitialActivity(project: Project): ActivityItem[] {
   if (project.templateId === 'generic-workspace' || project.engine?.platform === 'web') {
     return [
@@ -501,7 +473,6 @@ export function createProjectFromInput(input: CreateProjectInput): Project {
     contextSummary: createEmptyContextSummary(timestamp)
   };
 
-  project.chat = [buildWelcomeMessage(project)];
   const initialSession = createProjectSessionRecord({
     title: project.name,
     chat: project.chat,

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { ArrowDown } from 'lucide-react';
-import type { AgentCoreMessagePart, AgentPermissionImpact, AgentToolArtifact, AgentToolBrowserResult, AgentToolChangedFile, AgentToolEditMetrics, AgentToolMcpResult, AgentUserInputOption, ChatMediaBlock, ChatMessage, ProjectSessionRuntimeId, RuntimeRecoveryAction } from '../../../shared/types';
+import type { AgentCoreMessagePart, AgentPermissionImpact, AgentToolArtifact, AgentToolBrowserResult, AgentToolChangedFile, AgentToolEditMetrics, AgentToolMcpResult, AgentUserInputOption, ChatMediaBlock, ChatMessage, ProjectSessionRuntimeId, PromptAttachment, RuntimeRecoveryAction } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import { Button, IconButton } from '../ui/index';
 import { ChatTranscriptMessage, StreamingTranscriptMessage, getMessagePlainText } from './ConversationMessage';
@@ -12,6 +12,8 @@ const MESSAGE_RENDER_BATCH_SIZE = 80;
 
 export interface ChatStreamState {
   prompt: string;
+  attachments?: PromptAttachment[];
+  startedAt?: string;
   content: string;
   thinkingContent: string;
   toolUses: Array<{
@@ -445,6 +447,8 @@ export function MessageList(props: {
             {props.stream ? (
               <StreamingTranscriptMessage
                 prompt={props.stream.prompt}
+                attachments={props.stream.attachments}
+                startedAt={props.stream.startedAt}
                 content={props.stream.content}
                 thinkingContent={props.stream.thinkingContent}
                 toolUses={props.stream.toolUses}

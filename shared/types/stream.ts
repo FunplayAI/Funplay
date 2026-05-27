@@ -7,7 +7,8 @@ import type {
   AgentToolEditMetrics,
   AgentToolMcpResult,
   AgentToolTerminalResult,
-  ChatMediaBlock
+  ChatMediaBlock,
+  PromptAttachment
 } from './chat';
 import type { AgentToolTransactionSummary, RuntimeUsage, RuntimeUsageTotals } from './agent';
 import type { AgentCoreMessagePart } from './agent-core';
@@ -57,6 +58,7 @@ export interface PromptStreamHandle {
   startedAt: string;
   kind?: AgentRunKind;
   prompt?: string;
+  attachments?: PromptAttachment[];
   resumedFromRunId?: string;
 }
 

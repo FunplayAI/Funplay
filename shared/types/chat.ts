@@ -113,6 +113,14 @@ export interface PromptAttachment {
   previewDataUrl?: string;
 }
 
+export interface PromptAttachmentImportItem {
+  name?: string;
+  path?: string;
+  mimeType?: string;
+  size?: number;
+  dataUrl?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
@@ -186,6 +194,7 @@ export interface ChatMessageMetadata {
   intent?: ChatMessageIntent;
   activitySummary?: string;
   executionSummary?: string;
+  promptAttachments?: PromptAttachment[];
   agentStartedAt?: string;
   agentFinishedAt?: string;
   operationLog?: import('./project').AgentOperationRecord[];

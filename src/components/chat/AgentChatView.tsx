@@ -55,6 +55,7 @@ export function AgentChatView(props: {
   isSending: boolean;
   onComposerChange: (value: string) => void;
   onPickAttachments: () => void;
+  onImportAttachments: (files: File[], source: 'paste' | 'drop') => void;
   onRemoveAttachment: (attachmentId: string) => void;
   onSubmit: (content?: string) => void;
   onQueuePrompt: (content: string) => void;
@@ -253,6 +254,8 @@ export function AgentChatView(props: {
                 visibleStream
                   ? {
                       prompt: visibleStream.prompt,
+                      attachments: visibleStream.attachments,
+                      startedAt: visibleStream.startedAt,
                       content: visibleStream.content,
                       thinkingContent: visibleStream.thinkingContent,
                       toolUses: visibleStream.toolUses,
@@ -304,6 +307,7 @@ export function AgentChatView(props: {
                 permissionMode={props.permissionMode}
                 onDraftChange={props.onComposerChange}
                 onPickAttachments={props.onPickAttachments}
+                onImportAttachments={props.onImportAttachments}
                 onRemoveAttachment={props.onRemoveAttachment}
                 onSubmit={handleSend}
                 onCancelStream={props.onCancelStream}

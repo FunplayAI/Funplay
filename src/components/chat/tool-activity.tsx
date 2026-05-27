@@ -1,8 +1,22 @@
 import { useEffect, useId, useRef, useState, type JSX, type ReactNode } from 'react';
-import { FolderOpen, ExternalLink } from 'lucide-react';
+import {
+  Box,
+  CircleEllipsis,
+  ExternalLink,
+  FolderOpen,
+  Gamepad2,
+  Image,
+  ListChecks,
+  Pencil,
+  Search,
+  Terminal,
+  Wrench,
+  type LucideIcon
+} from 'lucide-react';
 import type { ChatMediaBlock, ChatMessageMetadata } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import { Button } from '../ui/index';
+import type { TranscriptToolStepKind, TranscriptToolStepSummary, TranscriptViewItemStatus } from './transcript/transcript-view-model';
 import type {
   StageExecutionEntry,
   StreamActivityEntry,
@@ -48,6 +62,85 @@ export function AssistantMetadataPanel(props: { metadata: ChatMessageMetadata | 
       {props.metadata.executionSummary ? <div className="chat-message-panel-note">{props.metadata.executionSummary}</div> : null}
     </div>
   );
+}
+
+export function ToolStepSummaryRow(props: {
+  tools: ToolExecutionEntry[];
+  stepKind: TranscriptToolStepKind;
+  stepSummary: TranscriptToolStepSummary;
+  status: TranscriptViewItemStatus;
+  failureCount: number;
+  runningCount: number;
+  openablePaths: string[];
+  searchQuery: string;
+  onOpenPath: (path: string) => void;
+  renderContent: (content: string, openablePaths: string[], searchQuery: string, onOpenPath: (path: string) => void) => ReactNode;
+}): JSX.Element | null {
+  const language = useUiLanguage();
+  const detailId = useId();
+  const [expanded, setExpanded] = useState(false);
+  const Icon = getToolStepIcon(props.stepKind);
+  const summary = language === 'zh-CN' ? props.stepSummary.zhCN : props.stepSummary.enUS;
+  const toggleExpanded = (): void => {
+    setExpanded((current) => !current);
+  };
+
+  if (props.tools.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={`chat-tool-step ${props.status} ${expanded ? 'expanded' : 'collapsed'}`} data-tool-step-kind={props.stepKind}>
+      <Button
+        variant="ghost"
+        className="chat-tool-step-summary"
+        aria-expanded={expanded}
+        aria-controls={detailId}
+        onClick={toggleExpanded}
+      >
+        <span className={`chat-tool-step-icon ${props.stepKind}`}>
+          <Icon size={15} strokeWidth={2.1} aria-hidden="true" />
+        </span>
+        <span className="chat-tool-step-copy">
+          <strong>{summary}</strong>
+          {props.failureCount > 0 ? (
+            <em className="failed">{localize(language, `${props.failureCount} 个失败`, `${props.failureCount} failed`)}</em>
+          ) : props.runningCount > 0 ? (
+            <em className="running">{localize(language, `${props.runningCount} 个进行中`, `${props.runningCount} running`)}</em>
+          ) : null}
+        </span>
+        <ChevronDownIcon className="chat-tool-step-chevron" />
+      </Button>
+      <div id={detailId} className="chat-tool-step-detail-shell" aria-hidden={!expanded}>
+        <div className="chat-tool-step-detail" role="region" aria-label={localize(language, '工具步骤详情', 'Tool step details')}>
+          {props.tools.map((tool) => (
+            <ToolActivityRow
+              key={tool.id}
+              tool={tool}
+              openablePaths={props.openablePaths}
+              searchQuery={props.searchQuery}
+              onOpenPath={props.onOpenPath}
+              renderContent={props.renderContent}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getToolStepIcon(stepKind: TranscriptToolStepKind): LucideIcon {
+  const icons: Record<TranscriptToolStepKind, LucideIcon> = {
+    explore: Search,
+    edit: Pencil,
+    command: Terminal,
+    engine: Gamepad2,
+    asset: Image,
+    task: ListChecks,
+    mixed: Wrench,
+    other: CircleEllipsis
+  };
+  return icons[stepKind] ?? Box;
 }
 
 export function ToolActivityGroup(props: {

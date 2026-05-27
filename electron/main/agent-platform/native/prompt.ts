@@ -1,4 +1,6 @@
 import type { GenericAgentRuntimeParams } from '../types';
+import { FUNPLAY_HTML_PREVIEW_CAPABILITY_PROMPT_ZH } from '../preview-capabilities';
+import { createResponseLanguageContextLine, createResponseLanguageInstruction, type RuntimeUiLanguage } from '../response-language';
 
 export interface NativeRuntimeWorkspaceEvidence {
   fileTreeSummary?: string;
@@ -73,7 +75,7 @@ function formatResumeContext(params: GenericAgentRuntimeParams): string {
   ].filter(Boolean).join('\n');
 }
 
-export function createNativeRuntimeSystemPrompt(): string {
+export function createNativeRuntimeSystemPrompt(uiLanguage?: RuntimeUiLanguage): string {
   return [
     '你是 Funplay 桌面应用中的通用 AI Agent。',
     '你的职责是帮助用户围绕当前项目进行连续对话、解释、规划、文件理解和下一步建议。',
@@ -81,6 +83,8 @@ export function createNativeRuntimeSystemPrompt(): string {
     '用户多为小白，回复必须直接、清晰、可执行。',
     '如果提到文件路径，优先使用项目内相对路径。',
     '不要声称已经修改文件或执行工具，除非上下文明确给出了工具执行结果。',
+    FUNPLAY_HTML_PREVIEW_CAPABILITY_PROMPT_ZH,
+    createResponseLanguageInstruction(uiLanguage),
     '允许使用 Markdown，但保持结构简洁。'
   ].join('\n');
 }
@@ -94,6 +98,7 @@ export function createNativeRuntimeUserPrompt(
 
   return [
     '当前工作区上下文：',
+    createResponseLanguageContextLine(params.uiLanguage),
     JSON.stringify(
       {
         projectId: params.context.projectId,

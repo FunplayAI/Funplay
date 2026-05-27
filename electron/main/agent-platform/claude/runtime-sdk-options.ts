@@ -559,7 +559,7 @@ export function createClaudeCodeSdkOptions(params: GenericAgentRuntimeParams, al
     systemPrompt: {
       type: 'preset',
       preset: 'claude_code',
-      append: createSystemPrompt(params.provider, profile)
+      append: createSystemPrompt(params.provider, profile, params.uiLanguage)
     },
     permissionMode,
     allowedTools: getAutoAllowedSdkTools(false, useClaudeNativeWeb, profile),

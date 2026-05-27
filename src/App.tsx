@@ -13,6 +13,7 @@ import { useProjectSkills } from './hooks/useProjectSkills';
 import { useOnboarding } from './hooks/useOnboarding';
 import { useAgentRuntimeActivity } from './hooks/useAgentRuntimeActivity';
 import { useAssetGenerationCenter } from './hooks/useAssetGenerationCenter';
+import { usePromptAttachmentImport } from './hooks/usePromptAttachmentImport';
 import { formatProjectDocument } from '../shared/planner';
 import { ensureProjectSessions } from '../shared/project-sessions';
 import {
@@ -89,7 +90,7 @@ import { SkillsPage } from './components/pages/SkillsPage';
 import { ProjectSettingsPage } from './components/pages/ProjectSettingsPage';
 import { McpRegistrySettingsPage } from './components/pages/McpRegistrySettingsPage';
 import { WebSearchSettingsPage } from './components/pages/WebSearchSettingsPage';
-import { AssetsPage } from './components/pages/AssetsPage';
+import { AssetsPage, type AssetLibraryViewId } from './components/pages/AssetsPage';
 import { AppSettingsModal } from './components/modals/AppSettingsModal';
 import { DeleteProjectModal } from './components/modals/DeleteProjectModal';
 import { SessionChangesPanel, RestoreCheckpointModal } from './components/modals/SessionChangesPanel';
@@ -152,6 +153,7 @@ function App(): JSX.Element {
   const [localActiveSessionByProject, setLocalActiveSessionByProject] = useState<Record<string, string>>({});
   const [projectFiles, setProjectFiles] = useState<ProjectFileEntry[]>([]);
   const [deleteProjectSourceFiles, setDeleteProjectSourceFiles] = useState(false);
+  const [assetLibraryViewByProject, setAssetLibraryViewByProject] = useState<Record<string, AssetLibraryViewId>>({});
 
   const [projectBindings, setProjectBindings] = useState<ProjectMcpBindingDraft>([]);
   const activeSessionSwitchTokenRef = useRef(0);
@@ -257,6 +259,7 @@ function App(): JSX.Element {
     selectedProjectId,
     localActiveSessionByProject
   });
+  const selectedAssetLibraryView = selectedProjectView ? assetLibraryViewByProject[selectedProjectView.id] ?? 'all' : 'all';
   const selectedProjectRuntimePath = selectedProjectView?.engine?.projectPath ?? '';
   const selectedProjectUseFastRuntimeRefresh = shouldUseFastRuntimeRefresh(selectedProjectView);
   const {
@@ -584,6 +587,18 @@ function App(): JSX.Element {
   const selectedComposerAttachments = selectedSessionId ? sessionAttachments[selectedSessionId] ?? [] : [];
   const selectedComposerError = selectedSessionId ? sessionComposerErrors[selectedSessionId] ?? '' : '';
   const selectedQueuedPrompts = selectedSessionId ? queuedPromptsBySession[selectedSessionId] ?? [] : [];
+  const {
+    handlePickPromptAttachments,
+    handleImportPromptAttachmentFiles,
+    removePromptAttachment
+  } = usePromptAttachmentImport({
+    projectId: selectedProjectView?.id,
+    sessionId: selectedSessionId,
+    sessionAttachments,
+    setSessionAttachments,
+    setSessionComposerErrors,
+    language: uiPreferences.language
+  });
   const selectedProjectSessionStates = useMemo<Record<string, SessionListState>>(() => {
     if (!selectedProjectView) {
       return {};
@@ -982,36 +997,6 @@ function App(): JSX.Element {
     setSessionComposerErrors((current) => ({ ...current, [sessionId]: '' }));
   }
 
-  async function handlePickPromptAttachments(): Promise<void> {
-    if (!selectedProjectView || !selectedSessionId) {
-      return;
-    }
-
-    try {
-      const attachments = await window.funplay.pickPromptAttachments(selectedProjectView.id);
-      if (attachments.length === 0) {
-        return;
-      }
-      setSessionAttachments((current) => ({
-        ...current,
-        [selectedSessionId]: [...(current[selectedSessionId] ?? []), ...attachments].slice(0, 12)
-      }));
-      setSessionComposerErrors((current) => ({ ...current, [selectedSessionId]: '' }));
-    } catch (error) {
-      setSessionComposerErrors((current) => ({
-        ...current,
-        [selectedSessionId]: error instanceof Error ? error.message : localize(uiPreferences.language, '附件选择失败。', 'Failed to attach files.')
-      }));
-    }
-  }
-
-  function removePromptAttachment(sessionId: string, attachmentId: string): void {
-    setSessionAttachments((current) => ({
-      ...current,
-      [sessionId]: (current[sessionId] ?? []).filter((attachment) => attachment.id !== attachmentId)
-    }));
-  }
-
   function formatQueuedPromptWithAttachments(prompt: string, attachments: PromptAttachment[]): string {
     if (attachments.length === 0) {
       return prompt;
@@ -1061,6 +1046,7 @@ function App(): JSX.Element {
     sessionId: string;
     startedAt: string;
     prompt?: string;
+    attachments?: PromptAttachment[];
     kind?: 'conversation' | 'bootstrap';
   }, fallbackPrompt: string): void {
     seedStreamSession({
@@ -1068,6 +1054,7 @@ function App(): JSX.Element {
       projectId: handle.projectId,
       sessionId: handle.sessionId,
       prompt: handle.prompt || fallbackPrompt,
+      attachments: handle.attachments,
       content: '',
       thinkingContent: '',
       toolUses: [],
@@ -1125,7 +1112,8 @@ function App(): JSX.Element {
       seedPromptHandle({
         ...handle,
         kind: 'conversation',
-        prompt: handle.prompt || message
+        prompt: handle.prompt || message,
+        attachments
       }, message);
     } catch (error) {
       setSessionDrafts((current) => ({ ...current, [sessionId]: message }));
@@ -1848,6 +1836,7 @@ function App(): JSX.Element {
                   }
                 }}
                 onPickAttachments={() => void handlePickPromptAttachments()}
+                onImportAttachments={(files, source) => void handleImportPromptAttachmentFiles(files, source)}
                 onRemoveAttachment={(attachmentId) => {
                   if (selectedSessionId) {
                     removePromptAttachment(selectedSessionId, attachmentId);
@@ -2035,6 +2024,16 @@ function App(): JSX.Element {
               project={selectedProjectView}
               projectFiles={projectFiles}
               assetGenerationProviders={assetGenerationProviders}
+              activeViewId={selectedAssetLibraryView}
+              onActiveViewChange={(viewId) => {
+                if (!selectedProjectView) {
+                  return;
+                }
+                setAssetLibraryViewByProject((current) => ({
+                  ...current,
+                  [selectedProjectView.id]: viewId
+                }));
+              }}
               onOpenAsset={handleOpenVirtualFile}
               onOpenProjectFile={(path) => void handleOpenProjectFile(path)}
               onGenerateAsset={handleGenerateAsset}

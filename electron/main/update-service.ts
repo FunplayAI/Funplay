@@ -1,5 +1,7 @@
 import { app } from 'electron';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import type {
   AppUpdater,
   ProgressInfo,
@@ -12,9 +14,17 @@ import type {
   AppUpdateSnapshot,
   AppUpdateStatus
 } from '../../shared/types';
+import { normalizeReleaseNotesText } from '../../shared/release-notes';
 
 const nodeRequire = createRequire(import.meta.url);
 const { autoUpdater } = nodeRequire('electron-updater') as { autoUpdater: AppUpdater };
+const githubUpdateConfig = {
+  provider: 'github' as const,
+  owner: 'FunplayAI',
+  repo: 'Funplay',
+  releaseType: 'release' as const
+};
+const updaterCacheDirName = 'funplay-updater';
 
 type UpdateStatusDispatch = (snapshot: AppUpdateSnapshot) => void;
 type UpdateNotificationDispatch = (input: { title: string; body: string; priority?: 'low' | 'normal' | 'urgent' }) => void | Promise<void>;
@@ -54,6 +64,7 @@ export function initializeAppUpdateService(options: {
     error: (...args: unknown[]) => console.error('[updates]', ...args),
     debug: (...args: unknown[]) => console.debug('[updates]', ...args)
   };
+  configureGitHubUpdateFeed();
 
   autoUpdater.on('checking-for-update', () => {
     updateSnapshot({
@@ -317,7 +328,7 @@ function shouldSkipAutomaticCheck(): boolean {
 
 function resolveFeedSource(): AppUpdateSnapshot['feedSource'] {
   if (app.isPackaged) {
-    return 'embedded';
+    return 'github';
   }
   return 'none';
 }
@@ -345,10 +356,10 @@ function normalizeReleaseNotes(input: UpdateInfo['releaseNotes']): string | unde
     return undefined;
   }
   if (typeof input === 'string') {
-    return input.slice(0, 6000);
+    return normalizeReleaseNotesText(input).slice(0, 6000) || undefined;
   }
   return input
-    .map((item) => [item.version, item.note].filter(Boolean).join('\n'))
+    .map((item) => [item.version, item.note ? normalizeReleaseNotesText(item.note) : ''].filter(Boolean).join('\n'))
     .filter(Boolean)
     .join('\n\n')
     .slice(0, 6000) || undefined;
@@ -379,4 +390,37 @@ function notifyOnce(key: string, input: { title: string; body: string; priority?
   }
   lastNotifiedKey = key;
   void dispatchNotification?.(input);
+}
+
+function configureGitHubUpdateFeed(): void {
+  autoUpdater.setFeedURL(githubUpdateConfig);
+  const configPath = resolveUpdateConfigPath();
+  if (configPath) {
+    autoUpdater.updateConfigPath = configPath;
+  }
+}
+
+function resolveUpdateConfigPath(): string | null {
+  if (!app.isPackaged) {
+    return null;
+  }
+  const embeddedConfigPath = join(process.resourcesPath, 'app-update.yml');
+  if (existsSync(embeddedConfigPath)) {
+    return embeddedConfigPath;
+  }
+  const fallbackConfigPath = join(app.getPath('userData'), 'app-update.yml');
+  mkdirSync(dirname(fallbackConfigPath), { recursive: true });
+  writeFileSync(fallbackConfigPath, createFallbackUpdateConfig(), 'utf8');
+  return fallbackConfigPath;
+}
+
+function createFallbackUpdateConfig(): string {
+  return [
+    'provider: github',
+    `owner: ${githubUpdateConfig.owner}`,
+    `repo: ${githubUpdateConfig.repo}`,
+    `releaseType: ${githubUpdateConfig.releaseType}`,
+    `updaterCacheDirName: ${updaterCacheDirName}`,
+    ''
+  ].join('\n');
 }

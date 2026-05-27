@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import type { AgentSkillRegistrySnapshot, ChatMessage, McpPlugin, Project, ProjectSession, PromptAttachment, RuntimeDoctorResult, SessionCheckpointPreview, WebSearchSettings } from '../../shared/types.ts';
 import { ChatComposer } from '../../src/components/chat/ChatComposer.tsx';
 import { ChatTranscriptMessage, StreamingTranscriptMessage, getMessagePlainText } from '../../src/components/chat/ConversationMessage.tsx';
+import { AgentChatView } from '../../src/components/chat/AgentChatView.tsx';
 import { MessageList } from '../../src/components/chat/MessageList.tsx';
 import { buildCompletedMessageProcessTools, pairStreamingToolExecutions, summarizeToolResult } from '../../src/components/chat/tool-activity.tsx';
 import { buildTranscriptViewItems } from '../../src/components/chat/transcript/transcript-view-model.ts';
@@ -257,6 +258,7 @@ test('chat composer shows engine connection indicator only when an engine projec
 
   assert.equal(genericHtml.includes('agent-engine-connection-indicator'), false);
   assert.match(engineHtml, /agent-engine-connection-indicator unity connected/);
+  assert.match(engineHtml, /agent-engine-logo unity/);
   assert.match(engineHtml, /agent-engine-connection-dot connected/);
   assert.match(engineHtml, /Unity 已连接/);
 });
@@ -508,9 +510,120 @@ test('transcript view model groups Agent Core tool parts before final answer', (
     throw new Error('Unexpected transcript view item types.');
   }
   assert.equal(first.status, 'completed');
+  assert.equal(first.role, 'tool');
+  assert.equal(first.displayKind, 'tool');
+  assert.equal(first.detailView, 'overlay');
+  assert.equal(first.stepKind, 'explore');
+  assert.match(first.stepSummary.zhCN, /已探索 1 个文件/);
+  assert.match(first.stepSummary.enUS, /Explored 1 file/);
+  assert.equal(first.failureCount, 0);
+  assert.equal(first.runningCount, 0);
   assert.equal(first.collapseBeforeAssistantText, true);
   assert.equal(first.tools[0]?.result?.content, 'README content');
+  assert.equal(second.role, 'assistant');
+  assert.equal(second.displayKind, 'text');
+  assert.equal(second.detailView, 'none');
   assert.equal(second.copyText, '完成。');
+});
+
+test('transcript view model keeps tool steps interleaved with assistant narrative', () => {
+  const items = buildTranscriptViewItems([
+    {
+      id: 'tool_read_call',
+      kind: 'tool_call',
+      createdAt: '2026-05-20T00:00:00.000Z',
+      sequence: 0,
+      toolUseId: 'tool_read',
+      name: 'read_file',
+      input: {
+        path: 'README.md'
+      },
+      status: 'completed'
+    },
+    {
+      id: 'tool_read_result',
+      kind: 'tool_result',
+      createdAt: '2026-05-20T00:00:01.000Z',
+      sequence: 1,
+      toolUseId: 'tool_read',
+      toolName: 'read_file',
+      content: 'README content'
+    },
+    {
+      id: 'middle_text',
+      kind: 'assistant_text',
+      createdAt: '2026-05-20T00:00:02.000Z',
+      sequence: 2,
+      text: '我先确认了入口，现在改代码。'
+    },
+    {
+      id: 'tool_edit_call',
+      kind: 'tool_call',
+      createdAt: '2026-05-20T00:00:03.000Z',
+      sequence: 3,
+      toolUseId: 'tool_edit',
+      name: 'apply_patch',
+      input: {
+        file: 'src/App.tsx'
+      },
+      status: 'completed'
+    },
+    {
+      id: 'tool_edit_result',
+      kind: 'tool_result',
+      createdAt: '2026-05-20T00:00:04.000Z',
+      sequence: 4,
+      toolUseId: 'tool_edit',
+      toolName: 'apply_patch',
+      content: 'Patch applied'
+    }
+  ]);
+
+  assert.deepEqual(items.map((item) => item.kind), ['tool_group', 'assistant_text', 'tool_group']);
+  const first = items[0];
+  const third = items[2];
+  if (first?.kind !== 'tool_group' || third?.kind !== 'tool_group') {
+    throw new Error('Expected tool groups around assistant text.');
+  }
+  assert.equal(first.stepKind, 'explore');
+  assert.equal(third.stepKind, 'edit');
+  assert.match(third.stepSummary.zhCN, /已编辑 1 个文件/);
+});
+
+test('user transcript renders attachments above a compact right-side bubble', () => {
+  const message: ChatMessage = {
+    id: 'msg_user_attachment',
+    role: 'user',
+    content: '帮我参考这张图调整 UI。',
+    createdAt: new Date().toISOString(),
+    metadata: {
+      promptAttachments: [{
+        id: 'attachment_image',
+        name: 'image.png',
+        path: '/tmp/image.png',
+        kind: 'image',
+        mimeType: 'image/png',
+        size: 128,
+        previewDataUrl: 'data:image/png;base64,ZmFrZQ=='
+      }]
+    }
+  };
+
+  const html = renderZh(createElement(ChatTranscriptMessage, {
+    message,
+    openablePaths: [],
+    searchQuery: '',
+    developerMode: false,
+    onOpenPath: noop
+  }));
+
+  assert.match(html, /chat-transcript-row user/);
+  assert.match(html, /chat-transcript-bubble user/);
+  assert.match(html, /chat-user-attachments/);
+  assert.match(html, /chat-user-attachment-chip image/);
+  assert.match(html, /image\.png/);
+  assert.match(html, /帮我参考这张图调整 UI/);
+  assert.doesNotMatch(html, /Attached files staged for this message/);
 });
 
 test('completed message process summary preserves Agent Core transactions', () => {
@@ -624,9 +737,43 @@ test('completed assistant transcript keeps token usage in developer mode only', 
   assert.match(developerHtml, /2 次/);
 });
 
+test('completed assistant transcript ignores legacy operation log in ordinary chat rendering', () => {
+  const message: ChatMessage = {
+    id: 'msg_legacy_operation_log',
+    role: 'assistant',
+    content: '最终答复只显示正文。',
+    createdAt: new Date().toISOString(),
+    metadata: {
+      operationLog: [
+        {
+          id: 'legacy_tool',
+          type: 'tool_call',
+          target: 'legacy_tool',
+          title: 'Legacy tool',
+          status: 'completed',
+          createdAt: '2026-05-15T00:00:00.000Z'
+        }
+      ]
+    }
+  };
+
+  const html = renderZh(createElement(ChatTranscriptMessage, {
+    message,
+    openablePaths: [],
+    searchQuery: '',
+    developerMode: false,
+    onOpenPath: noop
+  }));
+
+  assert.match(html, /最终答复只显示正文/);
+  assert.doesNotMatch(html, /Legacy tool/);
+  assert.doesNotMatch(html, /legacy_tool/);
+});
+
 test('streaming transcript shows unified thinking status and structured tool activity', () => {
   const html = renderZh(createElement(StreamingTranscriptMessage, {
     prompt: '读取 notes.md',
+    startedAt: new Date(Date.now() - 74000).toISOString(),
     content: '',
     thinkingContent: '',
     toolUses: [
@@ -692,6 +839,8 @@ test('streaming transcript shows unified thinking status and structured tool act
     onOpenPath: noop
   }));
 
+  assert.match(html, /chat-transcript-elapsed/);
+  assert.match(html, /1m/);
   assert.match(html, /正在思考中/);
   assert.equal(html.includes('chat-run-status-panel'), false);
   assert.equal(html.includes('有新的输出、工具结果或任务状态时会持续更新'), false);
@@ -714,6 +863,107 @@ test('streaming transcript shows unified thinking status and structured tool act
   assert.equal(html.includes('View details'), false);
   assert.equal(html.includes('[Tool]'), false);
   assert.equal(html.includes('Previous tool call'), false);
+});
+
+test('agent chat view forwards stream start time to the live transcript timer', () => {
+  const session: ProjectSession = {
+    id: 'session_live_timer',
+    title: 'Live timer',
+    autoTitle: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    chat: []
+  };
+  const project = {
+    id: 'project_live_timer',
+    name: 'Bird',
+    activeSessionId: session.id,
+    updatedAt: new Date().toISOString(),
+    sessions: [session],
+    mcpBindings: {},
+    chat: [],
+    activity: [],
+    assets: [],
+    tasks: [],
+    memory: {},
+    contextSummary: {},
+    blueprint: {}
+  } as unknown as Project;
+
+  const html = renderZh(createElement(AgentChatView, {
+    project,
+    provider,
+    providers: [provider],
+    permissionMode: 'full-access',
+    openablePaths: [],
+    sessionEffort: 'auto',
+    composerDraft: '',
+    composerAttachments: [],
+    activePromptStream: {
+      streamId: 'stream_live_timer',
+      projectId: project.id,
+      sessionId: session.id,
+      prompt: '让游戏精品一点',
+      attachments: [{
+        id: 'attachment_icon',
+        name: 'icon.png',
+        path: '/tmp/icon.png',
+        kind: 'image',
+        size: 128,
+        mimeType: 'image/png'
+      }],
+      content: '',
+      thinkingContent: '',
+      toolUses: [],
+      toolResults: [],
+      stages: [],
+      activityItems: [],
+      agentCoreParts: [],
+      phase: 'streaming',
+      statusMessage: '正在实时生成回复...',
+      startedAt: new Date(Date.now() - 74000).toISOString()
+    },
+    developerMode: false,
+    composerError: '',
+    queuedPrompts: [],
+    isSending: true,
+    onComposerChange: noop,
+    onPickAttachments: noop,
+    onImportAttachments: noop,
+    onRemoveAttachment: noop,
+    onSubmit: noop,
+    onQueuePrompt: noop,
+    onRemoveQueuedPrompt: noop,
+    onCancelStream: noop,
+    onRespondPermission: noop,
+    onRespondUserInput: noop,
+    onUpdateSessionRuntime: noop,
+    onUpdatePermissionMode: noop,
+    onOpenAppSettings: noop,
+    onOpenProjectAgentSettings: noop,
+    onDiagnoseEnvironment: async () => ({
+      platform: 'web',
+      mode: 'import',
+      dimension: 'unknown',
+      checkedAt: new Date().toISOString(),
+      checks: [],
+      ready: true
+    }),
+    onRunEnvironmentAction: async () => ({
+      action: 'refresh_engine_runtime_state',
+      status: 'completed',
+      message: 'ok'
+    }),
+    onRefreshProjectRuntimeState: async () => project,
+    onOpenFilePath: noop,
+    onRestoreCheckpoint: noop
+  }));
+
+  assert.match(html, /正在处理/);
+  assert.match(html, /正在实时生成回复/);
+  assert.match(html, /chat-transcript-elapsed/);
+  assert.match(html, /1m/);
+  assert.match(html, /icon\.png/);
 });
 
 test('completed transcript inline controls render through shared buttons', () => {
@@ -775,6 +1025,71 @@ test('plain text fenced blocks render without a labeled code chrome', () => {
   assert.match(html, /index\.html/);
   assert.doesNotMatch(html, /chat-code-language/);
   assert.doesNotMatch(html, /chat-code-copy/);
+});
+
+test('unlabeled prose fences render as plain text instead of code cards', () => {
+  const message: ChatMessage = {
+    id: 'msg_unlabeled_prose_fence',
+    role: 'assistant',
+    content: [
+      '1. 描述要具体明确',
+      '',
+      '```',
+      '差的提示："帮我做一个贪吃蛇游戏"',
+      '好的提示："用 HTML5 Canvas 做一个贪吃蛇游戏，支持方向键控制"',
+      '```',
+      '',
+      '```code',
+      '推荐提示中明确指定：',
+      '- 使用纯 HTML + CSS + JavaScript',
+      '- 使用 Canvas 2D 绘图',
+      '```'
+    ].join('\n'),
+    createdAt: new Date().toISOString()
+  };
+  const html = renderZh(createElement(ChatTranscriptMessage, {
+    message,
+    openablePaths: [],
+    searchQuery: '',
+    developerMode: false,
+    onOpenPath: noop
+  }));
+
+  assert.match(html, /chat-plain-text-block/);
+  assert.match(html, /差的提示/);
+  assert.match(html, /推荐提示中明确指定/);
+  assert.doesNotMatch(html, /chat-code-card/);
+  assert.doesNotMatch(html, /chat-code-language/);
+});
+
+test('unlabeled source fences still render as code cards', () => {
+  const message: ChatMessage = {
+    id: 'msg_unlabeled_source_fence',
+    role: 'assistant',
+    content: [
+      '入口代码：',
+      '',
+      '```',
+      'const canvas = document.getElementById("game");',
+      'const ctx = canvas.getContext("2d");',
+      'function draw() {',
+      '  ctx.fillRect(0, 0, 16, 16);',
+      '}',
+      '```'
+    ].join('\n'),
+    createdAt: new Date().toISOString()
+  };
+  const html = renderZh(createElement(ChatTranscriptMessage, {
+    message,
+    openablePaths: [],
+    searchQuery: '',
+    developerMode: false,
+    onOpenPath: noop
+  }));
+
+  assert.match(html, /chat-code-card/);
+  assert.match(html, /chat-code-language/);
+  assert.match(html, /const canvas/);
 });
 
 test('standalone markdown thematic breaks render as visible separators', () => {
@@ -1160,13 +1475,13 @@ test('agent core tool process collapses before final answer text', () => {
     onOpenPath: noop
   }));
 
-  const toolIndex = html.indexOf('chat-tool-activity failed collapsed');
+  const toolIndex = html.indexOf('chat-tool-step failed collapsed');
   const finalTextIndex = html.indexOf('结论：需要先修复断言');
   assert.ok(toolIndex >= 0);
   assert.ok(finalTextIndex > toolIndex);
   assert.doesNotMatch(html, /有操作失败/);
   assert.doesNotMatch(html, /操作失败/);
-  assert.doesNotMatch(html, /1 个失败/);
+  assert.match(html, /1 个失败/);
 });
 
 test('streaming transcript merges multiple tools at the same text boundary', () => {
@@ -1509,16 +1824,17 @@ test('completed assistant transcript can replay persisted process text with inli
   }));
 
   const firstIndex = html.indexOf('先读取配置');
-  const readIndex = html.indexOf('config fixture');
+  const summaryIndex = html.indexOf('已探索 1 个文件，编辑 1 个文件');
   const secondIndex = html.indexOf('再写入修复');
-  const writeIndex = html.indexOf('已写入 config.json');
   const finalIndex = html.indexOf('修复完成');
 
   assert.ok(firstIndex >= 0);
-  assert.ok(readIndex > firstIndex);
-  assert.ok(secondIndex > readIndex);
-  assert.ok(writeIndex > secondIndex);
-  assert.ok(finalIndex > writeIndex);
+  assert.ok(summaryIndex > firstIndex);
+  assert.ok(secondIndex > summaryIndex);
+  assert.ok(finalIndex > secondIndex);
+  assert.equal((html.match(/chat-tool-step-summary/g) ?? []).length, 1);
+  assert.match(html, /config fixture/);
+  assert.match(html, /已写入 config\.json/);
   assert.equal(html.includes('[Tool]'), false);
   assert.equal(html.includes('Previous tool call'), false);
 });
@@ -3619,6 +3935,51 @@ test('assets page renders asset cards through shared buttons', () => {
   assert.match(html, /asset-library-detail/);
   assert.match(html, /fp-button[^"]*asset-library-card/);
   assert.doesNotMatch(html, /<button[^>]*class="asset-library-card/);
+});
+
+test('assets page can be controlled by the parent active tab state', () => {
+  const project = {
+    id: 'project_assets_controlled',
+    name: 'Rogue',
+    sessions: [],
+    mcpBindings: {},
+    chat: [],
+    activity: [],
+    assets: [],
+    tasks: [],
+    memory: {},
+    contextSummary: {},
+    blueprint: {}
+  } as unknown as Project;
+  const html = renderZh(createElement(AssetsPage, {
+    project,
+    projectFiles: [
+      {
+        id: 'file_player',
+        name: 'player.png',
+        path: 'assets/images/player.png',
+        type: 'file',
+        size: 2048,
+        modifiedAt: new Date().toISOString()
+      },
+      {
+        id: 'file_bgm',
+        name: 'bgm.mp3',
+        path: 'assets/audio/bgm.mp3',
+        type: 'file',
+        size: 4096,
+        modifiedAt: new Date().toISOString()
+      }
+    ],
+    activeViewId: 'audio',
+    onActiveViewChange: noop,
+    onOpenAsset: noop,
+    onOpenProjectFile: noop
+  }));
+
+  assert.match(html, /<h2>音频<\/h2>/);
+  assert.match(html, /bgm\.mp3/);
+  assert.doesNotMatch(html, /player\.png/);
 });
 
 test('asset library grid excludes generation jobs from the project asset view', () => {
