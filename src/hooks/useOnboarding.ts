@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   type CreateProjectInput,
   type EnvironmentActionResult,
@@ -61,8 +61,20 @@ export function useOnboarding(params: UseOnboardingParams) {
   const [environmentActionMessage, setEnvironmentActionMessage] = useState('');
   const [environmentTasks, setEnvironmentTasks] = useState<EnvironmentTask[]>([]);
   const [lastAutoDiagnosedTaskId, setLastAutoDiagnosedTaskId] = useState('');
+  const acceptedDiagnosticsSignatureRef = useRef('');
 
   useEffect(() => {
+    const currentSignature = buildDiagnosticsInputSignature({
+      mode: onboardingMode,
+      platform: onboardingPlatform,
+      dimension: onboardingDimension,
+      projectPath: onboardingProjectPath,
+      enginePluginId: onboardingEnginePluginId
+    });
+    if (acceptedDiagnosticsSignatureRef.current === currentSignature) {
+      return;
+    }
+
     setEnvironmentDiagnostics(null);
     setOnboardingDetectionOk(false);
     setEnvironmentActionMessage('');
@@ -245,9 +257,17 @@ export function useOnboarding(params: UseOnboardingParams) {
         enginePluginId: input.enginePluginId || undefined,
         unityEditorVersion: input.unityEditorVersion || undefined
       });
+      const nextEnginePluginId = diagnostics.enginePluginId ?? input.enginePluginId ?? onboardingEnginePluginId;
+      acceptedDiagnosticsSignatureRef.current = buildDiagnosticsInputSignature({
+        mode: input.mode,
+        platform: input.platform,
+        dimension: diagnostics.dimension,
+        projectPath: input.projectPath,
+        enginePluginId: nextEnginePluginId
+      });
       setOnboardingDimension(diagnostics.dimension);
       setEnvironmentDiagnostics(diagnostics);
-      setOnboardingEnginePluginId(diagnostics.enginePluginId ?? input.enginePluginId ?? onboardingEnginePluginId);
+      setOnboardingEnginePluginId(nextEnginePluginId);
       setOnboardingUnityEditors(diagnostics.availableUnityEditors ?? []);
       setOnboardingUnityEditorVersion(
         diagnostics.selectedUnityVersion ??
@@ -434,6 +454,7 @@ export function useOnboarding(params: UseOnboardingParams) {
   }
 
   function startOnboarding(): void {
+    acceptedDiagnosticsSignatureRef.current = '';
     setOnboardingStep(1);
     setOnboardingView('setup');
     setOnboardingMode('create');
@@ -480,4 +501,20 @@ export function useOnboarding(params: UseOnboardingParams) {
     handlePickExistingProjectFromWelcome,
     startOnboarding
   };
+}
+
+function buildDiagnosticsInputSignature(input: {
+  mode: ProjectSetupMode;
+  platform: PlatformChoice;
+  dimension: EngineProjectDimension;
+  projectPath: string;
+  enginePluginId?: string;
+}): string {
+  return [
+    input.mode,
+    input.platform,
+    input.dimension,
+    input.projectPath.trim(),
+    input.enginePluginId ?? ''
+  ].join('\u001f');
 }

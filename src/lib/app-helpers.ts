@@ -471,6 +471,7 @@ export function buildProjectSwitcherItem(input: {
   return {
     id: input.project.id,
     name: input.project.name,
+    enginePlatform: input.project.engine?.platform,
     path: input.project.engine?.projectPath,
     sessionCount: input.project.sessions.length,
     runningCount: aggregate.runningSessionCount,

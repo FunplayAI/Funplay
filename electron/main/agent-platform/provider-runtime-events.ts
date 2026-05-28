@@ -47,6 +47,14 @@ export type ProviderRuntimeEvent =
       reason: string;
     }
   | {
+      type: 'provider_retry';
+      reason: string;
+      attempt: number;
+      maxRetries: number;
+      retryDelayMs: number;
+      error?: string;
+    }
+  | {
       type: 'text_delta';
       delta: string;
       accumulated: string;
@@ -209,6 +217,12 @@ export function createProviderRuntimeEventObserver(callbacks: {
 
 export function providerRuntimeEventToCoreEvent(event: ProviderRuntimeEvent): AgentCoreRuntimeBridgeEvent | undefined {
   switch (event.type) {
+    case 'provider_retry':
+      return {
+        type: 'provider',
+        phase: 'step_started',
+        reason: event.reason
+      };
     case 'provider_step_started':
     case 'provider_step_streaming':
     case 'provider_step_collected':

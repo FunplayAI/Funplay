@@ -78,6 +78,11 @@ import {
   runNativeReadOnlyToolLoop,
   runOpenAiCompatibleNativeToolLoop
 } from '../../electron/main/agent-platform/native/tool-loop.ts';
+import {
+  isRetryableNativeProviderStepError,
+  NATIVE_PROVIDER_STEP_MAX_RETRIES,
+  shouldRetryNativeProviderStep
+} from '../../electron/main/agent-platform/native/provider-step.ts';
 import { materializeNativeMcpTools } from '../../electron/main/agent-platform/native/mcp-tool-materializer.ts';
 import { assertRawMcpMethodAllowed, sendRawMcpControlRequest } from '../../electron/main/mcp-raw-control.ts';
 import { buildModelMessagesFromChat, buildNativeToolLoopMessages } from '../../electron/main/agent-platform/model-message-builder.ts';
@@ -2610,6 +2615,36 @@ test('native provider step timeout follows opencode-style five minute provider b
 
   assert.equal(diagnostic.code, 'native_provider_timeout');
   assert.match(diagnostic.summary, /Provider 单轮响应超时/);
+});
+
+test('native provider step retry guard follows Claude-style transient API retry shape', () => {
+  assert.equal(NATIVE_PROVIDER_STEP_MAX_RETRIES, 2);
+
+  const timeoutError = new Error('Native OpenAI-compatible provider step timed out after 300s.');
+  timeoutError.name = 'NativeProviderStepTimeoutError';
+  assert.equal(isRetryableNativeProviderStepError(timeoutError), true);
+  assert.equal(shouldRetryNativeProviderStep({
+    error: timeoutError,
+    attempt: 0,
+    sawProviderOutput: false
+  }), true);
+  assert.equal(shouldRetryNativeProviderStep({
+    error: timeoutError,
+    attempt: 0,
+    sawProviderOutput: true
+  }), false);
+  assert.equal(shouldRetryNativeProviderStep({
+    error: timeoutError,
+    attempt: NATIVE_PROVIDER_STEP_MAX_RETRIES,
+    sawProviderOutput: false
+  }), false);
+
+  assert.equal(isRetryableNativeProviderStepError(Object.assign(new Error('HTTP 504 Gateway timeout'), {
+    statusCode: 504
+  })), true);
+  assert.equal(isRetryableNativeProviderStepError(Object.assign(new Error('Invalid API key'), {
+    statusCode: 401
+  })), false);
 });
 
 test('native subagent tool is read-only and delegates to internal executor', async () => {

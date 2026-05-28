@@ -6,6 +6,33 @@ This project follows a pre-1.0 release flow. Minor versions may include breaking
 
 ## Unreleased
 
+## 0.3.5 - 2026-05-28
+
+### Added
+
+- Added a unified React Markdown renderer for chat replies with GFM tables, task lists, inline links, local file path actions, and safer handling for prose fences.
+- Added stronger native provider retry and timeout normalization so transient provider failures can be classified and retried more consistently.
+- Added richer provider runtime events for native model retries and tool stream state, giving the controller and UI better execution evidence.
+- Added expanded runtime tests for agent execution recovery, chat Markdown rendering, and tool transcript ordering.
+
+### Changed
+
+- Increased native subagent default step budget and added forced final summarization when a subagent reaches its step budget.
+- Refined OpenAI-compatible and AI SDK provider steps to preserve partial context, retry only safe failures, and report clearer timeout states.
+- Reworked chat tool details into a lighter Codex-style inline disclosure instead of heavy floating debug panels.
+- Refined chat Markdown typography, code blocks, plain text examples, tables, quotes, and divider spacing in light and dark themes.
+- Improved the project tab engine indicators and chat engine status entry to use real engine logo styling.
+- Kept the desktop workspace in horizontal split layout at narrower window sizes so the chat pane no longer overlaps or visually swallows the left sidebar.
+
+### Fixed
+
+- Fixed pasted/local media attachment tools rejecting valid absolute file paths outside the project root.
+- Fixed file preview selection remaining highlighted after the preview panel is closed.
+- Fixed session rows staying visually selected when the user switches to Project Settings or Assets.
+- Fixed Unity onboarding environment checks getting stuck on the first entry until navigating back.
+- Fixed live chat status copy and spacing, including removal of redundant running-state helper text.
+- Fixed Markdown examples being over-rendered as CODE cards when they are prose snippets rather than source code.
+
 ## 0.3.4 - 2026-05-27
 
 ### Added

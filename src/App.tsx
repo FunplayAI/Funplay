@@ -743,7 +743,7 @@ function App(): JSX.Element {
     fileInspectorSaveError,
     setFileInspectorSaveError,
     fileInspectorSavedAt,
-    handleOpenProjectFile,
+    handleOpenProjectFile, handleCloseFileInspector,
     handleSaveSelectedProjectFile,
     handleOpenVirtualFile
   } = useFileInspector(selectedProject, refreshProjectFiles, virtualProjectFiles, setRightInspectorCollapsed, uiPreferences.language);
@@ -1692,7 +1692,7 @@ function App(): JSX.Element {
         projects={projectSwitcherItems.map((project) => ({
           id: project.id,
           name: project.name,
-          processing: project.runningCount > 0,
+          enginePlatform: project.enginePlatform,
           runningCount: project.runningCount,
           pendingApprovalCount: project.pendingApprovalCount,
           failedCount: project.failedCount
@@ -1754,7 +1754,7 @@ function App(): JSX.Element {
             onSelectNav={(navId) => setSection(navId as WorkspaceSection)}
           />
         )}
-        renderRightPanel={({ width, close }) => (
+        renderRightPanel={({ width }) => (
           <FileInspectorPanel
             file={selectedOverlayFile}
             project={selectedProjectView}
@@ -1767,7 +1767,7 @@ function App(): JSX.Element {
             savedAt={fileInspectorSavedAt}
             onDraftChange={setFileInspectorDraft}
             onModeChange={setFileInspectorMode}
-            onClose={close}
+            onClose={handleCloseFileInspector}
             onSave={() => void handleSaveSelectedProjectFile()}
             onReset={() => {
               if (!selectedOverlayFile) {

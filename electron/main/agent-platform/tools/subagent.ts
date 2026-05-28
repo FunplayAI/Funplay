@@ -9,7 +9,7 @@ registerAgentTool({
     task: z.string().min(1).max(1200).describe('子任务要回答或调查的具体问题。'),
     scope: z.string().max(500).optional().describe('可选范围，例如目录、文件、模块或外部资料方向。'),
     expectedOutput: z.string().max(500).optional().describe('期望输出形态，例如列出风险、找入口文件、总结差距。'),
-    maxSteps: z.number().int().min(1).max(12).optional().describe('子任务最多工具步数，默认 8，最大 12。')
+    maxSteps: z.number().int().min(1).max(200).optional().describe('子任务最多模型轮次，默认 32，最大 200。通常不需要填写；预算耗尽时会强制总结。')
   }),
   risk: 'low',
   permissionPolicy: 'always',
@@ -34,7 +34,7 @@ registerAgentTool({
       scope: z.string().max(500).optional().describe('可选范围，例如目录、文件、模块或外部资料方向。'),
       expectedOutput: z.string().max(500).optional().describe('期望输出形态，例如列出风险、找入口文件、总结差距。')
     })).min(2).max(4).describe('要并行执行的只读子任务，建议互不重叠。'),
-    maxSteps: z.number().int().min(1).max(12).optional().describe('每个子任务最多工具步数，默认 8，最大 12。')
+    maxSteps: z.number().int().min(1).max(200).optional().describe('每个子任务最多模型轮次，默认 32，最大 200。通常不需要填写；预算耗尽时会强制总结。')
   }),
   risk: 'low',
   permissionPolicy: 'always',
@@ -67,7 +67,7 @@ registerAgentTool({
     name: z.string().max(120).optional().describe('可选任务名称，便于状态列表识别。'),
     scope: z.string().max(500).optional().describe('可选范围，例如目录、文件、模块或外部资料方向。'),
     expectedOutput: z.string().max(500).optional().describe('期望输出形态，例如列出风险、找入口文件、总结差距。'),
-    maxSteps: z.number().int().min(1).max(12).optional().describe('后台子任务最多工具步数，默认 8，最大 12。')
+    maxSteps: z.number().int().min(1).max(200).optional().describe('后台子任务最多模型轮次，默认 32，最大 200。通常不需要填写；预算耗尽时会强制总结。')
   }),
   risk: 'low',
   permissionPolicy: 'always',

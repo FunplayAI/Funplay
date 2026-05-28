@@ -1,4 +1,4 @@
-import { stepCountIs, streamText } from 'ai';
+import { generateText, stepCountIs, streamText } from 'ai';
 import type { AgentLifecycleHookTrigger } from '../../../../shared/types';
 import { makeId } from '../../../../shared/utils';
 import { createLanguageModel } from '../../ai-provider';
@@ -20,8 +20,8 @@ import { executeNativeWorkspaceToolSetTool } from './tool-executor';
 import { createNativeToolPool } from './tool-pool';
 import type { NativeToolPoolMode } from './tool-pool';
 
-const NATIVE_SUBAGENT_DEFAULT_MAX_STEPS = 8;
-const NATIVE_SUBAGENT_MAX_STEPS = 12;
+const NATIVE_SUBAGENT_DEFAULT_MAX_STEPS = 32;
+const NATIVE_SUBAGENT_MAX_STEPS = 200;
 const NATIVE_SUBAGENT_MAX_OUTPUT_CHARS = 8000;
 const NATIVE_PARALLEL_SUBAGENT_MIN_TASKS = 2;
 const NATIVE_PARALLEL_SUBAGENT_MAX_TASKS = 4;
@@ -103,6 +103,19 @@ function buildSubagentPrompt(params: GenericAgentRuntimeParams, action: Extract<
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+function buildSubagentFinalPrompt(action: Extract<WorkspaceToolAction, { type: 'run_subagent' }>, maxSteps: number): string {
+  return [
+    `子任务模型轮次预算已经到达 ${maxSteps} 轮。`,
+    '现在不要再调用任何工具，只基于上面的工具结果给主 Agent 返回可用结论。',
+    '如果证据不足，也要说明已经确认的事实、仍缺的证据、建议主 Agent 下一步怎么查。',
+    '',
+    '原始子任务：',
+    action.task,
+    action.scope ? `调查范围：${action.scope}` : '',
+    action.expectedOutput ? `期望输出：${action.expectedOutput}` : ''
+  ].filter(Boolean).join('\n');
 }
 
 async function emitNativeSubagentStopHook(
@@ -211,7 +224,7 @@ export async function runNativeSubagent(
       if (stepUsage) {
         emitRuntimeUsage(params, stepUsage);
       }
-      if (stepResult.text.trim()) {
+      if (stepResult.toolCalls.length === 0 && stepResult.text.trim()) {
         assistantMessage = stepResult.text.trim();
       }
       if (stepResult.toolCalls.length === 0) {
@@ -237,6 +250,44 @@ export async function runNativeSubagent(
           name: toolCall.name,
           content: toolResult.summary ?? stringifyToolOutput(toolResult)
         });
+      }
+    }
+
+    if (!assistantMessage.trim() && toolCalls.length > 0) {
+      const finalAbort = createNativeProviderStepAbort(params.abortSignal, params.provider);
+      try {
+        const finalResult = await generateOpenAiCompatibleStreamingToolStep({
+            provider: params.provider,
+            system: createNativeRuntimeSystemPrompt(params.uiLanguage),
+            messages: [
+              ...messages,
+              {
+                role: 'user',
+                content: buildSubagentFinalPrompt(action, maxSteps)
+              }
+            ],
+            tools: [],
+            maxOutputTokens: 2048,
+            abortSignal: finalAbort.signal
+          })
+          .catch((error: unknown) => rethrowNativeProviderStepTimeout(
+            error,
+            finalAbort,
+            'Native subagent final summary provider step'
+          ));
+        finishReason = finalResult.finishReason ?? finishReason;
+        const finalUsage = normalizeOpenAiUsage(finalResult.usage, {
+          provider: params.provider?.id,
+          model: params.provider?.model
+        });
+        if (finalUsage) {
+          emitRuntimeUsage(params, finalUsage);
+        }
+        if (finalResult.text.trim()) {
+          assistantMessage = finalResult.text.trim();
+        }
+      } finally {
+        finalAbort.dispose();
       }
     }
 
@@ -312,10 +363,61 @@ export async function runNativeSubagent(
   }
 
   let finishReason: string | undefined;
+  let responseMessages: Awaited<typeof result.response>['messages'] = [];
   try {
     finishReason = await result.finishReason;
   } catch {
     finishReason = undefined;
+  }
+  try {
+    const steps = await result.steps;
+    const lastStep = steps[steps.length - 1];
+    assistantMessage = lastStep && lastStep.toolCalls.length === 0
+      ? lastStep.text.trim()
+      : '';
+    responseMessages = steps.flatMap((step) => step.response.messages);
+  } catch {
+    assistantMessage = assistantMessage.trim();
+  }
+
+  if (!assistantMessage.trim() && responseMessages.length > 0) {
+    const finalAbort = createNativeProviderStepAbort(params.abortSignal, params.provider);
+    try {
+      const finalResult = await generateText({
+        model: createLanguageModel(params.provider),
+        system: createNativeRuntimeSystemPrompt(params.uiLanguage),
+        messages: [
+          {
+            role: 'user',
+            content: buildSubagentPrompt(params, action, toolNames)
+          },
+          ...responseMessages,
+          {
+            role: 'user',
+            content: buildSubagentFinalPrompt(action, maxSteps)
+          }
+        ],
+        maxOutputTokens: 2048,
+        abortSignal: finalAbort.signal
+      }).catch((error: unknown) => rethrowNativeProviderStepTimeout(
+        error,
+        finalAbort,
+        'Native subagent final summary provider step'
+      ));
+      finishReason = finalResult.finishReason ?? finishReason;
+      const finalUsage = normalizeAiSdkUsage(finalResult.usage, {
+        provider: params.provider?.id,
+        model: params.provider?.model
+      });
+      if (finalUsage) {
+        emitRuntimeUsage(params, finalUsage);
+      }
+      if (finalResult.text.trim()) {
+        assistantMessage = finalResult.text.trim();
+      }
+    } finally {
+      finalAbort.dispose();
+    }
   }
   const answer = assistantMessage.trim() || '子任务没有返回可用结论。';
   return {
@@ -381,11 +483,11 @@ export async function runNativeParallelSubagents(
   const failedCount = results.filter((result) => result.status === 'rejected' || (result.status === 'fulfilled' && !result.value.result.ok)).length;
 
   return {
-    ok: failedCount < results.length,
-    isError: failedCount === results.length,
+    ok: failedCount === 0,
+    isError: failedCount > 0,
     summary: [
       `Parallel subagents: ${results.length} task(s), ${failedCount} failed.`,
-      `Max steps per subagent: ${maxSteps}`,
+      `Max turns per subagent: ${maxSteps}`,
       '',
       summaries.join('\n\n')
     ].join('\n')

@@ -250,9 +250,11 @@ export class ChatCompletionsAdapter implements OpenAiCompatibleProtocolAdapter {
     ];
     const body: Record<string, unknown> = {
       model: request.model,
-      messages,
-      tools: request.tools.map((toolDefinition) => serializeChatToolDefinition(toolDefinition, request))
+      messages
     };
+    if (request.tools.length > 0) {
+      body.tools = request.tools.map((toolDefinition) => serializeChatToolDefinition(toolDefinition, request));
+    }
     if (shouldSendAutoToolChoice(request)) {
       body.tool_choice = 'auto';
     }
@@ -373,7 +375,9 @@ export class ResponsesAdapter implements OpenAiCompatibleProtocolAdapter {
       parallel_tool_calls: false,
       instructions: request.system,
       input,
-      tools: request.tools.map((toolDefinition) => serializeResponsesToolDefinition(toolDefinition, request)),
+      ...(request.tools.length > 0
+        ? { tools: request.tools.map((toolDefinition) => serializeResponsesToolDefinition(toolDefinition, request)) }
+        : {}),
       ...(shouldSendAutoToolChoice(request) ? { tool_choice: 'auto' } : {})
     };
   }

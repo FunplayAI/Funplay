@@ -91,6 +91,12 @@ export function useFileInspector(
     }
   }
 
+  function handleCloseFileInspector(): void {
+    setSelectedFileId('');
+    setSelectedOverlayFile(null);
+    setRightInspectorCollapsed(true);
+  }
+
   function handleOpenVirtualFile(fileId: string): void {
     const target = virtualProjectFiles.find((file) => file.id === fileId);
     if (!target) {
@@ -116,6 +122,7 @@ export function useFileInspector(
     setFileInspectorSaveError,
     fileInspectorSavedAt,
     handleOpenProjectFile,
+    handleCloseFileInspector,
     handleSaveSelectedProjectFile,
     handleOpenVirtualFile
   };

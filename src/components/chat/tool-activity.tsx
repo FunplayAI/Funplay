@@ -1,9 +1,7 @@
-import { useEffect, useId, useRef, useState, type JSX, type ReactNode } from 'react';
+import { type JSX, type ReactNode } from 'react';
 import {
   Box,
   CircleEllipsis,
-  ExternalLink,
-  FolderOpen,
   Gamepad2,
   Image,
   ListChecks,
@@ -13,10 +11,11 @@ import {
   Wrench,
   type LucideIcon
 } from 'lucide-react';
-import type { ChatMediaBlock, ChatMessageMetadata } from '../../../shared/types';
+import type { ChatMessageMetadata } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import { Button } from '../ui/index';
 import type { TranscriptToolStepKind, TranscriptToolStepSummary, TranscriptViewItemStatus } from './transcript/transcript-view-model';
+import { MediaResultGrid } from './tool/media-result-grid';
 import type {
   StageExecutionEntry,
   StreamActivityEntry,
@@ -34,6 +33,7 @@ import {
   formatStreamActivityTitle,
   formatToolActivityLine,
   formatToolStatus,
+  getToolActivityKind,
   parseWebCitations,
   sanitizeStageSummary,
   summarizeToolActivity,
@@ -48,6 +48,7 @@ import { ToolDetailOverlay, type UiDisclosureItem } from './tool/tool-disclosure
 export * from './tool/tool-types';
 export * from './tool/tool-formatters';
 export * from './tool/tool-builders';
+export { MediaResultGrid } from './tool/media-result-grid';
 
 export function AssistantMetadataPanel(props: { metadata: ChatMessageMetadata | undefined; developerMode: boolean }): JSX.Element | null {
   const language = useUiLanguage();
@@ -77,54 +78,42 @@ export function ToolStepSummaryRow(props: {
   renderContent: (content: string, openablePaths: string[], searchQuery: string, onOpenPath: (path: string) => void) => ReactNode;
 }): JSX.Element | null {
   const language = useUiLanguage();
-  const detailId = useId();
-  const [expanded, setExpanded] = useState(false);
   const Icon = getToolStepIcon(props.stepKind);
   const summary = language === 'zh-CN' ? props.stepSummary.zhCN : props.stepSummary.enUS;
-  const toggleExpanded = (): void => {
-    setExpanded((current) => !current);
-  };
+  const disclosureItems = buildToolGroupDisclosureItems(props.tools, language, props.onOpenPath);
 
   if (props.tools.length === 0) {
     return null;
   }
 
   return (
-    <div className={`chat-tool-step ${props.status} ${expanded ? 'expanded' : 'collapsed'}`} data-tool-step-kind={props.stepKind}>
-      <Button
-        variant="ghost"
-        className="chat-tool-step-summary"
-        aria-expanded={expanded}
-        aria-controls={detailId}
-        onClick={toggleExpanded}
-      >
-        <span className={`chat-tool-step-icon ${props.stepKind}`}>
-          <Icon size={15} strokeWidth={2.1} aria-hidden="true" />
-        </span>
-        <span className="chat-tool-step-copy">
-          <strong>{summary}</strong>
-          {props.failureCount > 0 ? (
-            <em className="failed">{localize(language, `${props.failureCount} 个失败`, `${props.failureCount} failed`)}</em>
-          ) : props.runningCount > 0 ? (
-            <em className="running">{localize(language, `${props.runningCount} 个进行中`, `${props.runningCount} running`)}</em>
-          ) : null}
-        </span>
-        <ChevronDownIcon className="chat-tool-step-chevron" />
-      </Button>
-      <div id={detailId} className="chat-tool-step-detail-shell" aria-hidden={!expanded}>
-        <div className="chat-tool-step-detail" role="region" aria-label={localize(language, '工具步骤详情', 'Tool step details')}>
-          {props.tools.map((tool) => (
-            <ToolActivityRow
-              key={tool.id}
-              tool={tool}
-              openablePaths={props.openablePaths}
-              searchQuery={props.searchQuery}
-              onOpenPath={props.onOpenPath}
-              renderContent={props.renderContent}
-            />
-          ))}
-        </div>
-      </div>
+    <div className={`chat-tool-step ${props.status} collapsed`} data-tool-step-kind={props.stepKind}>
+      <ToolDetailOverlay
+        items={disclosureItems}
+        title={localize(language, '工具步骤详情', 'Tool step details')}
+        trigger={({ open, panelId, toggle }) => (
+          <Button
+            variant="ghost"
+            className="chat-tool-step-summary tool-detail-trigger"
+            aria-expanded={open}
+            aria-controls={panelId}
+            onClick={toggle}
+          >
+            <span className={`chat-tool-step-icon ${props.stepKind}`}>
+              <Icon size={15} strokeWidth={2.1} aria-hidden="true" />
+            </span>
+            <span className="chat-tool-step-copy">
+              <strong>{summary}</strong>
+              {props.failureCount > 0 ? (
+                <em className="failed">{localize(language, `${props.failureCount} 个失败`, `${props.failureCount} failed`)}</em>
+              ) : props.runningCount > 0 ? (
+                <em className="running">{localize(language, `${props.runningCount} 个进行中`, `${props.runningCount} running`)}</em>
+              ) : null}
+            </span>
+            <ChevronDownIcon className="chat-tool-step-chevron" />
+          </Button>
+        )}
+      />
     </div>
   );
 }
@@ -156,85 +145,39 @@ export function ToolActivityGroup(props: {
   renderContent: (content: string, openablePaths: string[], searchQuery: string, onOpenPath: (path: string) => void) => ReactNode;
 }): JSX.Element | null {
   const language = useUiLanguage();
-  const detailId = useId();
   const groupState = props.tools.some((tool) => tool.status === 'failed' || tool.result?.isError)
     ? 'failed'
     : props.tools.some((tool) => tool.status === 'running' || tool.status === 'pending')
       ? 'running'
       : 'completed';
   const summary = summarizeToolActivity(props.tools, language, { includeDiagnosticMeta: props.showDiagnosticMeta });
-  const openByDefault = props.defaultOpen;
-  const shouldCollapseBeforeAssistantText = Boolean(props.collapseBeforeAssistantText && !props.active);
-  const [expanded, setExpanded] = useState(() => (shouldCollapseBeforeAssistantText ? false : Boolean(props.active) || openByDefault));
-  const [manualCollapseOverride, setManualCollapseOverride] = useState(false);
-  const wasActiveRef = useRef(Boolean(props.active));
-  const renderedExpanded = shouldCollapseBeforeAssistantText && !manualCollapseOverride ? false : expanded;
-
-  useEffect(() => {
-    if (groupState === 'failed' && props.showDiagnosticMeta) {
-      setExpanded(true);
-    }
-  }, [groupState, props.showDiagnosticMeta]);
-
-  useEffect(() => {
-    if (props.active) {
-      setExpanded(true);
-      setManualCollapseOverride(false);
-      wasActiveRef.current = true;
-      return;
-    }
-    if (wasActiveRef.current && props.autoCollapseWhenInactive !== false) {
-      setExpanded(Boolean(groupState === 'failed' && props.showDiagnosticMeta));
-      setManualCollapseOverride(false);
-      wasActiveRef.current = false;
-    }
-  }, [groupState, props.active, props.autoCollapseWhenInactive, props.showDiagnosticMeta]);
-
-  useEffect(() => {
-    if (!shouldCollapseBeforeAssistantText) {
-      setManualCollapseOverride(false);
-    }
-  }, [shouldCollapseBeforeAssistantText]);
+  const disclosureItems = buildToolGroupDisclosureItems(props.tools, language, props.onOpenPath);
 
   if (props.tools.length === 0) {
     return null;
   }
 
   return (
-    <div className={`chat-tool-activity ${groupState} ${renderedExpanded ? 'expanded' : 'collapsed'} ${props.active ? 'active' : ''}`}>
-      <Button
-        variant="ghost"
-        className="chat-tool-activity-summary"
-        aria-expanded={renderedExpanded}
-        aria-controls={detailId}
-        onClick={() => {
-          const nextExpanded = !renderedExpanded;
-          setExpanded(nextExpanded);
-          if (shouldCollapseBeforeAssistantText) {
-            setManualCollapseOverride(true);
-          }
-        }}
-      >
-        <span className="chat-tool-activity-copy">
-          <strong>{summary.title}</strong>
-          {summary.meta ? <em>{summary.meta}</em> : null}
-        </span>
-        <ChevronDownIcon className="chat-tool-activity-chevron" />
-      </Button>
-      <div id={detailId} className="chat-tool-activity-detail-shell" aria-hidden={!renderedExpanded}>
-        <div className="chat-tool-activity-detail">
-          {props.tools.map((tool) => (
-            <ToolActivityRow
-              key={tool.id}
-              tool={tool}
-              openablePaths={props.openablePaths}
-              searchQuery={props.searchQuery}
-              onOpenPath={props.onOpenPath}
-              renderContent={props.renderContent}
-            />
-          ))}
-        </div>
-      </div>
+    <div className={`chat-tool-activity ${groupState} collapsed ${props.active ? 'active' : ''}`}>
+      <ToolDetailOverlay
+        items={disclosureItems}
+        title={localize(language, '工具详情', 'Tool details')}
+        trigger={({ open, panelId, toggle }) => (
+          <Button
+            variant="ghost"
+            className="chat-tool-activity-summary tool-detail-trigger"
+            aria-expanded={open}
+            aria-controls={panelId}
+            onClick={toggle}
+          >
+            <span className="chat-tool-activity-copy">
+              <strong>{summary.title}</strong>
+              {summary.meta ? <em>{summary.meta}</em> : null}
+            </span>
+            <ChevronDownIcon className="chat-tool-activity-chevron" />
+          </Button>
+        )}
+      />
     </div>
   );
 }
@@ -281,33 +224,149 @@ export function ToolActivityRow(props: {
   );
 }
 
-function buildToolDisclosureItems(tool: ToolExecutionEntry, resultPreview: string, language: 'zh-CN' | 'en-US'): UiDisclosureItem[] {
+function buildToolGroupDisclosureItems(
+  tools: ToolExecutionEntry[],
+  language: 'zh-CN' | 'en-US',
+  onOpenPath?: (path: string) => void
+): UiDisclosureItem[] {
+  return tools.flatMap((tool) => {
+    const resultSummary = summarizeToolResult(tool, language);
+    return buildToolDisclosureItems(tool, resultSummary.preview, language, { onOpenPath });
+  });
+}
+
+function buildToolDisclosureItems(
+  tool: ToolExecutionEntry,
+  resultPreview: string,
+  language: 'zh-CN' | 'en-US',
+  options: {
+    onOpenPath?: (path: string) => void;
+  } = {}
+): UiDisclosureItem[] {
   const inputText = JSON.stringify(tool.input ?? {}, null, 2);
-  const items: UiDisclosureItem[] = [
-    {
-      id: `${tool.id}:input`,
-      title: localize(language, '调用参数', 'Input'),
-      compactSummary: tool.title ?? tool.name,
-      status: tool.status,
-      copyText: inputText,
-      rawDebugText: inputText,
-      detail: <pre>{inputText}</pre>
-    }
-  ];
-  if (tool.result) {
-    const resultText = tool.result.content || resultPreview || '';
-    const rawText = JSON.stringify(tool.result, null, 2);
-    items.push({
-      id: `${tool.id}:result`,
-      title: tool.result.isError ? localize(language, '错误结果', 'Error result') : localize(language, '结果摘要', 'Result'),
-      compactSummary: resultPreview || resultText.slice(0, 120),
-      status: tool.result.isError || tool.status === 'failed' ? 'failed' : tool.status,
-      copyText: resultText,
-      rawDebugText: rawText,
-      detail: <pre>{resultText}</pre>
-    });
+  const activityLine = formatToolActivityLine(tool, language);
+  const toolLabel = activityLine || tool.title || tool.name;
+  const openPath = options.onOpenPath ?? (() => undefined);
+  const resultText = tool.result?.content || resultPreview || '';
+  const rawText = [
+    inputText ? `${localize(language, '调用参数', 'Input')}\n${inputText}` : '',
+    tool.result ? `${tool.result.isError ? localize(language, '错误结果', 'Error result') : localize(language, '结果', 'Result')}\n${JSON.stringify(tool.result, null, 2)}` : ''
+  ].filter(Boolean).join('\n\n');
+  const itemStatus = tool.result?.isError || tool.status === 'failed' ? 'failed' : tool.status;
+  const item: UiDisclosureItem = {
+    id: tool.id,
+    title: toolLabel,
+    compactSummary: resultPreview || toolLabel,
+    status: itemStatus,
+    copyText: rawText || inputText || resultText,
+    rawDebugText: compactToolDetailText(rawText || inputText || resultText, { maxChars: 1800, maxLines: 40 }),
+    detail: (
+      <ToolDisclosureLine
+        tool={tool}
+        activityLine={toolLabel}
+        resultPreview={resultPreview}
+        language={language}
+        onOpenPath={openPath}
+      />
+    )
+  };
+  return [item];
+}
+
+function ToolDisclosureLine(props: {
+  tool: ToolExecutionEntry;
+  activityLine: string;
+  resultPreview: string;
+  language: 'zh-CN' | 'en-US';
+  onOpenPath: (path: string) => void;
+}): JSX.Element {
+  const changedFiles = props.tool.result?.changedFiles?.filter((file) => file.path) ?? [];
+  const kind = getToolActivityKind(props.tool);
+  const shouldShowResultPreview = Boolean(
+    props.resultPreview
+    && changedFiles.length === 0
+    && (props.tool.result?.isError || props.tool.status === 'failed' || kind === 'other')
+  );
+  const failureText = props.tool.result?.isError || props.tool.status === 'failed'
+    ? compactToolDetailText(props.tool.result?.content || props.resultPreview || '', { maxChars: 180, maxLines: 2 })
+    : '';
+
+  return (
+    <div className="tool-detail-line-content">
+      <span className="tool-detail-line-title">{props.activityLine}</span>
+      {changedFiles.length > 0 ? (
+        <div className="tool-detail-change-lines">
+          {changedFiles.slice(0, 8).map((file) => (
+            <Button
+              key={`${file.operation}:${file.path}`}
+              variant="ghost"
+              size="compact"
+              className="tool-detail-change-line"
+              onClick={() => props.onOpenPath(file.path)}
+            >
+              <span>{formatShortChangedFile(file, props.language)}</span>
+              <ChangeDelta file={file} />
+            </Button>
+          ))}
+          {changedFiles.length > 8 ? (
+            <span className="tool-detail-line-muted">
+              {localize(props.language, `还有 ${changedFiles.length - 8} 个文件`, `${changedFiles.length - 8} more files`)}
+            </span>
+          ) : null}
+        </div>
+      ) : shouldShowResultPreview ? (
+        <span className={`tool-detail-line-muted ${props.tool.result?.isError ? 'failed' : ''}`}>{failureText || props.resultPreview}</span>
+      ) : null}
+      {failureText && !shouldShowResultPreview ? <span className="tool-detail-line-muted failed">{failureText}</span> : null}
+    </div>
+  );
+}
+
+type ToolChangedFile = NonNullable<NonNullable<ToolExecutionEntry['result']>['changedFiles']>[number];
+
+function ChangeDelta(props: { file: ToolChangedFile }): JSX.Element | null {
+  const added = typeof props.file.addedLines === 'number' ? props.file.addedLines : 0;
+  const removed = typeof props.file.removedLines === 'number' ? props.file.removedLines : 0;
+  if (added === 0 && removed === 0) {
+    return null;
   }
-  return items;
+  return (
+    <span className="tool-detail-change-delta">
+      {added > 0 ? <em className="added">+{added}</em> : null}
+      {removed > 0 ? <em className="removed">-{removed}</em> : null}
+    </span>
+  );
+}
+
+function formatShortChangedFile(
+  file: ToolChangedFile,
+  language: 'zh-CN' | 'en-US'
+): string {
+  const labels: Record<typeof file.operation, [string, string]> = {
+    created: ['创建', 'Created'],
+    modified: ['修改', 'Modified'],
+    directory_created: ['创建目录', 'Created directory'],
+    patched: ['编辑', 'Edited'],
+    restored: ['恢复', 'Restored'],
+    failed: ['失败', 'Failed']
+  };
+  const [zh, en] = labels[file.operation] ?? ['处理', 'Changed'];
+  return `${localize(language, zh, en)} ${file.path}`;
+}
+
+function compactToolDetailText(value: string, options: { maxChars: number; maxLines: number }): string {
+  const normalized = value.replace(/\r\n/g, '\n').trim();
+  if (!normalized) {
+    return '';
+  }
+  const lines = normalized.split('\n');
+  const clippedLines = lines.length > options.maxLines
+    ? [...lines.slice(0, options.maxLines), '...']
+    : lines;
+  const joined = clippedLines.join('\n');
+  return joined.length > options.maxChars
+    ? `${joined.slice(0, options.maxChars).trimEnd()}\n...`
+    : joined;
 }
 
 export function ToolResultMetadataPanel(props: {
@@ -496,71 +555,6 @@ export function ToolInputPreview(props: {
           <pre className="chat-tool-json compact">{JSON.stringify(props.tool.input, null, 2)}</pre>
         </div>
       </details>
-    </div>
-  );
-}
-
-export function MediaResultGrid(props: {
-  media?: ChatMediaBlock[];
-  compact?: boolean;
-  onOpenPath?: (path: string) => void;
-  onRevealPath?: (path: string) => void;
-}): JSX.Element | null {
-  const language = useUiLanguage();
-  const media = props.media?.filter((item) => item.data || item.localPath || item.title) ?? [];
-  if (media.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className={`chat-media-grid ${props.compact ? 'compact' : ''}`}>
-      {media.map((item, index) => {
-        const label = item.title || item.localPath?.split('/').pop() || item.mimeType || item.type;
-        if (item.type === 'image' && item.data) {
-          const src = item.data.startsWith('data:')
-            ? item.data
-            : `data:${item.mimeType || 'image/png'};base64,${item.data}`;
-          return (
-            <figure key={`${item.mediaId ?? item.localPath ?? item.type}-${index}`} className="chat-media-card image">
-              <img src={src} alt={label} />
-              <figcaption>{label}</figcaption>
-            </figure>
-          );
-        }
-
-        if (item.type === 'audio' && item.data) {
-          const src = item.data.startsWith('data:')
-            ? item.data
-            : `data:${item.mimeType || 'audio/wav'};base64,${item.data}`;
-          return (
-            <div key={`${item.mediaId ?? item.localPath ?? item.type}-${index}`} className="chat-media-card audio">
-              <span>{label}</span>
-              <audio controls src={src} />
-            </div>
-          );
-        }
-
-        return (
-          <div key={`${item.mediaId ?? item.localPath ?? item.type}-${index}`} className="chat-media-card file">
-            <strong>{item.type === 'image' ? localize(language, '图片', 'Image') : item.type === 'audio' ? localize(language, '音频', 'Audio') : localize(language, '文件', 'File')}</strong>
-            <span>{label}</span>
-            {item.mimeType ? <small>{item.mimeType}</small> : null}
-            {item.localPath ? <em>{item.localPath}</em> : null}
-            {item.localPath && props.onOpenPath ? (
-              <div className="chat-media-actions">
-                <Button size="sm" variant="secondary" leadingIcon={<ExternalLink size={13} aria-hidden="true" />} onClick={() => props.onOpenPath!(item.localPath!)}>
-                  {localize(language, '打开', 'Open')}
-                </Button>
-                {props.onRevealPath ? (
-                  <Button size="sm" variant="secondary" leadingIcon={<FolderOpen size={13} aria-hidden="true" />} onClick={() => props.onRevealPath!(item.localPath!)}>
-                    {localize(language, '显示位置', 'Show')}
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
     </div>
   );
 }

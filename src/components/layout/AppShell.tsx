@@ -1,13 +1,14 @@
 import { Command as CommandPrimitive } from 'cmdk';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Boxes, Command as CommandIcon, Download, FolderTree, ListChecks, PanelLeftClose, PanelLeftOpen, PanelRight, Plus, Search, Settings, Sparkles, X } from 'lucide-react';
-import type { AppUpdateSnapshot } from '../../../shared/types';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Boxes, Command as CommandIcon, Download, FolderTree, Globe2, ListChecks, PanelLeftClose, PanelLeftOpen, PanelRight, Plus, Search, Settings, Sparkles, X } from 'lucide-react';
+import type { AppUpdateSnapshot, PlatformChoice } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import { Button, IconButton, useDialogFocus } from '../ui/index';
 
 export interface AppShellProject {
   id: string;
   name: string;
+  enginePlatform?: PlatformChoice;
   processing?: boolean;
   runningCount?: number;
   pendingApprovalCount?: number;
@@ -27,6 +28,34 @@ type CommandPaletteAction = {
   icon: ReactNode;
   run: () => void;
 };
+
+const projectTabEngineLogoUrls: Partial<Record<PlatformChoice, string>> = {
+  unity: './engine-logos/unity.svg',
+  cocos: './engine-logos/cocos.svg',
+  godot: './engine-logos/godotengine.svg',
+  unreal: './engine-logos/unrealengine.svg'
+};
+
+function ProjectTabEngineMark(props: { platform?: PlatformChoice; processing: boolean }): ReactNode {
+  if (props.processing) {
+    return <span className="processing-spinner" />;
+  }
+
+  const logoUrl = props.platform ? projectTabEngineLogoUrls[props.platform] : undefined;
+  if (logoUrl) {
+    const logoStyle: CSSProperties = {
+      WebkitMaskImage: `url("${logoUrl}")`,
+      maskImage: `url("${logoUrl}")`
+    };
+    return <span className={`project-tab-engine-logo ${props.platform}`} style={logoStyle} aria-hidden="true" />;
+  }
+
+  if (props.platform === 'web') {
+    return <Globe2 className="project-tab-web-icon" size={14} strokeWidth={2.25} aria-hidden="true" />;
+  }
+
+  return <span className="project-tab-dot" />;
+}
 
 export function StandaloneAppShell(props: {
   title: string;
@@ -251,34 +280,39 @@ export function AppShell(props: {
             icon={props.leftCollapsed ? <PanelLeftOpen size={18} aria-hidden="true" /> : <PanelLeftClose size={18} aria-hidden="true" />}
           />
           <div className="project-tabs">
-            {props.projects.map((project) => (
-              <div key={project.id} className={`project-tab-shell ${project.id === props.selectedProjectId ? 'active' : ''}`}>
-                <Button
-                  variant="ghost"
-                  size="compact"
-                  className={`project-tab ${project.id === props.selectedProjectId ? 'active' : ''}`}
-                  onClick={() => props.onSelectProject(project.id)}
-                >
-                  <span className={`project-tab-status ${project.processing ? 'processing' : project.id === props.selectedProjectId ? 'active' : ''}`}>
-                    {project.processing ? <span className="processing-spinner" /> : <span className="project-tab-dot" />}
-                  </span>
-                  <span className="project-tab-label">{project.name}</span>
-                  {project.runningCount || project.pendingApprovalCount || project.failedCount ? (
-                    <span className="project-tab-badges">
-                      {project.runningCount ? <span className="project-tab-badge running">{project.runningCount}</span> : null}
-                      {project.pendingApprovalCount ? <span className="project-tab-badge approval">{project.pendingApprovalCount}</span> : null}
-                      {project.failedCount ? <span className="project-tab-badge failed">{project.failedCount}</span> : null}
+            {props.projects.map((project) => {
+              const isSelectedProject = project.id === props.selectedProjectId;
+              const isProjectProcessing = project.processing ?? Boolean(project.runningCount);
+
+              return (
+                <div key={project.id} className={`project-tab-shell ${isSelectedProject ? 'active' : ''}`}>
+                  <Button
+                    variant="ghost"
+                    size="compact"
+                    className={`project-tab ${isSelectedProject ? 'active' : ''}`}
+                    onClick={() => props.onSelectProject(project.id)}
+                  >
+                    <span className={`project-tab-status ${isProjectProcessing ? 'processing' : isSelectedProject ? 'active' : ''}`}>
+                      <ProjectTabEngineMark platform={project.enginePlatform} processing={isProjectProcessing} />
                     </span>
-                  ) : null}
-                </Button>
-                <IconButton
-                  className="project-tab-close"
-                  onClick={() => props.onDeleteProject(project.id)}
-                  label={localize(language, `删除项目 ${project.name}`, `Remove project ${project.name}`)}
-                  icon={<X size={14} aria-hidden="true" />}
-                />
-              </div>
-            ))}
+                    <span className="project-tab-label">{project.name}</span>
+                    {project.runningCount || project.pendingApprovalCount || project.failedCount ? (
+                      <span className="project-tab-badges">
+                        {project.runningCount ? <span className="project-tab-badge running">{project.runningCount}</span> : null}
+                        {project.pendingApprovalCount ? <span className="project-tab-badge approval">{project.pendingApprovalCount}</span> : null}
+                        {project.failedCount ? <span className="project-tab-badge failed">{project.failedCount}</span> : null}
+                      </span>
+                    ) : null}
+                  </Button>
+                  <IconButton
+                    className="project-tab-close"
+                    onClick={() => props.onDeleteProject(project.id)}
+                    label={localize(language, `删除项目 ${project.name}`, `Remove project ${project.name}`)}
+                    icon={<X size={14} aria-hidden="true" />}
+                  />
+                </div>
+              );
+            })}
             <Button className="project-tab add" variant="ghost" size="compact" leadingIcon={<Plus size={14} aria-hidden="true" />} onClick={props.onAddProject}>
               {localize(language, '新建项目', 'New Project')}
             </Button>

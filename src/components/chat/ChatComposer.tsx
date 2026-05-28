@@ -257,7 +257,6 @@ export function ChatComposer(props: {
         {props.isSending ? (
           <AgentLiveStatus
             message={props.statusMessage || localize(language, 'AI 正在生成回复…', 'AI is generating a reply…')}
-            detail={localize(language, '工具调用、任务状态和回复内容会持续更新。', 'Tool calls, task states, and reply content will keep updating.')}
             taskSummary={props.runtimeTaskSummary}
             compactTaskSummary={awaitingUserInput}
             onCancel={props.onCancelStream}

@@ -86,7 +86,7 @@ export function SidebarPanel(props: {
 
       <SessionManagementPanel
         sessions={props.sessions}
-        activeSessionId={props.activeSessionId}
+        activeSessionId={props.activeNavId === 'agent' ? props.activeSessionId : undefined}
         streamingSessionId={props.streamingSessionId}
         sessionStates={props.sessionStates}
         onCreateSession={props.onCreateSession}

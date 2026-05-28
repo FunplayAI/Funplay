@@ -18,7 +18,12 @@ import { normalizeOpenAiUsage } from '../usage';
 import { emitRuntimeStatus, emitRuntimeUsage } from '../runtime-event-emitter';
 import {
   createNativeProviderStepAbort,
-  rethrowNativeProviderStepTimeout
+  describeNativeProviderStepError,
+  getNativeProviderStepRetryDelayMs,
+  NATIVE_PROVIDER_STEP_MAX_RETRIES,
+  normalizeNativeProviderStepError,
+  shouldRetryNativeProviderStep,
+  waitForNativeProviderStepRetry
 } from './provider-step';
 import {
   createProviderRuntimeEventObserver,
@@ -70,8 +75,6 @@ export async function runOpenAiCompatibleProviderStep(input: {
     dynamicInstructionMessage && input.stepIndex > 0
       ? withDynamicOpenAiCompatibleInstructionMessage(input.state.messages, dynamicInstructionMessage)
       : input.state.messages;
-  emitRuntimeStatus(input.params, 'thinking', '正在思考中...');
-  const stepAbort = createNativeProviderStepAbort(input.params.abortSignal, provider);
   const callbackObserver = createProviderRuntimeEventObserver({
     onTextDelta: (delta, accumulated) => {
       input.processTextStream.emitRealtimeDelta(delta, accumulated, input.stepStream);
@@ -91,37 +94,71 @@ export async function runOpenAiCompatibleProviderStep(input: {
     type: 'provider_step_started',
     reason: `开始第 ${input.stepIndex + 1} 个 OpenAI-compatible provider step。`
   });
-  let stepResult: Awaited<ReturnType<typeof generateOpenAiCompatibleStreamingToolStep>>;
-  try {
-    stepResult = await generateOpenAiCompatibleStreamingToolStep({
-        provider,
-        system: createNativeRuntimeSystemPrompt(input.params.uiLanguage),
-        messages: stepMessages,
-        tools: input.toolPool.openAiCompatibleTools,
-        maxOutputTokens: input.maxOutputTokens,
-        abortSignal: stepAbort.signal,
-        onDelta: (delta, accumulated) => {
-          eventObserver.observe({
-            type: 'text_delta',
-            delta,
-            accumulated
-          });
-        },
-        onReasoningDelta: (delta, accumulated) => {
-          eventObserver.observe({
-            type: 'thinking_delta',
-            delta,
-            accumulated
-          });
-        }
-      })
-      .catch((error: unknown) => rethrowNativeProviderStepTimeout(
+  let stepResult: Awaited<ReturnType<typeof generateOpenAiCompatibleStreamingToolStep>> | undefined;
+  let sawProviderOutput = false;
+  for (let attempt = 0; attempt <= NATIVE_PROVIDER_STEP_MAX_RETRIES; attempt += 1) {
+    emitRuntimeStatus(input.params, 'thinking', attempt === 0 ? '正在思考中...' : `Provider 正在重试第 ${attempt} 次...`);
+    const stepAbort = createNativeProviderStepAbort(input.params.abortSignal, provider);
+    try {
+      stepResult = await generateOpenAiCompatibleStreamingToolStep({
+          provider,
+          system: createNativeRuntimeSystemPrompt(input.params.uiLanguage),
+          messages: stepMessages,
+          tools: input.toolPool.openAiCompatibleTools,
+          maxOutputTokens: input.maxOutputTokens,
+          abortSignal: stepAbort.signal,
+          onDelta: (delta, accumulated) => {
+            sawProviderOutput = true;
+            eventObserver.observe({
+              type: 'text_delta',
+              delta,
+              accumulated
+            });
+          },
+          onReasoningDelta: (delta, accumulated) => {
+            sawProviderOutput = true;
+            eventObserver.observe({
+              type: 'thinking_delta',
+              delta,
+              accumulated
+            });
+          }
+        });
+      break;
+    } catch (error) {
+      const normalizedError = normalizeNativeProviderStepError(
         error,
         stepAbort,
         'Native OpenAI-compatible provider step'
-      ));
-  } finally {
-    stepAbort.dispose();
+      );
+      if (shouldRetryNativeProviderStep({
+        error: normalizedError,
+        attempt,
+        sawProviderOutput,
+        abortSignal: input.params.abortSignal
+      })) {
+        const retryDelayMs = getNativeProviderStepRetryDelayMs(attempt);
+        const retryNumber = attempt + 1;
+        const reason = `OpenAI-compatible provider step 失败，准备重试 ${retryNumber}/${NATIVE_PROVIDER_STEP_MAX_RETRIES}。`;
+        eventObserver.observe({
+          type: 'provider_retry',
+          reason,
+          attempt: retryNumber,
+          maxRetries: NATIVE_PROVIDER_STEP_MAX_RETRIES,
+          retryDelayMs,
+          error: describeNativeProviderStepError(normalizedError)
+        });
+        emitRuntimeStatus(input.params, 'thinking', `Provider 请求不稳定，${Math.round(retryDelayMs / 1000)}s 后重试 ${retryNumber}/${NATIVE_PROVIDER_STEP_MAX_RETRIES}...`);
+        await waitForNativeProviderStepRetry(retryDelayMs, input.params.abortSignal);
+        continue;
+      }
+      throw normalizedError;
+    } finally {
+      stepAbort.dispose();
+    }
+  }
+  if (!stepResult) {
+    throw new Error('Native OpenAI-compatible provider step ended without a result.');
   }
   input.state.stepCount = input.stepIndex + 1;
   input.state.finishReason = stepResult.finishReason;

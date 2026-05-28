@@ -272,11 +272,16 @@ export async function openBrowserPage(project: Project, input: BrowserOpenInput)
   const height = clampInteger(input.height, DEFAULT_VIEWPORT_HEIGHT, 320, 1800);
   const id = `browser_${randomUUID().slice(0, 8)}`;
   const createdAt = new Date().toISOString();
+  const inspectionSession = electronModule.session.fromPartition(`funplay-browser-inspection-${id}`);
+  inspectionSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+    callback(false);
+  });
   const window = new electronModule.BrowserWindow({
     width,
     height,
     show: false,
     webPreferences: {
+      session: inspectionSession,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,

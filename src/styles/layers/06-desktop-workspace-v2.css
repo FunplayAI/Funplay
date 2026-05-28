@@ -458,9 +458,9 @@
 }
 
 .project-tab-status {
-  width: 12px;
-  height: 12px;
-  flex: 0 0 12px;
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: 0 0 0.875rem;
   display: grid;
   place-items: center;
 }
@@ -490,6 +490,32 @@
 
 .project-tab-status.active .project-tab-dot {
   background: var(--fp-project-tab-dot-active-bg);
+}
+
+.project-tab-status.active {
+  color: var(--fp-project-tab-dot-active-bg);
+}
+
+.project-tab-status:not(.active):not(.processing) {
+  color: var(--fp-project-tab-dot-bg);
+}
+
+.project-tab-engine-logo,
+.project-tab-web-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  display: block;
+  color: currentColor;
+}
+
+.project-tab-engine-logo {
+  background: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
 
 .project-tab-status.processing {
@@ -1547,17 +1573,25 @@
 
 @media (max-width: 1180px) {
   .desktop-workspace {
-    flex-direction: column;
+    flex-direction: row;
   }
 
   .panel-resize-handle {
-    display: none;
+    display: grid;
   }
 
-  .workspace-sidebar,
+  .workspace-sidebar {
+    max-width: min(420px, 46vw);
+    height: 100%;
+  }
+
   .file-inspector-panel {
-    width: 100%;
-    flex-basis: auto;
+    max-width: min(440px, 48vw);
+    height: 100%;
+  }
+
+  .workspace-center-stack {
+    min-width: 18rem;
   }
 
   .agent-column {

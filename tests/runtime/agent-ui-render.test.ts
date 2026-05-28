@@ -848,13 +848,10 @@ test('streaming transcript shows unified thinking status and structured tool act
   assert.match(html, /fp-button[^"]*chat-tool-activity-summary/);
   assert.match(html, /mimo-live-tool-fixture-748219/);
   assert.match(html, /src\/app\.ts/);
-  assert.match(html, /chat-tool-result-file-list/);
+  assert.match(html, /tool-detail-change-line/);
   assert.match(html, /fp-button[^"]*fp-button-ghost/);
-  assert.match(html, /unified_patch/);
-  assert.match(html, /Fixture Page/);
-  assert.match(html, /mcp__unity__unity_echo/);
-  assert.match(html, /permission=ask/);
-  assert.match(html, /funplay-browser\.png/);
+  assert.doesNotMatch(html, /chat-tool-result-file-list/);
+  assert.doesNotMatch(html, /funplay-browser\.png/);
   assert.match(html, /tool-detail-disclosure/);
   assert.match(html, /tool-detail-trigger/);
   assert.equal(html.includes('正在执行兼容工具调用'), false);
@@ -1118,6 +1115,42 @@ test('standalone markdown thematic breaks render as visible separators', () => {
   assert.equal((html.match(/chat-rich-divider/g) ?? []).length, 2);
   assert.match(html, /<hr[^>]*class="chat-rich-divider"/);
   assert.doesNotMatch(html, />---</);
+});
+
+test('chat markdown renders GFM lists tables and file paths through the unified renderer', () => {
+  const message: ChatMessage = {
+    id: 'msg_markdown_gfm',
+    role: 'assistant',
+    content: [
+      '执行顺序：',
+      '',
+      '1. 读取 `src/game/levels.json`',
+      '2. 调整难度',
+      '',
+      '- [x] 已生成地图',
+      '- [ ] 待验证音效',
+      '',
+      '| 模块 | 状态 |',
+      '| --- | --- |',
+      '| 关卡 | 完成 |',
+      '',
+      '更多细节见 src/game/levels.json'
+    ].join('\n'),
+    createdAt: new Date().toISOString()
+  };
+  const html = renderZh(createElement(ChatTranscriptMessage, {
+    message,
+    openablePaths: ['src/game/levels.json'],
+    searchQuery: '',
+    developerMode: false,
+    onOpenPath: noop
+  }));
+
+  assert.match(html, /chat-rich-list-block ordered/);
+  assert.match(html, /chat-rich-list-block unordered/);
+  assert.match(html, /type="checkbox"/);
+  assert.match(html, /chat-rich-table/);
+  assert.match(html, /fp-button[^"]*chat-inline-path/);
 });
 
 test('composer live status renders running animation and task checklist above input', () => {
@@ -2958,6 +2991,45 @@ test('workspace sidebar navigation marks the active section semantically', () =>
   assert.match(html, /aria-current="page"[^>]*class="[^"]*workspace-sidebar-nav-item active/);
   assert.match(html, /fp-button-label"><span class="workspace-sidebar-nav-icon">▧/);
   assert.equal(/aria-current="page"[^>]*><span class="workspace-sidebar-nav-icon">⚙/.test(html), false);
+});
+
+test('workspace sidebar does not show session selection outside the agent section', () => {
+  const sessions: ProjectSession[] = [
+    {
+      id: 'session_main',
+      title: '主会话',
+      autoTitle: false,
+      createdAt: new Date(Date.now() - 3600000).toISOString(),
+      updatedAt: new Date().toISOString(),
+      chat: []
+    }
+  ];
+  const html = renderZh(createElement(SidebarPanel, {
+    files: [],
+    selectedFileId: '',
+    sessions,
+    activeSessionId: 'session_main',
+    streamingSessionId: undefined,
+    sessionStates: {},
+    navItems: [
+      { id: 'agent', label: 'Agent', icon: '✦' },
+      { id: 'settings', label: '项目设置', icon: '⚙' },
+      { id: 'assets', label: '素材库', icon: '▧' }
+    ],
+    activeNavId: 'settings',
+    width: 300,
+    onOpenFile: noop,
+    onCreateSession: noop,
+    onSelectSession: noop,
+    onRenameSession: noop,
+    onDeleteSession: noop,
+    onSelectNav: noop
+  }));
+
+  assert.match(html, /主会话/);
+  assert.match(html, /workspace-sidebar-nav-item active/);
+  assert.doesNotMatch(html, /sidebar-session-item active/);
+  assert.doesNotMatch(html, /sidebar-session-dot active/);
 });
 
 test('session management panel renders shared toolbar and row action controls', () => {
