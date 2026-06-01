@@ -1,0 +1,32 @@
+{
+  "id": "example-expression-evaluator",
+  "title": "实现中缀算术表达式求值器（算法）",
+  "description": "高难度算法:实现支持 + - * / 和括号、正确运算符优先级的中缀表达式求值。需要解析逻辑(如双栈或递归下降),是这套任务集里最能区分模型能力的一个。",
+  "dimensions": ["planning", "long_horizon", "tool_reliability"],
+  "runtimes": ["native", "claude-code-sdk"],
+  "prompt": "实现 src/evaluator.js 里的 evaluate(expr)：对包含整数、+ - * /、括号和空格的中缀表达式求值，遵循标准运算符优先级。确保 npm test 全部通过。",
+  "provider": {
+    "native": { "envKey": "FUNPLAY_EVAL_NATIVE" },
+    "claude-code-sdk": { "envKey": "FUNPLAY_EVAL_CLAUDE" }
+  },
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"eval-expr\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": { \"test\": \"node --test\" }\n}\n"
+      },
+      {
+        "path": "src/evaluator.js",
+        "content": "// TODO: evaluate an infix arithmetic expression string.\n// Support integers, + - * /, parentheses, and spaces, with standard precedence.\nexport function evaluate(expr) {\n  // implement me\n}\n"
+      },
+      {
+        "path": "evaluator.test.js",
+        "content": "import assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { evaluate } from './src/evaluator.js';\n\ntest('addition', () => assert.equal(evaluate('1 + 2'), 3));\ntest('precedence: mul before add', () => assert.equal(evaluate('1 + 2 * 3'), 7));\ntest('parentheses override precedence', () => assert.equal(evaluate('(1 + 2) * 3'), 9));\ntest('subtraction and division', () => assert.equal(evaluate('10 / 2 - 3'), 2));\ntest('nested parentheses', () => assert.equal(evaluate('2 * (3 + (4 - 1))'), 12));\ntest('longer expression', () => assert.equal(evaluate('2 + 3 * 4 - 10 / 5'), 12));\n"
+      }
+    ]
+  },
+  "acceptance": [
+    { "id": "npm-test", "kind": "test", "command": "npm test", "required": true, "timeoutMs": 30000 }
+  ],
+  "budget": { "maxSteps": 120, "timeoutMs": 240000 }
+}

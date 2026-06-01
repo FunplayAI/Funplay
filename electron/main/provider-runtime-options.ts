@@ -1,6 +1,12 @@
 import type { AiProvider } from '../../shared/types';
 
 export const DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
+// Default streaming stall timeout: abort + retry if no new SSE chunk arrives for
+// this long. Catches hung/stalled provider responses (including a missing first
+// token) fast enough to retry, instead of hanging near the full 5min request
+// timeout. Generous enough not to trip on a slow reasoning-model first token;
+// providers can override via chunkTimeoutMs.
+export const DEFAULT_PROVIDER_CHUNK_TIMEOUT_MS = 120 * 1000;
 export const MIN_PROVIDER_TIMEOUT_MS = 1;
 export const MAX_PROVIDER_TIMEOUT_MS = 60 * 60 * 1000;
 export const MIN_PROVIDER_CONTEXT_WINDOW_TOKENS = 1_024;
@@ -58,7 +64,7 @@ export function resolveProviderRequestTimeoutMs(provider?: Pick<AiProvider, 'req
 }
 
 export function resolveProviderChunkTimeoutMs(provider?: Pick<AiProvider, 'chunkTimeoutMs'>): number | undefined {
-  return normalizeProviderChunkTimeoutMs(provider?.chunkTimeoutMs);
+  return normalizeProviderChunkTimeoutMs(provider?.chunkTimeoutMs) ?? DEFAULT_PROVIDER_CHUNK_TIMEOUT_MS;
 }
 
 export function createProviderRequestAbort(

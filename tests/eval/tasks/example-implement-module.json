@@ -1,0 +1,41 @@
+{
+  "id": "example-implement-module",
+  "title": "实现模块的多个函数使测试通过（规划/长程，示例）",
+  "description": "考察规划与多步实现：工程里有多个待实现的空函数和现成测试，agent 需读懂测试意图、依次实现全部函数并通过确定性验收。真实运行需补 provider 凭据。",
+  "dimensions": ["planning", "long_horizon", "tool_reliability"],
+  "runtimes": ["native", "claude-code-sdk"],
+  "prompt": "src/calc.js 里的函数都还是 TODO。请阅读 calc.test.js 的期望，实现所有函数，确保 `npm test` 全部通过。",
+  "provider": {
+    "native": { "envKey": "FUNPLAY_EVAL_NATIVE" },
+    "claude-code-sdk": { "envKey": "FUNPLAY_EVAL_CLAUDE" }
+  },
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"eval-calc\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+      },
+      {
+        "path": "src/calc.js",
+        "content": "// Implement all functions so calc.test.js passes.\nexport function add(a, b) {\n  // TODO\n}\n\nexport function subtract(a, b) {\n  // TODO\n}\n\nexport function clamp(value, min, max) {\n  // TODO\n}\n"
+      },
+      {
+        "path": "calc.test.js",
+        "content": "import assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { add, subtract, clamp } from './src/calc.js';\n\ntest('add', () => assert.equal(add(2, 3), 5));\ntest('subtract', () => assert.equal(subtract(7, 4), 3));\ntest('clamp clamps within range', () => {\n  assert.equal(clamp(5, 0, 10), 5);\n  assert.equal(clamp(-2, 0, 10), 0);\n  assert.equal(clamp(99, 0, 10), 10);\n});\n"
+      }
+    ]
+  },
+  "acceptance": [
+    {
+      "id": "npm-test",
+      "kind": "test",
+      "command": "npm test",
+      "required": true,
+      "timeoutMs": 30000
+    }
+  ],
+  "budget": {
+    "maxSteps": 120,
+    "timeoutMs": 180000
+  }
+}

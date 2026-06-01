@@ -1,6 +1,9 @@
+import { generateText } from 'ai';
 import { ensureProjectSessions, getActiveProjectSession, replaceProjectSession } from '../../../../shared/project-sessions';
 import { getProviderPresetDefaults, resolveProviderUpstreamModel } from '../../../../shared/provider-catalog';
 import type { AgentCoreMessagePart, AiProvider, ChatMessage, NativeContextSummaryCoverage, Project, ProjectSession } from '../../../../shared/types';
+import { createLanguageModel } from '../../ai-provider';
+import { generateOpenAiCompatibleText } from '../../openai-compatible-client';
 import { normalizeProviderContextWindowTokens } from '../../provider-runtime-options';
 import { appendContextSummaryAudit, buildContextSummaryAudit } from '../context-summary-audit';
 
@@ -364,6 +367,97 @@ export function prepareNativeContextHandoff(options: {
       throw error;
     }
     return undefined;
+  }
+}
+
+const NATIVE_PROVIDER_SUMMARY_MAX_OUTPUT_TOKENS = 1600;
+const NATIVE_PROVIDER_SUMMARY_TIMEOUT_MS = 20_000;
+
+export function shouldUseNativeProviderContextSummary(provider?: AiProvider): boolean {
+  // Opt-in for now: default stays on the reliable extractive summary so existing
+  // behavior and tests are unchanged. Enable model-generated summaries with
+  // FUNPLAY_NATIVE_CONTEXT_SUMMARY_PROVIDER=1 once eval confirms the quality win,
+  // mirroring the claude-code-sdk runtime's provider summary path.
+  return Boolean(provider && process.env.FUNPLAY_NATIVE_CONTEXT_SUMMARY_PROVIDER === '1');
+}
+
+function buildNativeProviderSummaryPrompt(extractiveSummary: string): string {
+  return [
+    'Rewrite the following extractive log of an earlier coding-agent conversation into a concise, faithful continuation summary.',
+    'Preserve concrete facts: decisions made, files created or changed, commands run, current state, and any unfinished tasks.',
+    'Do not invent details that are not present. Output only the summary text.',
+    '',
+    extractiveSummary
+  ].join('\n');
+}
+
+async function generateNativeProviderSummary(
+  provider: AiProvider,
+  prompt: string,
+  abortSignal?: AbortSignal
+): Promise<string | undefined> {
+  const system = 'You compress long coding-agent conversations into concise, faithful continuation summaries.';
+  const signal = abortSignal
+    ? AbortSignal.any([abortSignal, AbortSignal.timeout(NATIVE_PROVIDER_SUMMARY_TIMEOUT_MS)])
+    : AbortSignal.timeout(NATIVE_PROVIDER_SUMMARY_TIMEOUT_MS);
+  if (provider.protocol === 'openai-compatible') {
+    const result = await generateOpenAiCompatibleText({
+      provider,
+      system,
+      prompt,
+      maxOutputTokens: NATIVE_PROVIDER_SUMMARY_MAX_OUTPUT_TOKENS,
+      abortSignal: signal
+    });
+    return result.text.trim() || undefined;
+  }
+  const result = await generateText({
+    model: createLanguageModel(provider),
+    system,
+    prompt,
+    maxOutputTokens: NATIVE_PROVIDER_SUMMARY_MAX_OUTPUT_TOKENS,
+    abortSignal: signal
+  });
+  return result.text.trim() || undefined;
+}
+
+// Async variant of prepareNativeContextHandoff that, when enabled, replaces the
+// extractive summary with a model-generated one (strategy: 'provider'). Any
+// failure falls back to the extractive result, so this never regresses the
+// reliable path.
+export async function prepareNativeContextHandoffWithModelSummary(options: {
+  project: Project;
+  sessionId?: string;
+  provider?: AiProvider;
+  currentPrompt: string;
+  force?: boolean;
+  abortSignal?: AbortSignal;
+}): Promise<NativeContextHandoffResult | undefined> {
+  const extractive = prepareNativeContextHandoff(options);
+  if (!extractive || !options.provider || !shouldUseNativeProviderContextSummary(options.provider)) {
+    return extractive;
+  }
+  try {
+    const modelSummary = await generateNativeProviderSummary(
+      options.provider,
+      buildNativeProviderSummaryPrompt(extractive.summary),
+      options.abortSignal
+    );
+    if (!modelSummary) {
+      return extractive;
+    }
+    const summary = appendContextSummaryAudit(modelSummary, extractive.coverage.audit, EXTRACTIVE_SUMMARY_MAX_CHARS);
+    const coverage: NativeContextSummaryCoverage = { ...extractive.coverage, strategy: 'provider' };
+    return {
+      summary,
+      coverage,
+      patch: {
+        ...extractive.patch,
+        nativeContextSummary: summary,
+        nativeContextSummaryCoverage: coverage
+      }
+    };
+  } catch {
+    return extractive;
   }
 }
 

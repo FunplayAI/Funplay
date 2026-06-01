@@ -17,7 +17,8 @@ import {
 } from './openai-compatible-transport';
 import {
   getOpenAiCompatibleAssistantReasoningFields,
-  normalizeOpenAiCompatibleToolParameters
+  normalizeOpenAiCompatibleToolParameters,
+  parseToolCallArguments
 } from './openai-compatible-profile-transforms';
 
 function parseToolArguments(value: unknown): {
@@ -42,19 +43,18 @@ function parseToolArguments(value: unknown): {
       rawArguments: value
     };
   }
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
+  const parsed = parseToolCallArguments(trimmed);
+  if (parsed) {
     return {
-      arguments: isRecord(parsed) ? parsed : {},
+      arguments: parsed,
       rawArguments: value
     };
-  } catch {
-    return {
-      arguments: {},
-      rawArguments: value,
-      argumentsParseError: 'Tool arguments are not valid JSON.'
-    };
   }
+  return {
+    arguments: {},
+    rawArguments: value,
+    argumentsParseError: 'Tool arguments are not valid JSON.'
+  };
 }
 
 function stringifyToolArguments(value: Record<string, unknown>): string {

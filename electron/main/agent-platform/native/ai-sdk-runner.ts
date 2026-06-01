@@ -1,4 +1,4 @@
-import { type ModelMessage } from 'ai';
+import { generateText, type ModelMessage } from 'ai';
 import { createLanguageModel } from '../../ai-provider';
 import { buildNativeToolLoopMessages } from '../model-message-builder';
 import { ProjectInstructionTracker } from '../project-instruction-tracker';
@@ -8,7 +8,9 @@ import {
   resolveLatestTodoSnapshotFromHistory
 } from './continuation-policy';
 import {
-  resolveNativeMainToolLoopMaxOutputTokens
+  buildNativeMainToolLoopFinalPrompt,
+  resolveNativeMainToolLoopMaxOutputTokens,
+  resolveNativeMainToolLoopMaxSteps
 } from './tool-loop-options';
 import { NativeAiSdkStepState } from './ai-sdk-step-state';
 import { completeNativeAiSdkProviderStep } from './ai-sdk-completion-stage';
@@ -21,8 +23,10 @@ import {
   type NativeToolLoopCallbacks
 } from './tool-loop-controller';
 import { createNativeToolLoopPrompt } from './tool-loop-prompt';
+import { createNativeRuntimeSystemPrompt } from './prompt';
 import { initializeNativeToolLoopToolPool } from './tool-loop-setup';
 import type { NativeToolLoopRunResult } from './tool-loop-state';
+import { normalizeModelReplyText } from './text';
 
 export async function runNativeAiSdkToolLoop(
   params: GenericAgentRuntimeParams,
@@ -87,6 +91,7 @@ export async function runNativeAiSdkToolLoop(
   };
   const stepState = new NativeAiSdkStepState();
   const maxOutputTokens = resolveNativeMainToolLoopMaxOutputTokens(params.provider);
+  const maxSteps = resolveNativeMainToolLoopMaxSteps();
   const controllerBridge = createNativeToolLoopControllerBridge({
     callbacks,
     guardTransitions: true,
@@ -114,6 +119,51 @@ export async function runNativeAiSdkToolLoop(
 
   while (true) {
     params.abortSignal?.throwIfAborted();
+    if (loopState.stepCount >= maxSteps) {
+      providerController.completeRun(`已达到 ${maxSteps} 轮工具循环步数预算上限。`);
+      emitCoreStateStage('completed', `工具循环达到 ${maxSteps} 轮步数预算上限，已强制收尾。`);
+      callbacks?.emitStage?.({
+        stageId: 'stage:native_tool_loop_step_budget',
+        title: '工具循环步数预算上限',
+        target: 'stage:native_tool_loop_step_budget',
+        status: 'completed',
+        summary: `已达到 ${maxSteps} 轮步数预算上限，停止继续调用工具。`,
+        input: { maxSteps, stepCount: loopState.stepCount }
+      });
+      let budgetReply = normalizeModelReplyText(loopState.assistantMessage);
+      if (!budgetReply) {
+        // No streamed text yet — make one tool-free pass so the model can
+        // summarize the work done so far (mirrors the openai-compatible path's
+        // closing prompt) instead of returning an empty reply.
+        try {
+          const closing = await generateText({
+            model,
+            system: createNativeRuntimeSystemPrompt(params.uiLanguage),
+            messages: [
+              ...loopState.messages,
+              { role: 'user', content: buildNativeMainToolLoopFinalPrompt(maxSteps) }
+            ],
+            maxOutputTokens,
+            abortSignal: params.abortSignal
+          });
+          budgetReply = normalizeModelReplyText(closing.text);
+        } catch {
+          // fall through to the localized fallback below
+        }
+      }
+      if (!budgetReply) {
+        budgetReply = params.uiLanguage === 'en-US'
+          ? `Reached the ${maxSteps}-step tool-loop budget. Continue from the work already completed, or rephrase the request.`
+          : `已达到 ${maxSteps} 轮工具循环步数上限。可以基于已完成的工作继续，或换一种方式提问。`;
+      }
+      return {
+        assistantMessage: budgetReply,
+        finishReason: 'step-budget-exhausted',
+        stepCount: loopState.stepCount,
+        toolCalls: loopState.toolCalls,
+        streamedText: loopState.streamedText
+      };
+    }
     let providerStep;
     try {
       providerStep = await runNativeAiSdkProviderStep({
@@ -125,6 +175,7 @@ export async function runNativeAiSdkToolLoop(
         stepState,
         loopState,
         maxOutputTokens,
+        maxSteps,
         providerController
       });
     } catch (error) {

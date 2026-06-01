@@ -1,0 +1,41 @@
+{
+  "id": "example-failing-test-repair",
+  "title": "定位并修复导致测试失败的 bug（自我验证，示例）",
+  "description": "考察自我验证与纠错：工程里有一个 off-by-one bug 导致现成测试失败，agent 需运行测试、定位原因、修复，并确认测试转绿。真实运行需补 provider 凭据。",
+  "dimensions": ["self_verification", "tool_reliability"],
+  "runtimes": ["native", "claude-code-sdk"],
+  "prompt": "运行 `npm test` 会失败。请定位失败原因，修复 src/parser.js 的 bug，并确认测试全部通过。",
+  "provider": {
+    "native": { "envKey": "FUNPLAY_EVAL_NATIVE" },
+    "claude-code-sdk": { "envKey": "FUNPLAY_EVAL_CLAUDE" }
+  },
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"eval-parser\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+      },
+      {
+        "path": "src/parser.js",
+        "content": "// parseRange('1-5') should be inclusive of both ends.\nexport function parseRange(input) {\n  const [start, end] = input.split('-').map(Number);\n  const out = [];\n  for (let value = start; value < end; value += 1) {\n    out.push(value);\n  }\n  return out;\n}\n"
+      },
+      {
+        "path": "parser.test.js",
+        "content": "import assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { parseRange } from './src/parser.js';\n\ntest('parseRange is inclusive of both ends', () => {\n  assert.deepEqual(parseRange('1-5'), [1, 2, 3, 4, 5]);\n  assert.deepEqual(parseRange('3-3'), [3]);\n});\n"
+      }
+    ]
+  },
+  "acceptance": [
+    {
+      "id": "npm-test",
+      "kind": "test",
+      "command": "npm test",
+      "required": true,
+      "timeoutMs": 30000
+    }
+  ],
+  "budget": {
+    "maxSteps": 120,
+    "timeoutMs": 180000
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "id": "example-inventory-edge-cases",
+  "title": "修复库存模块的多处边界 bug 使全部测试通过（更高难度）",
+  "description": "比 smoke 任务更难:多个边界条件未处理散布在一个模块,测试覆盖正常路径+多个边界(应抛错的非法操作)。agent 需读懂测试意图、定位并修复多处、自我验证。压测长程/规划/自我验证/工具可靠性在更高难度下的表现。",
+  "dimensions": ["long_horizon", "planning", "self_verification", "tool_reliability"],
+  "runtimes": ["native", "claude-code-sdk"],
+  "prompt": "运行 `npm test` 有多个用例失败。src/inventory.js 的库存模块有几处边界条件没有处理。请逐一定位并修复，确保所有测试（含边界用例）全部通过。",
+  "provider": {
+    "native": { "envKey": "FUNPLAY_EVAL_NATIVE" },
+    "claude-code-sdk": { "envKey": "FUNPLAY_EVAL_CLAUDE" }
+  },
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"eval-inventory\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+      },
+      {
+        "path": "src/inventory.js",
+        "content": "// Several edge cases are unhandled. Make inventory.test.js pass.\nexport function createInventory() {\n  const items = new Map();\n  return {\n    addItem(name, qty) {\n      items.set(name, (items.get(name) || 0) + qty);\n    },\n    removeItem(name, qty) {\n      items.set(name, (items.get(name) || 0) - qty);\n    },\n    getQty(name) {\n      return items.get(name) || 0;\n    }\n  };\n}\n"
+      },
+      {
+        "path": "inventory.test.js",
+        "content": "import assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createInventory } from './src/inventory.js';\n\ntest('addItem accumulates quantity', () => {\n  const inv = createInventory();\n  inv.addItem('apple', 2);\n  inv.addItem('apple', 3);\n  assert.equal(inv.getQty('apple'), 5);\n});\n\ntest('removeItem reduces quantity', () => {\n  const inv = createInventory();\n  inv.addItem('apple', 5);\n  inv.removeItem('apple', 2);\n  assert.equal(inv.getQty('apple'), 3);\n});\n\ntest('addItem rejects non-positive quantity', () => {\n  const inv = createInventory();\n  assert.throws(() => inv.addItem('apple', 0));\n  assert.throws(() => inv.addItem('apple', -1));\n});\n\ntest('removeItem throws when removing more than in stock', () => {\n  const inv = createInventory();\n  inv.addItem('apple', 2);\n  assert.throws(() => inv.removeItem('apple', 5));\n});\n\ntest('removeItem throws for an unknown item', () => {\n  const inv = createInventory();\n  assert.throws(() => inv.removeItem('banana', 1));\n});\n"
+      }
+    ]
+  },
+  "acceptance": [
+    {
+      "id": "npm-test",
+      "kind": "test",
+      "command": "npm test",
+      "required": true,
+      "timeoutMs": 30000
+    }
+  ],
+  "budget": {
+    "maxSteps": 120,
+    "timeoutMs": 240000
+  }
+}

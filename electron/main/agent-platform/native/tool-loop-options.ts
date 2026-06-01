@@ -9,6 +9,12 @@ import type { NativeWorkspaceToolOutput } from './tool-executor';
 export const NATIVE_PARTIAL_WRITE_CONTINUATION_LIMIT = 2;
 export const NATIVE_EDIT_FAILURE_CONTINUATION_LIMIT = 4;
 export const NATIVE_MAIN_TOOL_LOOP_MAX_OUTPUT_TOKENS = 32_000;
+// Main tool-loop step budget. The loop is model-driven and historically ran with no
+// step ceiling (`while (true)` + NEVER_STOP_ON_STEP_COUNT), so a runaway or looping
+// model could spin without bound. The default is set well above what real tasks need
+// (subagents cap at 32) so it only catches runaway loops, never truncates normal work.
+export const NATIVE_MAIN_TOOL_LOOP_DEFAULT_MAX_STEPS = 120;
+export const NATIVE_MAIN_TOOL_LOOP_MAX_STEPS = 200;
 export const NEVER_STOP_ON_STEP_COUNT = (): false => false;
 
 export function createInvalidMultiEditInputResult(toolCall: OpenAiCompatibleToolCall): NativeWorkspaceToolOutput | undefined {
@@ -65,4 +71,20 @@ export function resolveNativeMainToolLoopMaxOutputTokens(provider?: AiProvider):
     return Math.max(4096, Math.min(NATIVE_MAIN_TOOL_LOOP_MAX_OUTPUT_TOKENS, Math.floor(contextWindow / 4)));
   }
   return NATIVE_MAIN_TOOL_LOOP_MAX_OUTPUT_TOKENS;
+}
+
+export function resolveNativeMainToolLoopMaxSteps(): number {
+  const configured = Number(process.env.FUNPLAY_NATIVE_MAIN_TOOL_LOOP_MAX_STEPS);
+  if (Number.isFinite(configured) && configured > 0) {
+    return Math.min(NATIVE_MAIN_TOOL_LOOP_MAX_STEPS, Math.floor(configured));
+  }
+  return NATIVE_MAIN_TOOL_LOOP_DEFAULT_MAX_STEPS;
+}
+
+export function buildNativeMainToolLoopFinalPrompt(maxSteps: number): string {
+  return [
+    `工具循环已经到达 ${maxSteps} 轮的步数预算上限。`,
+    '现在不要再调用任何工具，只基于已经完成的工作给出最终答复。',
+    '如果任务尚未完全完成，也要说明已完成的部分、仍未完成的部分，以及建议的下一步。'
+  ].join('\n');
 }

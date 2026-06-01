@@ -1,0 +1,48 @@
+{
+  "id": "example-web-game-loop-fix",
+  "title": "修复 web 小游戏主循环并验证可运行（示例任务）",
+  "description": "示例 eval 任务，演示 schema：带 bug 的最小 web 游戏工程，要求 agent 修复后通过确定性验收。真实运行需补 runtime driver 与 provider 凭据。",
+  "dimensions": ["tool_reliability", "self_verification", "long_horizon"],
+  "runtimes": ["native", "claude-code-sdk"],
+  "prompt": "这个工程的贪吃蛇游戏启动后蛇不会移动。请定位并修复 bug，确保 `npm test` 通过，并简要说明你改了什么。",
+  "provider": {
+    "native": { "envKey": "FUNPLAY_EVAL_NATIVE" },
+    "claude-code-sdk": { "envKey": "FUNPLAY_EVAL_CLAUDE" }
+  },
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"eval-snake\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n"
+      },
+      {
+        "path": "src/game.js",
+        "content": "// BUG: tick() never advances the snake because step is 0.\nexport function createGame() {\n  const state = { x: 0, step: 0, dir: 1 };\n  function tick() {\n    state.x += state.step * state.dir;\n    return state.x;\n  }\n  return { state, tick };\n}\n"
+      },
+      {
+        "path": "game.test.js",
+        "content": "import assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createGame } from './src/game.js';\n\ntest('snake advances on each tick', () => {\n  const game = createGame();\n  const first = game.tick();\n  const second = game.tick();\n  assert.ok(second > first, 'snake position should advance over ticks');\n});\n"
+      }
+    ]
+  },
+  "acceptance": [
+    {
+      "id": "npm-test",
+      "kind": "test",
+      "command": "npm test",
+      "required": true,
+      "timeoutMs": 30000
+    }
+  ],
+  "judge": {
+    "enabled": false,
+    "rubric": [
+      "改动是否最小且聚焦于真正的 bug",
+      "最终答复是否简要说明了改动"
+    ]
+  },
+  "budget": {
+    "maxSteps": 120,
+    "timeoutMs": 180000
+  }
+}

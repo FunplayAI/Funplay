@@ -303,19 +303,43 @@ export function getOpenAiCompatibleAssistantReasoningFields(
   return field ? { [field]: reasoningContent ?? '' } : {};
 }
 
+function normalizeToolNameForMatch(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 export function repairOpenAiCompatibleToolCalls(
   toolCalls: Array<{ name: string }>,
   toolDefinitions: OpenAiCompatibleToolDefinition[]
 ): void {
   const exactNames = new Set(toolDefinitions.map((tool) => tool.name));
   const lowerNames = new Map(toolDefinitions.map((tool) => [tool.name.toLowerCase(), tool.name]));
+  // Normalized index (strip non-alphanumerics) matches hyphen/underscore and
+  // separator variants. A null value marks an ambiguous key we must not auto-repair.
+  const normalizedNames = new Map<string, string | null>();
+  for (const tool of toolDefinitions) {
+    const normalized = normalizeToolNameForMatch(tool.name);
+    normalizedNames.set(normalized, normalizedNames.has(normalized) ? null : tool.name);
+  }
+  const resolveName = (candidate: string): string | undefined => {
+    if (exactNames.has(candidate)) {
+      return candidate;
+    }
+    const lower = lowerNames.get(candidate.toLowerCase());
+    if (lower) {
+      return lower;
+    }
+    return normalizedNames.get(normalizeToolNameForMatch(candidate)) ?? undefined;
+  };
   for (const toolCall of toolCalls) {
     if (exactNames.has(toolCall.name)) {
       continue;
     }
-    const repairedName = lowerNames.get(toolCall.name.toLowerCase());
-    if (repairedName) {
-      toolCall.name = repairedName;
+    // Try the raw name, then the last segment after a namespace separator
+    // (e.g. "functions.write_file" / "tools/write_file" -> "write_file").
+    const lastSegment = toolCall.name.split(/[./]/).pop() ?? toolCall.name;
+    const repaired = resolveName(toolCall.name) ?? resolveName(lastSegment);
+    if (repaired) {
+      toolCall.name = repaired;
     }
   }
 }
@@ -356,7 +380,93 @@ function normalizeRawJsonStringNewlines(value: string): string {
   return normalized;
 }
 
-function parseToolCallArguments(value: string): Record<string, unknown> | undefined {
+function stripJsonCodeFence(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('```')) {
+    return trimmed;
+  }
+  return trimmed
+    .replace(/^```[a-zA-Z]*\s*\n?/, '')
+    .replace(/\n?```\s*$/, '')
+    .trim();
+}
+
+function stripJsonTrailingCommas(value: string): string {
+  let result = '';
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (escaped) {
+      result += char;
+      escaped = false;
+      continue;
+    }
+    if (char === '\\' && inString) {
+      result += char;
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      result += char;
+      inString = !inString;
+      continue;
+    }
+    if (!inString && char === ',') {
+      let lookahead = index + 1;
+      while (lookahead < value.length && /\s/.test(value[lookahead])) {
+        lookahead += 1;
+      }
+      if (value[lookahead] === '}' || value[lookahead] === ']') {
+        continue;
+      }
+    }
+    result += char;
+  }
+  return result;
+}
+
+function replacePythonJsonLiterals(value: string): string {
+  let result = '';
+  let inString = false;
+  let escaped = false;
+  let index = 0;
+  while (index < value.length) {
+    const char = value[index];
+    if (escaped) {
+      result += char;
+      escaped = false;
+      index += 1;
+      continue;
+    }
+    if (char === '\\' && inString) {
+      result += char;
+      escaped = true;
+      index += 1;
+      continue;
+    }
+    if (char === '"') {
+      result += char;
+      inString = !inString;
+      index += 1;
+      continue;
+    }
+    if (!inString) {
+      const prevChar = index > 0 ? value[index - 1] : '';
+      const match = /[A-Za-z0-9_]/.test(prevChar) ? null : /^(None|True|False)\b/.exec(value.slice(index));
+      if (match) {
+        result += match[1] === 'None' ? 'null' : match[1] === 'True' ? 'true' : 'false';
+        index += match[1].length;
+        continue;
+      }
+    }
+    result += char;
+    index += 1;
+  }
+  return result;
+}
+
+export function parseToolCallArguments(value: string): Record<string, unknown> | undefined {
   try {
     const parsed = JSON.parse(value);
     return isRecord(parsed) ? parsed : undefined;
@@ -365,7 +475,17 @@ function parseToolCallArguments(value: string): Record<string, unknown> | undefi
       const parsed = JSON.parse(normalizeRawJsonStringNewlines(value));
       return isRecord(parsed) ? parsed : undefined;
     } catch {
-      return undefined;
+      // Third-level lenient repair for weak models: strip markdown code fences
+      // and JSON5-style trailing commas, then retry. Many non-frontier models
+      // wrap tool arguments in ```json fences or leave trailing commas, which
+      // the two strict passes above reject.
+      try {
+        const lenient = normalizeRawJsonStringNewlines(replacePythonJsonLiterals(stripJsonTrailingCommas(stripJsonCodeFence(value))));
+        const parsed = JSON.parse(lenient);
+        return isRecord(parsed) ? parsed : undefined;
+      } catch {
+        return undefined;
+      }
     }
   }
 }

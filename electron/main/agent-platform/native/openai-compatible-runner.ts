@@ -9,7 +9,9 @@ import {
 } from './continuation-policy';
 import { convertModelMessagesToOpenAiCompatible } from './tool-loop-message-adapter';
 import {
-  resolveNativeMainToolLoopMaxOutputTokens
+  buildNativeMainToolLoopFinalPrompt,
+  resolveNativeMainToolLoopMaxOutputTokens,
+  resolveNativeMainToolLoopMaxSteps
 } from './tool-loop-options';
 import {
   createNativeToolLoopControllerBridge,
@@ -22,6 +24,7 @@ import { NativeProcessTextStream } from './tool-loop-process-stream';
 import { createNativeToolLoopPrompt } from './tool-loop-prompt';
 import { initializeNativeToolLoopToolPool } from './tool-loop-setup';
 import {
+  createNativeToolLoopRunResult,
   createNativeToolLoopState,
   type NativeToolLoopRunResult
 } from './tool-loop-state';
@@ -63,6 +66,7 @@ export async function runOpenAiCompatibleNativeToolLoop(
   state.latestTodoSnapshot = resolveLatestTodoSnapshotFromHistory(params);
   const apiMode = inferOpenAiCompatibleApiMode(params.provider);
   const maxOutputTokens = resolveNativeMainToolLoopMaxOutputTokens(params.provider);
+  const maxSteps = resolveNativeMainToolLoopMaxSteps();
   const controllerBridge = createNativeToolLoopControllerBridge({
     callbacks,
     guardTransitions: true,
@@ -95,6 +99,25 @@ export async function runOpenAiCompatibleNativeToolLoop(
   });
   while (true) {
     params.abortSignal?.throwIfAborted();
+    if (stepIndex >= maxSteps) {
+      providerController.completeRun(`已达到 ${maxSteps} 轮工具循环步数预算上限。`);
+      emitCoreStateStage('completed', `工具循环达到 ${maxSteps} 轮步数预算上限，已强制收尾。`);
+      callbacks?.emitStage?.({
+        stageId: 'stage:native_tool_loop_step_budget',
+        title: '工具循环步数预算上限',
+        target: 'stage:native_tool_loop_step_budget',
+        status: 'completed',
+        summary: `已达到 ${maxSteps} 轮步数预算上限，停止继续调用工具。`,
+        input: { maxSteps, stepCount: stepIndex }
+      });
+      return createNativeToolLoopRunResult(state);
+    }
+    if (stepIndex === maxSteps - 1) {
+      state.messages.push({
+        role: 'user',
+        content: buildNativeMainToolLoopFinalPrompt(maxSteps)
+      });
+    }
     await toolPool.refresh({
       stepIndex,
       emitStage: callbacks?.emitStage

@@ -31,6 +31,7 @@ import {
   revokeSessionWritePermission
 } from '../../electron/main/agent-platform/permission-session-store.ts';
 import { nativeRuntime } from '../../electron/main/agent-platform/native/runtime.ts';
+import { prepareNativeContextHandoffWithModelSummary } from '../../electron/main/agent-platform/native/context-handoff.ts';
 import {
   applyClaudeAssistantEvent,
   applyClaudeStreamEvent,
@@ -4124,6 +4125,146 @@ test('native read-only direct MCP calls do not block context retry', async () =>
   } finally {
     globalThis.fetch = originalFetch;
     await server.close();
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('native main tool loop stops at the configured step budget', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-native-step-budget-'));
+  const originalFetch = globalThis.fetch;
+  const originalMaxSteps = process.env.FUNPLAY_NATIVE_MAIN_TOOL_LOOP_MAX_STEPS;
+  process.env.FUNPLAY_NATIVE_MAIN_TOOL_LOOP_MAX_STEPS = '3';
+  try {
+    const project = buildProject(projectPath);
+    const requests: Record<string, unknown>[] = [];
+    // Always return a read-only tool call. Without a main-loop step budget this
+    // would loop forever and the test would time out — so this test passing IS
+    // the regression guard for the step ceiling.
+    globalThis.fetch = (async (_url, init) => {
+      requests.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({
+        id: `chat_budget_${requests.length}`,
+        choices: [
+          {
+            finish_reason: 'tool_calls',
+            message: {
+              role: 'assistant',
+              content: '继续探查项目。',
+              tool_calls: [
+                {
+                  id: `call_scan_${requests.length}`,
+                  type: 'function',
+                  function: {
+                    name: 'scan_file_tree',
+                    arguments: '{}'
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+    }) as typeof fetch;
+
+    const message = '请持续探查项目';
+    const stages: string[] = [];
+    const result = await runRuntimeForTest(nativeRuntime, {
+      project,
+      message,
+      provider: {
+        id: 'provider_step_budget',
+        name: 'Compatible Chat',
+        protocol: 'openai-compatible',
+        apiMode: 'chat',
+        baseUrl: 'https://example.test/v1',
+        apiKey: 'test-key',
+        model: 'gpt-test',
+        enabled: true,
+        isDefault: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      plugins: [],
+      context: buildGenericWorkspaceContext(project, [], getActiveProjectSession(project).id, message),
+      permission: {
+        mode: 'read-only',
+        allowWriteTools: false,
+        allowSessionWriteTools: false
+      },
+      onStage: (stage) => stages.push(stage.stageId)
+    });
+
+    // The loop must terminate near the budget (maxSteps = 3) instead of spinning.
+    assert.ok(requests.length >= 1, 'expected at least one provider call');
+    assert.ok(requests.length <= 4, `expected the loop to stop near the step budget, got ${requests.length} provider calls`);
+    assert.equal(result.status, 'completed');
+    assert.equal(stages.includes('stage:native_tool_loop_step_budget'), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalMaxSteps === undefined) {
+      delete process.env.FUNPLAY_NATIVE_MAIN_TOOL_LOOP_MAX_STEPS;
+    } else {
+      process.env.FUNPLAY_NATIVE_MAIN_TOOL_LOOP_MAX_STEPS = originalMaxSteps;
+    }
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('native context handoff falls back to the extractive summary when the model summary fails', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-native-model-summary-fallback-'));
+  const originalFetch = globalThis.fetch;
+  const originalFlag = process.env.FUNPLAY_NATIVE_CONTEXT_SUMMARY_PROVIDER;
+  process.env.FUNPLAY_NATIVE_CONTEXT_SUMMARY_PROVIDER = '1';
+  try {
+    let project = buildProject(projectPath);
+    for (let index = 0; index < 12; index += 1) {
+      project = appendProjectConversationTurn(project, {
+        userMessage: `历史请求 ${index}`,
+        assistantMessage: `历史回答 ${index} 包含一些可压缩的上下文细节。`,
+        updatedAt: new Date().toISOString()
+      });
+    }
+    const session = getActiveProjectSession(project);
+    // Model summary provider throws — the handoff must fall back to the
+    // reliable extractive summary instead of failing the compression.
+    globalThis.fetch = (async () => {
+      throw new Error('summary provider unavailable');
+    }) as typeof fetch;
+
+    const result = await prepareNativeContextHandoffWithModelSummary({
+      project,
+      sessionId: session.id,
+      provider: {
+        id: 'provider_model_summary_fallback',
+        name: 'Compatible Chat',
+        protocol: 'openai-compatible',
+        apiMode: 'chat',
+        baseUrl: 'https://example.test/v1',
+        apiKey: 'test-key',
+        model: 'gpt-test',
+        enabled: true,
+        isDefault: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      currentPrompt: 'continue the work',
+      force: true
+    });
+
+    assert.ok(result, 'expected a context handoff result');
+    assert.equal(result.coverage.strategy, 'extractive');
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalFlag === undefined) {
+      delete process.env.FUNPLAY_NATIVE_CONTEXT_SUMMARY_PROVIDER;
+    } else {
+      process.env.FUNPLAY_NATIVE_CONTEXT_SUMMARY_PROVIDER = originalFlag;
+    }
     await rm(projectPath, { recursive: true, force: true });
   }
 });

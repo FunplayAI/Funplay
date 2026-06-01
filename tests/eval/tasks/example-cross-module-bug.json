@@ -1,0 +1,36 @@
+{
+  "id": "example-cross-module-bug",
+  "title": "跨模块定位并修复 bug（根因在依赖模块）",
+  "description": "考察调试与代码导航:测试失败发生在 checkout 模块,但真正的 bug 在它依赖的 pricing 模块(把百分比当成了固定金额)。agent 需要顺着调用链读到根因再修,而不是在症状处乱改。",
+  "dimensions": ["self_verification", "tool_reliability", "long_horizon"],
+  "runtimes": ["native", "claude-code-sdk"],
+  "prompt": "运行 `npm test`，checkout 的测试失败了。根因不在 checkout.js 本身，而在它所依赖的模块里。请顺着调用链定位真正的 bug 并修复，确保所有测试通过。",
+  "provider": {
+    "native": { "envKey": "FUNPLAY_EVAL_NATIVE" },
+    "claude-code-sdk": { "envKey": "FUNPLAY_EVAL_CLAUDE" }
+  },
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"eval-crossmod\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": { \"test\": \"node --test\" }\n}\n"
+      },
+      {
+        "path": "src/pricing.js",
+        "content": "export function applyDiscount(price, percent) {\n  return price - percent;\n}\n"
+      },
+      {
+        "path": "src/checkout.js",
+        "content": "import { applyDiscount } from './pricing.js';\n\nexport function finalPrice(price, percentOff) {\n  return applyDiscount(price, percentOff);\n}\n"
+      },
+      {
+        "path": "checkout.test.js",
+        "content": "import assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { finalPrice } from './src/checkout.js';\n\ntest('20% off 100 is 80', () => assert.equal(finalPrice(100, 20), 80));\ntest('50% off 50 is 25', () => assert.equal(finalPrice(50, 50), 25));\ntest('10% off 200 is 180', () => assert.equal(finalPrice(200, 10), 180));\n"
+      }
+    ]
+  },
+  "acceptance": [
+    { "id": "npm-test", "kind": "test", "command": "npm test", "required": true, "timeoutMs": 30000 }
+  ],
+  "budget": { "maxSteps": 120, "timeoutMs": 240000 }
+}

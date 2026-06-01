@@ -16,7 +16,7 @@ import { formatProjectContextIndexSummary } from '../context';
 import { collectPluginObservations } from '../../game-tool-layer';
 import { emitReplyAsDeltas, runNativeDirectChatReply } from './direct-reply';
 import type { GenericAgentRuntimeParams, GenericAgentRuntimeResult } from '../types';
-import { applyNativeContextPatchToProject, prepareNativeContextHandoff } from './context-handoff';
+import { applyNativeContextPatchToProject, prepareNativeContextHandoff, prepareNativeContextHandoffWithModelSummary } from './context-handoff';
 import {
   classifyNativeRuntimeError,
   extractNativeRuntimeErrorDetail,
@@ -829,11 +829,12 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
   });
 
   const nativeContextSessionId = params.context.activeSessionId;
-  const nativeContextHandoff = prepareNativeContextHandoff({
+  const nativeContextHandoff = await prepareNativeContextHandoffWithModelSummary({
     project: params.project,
     sessionId: nativeContextSessionId,
     provider: params.provider,
-    currentPrompt: params.message
+    currentPrompt: params.message,
+    abortSignal: params.abortSignal
   });
   if (nativeContextHandoff && nativeContextSessionId) {
     const preCompactHooks = await runLifecycleHooks({

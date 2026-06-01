@@ -11,7 +11,6 @@ import { type NativeTodoSnapshot } from './continuation-policy';
 import type { NativeEditFailureRecovery } from './continuation-policy';
 import { NativeAiSdkStepState } from './ai-sdk-step-state';
 import { withDynamicInstructionMessage } from './tool-loop-message-adapter';
-import { NEVER_STOP_ON_STEP_COUNT } from './tool-loop-options';
 import {
   createNativeProviderStepAbort,
   describeNativeProviderStepError,
@@ -78,6 +77,7 @@ export async function runNativeAiSdkProviderStep(input: {
   stepState: NativeAiSdkStepState;
   loopState: NativeAiSdkLoopState;
   maxOutputTokens: number;
+  maxSteps: number;
   providerController: ProviderRuntimeController;
 }): Promise<NativeAiSdkProviderStepResult> {
   const provider = input.params.provider;
@@ -141,7 +141,7 @@ export async function runNativeAiSdkProviderStep(input: {
             messages: withDynamicInstructionMessage(messages, dynamicInstructionMessage)
           };
         },
-        stopWhen: NEVER_STOP_ON_STEP_COUNT,
+        stopWhen: () => input.loopState.stepCount >= input.maxSteps,
         maxOutputTokens: input.maxOutputTokens,
         abortSignal: stepAbort.signal
       });

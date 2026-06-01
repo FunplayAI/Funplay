@@ -1,0 +1,32 @@
+{
+  "id": "example-lru-cache",
+  "title": "从零实现 LRU 缓存（复杂数据结构）",
+  "description": "考察规划与实现:给定行为测试(含容量淘汰、访问刷新最近使用),从空函数实现一个正确的 LRU 缓存。逻辑比单函数实现复杂,需要正确维护使用顺序。",
+  "dimensions": ["planning", "tool_reliability", "long_horizon"],
+  "runtimes": ["native", "claude-code-sdk"],
+  "prompt": "实现 src/lru.js 里的 createLRU(capacity)，支持 get(key) 与 put(key, value)，并在超过容量时淘汰最近最少使用的条目。确保 npm test 全部通过。",
+  "provider": {
+    "native": { "envKey": "FUNPLAY_EVAL_NATIVE" },
+    "claude-code-sdk": { "envKey": "FUNPLAY_EVAL_CLAUDE" }
+  },
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"eval-lru\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": { \"test\": \"node --test\" }\n}\n"
+      },
+      {
+        "path": "src/lru.js",
+        "content": "// TODO: implement createLRU(capacity) returning { get(key), put(key, value) }.\n// Evict the least-recently-used entry when size exceeds capacity.\n// Both get and put count as \"using\" a key.\nexport function createLRU(capacity) {\n  // implement me\n}\n"
+      },
+      {
+        "path": "lru.test.js",
+        "content": "import assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createLRU } from './src/lru.js';\n\ntest('put then get returns the value', () => {\n  const c = createLRU(2);\n  c.put('a', 1);\n  assert.equal(c.get('a'), 1);\n});\ntest('get on missing key returns undefined', () => {\n  const c = createLRU(2);\n  assert.equal(c.get('x'), undefined);\n});\ntest('evicts least-recently-used past capacity', () => {\n  const c = createLRU(2);\n  c.put('a', 1);\n  c.put('b', 2);\n  c.put('c', 3);\n  assert.equal(c.get('a'), undefined);\n  assert.equal(c.get('b'), 2);\n  assert.equal(c.get('c'), 3);\n});\ntest('get refreshes recency', () => {\n  const c = createLRU(2);\n  c.put('a', 1);\n  c.put('b', 2);\n  c.get('a');\n  c.put('c', 3);\n  assert.equal(c.get('b'), undefined);\n  assert.equal(c.get('a'), 1);\n  assert.equal(c.get('c'), 3);\n});\n"
+      }
+    ]
+  },
+  "acceptance": [
+    { "id": "npm-test", "kind": "test", "command": "npm test", "required": true, "timeoutMs": 30000 }
+  ],
+  "budget": { "maxSteps": 120, "timeoutMs": 240000 }
+}

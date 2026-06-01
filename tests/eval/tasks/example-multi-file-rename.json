@@ -1,0 +1,40 @@
+{
+  "id": "example-multi-file-rename",
+  "title": "跨多文件重命名并扩展函数签名（多文件重构）",
+  "description": "考察工具协调与长程:一个函数被多个文件引用,要求重命名+扩展签名并更新所有调用点。需要搜索引用、跨文件精确编辑,不破坏现有行为。",
+  "dimensions": ["tool_reliability", "long_horizon", "planning"],
+  "runtimes": ["native", "claude-code-sdk"],
+  "prompt": "把 src/money.js 里的 fmt 函数重命名为 formatMoney，并新增第二个参数 symbol（默认 '$'）。更新 src/receipt.js 和 src/summary.js 中所有对它的引用。确保 npm test 全部通过。",
+  "provider": {
+    "native": { "envKey": "FUNPLAY_EVAL_NATIVE" },
+    "claude-code-sdk": { "envKey": "FUNPLAY_EVAL_CLAUDE" }
+  },
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"eval-rename\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": { \"test\": \"node --test\" }\n}\n"
+      },
+      {
+        "path": "src/money.js",
+        "content": "export function fmt(amount) {\n  return '$' + amount.toFixed(2);\n}\n"
+      },
+      {
+        "path": "src/receipt.js",
+        "content": "import { fmt } from './money.js';\n\nexport function lineItem(name, price) {\n  return name + ' ' + fmt(price);\n}\n"
+      },
+      {
+        "path": "src/summary.js",
+        "content": "import { fmt } from './money.js';\n\nexport function grandTotal(prices) {\n  return fmt(prices.reduce((sum, p) => sum + p, 0));\n}\n"
+      },
+      {
+        "path": "rename.test.js",
+        "content": "import assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { formatMoney } from './src/money.js';\nimport { lineItem } from './src/receipt.js';\nimport { grandTotal } from './src/summary.js';\n\ntest('formatMoney uses $ by default', () => {\n  assert.equal(formatMoney(5), '$5.00');\n});\ntest('formatMoney accepts a custom symbol', () => {\n  assert.equal(formatMoney(5, '#'), '#5.00');\n});\ntest('lineItem works after rename', () => {\n  assert.equal(lineItem('Apple', 2), 'Apple $2.00');\n});\ntest('grandTotal works after rename', () => {\n  assert.equal(grandTotal([1, 2, 3]), '$6.00');\n});\n"
+      }
+    ]
+  },
+  "acceptance": [
+    { "id": "npm-test", "kind": "test", "command": "npm test", "required": true, "timeoutMs": 30000 }
+  ],
+  "budget": { "maxSteps": 120, "timeoutMs": 240000 }
+}
