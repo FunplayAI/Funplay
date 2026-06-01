@@ -1,0 +1,41 @@
+{
+  "id": "native-edit-recovery",
+  "title": "Native runtime recovers from a failed edit",
+  "description": "Runs the native runtime through a failed edit_file call, proves the model receives edit recovery context, then reads the file, applies the correct edit, and passes active verification.",
+  "capabilities": [
+    "native_runtime_execution",
+    "edit_failure_recovery",
+    "active_verification_gate"
+  ],
+  "timeoutMs": 120000,
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"funplay-agent-e2e-edit-recovery\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node acceptance/edit-recovery.test.mjs\"\n  }\n}\n"
+      },
+      {
+        "path": "src/service.js",
+        "content": "export const marker = 'before-recovery';\n"
+      },
+      {
+        "path": "acceptance/edit-recovery.test.mjs",
+        "content": "import assert from 'node:assert/strict';\nimport { readFile } from 'node:fs/promises';\n\nconst source = await readFile(new URL('../src/service.js', import.meta.url), 'utf8');\nassert.equal(source, \"export const marker = 'after-recovery';\\n\");\nconsole.log('native-edit-recovery acceptance passed');\n"
+      }
+    ]
+  },
+  "agentCommand": {
+    "command": "cd \"$FUNPLAY_REPO_ROOT\" && node --experimental-strip-types --import ./tests/register-ts-loader.mjs ./scripts/native-runtime-e2e.mjs edit-recovery \"$FUNPLAY_WORKSPACE_ROOT\"",
+    "cwd": ".",
+    "timeoutMs": 120000
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-npm-test",
+      "kind": "test",
+      "command": "npm test",
+      "required": true,
+      "timeoutMs": 30000
+    }
+  ]
+}

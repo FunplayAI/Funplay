@@ -1,0 +1,45 @@
+{
+  "id": "native-repair-replan",
+  "title": "Native runtime replans verification after repair edits",
+  "description": "Runs the native runtime through a failed verification, performs a controlled repair that changes an additional source file, and proves the rerun replans checks from the expanded changed-file set.",
+  "capabilities": [
+    "native_runtime_execution",
+    "active_verification_gate",
+    "verification_replan_after_repair"
+  ],
+  "timeoutMs": 120000,
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"funplay-agent-e2e-repair-replan\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node acceptance/targeted-runner.mjs\"\n  }\n}\n"
+      },
+      {
+        "path": "acceptance/targeted-runner.mjs",
+        "content": "const targets = process.argv.slice(2);\nif (targets.length === 0) {\n  console.log('full test command intentionally has no target files');\n  process.exit(0);\n}\nfor (const target of targets) {\n  await import(new URL(`../${target}`, import.meta.url));\n}\nconsole.log(`targeted checks passed: ${targets.join(', ')}`);\n"
+      },
+      {
+        "path": "src/app.test.mjs",
+        "content": "import assert from 'node:assert/strict';\nimport { marker } from './app.mjs';\nassert.equal(marker, 'APP_OK');\n"
+      },
+      {
+        "path": "src/extra.test.mjs",
+        "content": "import assert from 'node:assert/strict';\nimport { extra } from './extra.mjs';\nassert.equal(extra, 'EXTRA_OK');\n"
+      }
+    ]
+  },
+  "agentCommand": {
+    "command": "cd \"$FUNPLAY_REPO_ROOT\" && node --experimental-strip-types --import ./tests/register-ts-loader.mjs ./scripts/native-runtime-e2e.mjs repair-replan \"$FUNPLAY_WORKSPACE_ROOT\"",
+    "cwd": ".",
+    "timeoutMs": 120000
+  },
+  "acceptance": [
+    {
+      "id": "agent-replan-assertions",
+      "kind": "test",
+      "command": "node -e \"console.log('repair replan assertions ran inside native-runtime-e2e')\"",
+      "required": true,
+      "timeoutMs": 30000
+    }
+  ]
+}

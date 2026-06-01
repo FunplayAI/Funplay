@@ -62,7 +62,7 @@ export function createPartialWriteContinuationPrompt(assistantMessage: string): 
 }
 
 function isEditRecoveryToolName(toolName: string): boolean {
-  return toolName === 'edit_file' || toolName === 'multi_edit' || toolName === 'patch_file';
+  return toolName === 'write_file' || toolName === 'edit_file' || toolName === 'multi_edit' || toolName === 'patch_file';
 }
 
 function formatEditRecoveryPath(input: Record<string, unknown>): string | undefined {
@@ -90,13 +90,17 @@ export function createEditFailureRecoveryPrompt(recoveries: NativeEditFailureRec
     return `${index + 1}. ${recovery.toolName}${path}${failureKind}: ${truncateToolArgumentPreview(recovery.summary, 500)}${hint}`;
   });
   const paths = [...new Set(recoveries.map((recovery) => recovery.path).filter((path): path is string => Boolean(path)))];
+  const hasWritePathFailure = recoveries.some((recovery) => recovery.toolName === 'write_file');
   return [
-    '上一轮文件编辑工具失败，失败的工具没有修改项目文件。下一步必须按恢复流程继续，不要把失败当成功。',
+    '上一轮文件写入/编辑工具失败，失败的工具没有修改项目文件。下一步必须按恢复流程继续，不要把失败当成功。',
     '',
     '失败详情：',
     ...lines,
     '',
     '恢复规则：',
+    hasWritePathFailure
+      ? '- 如果失败来自 write_file 路径问题，先用 scan_file_tree/find_files 确认目标目录；必要时先 create_directory 创建父目录，再重新写入合法项目内路径。'
+      : '',
     paths.length
       ? `- 先重新读取失败文件的最新相关片段：${paths.map((path) => `read_file ${path}`).join('；')}。`
       : '- 先用 read_file 重新读取失败文件的最新相关片段。',

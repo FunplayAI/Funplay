@@ -303,12 +303,24 @@ export interface GenericAgentWorkspaceContext {
     updatedAt: string;
     messageCount: number;
     latestSummary: string;
+    source?: string;
+    truncated?: boolean;
   }>;
   relatedSessionEvidence: Array<{
     sessionId: string;
     title: string;
     matchedTerm: string;
     excerpt: string;
+    source?: string;
+    truncated?: boolean;
+  }>;
+  workspaceEvidence?: Array<{
+    kind: 'message_path' | 'recent_file' | 'entrypoint' | 'session_summary' | 'related_session' | 'verification_failure_file';
+    source: string;
+    path?: string;
+    title?: string;
+    excerpt: string;
+    truncated?: boolean;
   }>;
   projectInstructions: Array<{
     path: string;

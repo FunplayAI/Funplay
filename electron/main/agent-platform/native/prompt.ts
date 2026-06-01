@@ -23,6 +23,8 @@ export interface NativeRuntimeUserPromptOptions {
   includeRecentTurns?: boolean;
 }
 
+type GenericWorkspaceEvidenceItem = NonNullable<GenericAgentRuntimeParams['context']['workspaceEvidence']>[number];
+
 function formatResumeContext(params: GenericAgentRuntimeParams): string {
   const context = params.resumeContext;
   if (!context) {
@@ -75,6 +77,31 @@ function formatResumeContext(params: GenericAgentRuntimeParams): string {
   ].filter(Boolean).join('\n');
 }
 
+function formatWorkspaceEvidenceItem(item: GenericWorkspaceEvidenceItem, index: number): string {
+  const label = item.title ?? item.path ?? item.kind;
+  return [
+    `## Evidence ${index + 1}: ${label}${item.truncated ? ' (truncated)' : ''}`,
+    [
+      `kind=${item.kind}`,
+      `source=${item.source}`,
+      item.path ? `path=${item.path}` : ''
+    ].filter(Boolean).join(' · '),
+    item.excerpt
+  ].filter(Boolean).join('\n');
+}
+
+function formatStructuredWorkspaceEvidence(params: GenericAgentRuntimeParams): string {
+  const evidence = params.context.workspaceEvidence ?? [];
+  if (evidence.length === 0) {
+    return '';
+  }
+  return [
+    '',
+    '轻量工作区证据（host 已按相关性选取；优先用于定位文件、入口点、近期改动和跨会话线索）：',
+    ...evidence.map((item, index) => formatWorkspaceEvidenceItem(item, index))
+  ].join('\n\n');
+}
+
 export function createNativeRuntimeSystemPrompt(uiLanguage?: RuntimeUiLanguage): string {
   return [
     '你是 Funplay 桌面应用中的通用 AI Agent。',
@@ -116,6 +143,9 @@ export function createNativeRuntimeUserPrompt(
         lifecycleHookContext: params.lifecycleHookContext,
         activeSessionId: params.context.activeSessionId,
         archivedTurnCount: params.context.archivedTurnCount,
+        crossSessionSummaries: params.context.crossSessionSummaries,
+        relatedSessionEvidence: params.context.relatedSessionEvidence,
+        workspaceEvidence: params.context.workspaceEvidence ?? [],
         toolContext: params.context.toolContext
       },
       null,
@@ -125,6 +155,7 @@ export function createNativeRuntimeUserPrompt(
       ? ['', `更早历史摘要（${params.context.archivedTurnCount} 轮）：`, params.context.archivedSummary].join('\n')
       : '',
     params.resumeContext ? ['', formatResumeContext(params)].join('\n') : '',
+    formatStructuredWorkspaceEvidence(params),
     params.context.projectInstructions.length
       ? [
           '',

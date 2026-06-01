@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Project } from '../../../shared/types';
+import type { AgentVerificationTrigger, Project } from '../../../shared/types';
 import type { WorkspaceToolAction, WorkspaceToolActionResult } from './workspace-tools';
 
 export type AgentToolRisk = 'low' | 'medium' | 'high';
@@ -34,6 +34,16 @@ export interface AgentToolLanguageMetadata {
   resultHint?: string;
 }
 
+export type AgentToolSideEffectKind = 'none' | 'workspace_write' | 'engine' | 'external';
+export type AgentToolSideEffectConfidence = 'none' | 'medium' | 'high';
+
+export interface AgentToolSideEffectClassification {
+  kind: AgentToolSideEffectKind;
+  confidence: AgentToolSideEffectConfidence;
+  verificationTrigger?: AgentVerificationTrigger;
+  evidence: string[];
+}
+
 export interface AgentToolDefinition<TInput extends Record<string, unknown> = Record<string, unknown>> {
   name: WorkspaceToolAction['type'];
   title: string;
@@ -49,6 +59,7 @@ export interface AgentToolDefinition<TInput extends Record<string, unknown> = Re
   checkPermissions?: (input: TInput, context: AgentToolPermissionCheckContext) => Promise<WorkspaceToolActionResult | undefined> | WorkspaceToolActionResult | undefined;
   getPermissionDetail?: (input: TInput, context: AgentToolPermissionCheckContext) => string | undefined;
   isConcurrencySafe?: (input: Partial<TInput> | undefined) => boolean;
+  classifySideEffect?: (input: Partial<TInput> | undefined) => AgentToolSideEffectClassification;
   render?: (input: Partial<TInput> | undefined) => AgentToolRenderResult | undefined;
   progress?: (input: Partial<TInput> | undefined, context: AgentToolProgressContext) => AgentToolProgressResult | undefined;
   mapResult?: (result: WorkspaceToolActionResult, context: AgentToolResultMappingContext<TInput>) => WorkspaceToolActionResult;

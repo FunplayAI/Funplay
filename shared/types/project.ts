@@ -34,6 +34,12 @@ export type AgentTaskSubagentMode = 'single' | 'parallel' | 'background';
 export type AgentTaskSubagentStatus = 'pending' | 'running' | 'completed' | 'failed';
 export type AgentVerificationCheckKind = 'command' | 'build' | 'test' | 'browser' | 'mcp' | 'manual';
 export type AgentVerificationStatus = 'pending' | 'running' | 'passed' | 'failed' | 'skipped';
+export type AgentVerificationTrigger =
+  | 'manual'
+  | 'timeline'
+  | 'tool_result'
+  | 'active_write'
+  | 'active_engine';
 export type ProjectMemoryFileKind = 'longterm' | 'daily' | 'note';
 export type ProjectMemoryEntryKind = 'user_preference' | 'project_fact' | 'decision' | 'task_state';
 export type ProjectMemoryClearScope = 'file' | 'daily' | 'all';
@@ -405,12 +411,68 @@ export interface AgentVerificationCheck {
   artifacts?: AgentToolArtifact[];
 }
 
+export interface AgentVerificationPlannedCheck {
+  id: string;
+  kind: AgentVerificationCheckKind;
+  title: string;
+  command?: string;
+  cwd?: string;
+  target?: string;
+  required?: boolean;
+}
+
+export type AgentVerificationOmittedCheckReason = 'max_checks' | 'duplicate';
+
+export interface AgentVerificationOmittedCheck extends AgentVerificationPlannedCheck {
+  reason: AgentVerificationOmittedCheckReason;
+}
+
+export type AgentVerificationSideEffectConfidence = 'none' | 'medium' | 'high';
+
+export interface AgentVerificationSideEffectEvidence {
+  toolName: string;
+  kind: string;
+  confidence: AgentVerificationSideEffectConfidence;
+  verificationTrigger?: AgentVerificationTrigger;
+  evidence: string[];
+}
+
+export type AgentVerificationFailureKind =
+  | 'test_assertion'
+  | 'type_error'
+  | 'lint_error'
+  | 'build_error'
+  | 'runtime_error'
+  | 'timeout'
+  | 'missing_command'
+  | 'unknown';
+
+export interface AgentVerificationFailureDiagnosis {
+  kind: AgentVerificationFailureKind;
+  summary: string;
+  evidence: string[];
+  references?: AgentVerificationFailureReference[];
+  suggestedFocus: string;
+}
+
+export interface AgentVerificationFailureReference {
+  path: string;
+  line?: number;
+  column?: number;
+}
+
 export interface AgentVerificationReport {
   id: string;
   runId?: string;
   status: AgentVerificationStatus;
   createdAt: string;
   updatedAt: string;
+  trigger?: AgentVerificationTrigger;
+  blocking?: boolean;
+  plannedChecks?: AgentVerificationPlannedCheck[];
+  omittedChecks?: AgentVerificationOmittedCheck[];
+  sideEffects?: AgentVerificationSideEffectEvidence[];
+  failureDiagnosis?: AgentVerificationFailureDiagnosis;
   checks: AgentVerificationCheck[];
   summary?: string;
 }

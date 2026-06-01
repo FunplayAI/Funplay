@@ -1,0 +1,39 @@
+{
+  "id": "native-quality-script-verify",
+  "title": "Native runtime uses project quality script for active verification",
+  "description": "Runs the native runtime against a scripted provider in a project that only exposes a check script, then proves active verification selects npm run check instead of falling back to a generic diff check.",
+  "capabilities": [
+    "native_runtime_execution",
+    "workspace_write_tool",
+    "active_verification_gate",
+    "quality_script_verification",
+    "verification_operation_log_audit"
+  ],
+  "timeoutMs": 120000,
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"funplay-agent-e2e-quality-script\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"check\": \"node acceptance/quality-script.test.mjs\"\n  }\n}\n"
+      },
+      {
+        "path": "acceptance/quality-script.test.mjs",
+        "content": "import assert from 'node:assert/strict';\nimport { readFile } from 'node:fs/promises';\n\nconst output = JSON.parse(await readFile(new URL('../src/quality-output.json', import.meta.url), 'utf8'));\nassert.equal(output.ready, true);\nassert.equal(output.marker, 'FUNPLAY_NATIVE_QUALITY_OK');\nconsole.log('native-quality-script acceptance passed');\n"
+      }
+    ]
+  },
+  "agentCommand": {
+    "command": "cd \"$FUNPLAY_REPO_ROOT\" && node --experimental-strip-types --import ./tests/register-ts-loader.mjs ./scripts/native-runtime-e2e.mjs quality-script-verify \"$FUNPLAY_WORKSPACE_ROOT\"",
+    "cwd": ".",
+    "timeoutMs": 120000
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-quality-check",
+      "kind": "command",
+      "command": "npm run check",
+      "required": true,
+      "timeoutMs": 30000
+    }
+  ]
+}

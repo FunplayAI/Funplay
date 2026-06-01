@@ -1,0 +1,41 @@
+{
+  "id": "native-checkpoint-rollback-recovery",
+  "title": "Native runtime rolls back a failed verification",
+  "description": "Runs the native runtime through a bad write, fails active verification, then proves the controlled repair pass can use checkpoint_rollback to restore the checkpointed safe baseline and pass verification.",
+  "capabilities": [
+    "native_runtime_execution",
+    "active_verification_gate",
+    "checkpoint_rollback_recovery"
+  ],
+  "timeoutMs": 120000,
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"funplay-agent-e2e-checkpoint-rollback\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node acceptance/checkpoint-rollback.test.mjs\"\n  }\n}\n"
+      },
+      {
+        "path": "src/state.json",
+        "content": "{\n  \"ready\": true,\n  \"marker\": \"SAFE_BASELINE\"\n}\n"
+      },
+      {
+        "path": "acceptance/checkpoint-rollback.test.mjs",
+        "content": "import assert from 'node:assert/strict';\nimport { readFile } from 'node:fs/promises';\n\nconst state = JSON.parse(await readFile(new URL('../src/state.json', import.meta.url), 'utf8'));\nassert.equal(state.ready, true);\nassert.equal(state.marker, 'SAFE_BASELINE');\nconsole.log('native-checkpoint-rollback-recovery acceptance passed');\n"
+      }
+    ]
+  },
+  "agentCommand": {
+    "command": "cd \"$FUNPLAY_REPO_ROOT\" && node --experimental-strip-types --import ./tests/register-ts-loader.mjs ./scripts/native-runtime-e2e.mjs checkpoint-rollback-recovery \"$FUNPLAY_WORKSPACE_ROOT\"",
+    "cwd": ".",
+    "timeoutMs": 120000
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-npm-test",
+      "kind": "test",
+      "command": "npm test",
+      "required": true,
+      "timeoutMs": 30000
+    }
+  ]
+}

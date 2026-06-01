@@ -1,0 +1,37 @@
+{
+  "id": "native-invalid-write-no-verify",
+  "title": "Native runtime does not verify rejected writes",
+  "description": "Runs the native runtime against a scripted provider that attempts an invalid empty multi_edit, then proves the host rejects it before execution and does not run active verification.",
+  "capabilities": [
+    "native_runtime_execution",
+    "invalid_write_rejection",
+    "no_verification_for_rejected_write"
+  ],
+  "timeoutMs": 120000,
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"funplay-agent-e2e-invalid-write-no-verify\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node -e \\\"process.exit(1)\\\"\"\n  }\n}\n"
+      },
+      {
+        "path": "alpha.js",
+        "content": "const value = \"current\";\n"
+      }
+    ]
+  },
+  "agentCommand": {
+    "command": "cd \"$FUNPLAY_REPO_ROOT\" && node --experimental-strip-types --import ./tests/register-ts-loader.mjs ./scripts/native-runtime-e2e.mjs invalid-write-no-verify \"$FUNPLAY_WORKSPACE_ROOT\"",
+    "cwd": ".",
+    "timeoutMs": 120000
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-file-unchanged",
+      "kind": "test",
+      "command": "node -e \"const fs=require('fs'); const text=fs.readFileSync('alpha.js','utf8'); const expected=Buffer.from('636f6e73742076616c7565203d202263757272656e74223b0a','hex').toString(); if (text !== expected) { console.error(text); process.exit(1); }\"",
+      "required": true,
+      "timeoutMs": 30000
+    }
+  ]
+}

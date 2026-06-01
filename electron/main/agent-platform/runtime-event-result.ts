@@ -3,6 +3,7 @@ import {
 } from '../../../shared/agent-core-v2';
 import type {
   AgentCoreMessagePart,
+  AgentOperationRecord,
   AgentSkillActivation
 } from '../../../shared/types';
 import type {
@@ -11,6 +12,7 @@ import type {
   GenericAgentRuntimeStreamEvent
 } from './types';
 import {
+  createConversationOperationLogCollector,
   projectConversationOperationLogFromAgentCoreParts,
   projectConversationProcessMetadataFromAgentCoreParts
 } from './operation-log';
@@ -101,12 +103,33 @@ function buildFallbackAgentCoreParts(
   return undefined;
 }
 
+function mergeOperationLogs(
+  hostRecords: AgentOperationRecord[],
+  agentCoreRecords: AgentOperationRecord[]
+): AgentOperationRecord[] {
+  const merged = new Map<string, AgentOperationRecord>();
+  for (const record of hostRecords) {
+    merged.set(record.id, record);
+  }
+  for (const record of agentCoreRecords) {
+    merged.set(record.id, record);
+  }
+  return [...merged.values()].sort((left, right) => (left.startedAt ?? '').localeCompare(right.startedAt ?? ''));
+}
+
 export function createRuntimeEventResultProjection(params: GenericAgentRuntimeParams) {
   let authoritativeAgentCoreParts: AgentCoreMessagePart[] | undefined;
+  const operationLogCollector = createConversationOperationLogCollector();
 
   const observe = (event: GenericAgentRuntimeStreamEvent): void => {
     if (event.type === 'agent_core_parts') {
       authoritativeAgentCoreParts = event.parts;
+    } else if (event.type === 'tool_use') {
+      operationLogCollector.onToolUse(event.tool);
+    } else if (event.type === 'tool_result') {
+      operationLogCollector.onToolResult(event.result);
+    } else if (event.type === 'stage') {
+      operationLogCollector.onStage(event.stage);
     }
   };
 
@@ -132,8 +155,12 @@ export function createRuntimeEventResultProjection(params: GenericAgentRuntimePa
     const agentCoreParts = mergeAgentCoreParts(skillParts, streamParts.length > 0 ? streamParts : fallbackParts ?? []);
     const projectedMessage = agentCorePartsToVisibleAssistantText(agentCoreParts).trim() || result.assistantMessage;
     const streamMetadata = projectConversationProcessMetadataFromAgentCoreParts(agentCoreParts, projectedMessage);
-    const operationLog = projectConversationOperationLogFromAgentCoreParts(agentCoreParts);
+    const agentCoreOperationLog = projectConversationOperationLogFromAgentCoreParts(agentCoreParts);
+    const hostOperationLog = operationLogCollector.build();
     const hasAuthoritativeLedger = agentCoreParts.length > 0;
+    const operationLog = hasAuthoritativeLedger
+      ? mergeOperationLogs(hostOperationLog, agentCoreOperationLog)
+      : result.operationLog ?? [];
 
     return {
       ...result,

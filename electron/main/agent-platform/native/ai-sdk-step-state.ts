@@ -39,7 +39,7 @@ export class NativeAiSdkStepState {
   }>();
   private readonly completedToolCallIds = new Set<string>();
   private readonly stepToolCallInputs = new Map<string, NativeAiSdkTrackedToolCall>();
-  private readonly stepToolResults = new Map<string, Omit<NativeAiSdkTrackedToolResult, 'rawToolCallId' | 'toolInput'>>();
+  private readonly stepToolResults = new Map<string, Omit<NativeAiSdkTrackedToolResult, 'rawToolCallId'>>();
 
   get hasToolCalls(): boolean {
     return this.toolCallIds.size > 0;
@@ -106,6 +106,7 @@ export class NativeAiSdkStepState {
     this.stepToolResults.set(rawToolCallId, {
       toolUseId,
       toolName,
+      toolInput: toolCallInput?.input,
       content: tracked.content,
       isError: tracked.isError,
       failureKind: tracked.failureKind,
@@ -163,6 +164,7 @@ export class NativeAiSdkStepState {
   drainStepToolResults(): Array<{
     toolUseId: string;
     toolName?: string;
+    toolInput?: Record<string, unknown>;
     content: string;
     isError?: boolean;
     failureKind?: string;

@@ -104,6 +104,107 @@ test('runtime event result projection prefers Agent Core parts when runtime emit
   assert.deepEqual(result.assistantMetadata?.agentCoreParts?.map((part) => part.id), ['part_controller_text']);
 });
 
+test('runtime event result projection keeps host verification records with authoritative Agent Core ledger', () => {
+  const projection = createRuntimeEventResultProjection({
+    activeRunId: 'run_ledger',
+    turnId: 'turn_ledger'
+  } as GenericAgentRuntimeParams);
+
+  projection.observe({
+    type: 'tool_use',
+    tool: {
+      toolUseId: 'tool_write',
+      name: 'write_file',
+      status: 'running'
+    }
+  });
+  projection.observe({
+    type: 'tool_result',
+    result: {
+      toolUseId: 'tool_write',
+      toolName: 'write_file',
+      content: 'Wrote src/output.json'
+    }
+  });
+  projection.observe({
+    type: 'stage',
+    stage: {
+      stageId: 'stage:native_active_verification',
+      title: 'Run active verification',
+      target: 'active_write',
+      status: 'completed',
+      summary: 'Active verification: 1/1 passed.'
+    }
+  });
+  projection.observe({
+    type: 'tool_use',
+    tool: {
+      toolUseId: 'verify_tool_1',
+      name: 'run_command',
+      input: {
+        command: 'npm run check'
+      },
+      status: 'running'
+    }
+  });
+  projection.observe({
+    type: 'tool_result',
+    result: {
+      toolUseId: 'verify_tool_1',
+      toolName: 'run_command',
+      content: '[Active verification]\nCheck: Run project quality check\nnpm run check passed'
+    }
+  });
+  projection.observe({
+    type: 'agent_core_parts',
+    parts: [
+      {
+        id: 'part_tool_call',
+        kind: 'tool_call',
+        sequence: 0,
+        createdAt: '2026-05-20T00:00:00.000Z',
+        toolUseId: 'tool_write',
+        name: 'write_file',
+        status: 'completed'
+      },
+      {
+        id: 'part_tool_result',
+        kind: 'tool_result',
+        sequence: 1,
+        createdAt: '2026-05-20T00:00:01.000Z',
+        toolUseId: 'tool_write',
+        toolName: 'write_file',
+        content: 'Wrote src/output.json'
+      },
+      {
+        id: 'part_text',
+        kind: 'assistant_text',
+        sequence: 2,
+        createdAt: '2026-05-20T00:00:02.000Z',
+        text: 'done'
+      }
+    ]
+  });
+
+  const result = projection.buildProjectedResult({
+    assistantMessage: 'legacy final text',
+    assistantIntent: 'chat',
+    status: 'completed',
+    steps: []
+  }, {
+    createdAt: '2026-05-20T00:00:00.000Z'
+  });
+
+  assert.deepEqual(result.assistantMetadata?.agentCoreParts?.map((part) => part.id), ['part_tool_call', 'part_tool_result', 'part_text']);
+  assert.deepEqual(result.operationLog?.map((record) => record.id), [
+    'tool_write',
+    'stage:native_active_verification',
+    'verify_tool_1'
+  ]);
+  assert.equal(result.operationLog?.find((record) => record.id === 'tool_write')?.summary, 'Wrote src/output.json');
+  assert.match(result.operationLog?.find((record) => record.id === 'verify_tool_1')?.summary ?? '', /npm run check passed/);
+});
+
 test('runtime event result projection does not append terminal text to an authoritative tool-only ledger', () => {
   const projection = createRuntimeEventResultProjection({
     turnId: 'turn_tool_only'

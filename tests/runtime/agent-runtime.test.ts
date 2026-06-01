@@ -104,7 +104,7 @@ import { buildGenericWorkspaceContext } from '../../electron/main/agent-platform
 import { resolveGenericAgentRuntime } from '../../electron/main/agent-platform/runtime-registry.ts';
 import type { GenericAgentRuntime, GenericAgentRuntimeParams, GenericAgentRuntimeResult } from '../../electron/main/agent-platform/types.ts';
 import { ProjectInstructionTracker, extractNativeToolInputInstructionQuery } from '../../electron/main/agent-platform/project-instruction-tracker.ts';
-import { createNativeRuntimeSystemPrompt } from '../../electron/main/agent-platform/native/prompt.ts';
+import { createNativeRuntimeSystemPrompt, createNativeRuntimeUserPrompt } from '../../electron/main/agent-platform/native/prompt.ts';
 import { createSystemPrompt as createClaudeSystemPrompt } from '../../electron/main/agent-platform/claude/prompt-builder.ts';
 import { resolveAgentProvider } from '../../electron/main/agent-platform/provider-resolver.ts';
 import { createMcpPlugin, resolveProjectPluginByKind, setActiveMcpPlugin } from '../../electron/main/mcp-plugin-service.ts';
@@ -2476,6 +2476,88 @@ test('native tool adapter exposes write tools only behind explicit option', asyn
   );
 });
 
+test('native tool adapter filters exposed tools by execution profile families', () => {
+  const readOnlyProfileTools = listNativeWorkspaceToolNames({
+    allowedToolFamilies: ['read_only', 'browser', 'command']
+  });
+  assert.equal(readOnlyProfileTools.includes('read_file'), true);
+  assert.equal(readOnlyProfileTools.includes('browser_screenshot'), true);
+  assert.equal(readOnlyProfileTools.includes('funplay_notify'), false);
+  assert.equal(readOnlyProfileTools.includes('funplay_list_tasks'), false);
+  assert.equal(readOnlyProfileTools.includes('funplay_memory_search'), false);
+
+  const notificationTools = listNativeWorkspaceToolNames({
+    allowedToolFamilies: ['read_only', 'notification']
+  });
+  assert.equal(notificationTools.includes('funplay_notify'), true);
+  assert.equal(notificationTools.includes('funplay_list_tasks'), true);
+  assert.equal(notificationTools.includes('funplay_memory_recent'), false);
+  assert.equal(notificationTools.includes('funplay_schedule_task'), false);
+
+  const writableNotificationTools = listNativeWorkspaceToolNames({
+    includeWriteTools: true,
+    allowedToolFamilies: ['read_only', 'notification']
+  });
+  assert.equal(writableNotificationTools.includes('funplay_schedule_task'), true);
+  assert.equal(writableNotificationTools.includes('funplay_cancel_task'), true);
+  assert.equal(writableNotificationTools.includes('write_file'), false);
+  assert.equal(writableNotificationTools.includes('funplay_memory_remember'), false);
+
+  const writableMemoryTools = listNativeWorkspaceToolNames({
+    includeWriteTools: true,
+    allowedToolFamilies: ['read_only', 'memory']
+  });
+  assert.equal(writableMemoryTools.includes('funplay_memory_search'), true);
+  assert.equal(writableMemoryTools.includes('funplay_memory_remember'), true);
+  assert.equal(writableMemoryTools.includes('funplay_schedule_task'), false);
+  assert.equal(writableMemoryTools.includes('write_file'), false);
+
+  const workspaceWriteTools = listNativeWorkspaceToolNames({
+    includeWriteTools: true,
+    allowedToolFamilies: ['read_only', 'workspace_write']
+  });
+  assert.equal(workspaceWriteTools.includes('write_file'), true);
+  assert.equal(workspaceWriteTools.includes('patch_file'), true);
+  assert.equal(workspaceWriteTools.includes('funplay_memory_remember'), false);
+  assert.equal(workspaceWriteTools.includes('funplay_schedule_task'), false);
+
+  const engineTools = listNativeWorkspaceToolNames({
+    includeWriteTools: true,
+    allowedToolFamilies: ['engine']
+  });
+  assert.equal(engineTools.includes('diagnose_engine_status'), true);
+  assert.equal(engineTools.includes('refresh_engine_runtime_state'), true);
+  assert.equal(engineTools.includes('open_engine_hub'), true);
+  assert.equal(engineTools.includes('open_engine_project'), true);
+  assert.equal(engineTools.includes('install_engine_bridge'), true);
+  assert.equal(engineTools.includes('write_file'), false);
+  assert.equal(engineTools.includes('funplay_memory_remember'), false);
+
+  const mediaTools = listNativeWorkspaceToolNames({
+    includeWriteTools: true,
+    allowedToolFamilies: ['media']
+  });
+  assert.equal(mediaTools.includes('media_attach_file'), true);
+  assert.equal(mediaTools.includes('list_asset_generation_capabilities'), true);
+  assert.equal(mediaTools.includes('media_save_base64'), true);
+  assert.equal(mediaTools.includes('image_generate'), true);
+  assert.equal(mediaTools.includes('generate_asset'), true);
+  assert.equal(mediaTools.includes('import_generated_asset'), true);
+  assert.equal(mediaTools.includes('write_file'), false);
+  assert.equal(mediaTools.includes('open_engine_project'), false);
+
+  const mcpTools = listNativeWorkspaceToolNames({
+    includeMcpToolCalls: true,
+    allowedToolFamilies: ['mcp']
+  });
+  assert.equal(mcpTools.includes('list_mcp_tools'), true);
+  assert.equal(mcpTools.includes('list_mcp_resources'), true);
+  assert.equal(mcpTools.includes('read_mcp_resource'), true);
+  assert.equal(mcpTools.includes('call_mcp_tool'), true);
+  assert.equal(mcpTools.includes('write_file'), false);
+  assert.equal(mcpTools.includes('run_command'), false);
+});
+
 test('native tool pool centralizes AI SDK and OpenAI-compatible tool definitions', async () => {
   const projectPath = await mkdtemp(join(tmpdir(), 'funplay-native-tool-pool-'));
   const server = await startTestMcpServer();
@@ -2517,6 +2599,42 @@ test('native tool pool centralizes AI SDK and OpenAI-compatible tool definitions
     });
   } finally {
     await server.close();
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('native tool pool applies execution profile family filters', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-native-tool-pool-profile-'));
+  try {
+    const project = buildProject(projectPath);
+    const pool = await createNativeToolPool({
+      params: {
+        project,
+        message: 'remind me later',
+        plugins: [],
+        context: buildGenericWorkspaceContext(project, [], getActiveProjectSession(project).id, 'remind me later'),
+        permission: {
+          mode: 'ask',
+          allowWriteTools: false,
+          allowSessionWriteTools: false
+        }
+      },
+      mode: {
+        includeWriteTools: true,
+        includeMcpToolCalls: false,
+        includeCommandTools: true,
+        allowedToolFamilies: ['read_only', 'notification']
+      }
+    });
+
+    assert.equal(pool.names.includes('funplay_notify'), true);
+    assert.equal(pool.names.includes('funplay_schedule_task'), true);
+    assert.equal(pool.names.includes('write_file'), false);
+    assert.equal(pool.names.includes('funplay_memory_remember'), false);
+    assert.equal(pool.names.includes('run_command'), false);
+    assert.deepEqual(Object.keys(pool.toolSet).sort(), [...pool.names].sort());
+    assert.deepEqual(pool.openAiCompatibleTools.map((definition) => definition.name).sort(), [...pool.names].sort());
+  } finally {
     await rm(projectPath, { recursive: true, force: true });
   }
 });
@@ -2784,6 +2902,13 @@ test('native tool adapter compacts oversized tool results', async () => {
   assert.ok(String(result.summary).length <= NATIVE_TOOL_OUTPUT_MAX_CHARS);
   assert.match(String(result.summary), /Native tool output truncated/);
   assert.match(String(result.summary), /TAIL_MARKER/);
+  assert.equal(result.artifacts?.[0]?.type, 'command_output');
+  assert.ok(result.artifacts?.[0]?.path);
+  assert.equal(existsSync(result.artifacts?.[0]?.path ?? ''), true);
+  const artifactContent = await readFile(result.artifacts?.[0]?.path ?? '', 'utf8');
+  assert.match(artifactContent, /Tool: run_subagent/);
+  assert.match(artifactContent, /head-head-head/);
+  assert.match(artifactContent, /TAIL_MARKER/);
 });
 
 test('native ask_user tool delegates to user input request handler', async () => {
@@ -3147,6 +3272,7 @@ test('native MCP materializer exposes Claude-style direct tools with execution p
     assert.equal(materialized.tools[0]?.name, 'mcp__test_mcp__unity_echo');
     assert.equal(materialized.tools[0]?.readOnly, false);
     assert.equal(materialized.tools[0]?.risk, 'high');
+    assert.equal(materialized.tools[0]?.classifySideEffect?.({ value: 'ok' })?.kind, 'external');
     assert.deepEqual(materialized.tools[0]?.inputJsonSchema, {
       type: 'object',
       properties: {
@@ -3214,6 +3340,7 @@ test('native MCP policy overrides tool risk and deny execution', async () => {
     assert.equal(materialized.tools[0]?.readOnly, true);
     assert.equal(materialized.tools[0]?.risk, 'low');
     assert.equal(materialized.tools[0]?.permissionPolicy, 'always');
+    assert.equal(materialized.tools[0]?.classifySideEffect?.({ value: 'ok' })?.kind, 'none');
 
     const deniedPlugin: McpPlugin = {
       ...buildMcpPlugin(server.baseUrl),
@@ -3502,6 +3629,8 @@ test('native build mode exposes write tools before intent heuristic matches', as
     assert.ok(toolNames?.includes('create_directory'));
     assert.ok(toolNames?.includes('write_file'));
     assert.ok(toolNames?.includes('run_command'));
+    assert.equal(toolNames?.includes('funplay_notify'), false);
+    assert.equal(toolNames?.includes('funplay_schedule_task'), false);
   } finally {
     globalThis.fetch = originalFetch;
     await rm(projectPath, { recursive: true, force: true });
@@ -3567,8 +3696,434 @@ test('native plan mode exposes command tools but not write tools', async () => {
     assert.equal(toolNames?.includes('create_directory'), false);
     assert.equal(toolNames?.includes('write_file'), false);
     assert.equal(toolNames?.includes('run_command'), true);
+    assert.equal(toolNames?.includes('funplay_notify'), false);
+    assert.equal(toolNames?.includes('funplay_list_tasks'), false);
   } finally {
     globalThis.fetch = originalFetch;
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('native notification profile exposes notification tools without workspace write tools', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-native-notification-profile-'));
+  const originalFetch = globalThis.fetch;
+  try {
+    const project = buildProject(projectPath);
+    const requests: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (_url, init) => {
+      requests.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({
+        id: 'chat_final',
+        choices: [
+          {
+            finish_reason: 'stop',
+            message: {
+              role: 'assistant',
+              content: '可以。'
+            }
+          }
+        ]
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+    }) as typeof fetch;
+
+    const result = await runRuntimeForTest(nativeRuntime, {
+      project,
+      message: '提醒我明天复查这个任务',
+      provider: {
+        id: 'provider_openai_compatible_notification_tools',
+        name: 'Compatible Chat',
+        protocol: 'openai-compatible',
+        apiMode: 'chat',
+        baseUrl: 'https://example.test/v1',
+        apiKey: 'test-key',
+        model: 'gpt-test',
+        enabled: true,
+        isDefault: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      plugins: [],
+      context: buildGenericWorkspaceContext(project, [], getActiveProjectSession(project).id, '提醒我明天复查这个任务'),
+      permission: {
+        mode: 'ask',
+        allowWriteTools: false,
+        allowSessionWriteTools: false
+      }
+    });
+
+    assert.equal(result.status, 'completed');
+    const toolNames = (requests[0]?.tools as Array<{ function?: { name?: string } }> | undefined)
+      ?.map((tool) => tool.function?.name)
+      .filter(Boolean);
+    assert.equal(toolNames?.includes('funplay_notify'), true);
+    assert.equal(toolNames?.includes('funplay_schedule_task'), true);
+    assert.equal(toolNames?.includes('funplay_cancel_task'), true);
+    assert.equal(toolNames?.includes('write_file'), false);
+    assert.equal(toolNames?.includes('funplay_memory_remember'), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('native engine profile exposes engine tools without workspace write tools', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-native-engine-profile-'));
+  const originalFetch = globalThis.fetch;
+  try {
+    const project = {
+      ...buildProject(projectPath),
+      engine: {
+        platform: 'unity' as const,
+        setupMode: 'import' as const,
+        projectPath,
+        dimension: '2d' as const
+      }
+    };
+    const requests: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (_url, init) => {
+      requests.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({
+        id: 'chat_final',
+        choices: [
+          {
+            finish_reason: 'stop',
+            message: {
+              role: 'assistant',
+              content: '可以。'
+            }
+          }
+        ]
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+    }) as typeof fetch;
+
+    const message = '打开 Unity 项目并安装 Funplay Bridge';
+    const result = await runRuntimeForTest(nativeRuntime, {
+      project,
+      message,
+      provider: {
+        id: 'provider_openai_compatible_engine_tools',
+        name: 'Compatible Chat',
+        protocol: 'openai-compatible',
+        apiMode: 'chat',
+        baseUrl: 'https://example.test/v1',
+        apiKey: 'test-key',
+        model: 'gpt-test',
+        enabled: true,
+        isDefault: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      plugins: [],
+      context: buildGenericWorkspaceContext(project, [], getActiveProjectSession(project).id, message),
+      permission: {
+        mode: 'ask',
+        allowWriteTools: false,
+        allowSessionWriteTools: false
+      }
+    });
+
+    assert.equal(result.status, 'completed');
+    const toolNames = (requests[0]?.tools as Array<{ function?: { name?: string } }> | undefined)
+      ?.map((tool) => tool.function?.name)
+      .filter(Boolean);
+    assert.equal(toolNames?.includes('diagnose_engine_status'), true);
+    assert.equal(toolNames?.includes('refresh_engine_runtime_state'), true);
+    assert.equal(toolNames?.includes('open_engine_hub'), true);
+    assert.equal(toolNames?.includes('open_engine_project'), true);
+    assert.equal(toolNames?.includes('install_engine_bridge'), true);
+    assert.equal(toolNames?.includes('write_file'), false);
+    assert.equal(toolNames?.includes('patch_file'), false);
+    assert.equal(toolNames?.includes('funplay_schedule_task'), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('native media profile exposes asset tools without workspace write tools', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-native-media-profile-'));
+  const originalFetch = globalThis.fetch;
+  try {
+    const project = buildProject(projectPath);
+    const requests: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (_url, init) => {
+      requests.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({
+        id: 'chat_final',
+        choices: [
+          {
+            finish_reason: 'stop',
+            message: {
+              role: 'assistant',
+              content: '可以。'
+            }
+          }
+        ]
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+    }) as typeof fetch;
+
+    const message = '生成一张透明背景软件图标素材';
+    const result = await runRuntimeForTest(nativeRuntime, {
+      project,
+      message,
+      provider: {
+        id: 'provider_openai_compatible_media_tools',
+        name: 'Compatible Chat',
+        protocol: 'openai-compatible',
+        apiMode: 'chat',
+        baseUrl: 'https://example.test/v1',
+        apiKey: 'test-key',
+        model: 'gpt-test',
+        enabled: true,
+        isDefault: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      plugins: [],
+      context: buildGenericWorkspaceContext(project, [], getActiveProjectSession(project).id, message),
+      permission: {
+        mode: 'ask',
+        allowWriteTools: false,
+        allowSessionWriteTools: false
+      }
+    });
+
+    assert.equal(result.status, 'completed');
+    const toolNames = (requests[0]?.tools as Array<{ function?: { name?: string } }> | undefined)
+      ?.map((tool) => tool.function?.name)
+      .filter(Boolean);
+    assert.equal(toolNames?.includes('media_attach_file'), true);
+    assert.equal(toolNames?.includes('list_asset_generation_capabilities'), true);
+    assert.equal(toolNames?.includes('media_save_base64'), true);
+    assert.equal(toolNames?.includes('image_generate'), true);
+    assert.equal(toolNames?.includes('generate_asset'), true);
+    assert.equal(toolNames?.includes('import_generated_asset'), true);
+    assert.equal(toolNames?.includes('write_file'), false);
+    assert.equal(toolNames?.includes('patch_file'), false);
+    assert.equal(toolNames?.includes('open_engine_project'), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('native MCP profile exposes direct MCP tools without workspace write tools', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-native-mcp-profile-'));
+  const server = await startTestMcpServer();
+  const originalFetch = globalThis.fetch;
+  try {
+    const project = buildProject(projectPath);
+    const plugin = buildMcpPlugin(server.baseUrl);
+    const requests: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (url, init) => {
+      if (String(url).startsWith(server.baseUrl)) {
+        return await originalFetch(url, init);
+      }
+      requests.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({
+        id: 'chat_final',
+        choices: [
+          {
+            finish_reason: 'stop',
+            message: {
+              role: 'assistant',
+              content: '可以。'
+            }
+          }
+        ]
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+    }) as typeof fetch;
+
+    const message = '请使用 MCP 工具检查项目资源';
+    const result = await runRuntimeForTest(nativeRuntime, {
+      project,
+      message,
+      provider: {
+        id: 'provider_openai_compatible_mcp_tools',
+        name: 'Compatible Chat',
+        protocol: 'openai-compatible',
+        apiMode: 'chat',
+        baseUrl: 'https://example.test/v1',
+        apiKey: 'test-key',
+        model: 'gpt-test',
+        enabled: true,
+        isDefault: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      plugins: [plugin],
+      context: buildGenericWorkspaceContext(project, [plugin], getActiveProjectSession(project).id, message),
+      permission: {
+        mode: 'ask',
+        allowWriteTools: false,
+        allowSessionWriteTools: false
+      }
+    });
+
+    assert.equal(result.status, 'completed');
+    const toolNames = (requests[0]?.tools as Array<{ function?: { name?: string } }> | undefined)
+      ?.map((tool) => tool.function?.name)
+      .filter(Boolean);
+    assert.equal(toolNames?.includes('list_mcp_tools'), true);
+    assert.equal(toolNames?.includes('list_mcp_resources'), true);
+    assert.equal(toolNames?.includes('read_mcp_resource'), true);
+    assert.equal(toolNames?.includes('call_mcp_tool'), true);
+    assert.equal(toolNames?.includes('mcp__test_mcp__unity_echo'), true);
+    assert.equal(toolNames?.includes('write_file'), false);
+    assert.equal(toolNames?.includes('patch_file'), false);
+    assert.equal(toolNames?.includes('funplay_schedule_task'), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await server.close();
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('native read-only direct MCP calls do not block context retry', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-native-mcp-readonly-context-retry-'));
+  const server = await startTestMcpServer({
+    toolsListByCall: [[{
+      name: 'get.scene',
+      description: 'Read the active scene',
+      inputSchema: {
+        type: 'object',
+        properties: {}
+      }
+    }]]
+  });
+  const originalFetch = globalThis.fetch;
+  try {
+    let project = buildProject(projectPath);
+    for (let index = 0; index < 5; index += 1) {
+      project = appendProjectConversationTurn(project, {
+        userMessage: `历史请求 ${index}`,
+        assistantMessage: `历史回答 ${index} 包含一些可压缩上下文。`,
+        updatedAt: new Date().toISOString()
+      });
+    }
+    const plugin = buildMcpPlugin(server.baseUrl);
+    const requests: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (url, init) => {
+      if (String(url).startsWith(server.baseUrl)) {
+        return await originalFetch(url, init);
+      }
+      requests.push(JSON.parse(String(init?.body)));
+      if (requests.length === 1) {
+        return new Response(JSON.stringify({
+          id: 'chat_mcp_read',
+          choices: [
+            {
+              finish_reason: 'tool_calls',
+              message: {
+                role: 'assistant',
+                content: '读取 MCP 场景。',
+                tool_calls: [
+                  {
+                    id: 'call_mcp_get_scene',
+                    type: 'function',
+                    function: {
+                      name: 'mcp__test_mcp__get_scene',
+                      arguments: '{}'
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+      }
+      if (requests.length === 2) {
+        return new Response(JSON.stringify({
+          error: {
+            message: 'maximum context length exceeded'
+          }
+        }), {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+      }
+      return new Response(JSON.stringify({
+        id: 'chat_retry_final',
+        choices: [
+          {
+            finish_reason: 'stop',
+            message: {
+              role: 'assistant',
+              content: '压缩后重试成功。'
+            }
+          }
+        ]
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+    }) as typeof fetch;
+
+    const message = '请使用 MCP 工具读取项目状态';
+    const stages: string[] = [];
+    const result = await runRuntimeForTest(nativeRuntime, {
+      project,
+      message,
+      provider: {
+        id: 'provider_openai_compatible_mcp_context_retry',
+        name: 'Compatible Chat',
+        protocol: 'openai-compatible',
+        apiMode: 'chat',
+        baseUrl: 'https://example.test/v1',
+        apiKey: 'test-key',
+        model: 'gpt-test',
+        enabled: true,
+        isDefault: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      plugins: [plugin],
+      context: buildGenericWorkspaceContext(project, [plugin], getActiveProjectSession(project).id, message),
+      permission: {
+        mode: 'read-only',
+        allowWriteTools: false,
+        allowSessionWriteTools: false
+      },
+      onStage: (stage) => stages.push(stage.stageId)
+    });
+
+    assert.equal(result.status, 'completed');
+    assert.equal(result.assistantMessage, '压缩后重试成功。');
+    assert.equal(requests.length, 3);
+    assert.equal(stages.includes('stage:native_context_retry'), true);
+    assert.match(result.sessionRuntimePatch?.nativeContextSummary ?? '', /Native runtime long-context summary/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await server.close();
     await rm(projectPath, { recursive: true, force: true });
   }
 });
@@ -4544,7 +5099,7 @@ test('openai-compatible native tool loop injects recovery instructions after fai
     assert.match(toolResults[0]?.content ?? '', /没有在 alpha\.js 中找到第 1 个编辑的 oldText/);
     assert.equal(stages.includes('stage:native_edit_failure_recovery'), true);
     const secondMessages = requests[1].messages as Array<{ role?: string; content?: string }>;
-    assert.equal(secondMessages.some((message) => message.role === 'user' && /上一轮文件编辑工具失败/.test(message.content ?? '')), true);
+    assert.equal(secondMessages.some((message) => message.role === 'user' && /上一轮文件写入\/编辑工具失败/.test(message.content ?? '')), true);
     assert.equal(secondMessages.some((message) => /preview_patch.*patch_file/.test(message.content ?? '')), true);
     assert.equal(await readFile(join(projectPath, 'alpha.js'), 'utf8'), 'const value = "current";\n');
     assert.equal(result.assistantMessage, '收到编辑恢复指令。');
@@ -4657,6 +5212,269 @@ test('openai-compatible native tool loop rejects empty multi_edit before executi
     assert.equal(secondMessages.some((message) => /不要调用 edits 为空的 multi_edit/.test(message.content ?? '')), true);
     assert.equal(await readFile(join(projectPath, 'alpha.js'), 'utf8'), 'const value = "current";\n');
     assert.equal(result.assistantMessage, '收到空编辑恢复指令。');
+  } finally {
+    globalThis.fetch = originalFetch;
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('openai-compatible native tool loop injects recovery instructions after failed write_file path', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-openai-compatible-write-file-recovery-'));
+  const originalFetch = globalThis.fetch;
+  try {
+    const project = buildProject(projectPath);
+    const requests: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (_url, init) => {
+      requests.push(JSON.parse(String(init?.body)));
+      if (requests.length === 1) {
+        return new Response(JSON.stringify({
+          id: 'chat_bad_write_file',
+          choices: [
+            {
+              finish_reason: 'tool_calls',
+              message: {
+                role: 'assistant',
+                content: '我先写入文件。',
+                tool_calls: [
+                  {
+                    id: 'call_bad_write_file',
+                    type: 'function',
+                    function: {
+                      name: 'write_file',
+                      arguments: JSON.stringify({
+                        path: '../escape.js',
+                        content: 'export const escaped = true;\n'
+                      })
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+      }
+      return new Response(JSON.stringify({
+        id: 'chat_after_write_file_recovery',
+        choices: [
+          {
+            finish_reason: 'stop',
+            message: {
+              role: 'assistant',
+              content: '收到写入恢复指令。'
+            }
+          }
+        ]
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+    }) as typeof fetch;
+
+    const stages: string[] = [];
+    const toolResults: Array<{ content: string; isError?: boolean }> = [];
+    const result = await runOpenAiCompatibleNativeToolLoop({
+      project,
+      message: '写入 escape.js',
+      provider: {
+        id: 'provider_openai_compatible_write_file_recovery',
+        name: 'Compatible Chat',
+        protocol: 'openai-compatible',
+        apiMode: 'chat',
+        baseUrl: 'https://example.test/v1',
+        apiKey: 'test-key',
+        model: 'gpt-test',
+        enabled: true,
+        isDefault: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      plugins: [],
+      context: buildGenericWorkspaceContext(project, [], getActiveProjectSession(project).id, '写入 escape.js'),
+      permission: {
+        mode: 'full-access',
+        allowWriteTools: true,
+        allowSessionWriteTools: true,
+        allowedWriteTools: ['*']
+      }
+    }, {
+      includeWriteTools: true,
+      emitStage: (stage) => stages.push(stage.stageId),
+      emitToolResult: (toolResult) => {
+        toolResults.push({
+          content: toolResult.content,
+          isError: toolResult.isError
+        });
+      }
+    });
+
+    assert.equal(requests.length, 2);
+    assert.deepEqual(result.toolCalls, ['write_file']);
+    assert.equal(toolResults[0]?.isError, true);
+    assert.match(toolResults[0]?.content ?? '', /非法文件路径|写入失败/);
+    assert.equal(stages.includes('stage:native_edit_failure_recovery'), true);
+    const secondMessages = requests[1].messages as Array<{ role?: string; content?: string }>;
+    const failedToolMessage = secondMessages.find((message) => message.role === 'tool');
+    assert.match(failedToolMessage?.content ?? '', /Failure kind: path_error/);
+    assert.match(failedToolMessage?.content ?? '', /Recovery hint: 确认路径在项目目录内/);
+    assert.equal(secondMessages.some((message) => /write_file 路径问题/.test(message.content ?? '')), true);
+    assert.equal(secondMessages.some((message) => /create_directory 创建父目录/.test(message.content ?? '')), true);
+    assert.equal(existsSync(join(projectPath, 'escape.js')), false);
+    assert.equal(result.assistantMessage, '收到写入恢复指令。');
+  } finally {
+    globalThis.fetch = originalFetch;
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('openai-compatible native tool loop blocks first write until path-scoped instructions are injected', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-openai-compatible-instruction-guard-'));
+  const originalFetch = globalThis.fetch;
+  try {
+    await mkdir(join(projectPath, 'src', 'feature'), { recursive: true });
+    await writeFile(join(projectPath, 'AGENTS.md'), '# Root\n\nUse root defaults.', 'utf8');
+    await writeFile(join(projectPath, 'src', 'feature', 'AGENTS.md'), '# Feature\n\nPreserve FEATURE_LOCAL_RULE_917.', 'utf8');
+    const project = buildProject(projectPath);
+    const requests: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      requests.push(body);
+      if (requests.length === 1) {
+        return new Response(JSON.stringify({
+          id: 'chat_instruction_guard_first_write',
+          choices: [
+            {
+              finish_reason: 'tool_calls',
+              message: {
+                role: 'assistant',
+                content: '我先写入功能文件。',
+                tool_calls: [
+                  {
+                    id: 'call_feature_write_before_instructions',
+                    type: 'function',
+                    function: {
+                      name: 'write_file',
+                      arguments: '{"path":"src/feature/App.tsx","content":"before local instructions\\n"}'
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+      }
+      if (requests.length === 2) {
+        const messages = body.messages as Array<{ role?: string; content?: string }>;
+        assert.equal(messages.some((message) =>
+          message.role === 'user' &&
+          /\[Funplay Dynamic Project Instructions\]/.test(message.content ?? '') &&
+          /src\/feature\/AGENTS\.md/.test(message.content ?? '') &&
+          /FEATURE_LOCAL_RULE_917/.test(message.content ?? '')
+        ), true);
+        return new Response(JSON.stringify({
+          id: 'chat_instruction_guard_retry_write',
+          choices: [
+            {
+              finish_reason: 'tool_calls',
+              message: {
+                role: 'assistant',
+                content: '已读取局部规则，重新写入。',
+                tool_calls: [
+                  {
+                    id: 'call_feature_write_after_instructions',
+                    type: 'function',
+                    function: {
+                      name: 'write_file',
+                      arguments: '{"path":"src/feature/App.tsx","content":"after local instructions FEATURE_LOCAL_RULE_917\\n"}'
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+      }
+      return new Response(JSON.stringify({
+        id: 'chat_instruction_guard_final',
+        choices: [
+          {
+            finish_reason: 'stop',
+            message: {
+              role: 'assistant',
+              content: '已按局部规则完成。'
+            }
+          }
+        ]
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+    }) as typeof fetch;
+
+    const stages: string[] = [];
+    const toolResults: Array<{ content: string; isError?: boolean }> = [];
+    const result = await runOpenAiCompatibleNativeToolLoop({
+      project,
+      message: '实现 feature 组件',
+      provider: {
+        id: 'provider_openai_compatible_instruction_guard',
+        name: 'Compatible Chat',
+        protocol: 'openai-compatible',
+        apiMode: 'chat',
+        baseUrl: 'https://example.test/v1',
+        apiKey: 'test-key',
+        model: 'gpt-test',
+        enabled: true,
+        isDefault: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      plugins: [],
+      context: buildGenericWorkspaceContext(project, [], getActiveProjectSession(project).id, '实现 feature 组件'),
+      permission: {
+        mode: 'full-access',
+        allowWriteTools: true,
+        allowSessionWriteTools: true,
+        allowedWriteTools: ['*']
+      }
+    }, {
+      includeWriteTools: true,
+      emitStage: (stage) => stages.push(stage.stageId),
+      emitToolResult: (toolResult) => {
+        toolResults.push({
+          content: toolResult.content,
+          isError: toolResult.isError
+        });
+      }
+    });
+
+    assert.equal(requests.length, 3);
+    assert.deepEqual(result.toolCalls, ['write_file', 'write_file']);
+    assert.equal(toolResults[0]?.isError, true);
+    assert.match(toolResults[0]?.content ?? '', /执行写入前拦截/);
+    assert.match(toolResults[0]?.content ?? '', /src\/feature\/AGENTS\.md/);
+    assert.equal(toolResults[1]?.isError, false);
+    assert.equal(stages.some((stageId) => stageId.startsWith('stage:native_project_instruction_guard:')), true);
+    assert.equal(await readFile(join(projectPath, 'src', 'feature', 'App.tsx'), 'utf8'), 'after local instructions FEATURE_LOCAL_RULE_917\n');
+    assert.equal(result.assistantMessage, '已按局部规则完成。');
   } finally {
     globalThis.fetch = originalFetch;
     await rm(projectPath, { recursive: true, force: true });
@@ -7461,6 +8279,10 @@ test('native tool loop rejects malformed tool arguments without executing side e
     assert.equal(toolResults[0]?.isError, true);
     assert.match(toolResults[0]?.content ?? '', /工具调用参数 JSON 无法解析/);
     assert.equal(stages.includes('stage:native_malformed_tool_arguments:tool_bad_write'), true);
+    const secondMessages = requests[1].messages as Array<{ role?: string; content?: string }>;
+    const failedToolMessage = secondMessages.find((message) => message.role === 'tool');
+    assert.match(failedToolMessage?.content ?? '', /Failure kind: invalid_arguments/);
+    assert.match(failedToolMessage?.content ?? '', /Recovery hint: Return valid JSON arguments/);
     await assert.rejects(readFile(join(projectPath, 'bad.txt'), 'utf8'), /ENOENT/);
     assert.match(result.assistantMessage, /MALFORMED_TOOL_RECOVERED/);
   } finally {
@@ -9786,6 +10608,213 @@ test('workspace context builds a structured project context index', async () => 
   }
 });
 
+test('workspace context detects package manager from packageManager field', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-context-package-manager-field-'));
+  try {
+    await writeFile(join(projectPath, 'package.json'), JSON.stringify({
+      name: 'package-manager-field-fixture',
+      packageManager: 'yarn@4.5.0',
+      scripts: {
+        test: 'yarn node --test'
+      }
+    }, null, 2), 'utf8');
+    const project = buildProject(projectPath);
+    const context = buildGenericWorkspaceContext(project, [], getActiveProjectSession(project).id);
+
+    assert.equal(context.projectContextIndex?.packageManager, 'yarn');
+  } finally {
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('native prompt surfaces structured workspace evidence from context', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-native-workspace-evidence-'));
+  try {
+    await mkdir(join(projectPath, 'src'), { recursive: true });
+    await writeFile(join(projectPath, 'package.json'), JSON.stringify({
+      type: 'module',
+      main: 'src/main.ts'
+    }, null, 2), 'utf8');
+    await writeFile(join(projectPath, 'src', 'main.ts'), 'export const entryMarker = "ENTRY_EVIDENCE_MARKER";\n', 'utf8');
+    await writeFile(join(projectPath, 'src', 'checkout.ts'), 'export const checkoutMarker = "CHECKOUT_EVIDENCE_MARKER";\n', 'utf8');
+
+    const baseProject = buildProject(projectPath);
+    const activeSession = getActiveProjectSession(baseProject);
+    const relatedSession = createProjectSessionRecord({
+      title: 'Prior Checkout Session',
+      chat: [{
+        id: 'prior_checkout_user',
+        role: 'user',
+        content: 'checkout historical context',
+        createdAt: new Date().toISOString()
+      }],
+      runtimeOverrides: {
+        nativeContextSummary: 'Prior checkout session found CHECKOUT_SESSION_EVIDENCE and explains checkout behavior.'
+      }
+    });
+    const project = {
+      ...baseProject,
+      sessions: [
+        activeSession,
+        relatedSession
+      ],
+      activeSessionId: activeSession.id
+    };
+    const message = '请检查 src/checkout.ts 并结合 checkout 历史上下文';
+    const context = buildGenericWorkspaceContext(project, [], activeSession.id, message);
+
+    assert.equal(context.workspaceEvidence?.some((item) => item.kind === 'message_path' && item.path === 'src/checkout.ts'), true);
+    assert.equal(context.workspaceEvidence?.some((item) => item.kind === 'entrypoint' && item.path === 'src/main.ts'), true);
+    assert.equal(context.workspaceEvidence?.some((item) => item.kind === 'related_session' && /CHECKOUT_SESSION_EVIDENCE/.test(item.excerpt)), true);
+
+    const prompt = createNativeRuntimeUserPrompt({
+      project,
+      message,
+      plugins: [],
+      context,
+      permission: {
+        mode: 'read-only',
+        allowWriteTools: false,
+        allowSessionWriteTools: false
+      }
+    });
+
+    assert.match(prompt, /轻量工作区证据/);
+    assert.match(prompt, /kind=message_path · source=user_message_path · path=src\/checkout\.ts/);
+    assert.match(prompt, /CHECKOUT_EVIDENCE_MARKER/);
+    assert.match(prompt, /kind=entrypoint · source=package\.json main · path=src\/main\.ts/);
+    assert.match(prompt, /ENTRY_EVIDENCE_MARKER/);
+    assert.match(prompt, /kind=related_session · source=chat_search/);
+    assert.match(prompt, /CHECKOUT_SESSION_EVIDENCE/);
+  } finally {
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('workspace context uses recent active-session paths for continuation evidence', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-continuation-evidence-'));
+  try {
+    await mkdir(join(projectPath, 'src'), { recursive: true });
+    await writeFile(join(projectPath, 'src', 'continuation.ts'), 'export const continuationMarker = "RECENT_CONTINUATION_EVIDENCE";\n', 'utf8');
+
+    let project = buildProject(projectPath);
+    project = appendProjectConversationTurn(project, {
+      userMessage: '请继续实现上一轮功能',
+      assistantMessage: '下一步需要修改 src/continuation.ts，把续作入口接上。',
+      updatedAt: new Date().toISOString()
+    });
+    const activeSession = getActiveProjectSession(project);
+    const context = buildGenericWorkspaceContext(project, [], activeSession.id, '继续完成');
+    const recentPathEvidence = context.workspaceEvidence?.find((item) => item.path === 'src/continuation.ts');
+
+    assert.equal(recentPathEvidence?.kind, 'message_path');
+    assert.equal(recentPathEvidence?.source, 'recent_message_path');
+    assert.match(recentPathEvidence?.excerpt ?? '', /RECENT_CONTINUATION_EVIDENCE/);
+
+    const prompt = createNativeRuntimeUserPrompt({
+      project,
+      message: '继续完成',
+      plugins: [],
+      context,
+      permission: {
+        mode: 'read-only',
+        allowWriteTools: false,
+        allowSessionWriteTools: false
+      }
+    });
+    assert.match(prompt, /kind=message_path · source=recent_message_path · path=src\/continuation\.ts/);
+    assert.match(prompt, /RECENT_CONTINUATION_EVIDENCE/);
+  } finally {
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('workspace context carries recent verification failure files into continuation evidence', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-verification-continuation-evidence-'));
+  try {
+    await mkdir(join(projectPath, 'src'), { recursive: true });
+    const source = Array.from({ length: 24 }, (_, index) =>
+      index === 13
+        ? 'export const verificationFailureMarker = "RECENT_VERIFICATION_FAILURE_EVIDENCE";'
+        : `export const line${index + 1} = ${index + 1};`
+    ).join('\n');
+    await writeFile(join(projectPath, 'src', 'failing.ts'), `${source}\n`, 'utf8');
+
+    const baseProject = buildProject(projectPath);
+    const activeSession = getActiveProjectSession(baseProject);
+    const createdAt = new Date().toISOString();
+    const failedVerificationAssistant: ChatMessage = {
+      id: 'assistant_failed_verification',
+      role: 'assistant',
+      content: '自动验证未通过，本轮不会标记为完成。',
+      createdAt,
+      metadata: {
+        operationLog: [{
+          id: 'stage:native_active_verification_handoff',
+          scope: 'conversation',
+          phase: 'verification_handoff',
+          title: 'Verification handoff',
+          target: 'active_write',
+          type: 'tool_call',
+          status: 'failed',
+          summary: 'type_error: Repair type contracts near src/failing.ts:14',
+          input: {
+            diagnosis: {
+              kind: 'type_error',
+              suggestedFocus: 'Repair type contracts near the referenced file.',
+              references: [{
+                path: 'src/failing.ts',
+                line: 14
+              }]
+            }
+          }
+        }]
+      }
+    };
+    const project = {
+      ...baseProject,
+      sessions: [{
+        ...activeSession,
+        chat: [
+          {
+            id: 'user_failed_verification',
+            role: 'user' as const,
+            content: '请修改代码并验证。',
+            createdAt
+          },
+          failedVerificationAssistant
+        ]
+      }],
+      activeSessionId: activeSession.id
+    };
+    const context = buildGenericWorkspaceContext(project, [], activeSession.id, '继续修复');
+    const failureEvidence = context.workspaceEvidence?.find((item) =>
+      item.kind === 'verification_failure_file' && item.path === 'src/failing.ts'
+    );
+
+    assert.equal(failureEvidence?.source, 'recent_verification_failure');
+    assert.equal(failureEvidence?.title, 'src/failing.ts:14');
+    assert.match(failureEvidence?.excerpt ?? '', /14: export const verificationFailureMarker/);
+    assert.match(failureEvidence?.excerpt ?? '', /RECENT_VERIFICATION_FAILURE_EVIDENCE/);
+
+    const prompt = createNativeRuntimeUserPrompt({
+      project,
+      message: '继续修复',
+      plugins: [],
+      context,
+      permission: {
+        mode: 'read-only',
+        allowWriteTools: false,
+        allowSessionWriteTools: false
+      }
+    });
+    assert.match(prompt, /kind=verification_failure_file · source=recent_verification_failure · path=src\/failing\.ts/);
+    assert.match(prompt, /RECENT_VERIFICATION_FAILURE_EVIDENCE/);
+  } finally {
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
 test('workspace context discovers project-level agent instructions', async () => {
   const projectPath = await mkdtemp(join(tmpdir(), 'funplay-instructions-'));
   try {
@@ -9851,6 +10880,58 @@ test('project instruction tracker discovers path-scoped rules from native tool i
     assert.deepEqual(tracker.discoverFromToolInput('edit_file', { path: 'src/feature/App.tsx' }), []);
     assert.match(tracker.formatDynamicInstructionMessage() ?? '', /src\/AGENTS\.md/);
     assert.match(tracker.formatDynamicInstructionMessage() ?? '', /src\/feature\/CLAUDE\.md/);
+  } finally {
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('native AI SDK tool adapter blocks writes before injecting path-scoped instructions', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-ai-sdk-instruction-guard-'));
+  try {
+    await mkdir(join(projectPath, 'src', 'feature'), { recursive: true });
+    await writeFile(join(projectPath, 'AGENTS.md'), '# Root\n\nUse defaults.', 'utf8');
+    await writeFile(join(projectPath, 'src', 'feature', 'AGENTS.md'), '# Feature\n\nPreserve AI_SDK_LOCAL_RULE_418.', 'utf8');
+    const project = buildProject(projectPath);
+    const context = buildGenericWorkspaceContext(project, [], getActiveProjectSession(project).id);
+    const tracker = new ProjectInstructionTracker(project, context.projectInstructions);
+    const stages: string[] = [];
+    const tools = createNativeWorkspaceTools({
+      project,
+      includeWriteTools: true,
+      permissionContext: {
+        permission: {
+          mode: 'full-access',
+          allowWriteTools: true,
+          allowSessionWriteTools: true,
+          allowedWriteTools: ['*']
+        }
+      },
+      projectInstructionGuard: ({ toolName, input }) => {
+        const guard = tracker.guardWriteBeforeLocalInstructions(toolName, input);
+        if (guard) {
+          stages.push('stage:native_ai_sdk_project_instruction_guard');
+        }
+        return guard;
+      }
+    });
+
+    const first = await executeNativeWorkspaceTool(tools, 'write_file', {
+      path: 'src/feature/App.tsx',
+      content: 'before local instructions\n'
+    });
+    assert.equal(first.isError, true);
+    assert.match(String(first.summary), /执行写入前拦截/);
+    assert.match(String(first.summary), /src\/feature\/AGENTS\.md/);
+    assert.equal(existsSync(join(projectPath, 'src', 'feature', 'App.tsx')), false);
+    assert.match(tracker.formatDynamicInstructionMessage() ?? '', /AI_SDK_LOCAL_RULE_418/);
+    assert.deepEqual(stages, ['stage:native_ai_sdk_project_instruction_guard']);
+
+    const second = await executeNativeWorkspaceTool(tools, 'write_file', {
+      path: 'src/feature/App.tsx',
+      content: 'after local instructions AI_SDK_LOCAL_RULE_418\n'
+    });
+    assert.notEqual(second.isError, true);
+    assert.equal(await readFile(join(projectPath, 'src', 'feature', 'App.tsx'), 'utf8'), 'after local instructions AI_SDK_LOCAL_RULE_418\n');
   } finally {
     await rm(projectPath, { recursive: true, force: true });
   }

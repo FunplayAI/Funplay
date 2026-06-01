@@ -5,12 +5,14 @@ import type {
   NativeAiSdkLoopState,
   NativeAiSdkProviderStepResult
 } from './ai-sdk-provider-step';
+import { createEditFailureRecoveryPrompt } from './continuation-policy';
 import {
   applyNativeNoToolProviderContinuationCoreEffect,
   applyNativeNoToolProviderTerminalCoreEffect,
   createNativeNoToolProviderContinuationContext,
   resolveNativeNoToolProviderCompletionEffect
 } from './provider-step-completion';
+import { NATIVE_EDIT_FAILURE_CONTINUATION_LIMIT } from './tool-loop-options';
 import type { NativeToolLoopCallbacks } from './tool-loop-controller';
 import type { NativeToolLoopRunResult } from './tool-loop-state';
 
@@ -51,6 +53,44 @@ export function completeNativeAiSdkProviderStep(input: {
   emitCoreStateStage: (status: 'running' | 'completed' | 'failed', summary: string) => void;
 }): NativeAiSdkCompletionStageDecision {
   const { finishReason, responseMessages, finalCandidate } = input.providerStep;
+  if (
+    input.loopState.editFailureRecoveries.length > 0 &&
+    input.includeWriteTools &&
+    input.params.permission.mode !== 'read-only' &&
+    input.loopState.editFailureContinuationCount < NATIVE_EDIT_FAILURE_CONTINUATION_LIMIT
+  ) {
+    input.loopState.editFailureContinuationCount += 1;
+    const recoveries = input.loopState.editFailureRecoveries.splice(0);
+    const recoveryPrompt = createEditFailureRecoveryPrompt(recoveries);
+    input.loopState.messages = [
+      ...input.loopState.messages,
+      ...responseMessages,
+      {
+        role: 'user',
+        content: recoveryPrompt
+      }
+    ];
+    input.loopState.assistantMessage = '';
+    input.callbacks?.emitStage?.({
+      stageId: 'stage:native_ai_sdk_edit_failure_recovery',
+      title: '恢复失败编辑',
+      target: 'stage:native_ai_sdk_edit_failure_recovery',
+      status: 'completed',
+      summary: '检测到 AI SDK 编辑工具预检失败，已要求模型重新读取目标片段或改用 unified patch 后继续。',
+      input: {
+        continuation: input.loopState.editFailureContinuationCount,
+        failures: recoveries.map((recovery) => ({
+          toolName: recovery.toolName,
+          path: recovery.path,
+          failureKind: recovery.failureKind
+        }))
+      }
+    });
+    input.providerController.providerInputReady('AI SDK 编辑失败恢复提示已加入下一轮 provider 输入。');
+    return {
+      action: 'continue'
+    };
+  }
   const latestTodoSnapshot = input.loopState.latestTodoSnapshot;
   const {
     controllerSnapshot,

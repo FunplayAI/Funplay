@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -72,7 +72,8 @@ const benchmarks = [
     id: 'agent-e2e-dry',
     title: 'Agent dry E2E',
     command: 'npm run agent:e2e',
-    timeoutMs: 120_000
+    timeoutMs: 120_000,
+    nestedReportPath: join(repoRoot, 'out/agent-e2e/latest-report.json')
   }
 ];
 
@@ -154,13 +155,23 @@ function runCommand(command, options = {}) {
   });
 }
 
+async function readJsonIfExists(filePath) {
+  try {
+    return JSON.parse(await readFile(filePath, 'utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
 async function runBenchmark(benchmark) {
   const result = await runCommand(benchmark.command, {
     timeoutMs: benchmark.timeoutMs
   });
+  const nestedReport = benchmark.nestedReportPath ? await readJsonIfExists(benchmark.nestedReportPath) : undefined;
   return {
     id: benchmark.id,
     title: benchmark.title,
+    nestedReport,
     ...result
   };
 }
@@ -180,6 +191,10 @@ function renderMarkdown(report) {
     `- Maturity tier: ${report.metrics.maturityTier}`,
     `- Manual intervention required: ${report.metrics.manualInterventionRequired ? 'yes' : 'no'}`,
     `- Patch-first edit metrics: ${report.metrics.patchFirstEditMetricsAvailable ? 'available' : 'missing'}`,
+    `- Agent E2E tasks: ${report.metrics.agentE2ePassedAgentTaskCount ?? '-'}/${report.metrics.agentE2eAgentTaskCount ?? '-'}`,
+    `- Agent E2E required capability coverage: ${typeof report.metrics.agentE2eCapabilityCoverageRate === 'number' ? `${(report.metrics.agentE2eCapabilityCoverageRate * 100).toFixed(1)}%` : '-'}`,
+    `- Agent E2E missing required capabilities: ${report.metrics.agentE2eMissingRequiredCapabilities?.length ? report.metrics.agentE2eMissingRequiredCapabilities.join(', ') : 'none'}`,
+    `- Agent E2E unknown capabilities: ${report.metrics.agentE2eUnknownCapabilities?.length ? report.metrics.agentE2eUnknownCapabilities.join(', ') : 'none'}`,
     ''
   ];
 
@@ -191,6 +206,16 @@ function renderMarkdown(report) {
     lines.push(`- Command: \`${result.command}\``);
     if (result.errorMessage) {
       lines.push(`- Error: ${result.errorMessage}`);
+    }
+    if (result.nestedReport?.metrics) {
+      lines.push(`- Nested completion rate: ${typeof result.nestedReport.metrics.completionRate === 'number' ? `${(result.nestedReport.metrics.completionRate * 100).toFixed(1)}%` : '-'}`);
+      lines.push(`- Nested capability coverage: ${typeof result.nestedReport.metrics.capabilityCoverageRate === 'number' ? `${(result.nestedReport.metrics.capabilityCoverageRate * 100).toFixed(1)}%` : '-'}`);
+      if (Array.isArray(result.nestedReport.metrics.missingRequiredCapabilities) && result.nestedReport.metrics.missingRequiredCapabilities.length > 0) {
+        lines.push(`- Nested missing capabilities: ${result.nestedReport.metrics.missingRequiredCapabilities.join(', ')}`);
+      }
+      if (Array.isArray(result.nestedReport.metrics.unknownAgentCapabilities) && result.nestedReport.metrics.unknownAgentCapabilities.length > 0) {
+        lines.push(`- Nested unknown capabilities: ${result.nestedReport.metrics.unknownAgentCapabilities.join(', ')}`);
+      }
     }
     lines.push('');
   }
@@ -205,6 +230,13 @@ function computeMetrics(results) {
   const slowest = requiredResults
     .slice()
     .sort((left, right) => right.durationMs - left.durationMs)[0];
+  const e2eMetrics = requiredResults.find((result) => result.id === 'agent-e2e-dry')?.nestedReport?.metrics;
+  const agentE2eMissingRequiredCapabilities = Array.isArray(e2eMetrics?.missingRequiredCapabilities)
+    ? e2eMetrics.missingRequiredCapabilities
+    : undefined;
+  const agentE2eUnknownCapabilities = Array.isArray(e2eMetrics?.unknownAgentCapabilities)
+    ? e2eMetrics.unknownAgentCapabilities
+    : undefined;
   return {
     benchmarkCount: requiredResults.length,
     passedCount: passedResults.length,
@@ -217,7 +249,16 @@ function computeMetrics(results) {
     manualInterventionRequired: failedResults.length > 0,
     liveProviderRequired: false,
     patchFirstEditMetricsAvailable: requiredResults.some((result) => result.id === 'tool-reliability' && result.status === 'passed'),
-    maturityTier: failedResults.length === 0 ? 'dry-pass' : 'dry-fail'
+    agentE2eAgentTaskCount: e2eMetrics?.agentTaskCount,
+    agentE2ePassedAgentTaskCount: e2eMetrics?.passedAgentTaskCount,
+    agentE2eCapabilityCoverageRate: e2eMetrics?.capabilityCoverageRate,
+    agentE2eMissingRequiredCapabilities,
+    agentE2eUnknownCapabilities,
+    maturityTier: failedResults.length === 0 &&
+      (!agentE2eMissingRequiredCapabilities || agentE2eMissingRequiredCapabilities.length === 0) &&
+      (!agentE2eUnknownCapabilities || agentE2eUnknownCapabilities.length === 0)
+      ? 'dry-pass'
+      : 'dry-fail'
   };
 }
 

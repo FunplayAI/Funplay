@@ -296,10 +296,11 @@ test('native streaming tool executor converts thrown tool errors into ordered sy
   assert.equal(resultEvents.length, 2);
   assert.match(resultEvents[0] ?? '', /tool_bad:error:\[Error]\nTool execution failed before returning a result\.\nCause: read failed/);
   assert.equal(resultEvents[1], 'tool_good:ok:good done');
-  assert.deepEqual(state.messages.map((message) => message.role === 'tool' ? `${message.toolCallId}:${message.content}` : ''), [
-    'tool_bad:[Error]\nTool execution failed before returning a result.\nCause: read failed',
-    'tool_good:good done'
-  ]);
+  const modelToolMessages = state.messages.map((message) => message.role === 'tool' ? `${message.toolCallId}:${message.content}` : '');
+  assert.match(modelToolMessages[0] ?? '', /tool_bad:\[Error\]\nTool execution failed before returning a result\.\nCause: read failed/);
+  assert.match(modelToolMessages[0] ?? '', /Failure kind: tool_execution_failed/);
+  assert.match(modelToolMessages[0] ?? '', /Recovery hint: Inspect the tool input/);
+  assert.equal(modelToolMessages[1], 'tool_good:good done');
   assert.deepEqual(controllerFailures, ['tool_execution_failed', undefined]);
   assert.deepEqual(controllerSources, ['synthetic_failure', 'executed']);
 });

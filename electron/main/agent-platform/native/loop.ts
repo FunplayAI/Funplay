@@ -1,4 +1,4 @@
-import type { AiProviderApiMode, GameAgentStep, ProjectSession } from '../../../../shared/types';
+import type { AgentVerificationTrigger, AiProviderApiMode, GameAgentStep, ProjectSession } from '../../../../shared/types';
 import { inferOpenAiCompatibleApiMode } from '../../../../shared/provider-catalog';
 import { makeId } from '../../../../shared/utils';
 import { runGenericAgentLoop } from '../agent-loop';
@@ -7,11 +7,8 @@ import {
   buildNativeRuntimeThinkingPrelude
 } from './prompt';
 import { runNativeReadOnlyToolLoop, runOpenAiCompatibleNativeToolLoop } from './tool-loop';
-import {
-  NATIVE_COMMAND_TOOL_NAMES,
-  NATIVE_MCP_TOOL_CALL_NAMES,
-  NATIVE_WRITE_WORKSPACE_TOOL_NAMES
-} from './tool-adapter';
+import { getAgentToolDefinition } from '../tool-registry';
+import type { AgentToolSideEffectClassification } from '../tool-registry';
 import type { ConversationOperationStageEvent } from '../operation-log';
 import { createConversationRuntimeOutputCollector } from '../runtime-output';
 import { emitRuntimeLifecycleHook, emitRuntimeStatus } from '../runtime-event-emitter';
@@ -27,6 +24,19 @@ import {
 } from './diagnostics';
 import { formatToolPolicyForStage, resolveAgentToolPolicy, type AgentToolPolicyDecision } from '../tool-policy';
 import { runAgentLifecycleHooks } from '../agent-hooks';
+import {
+  collectActiveVerificationChangeSummary,
+  collectActiveVerificationRepairEvidence,
+  createActiveVerificationRepairPrompt,
+  formatActiveVerificationFailureReply,
+  planActiveVerification,
+  runActiveVerificationGate,
+  type ActiveVerificationChangeSummary,
+  type ActiveVerificationPlan,
+  type ActiveVerificationRunResult,
+  type ActiveVerificationSideEffectEvidence
+} from '../active-verification';
+import type { WorkspaceToolAction } from '../workspace-tools';
 
 function createStep(kind: GameAgentStep['kind'], title: string, detail: string, status: GameAgentStep['status']): GameAgentStep {
   return {
@@ -379,26 +389,157 @@ function summarizeToolLoopResult(result: { stepCount?: number; finishReason?: st
 }
 
 function shouldExposeNativeWriteTools(params: GenericAgentRuntimeParams, canApplyWorkspaceWrites: boolean, policy: AgentToolPolicyDecision): boolean {
+  const profileAllowsWrites =
+    policy.executionProfile.allowedToolFamilies.includes('workspace_write') ||
+    params.permission.allowWriteTools ||
+    params.permission.allowSessionWriteTools ||
+    params.permission.mode === 'full-access';
   return (
+    profileAllowsWrites &&
     (canApplyWorkspaceWrites || params.permission.mode !== 'read-only' || policy.exposesHighRiskTools) &&
     params.permission.mode !== 'read-only'
   );
 }
 
-function shouldExposeNativeCommandTools(params: GenericAgentRuntimeParams): boolean {
-  return params.permission.mode === 'full-access' || params.permission.mode === 'ask' || params.permission.mode === 'read-only';
+function shouldExposeNativeWriteToolBucket(params: GenericAgentRuntimeParams, canApplyWorkspaceWrites: boolean, policy: AgentToolPolicyDecision): boolean {
+  if (shouldExposeNativeWriteTools(params, canApplyWorkspaceWrites, policy)) {
+    return true;
+  }
+  if (params.permission.mode === 'read-only') {
+    return false;
+  }
+  const profileAllowsDurableSideEffects =
+    policy.executionProfile.allowedToolFamilies.includes('engine') ||
+    policy.executionProfile.allowedToolFamilies.includes('media') ||
+    policy.executionProfile.allowedToolFamilies.includes('memory') ||
+    policy.executionProfile.allowedToolFamilies.includes('notification');
+  return policy.executionProfile.sideEffectPolicy === 'host_controlled' && profileAllowsDurableSideEffects;
+}
+
+function shouldExposeNativeCommandTools(params: GenericAgentRuntimeParams, policy: AgentToolPolicyDecision): boolean {
+  return (
+    policy.executionProfile.allowedToolFamilies.includes('command') &&
+    (params.permission.mode === 'full-access' || params.permission.mode === 'ask' || params.permission.mode === 'read-only')
+  );
 }
 
 function shouldExposeNativeMcpTools(params: GenericAgentRuntimeParams, canApplyWorkspaceWrites: boolean, policy: AgentToolPolicyDecision): boolean {
-  return shouldExposeNativeWriteTools(params, canApplyWorkspaceWrites, policy);
+  if (!policy.executionProfile.allowedToolFamilies.includes('mcp')) {
+    return false;
+  }
+  if (shouldExposeNativeWriteTools(params, canApplyWorkspaceWrites, policy)) {
+    return true;
+  }
+  return (
+    policy.mcp.detected &&
+    (params.permission.mode === 'full-access' || params.permission.mode === 'ask' || params.permission.mode === 'read-only')
+  );
 }
 
-function isNativeSideEffectToolName(name: string): boolean {
-  return (
-    (NATIVE_WRITE_WORKSPACE_TOOL_NAMES as readonly string[]).includes(name) ||
-    (NATIVE_MCP_TOOL_CALL_NAMES as readonly string[]).includes(name) ||
-    (NATIVE_COMMAND_TOOL_NAMES as readonly string[]).includes(name)
-  );
+function resolveNativeAllowedToolFamilies(
+  params: GenericAgentRuntimeParams,
+  canApplyWorkspaceWrites: boolean,
+  policy: AgentToolPolicyDecision
+): AgentToolPolicyDecision['executionProfile']['allowedToolFamilies'] {
+  const allowed = new Set(policy.executionProfile.allowedToolFamilies);
+  if (shouldExposeNativeWriteTools(params, canApplyWorkspaceWrites, policy)) {
+    allowed.add('workspace_write');
+  }
+  if (shouldExposeNativeMcpTools(params, canApplyWorkspaceWrites, policy)) {
+    allowed.add('mcp');
+  }
+  return [...allowed];
+}
+
+function classifyToolSideEffectFromToolUse(
+  name: string,
+  input?: Record<string, unknown>
+): AgentToolSideEffectClassification | undefined {
+  const registered = getAgentToolDefinition(name as WorkspaceToolAction['type'])
+    ?.classifySideEffect?.(input);
+  if (registered) {
+    return registered;
+  }
+  if (name.startsWith('mcp__')) {
+    return {
+      kind: 'external',
+      confidence: 'medium',
+      evidence: ['tool:mcp', `dynamic:${name}`]
+    };
+  }
+  return undefined;
+}
+
+function isExecutedToolSideEffect(classification: AgentToolSideEffectClassification | undefined): classification is AgentToolSideEffectClassification {
+  return Boolean(classification && classification.kind !== 'none' && classification.confidence !== 'none');
+}
+
+function didToolResultCommitSideEffect(
+  result: Parameters<NonNullable<GenericAgentRuntimeParams['onToolResult']>>[0]
+): boolean {
+  const source = result.transaction?.resultSource;
+  if (source === 'validation_failed' || source === 'synthetic_failure' || source === 'cached') {
+    return false;
+  }
+  if (source === 'interrupted') {
+    return true;
+  }
+  if (!result.isError) {
+    return true;
+  }
+  return Boolean(result.command || result.terminal || result.browser || result.mcp);
+}
+
+function isReadOnlyMcpToolResult(
+  result: Parameters<NonNullable<GenericAgentRuntimeParams['onToolResult']>>[0]
+): boolean {
+  if (!result.mcp) {
+    return false;
+  }
+  if (result.mcp.operation === 'list_tools' || result.mcp.operation === 'list_resources' || result.mcp.operation === 'read_resource') {
+    return true;
+  }
+  return /\brisk=read\b/i.test(result.mcp.policySummary ?? '');
+}
+
+function mergeActiveVerificationTrigger(
+  current: AgentVerificationTrigger | undefined,
+  next: AgentVerificationTrigger | undefined
+): AgentVerificationTrigger | undefined {
+  if (!next) {
+    return current;
+  }
+  if (current === 'active_write' || next === 'active_write') {
+    return 'active_write';
+  }
+  return current ?? next;
+}
+
+function activeVerificationPlanSignature(plan: ActiveVerificationPlan): string {
+  return JSON.stringify({
+    trigger: plan.trigger,
+    blocking: plan.blocking,
+    checks: plan.checks.map((check) => ({
+      id: check.id,
+      command: check.command,
+      cwd: check.cwd,
+      target: check.target
+    })),
+    omittedChecks: (plan.omittedChecks ?? []).map((check) => ({
+      id: check.id,
+      command: check.command,
+      cwd: check.cwd,
+      target: check.target,
+      reason: check.reason
+    })),
+    sideEffects: (plan.sideEffects ?? []).map((item) => ({
+      toolName: item.toolName,
+      kind: item.kind,
+      confidence: item.confidence,
+      verificationTrigger: item.verificationTrigger,
+      evidence: item.evidence
+    }))
+  });
 }
 
 export async function runNativeConversationTurn(params: GenericAgentRuntimeParams): Promise<GenericAgentRuntimeResult> {
@@ -419,18 +560,78 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
   };
   let sessionRuntimePatch: Partial<NonNullable<ProjectSession['runtimeOverrides']>> | undefined;
   let sideEffectToolExecuted = false;
+  let activeVerificationTrigger: AgentVerificationTrigger | undefined;
+  const activeVerificationChangedFiles = new Set<string>();
+  const pendingToolSideEffects = new Map<string, ActiveVerificationSideEffectEvidence>();
+  const activeVerificationSideEffects: ActiveVerificationSideEffectEvidence[] = [];
+  const activeVerificationSideEffectKeys = new Set<string>();
+  const recordCommittedSideEffect = (sideEffect: ActiveVerificationSideEffectEvidence): void => {
+    sideEffectToolExecuted = true;
+    activeVerificationTrigger = mergeActiveVerificationTrigger(
+      activeVerificationTrigger,
+      sideEffect.verificationTrigger
+    );
+    const key = [
+      sideEffect.toolName,
+      sideEffect.kind,
+      sideEffect.confidence,
+      sideEffect.verificationTrigger ?? '',
+      ...sideEffect.evidence
+    ].join('\u0000');
+    if (!activeVerificationSideEffectKeys.has(key)) {
+      activeVerificationSideEffectKeys.add(key);
+      activeVerificationSideEffects.push(sideEffect);
+    }
+  };
   const emitToolUse = (tool: {
     toolUseId: string;
     name: string;
     input?: Record<string, unknown>;
     status: 'pending' | 'running' | 'completed' | 'failed';
   }): void => {
-    if (tool.status !== 'pending' && isNativeSideEffectToolName(tool.name)) {
-      sideEffectToolExecuted = true;
+    const sideEffect = tool.status !== 'pending'
+      ? classifyToolSideEffectFromToolUse(tool.name, tool.input)
+      : undefined;
+    if (isExecutedToolSideEffect(sideEffect)) {
+      pendingToolSideEffects.set(tool.toolUseId, {
+        toolName: tool.name,
+        kind: sideEffect.kind,
+        confidence: sideEffect.confidence,
+        verificationTrigger: sideEffect.verificationTrigger,
+        evidence: sideEffect.evidence
+      });
     }
     outputCollector.onToolUse(tool);
   };
   const emitToolResult = (result: Parameters<NonNullable<GenericAgentRuntimeParams['onToolResult']>>[0]): void => {
+    if (result.changedFiles?.some((file) => file.operation !== 'failed')) {
+      activeVerificationTrigger = mergeActiveVerificationTrigger(activeVerificationTrigger, 'active_write');
+      sideEffectToolExecuted = true;
+      for (const file of result.changedFiles) {
+        if (file.operation !== 'failed') {
+          activeVerificationChangedFiles.add(file.path);
+        }
+      }
+      recordCommittedSideEffect({
+        toolName: result.toolName ?? 'tool_result',
+        kind: 'workspace_write',
+        confidence: 'high',
+        verificationTrigger: 'active_write',
+        evidence: [
+          'tool_result:changed_files',
+          ...result.changedFiles
+            .filter((file) => file.operation !== 'failed')
+            .slice(0, 8)
+            .map((file) => `${file.operation}:${file.path}`)
+        ]
+      });
+    } else {
+      const pendingSideEffect = pendingToolSideEffects.get(result.toolUseId);
+      if (pendingSideEffect && didToolResultCommitSideEffect(result) && !isReadOnlyMcpToolResult(result)) {
+        recordCommittedSideEffect(pendingSideEffect);
+      }
+    }
+    pendingToolSideEffects.delete(result.toolUseId);
     outputCollector.onToolResult(result);
   };
   const emitThinking = (delta: string, accumulated: string): void => {
@@ -929,17 +1130,20 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
             try {
               if (useNativeToolLoop) {
                 const exposeWriteTools = shouldExposeNativeWriteTools(params, canApplyWorkspaceWrites, toolPolicy);
-                const exposeCommandTools = shouldExposeNativeCommandTools(params);
+                const exposeWriteToolBucket = shouldExposeNativeWriteToolBucket(params, canApplyWorkspaceWrites, toolPolicy);
+                const exposeCommandTools = shouldExposeNativeCommandTools(params, toolPolicy);
                 const exposeMcpTools = shouldExposeNativeMcpTools(params, canApplyWorkspaceWrites, toolPolicy);
+                const allowedToolFamilies = resolveNativeAllowedToolFamilies(params, canApplyWorkspaceWrites, toolPolicy);
                 usedNativeToolLoopForStep = true;
                 const commonToolLoopOptions = {
                   emitToolUse,
                   emitToolResult,
                   emitThinking,
                   emitStage,
-                  includeWriteTools: isNativeWriteToolLoopEnabled() && exposeWriteTools,
+                  includeWriteTools: isNativeWriteToolLoopEnabled() && exposeWriteToolBucket,
                   includeMcpToolCalls: isNativeMcpToolLoopEnabled() && exposeMcpTools,
-                  includeCommandTools: isNativeCommandToolLoopEnabled() && exposeCommandTools
+                  includeCommandTools: isNativeCommandToolLoopEnabled() && exposeCommandTools,
+                  allowedToolFamilies
                 };
                 const toolLoopResult =
                   params.provider?.protocol === 'openai-compatible'
@@ -1012,11 +1216,260 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
       ]
     });
 
+    let activeVerificationEvidence = {
+      changedFiles: Array.from(activeVerificationChangedFiles),
+      sideEffects: activeVerificationSideEffects
+    };
+    let activeVerificationPlan = planActiveVerification(runtimeParams, activeVerificationTrigger, activeVerificationEvidence);
+    let activeVerificationResult: ActiveVerificationRunResult | undefined;
+    let repairAttempted = false;
+    let repairChangeSummary: ActiveVerificationChangeSummary | undefined;
+    if (activeVerificationPlan) {
+      activeVerificationResult = await runActiveVerificationGate({
+        params: runtimeParams,
+        plan: activeVerificationPlan,
+        emitStage,
+        emitToolUse,
+        emitToolResult
+      });
+      steps.push(createStep(
+        'planning',
+        '执行主动验证',
+        activeVerificationResult.summary,
+        activeVerificationResult.status === 'passed' ? 'completed' : 'failed'
+      ));
+      if (activeVerificationResult.blocking && activeVerificationResult.status === 'failed') {
+        const toolLoopStrategy = getNativeToolLoopStrategy(params);
+        const canRepairWithNativeTools =
+          toolLoopStrategy.useNativeToolLoop &&
+          params.permission.mode !== 'read-only' &&
+          isNativeWriteToolLoopEnabled() &&
+          shouldExposeNativeWriteTools(params, canApplyWorkspaceWrites, toolPolicy);
+        if (canRepairWithNativeTools) {
+          const repairAllowedToolFamilies = resolveNativeAllowedToolFamilies(params, canApplyWorkspaceWrites, toolPolicy);
+          repairChangeSummary = await collectActiveVerificationChangeSummary(
+            runtimeParams,
+            activeVerificationEvidence
+          );
+          const repairFileEvidence = collectActiveVerificationRepairEvidence(
+            runtimeParams,
+            activeVerificationResult,
+            activeVerificationEvidence
+          );
+          const repairPrompt = createActiveVerificationRepairPrompt({
+            originalUserMessage: params.message,
+            previousAssistantMessage: loopState.accumulated.trim(),
+            verification: activeVerificationResult,
+            relatedFiles: repairFileEvidence,
+            changeSummary: repairChangeSummary
+          });
+          emitStage({
+            stageId: 'stage:native_active_verification_repair',
+            phase: 'verification_repair',
+            title: 'Repair failed verification',
+            target: activeVerificationResult.trigger,
+            status: 'running',
+            summary: '主动验证失败，正在执行一次受控修复回合。',
+            input: {
+              trigger: activeVerificationResult.trigger,
+              diagnosis: activeVerificationResult.diagnosis,
+              changeSummary: repairChangeSummary
+                ? {
+                    source: repairChangeSummary.source,
+                    truncated: repairChangeSummary.truncated,
+                    length: repairChangeSummary.summary.length
+                  }
+                : undefined,
+              failedChecks: activeVerificationResult.checks
+                .filter((check) => check.status === 'failed')
+                .map((check) => ({
+                  id: check.id,
+                  kind: check.kind,
+                  command: check.command,
+                  target: check.target
+                }))
+            }
+          });
+          const repairRuntimeParams: GenericAgentRuntimeParams = {
+            ...runtimeParams,
+            message: repairPrompt,
+            context: {
+              ...runtimeParams.context,
+              workspaceEvidence: [
+                ...(runtimeParams.context.workspaceEvidence ?? []),
+                ...repairFileEvidence.map((file) => ({
+                  kind: 'verification_failure_file' as const,
+                  source: file.source,
+                  path: file.path,
+                  title: file.line ? `${file.path}:${file.line}` : file.path,
+                  excerpt: file.excerpt,
+                  truncated: file.truncated
+                }))
+              ]
+            }
+          };
+          try {
+            repairAttempted = true;
+            const repairToolLoopResult =
+              params.provider?.protocol === 'openai-compatible'
+                ? await runOpenAiCompatibleNativeToolLoop(repairRuntimeParams, {
+                    emitToolUse,
+                    emitToolResult,
+                    emitThinking,
+                    emitStage,
+                    includeWriteTools: true,
+                    includeMcpToolCalls: isNativeMcpToolLoopEnabled() && shouldExposeNativeMcpTools(params, canApplyWorkspaceWrites, toolPolicy),
+                    includeCommandTools: isNativeCommandToolLoopEnabled() && shouldExposeNativeCommandTools(params, toolPolicy),
+                    allowedToolFamilies: repairAllowedToolFamilies
+                  })
+                : await runNativeReadOnlyToolLoop(repairRuntimeParams, {
+                    emitToolUse,
+                    emitToolResult,
+                    emitThinking,
+                    emitStage,
+                    includeWriteTools: true,
+                    includeMcpToolCalls: isNativeMcpToolLoopEnabled() && shouldExposeNativeMcpTools(params, canApplyWorkspaceWrites, toolPolicy),
+                    includeCommandTools: isNativeCommandToolLoopEnabled() && shouldExposeNativeCommandTools(params, toolPolicy),
+                    allowedToolFamilies: repairAllowedToolFamilies
+                  });
+            if (repairToolLoopResult.agentCoreParts?.length) {
+              outputCollector.onAgentCoreParts(repairToolLoopResult.agentCoreParts);
+            }
+            if (repairToolLoopResult.assistantMessage.trim()) {
+              loopState.accumulated = repairToolLoopResult.assistantMessage.trim();
+            }
+            loopState.usedNativeToolLoop = true;
+            loopState.toolLoopFinalSummary = summarizeToolLoopResult(repairToolLoopResult) || '主动验证修复回合已完成。';
+            emitStage({
+              stageId: 'stage:native_active_verification_repair',
+              phase: 'verification_repair',
+              title: 'Repair failed verification',
+              target: activeVerificationResult.trigger,
+              status: 'completed',
+              summary: loopState.toolLoopFinalSummary
+            });
+            activeVerificationEvidence = {
+              changedFiles: Array.from(activeVerificationChangedFiles),
+              sideEffects: activeVerificationSideEffects
+            };
+            const previousActiveVerificationPlan = activeVerificationPlan;
+            const nextActiveVerificationPlan =
+              planActiveVerification(runtimeParams, activeVerificationTrigger, activeVerificationEvidence) ?? previousActiveVerificationPlan;
+            const planChanged =
+              activeVerificationPlanSignature(previousActiveVerificationPlan) !== activeVerificationPlanSignature(nextActiveVerificationPlan);
+            activeVerificationPlan = nextActiveVerificationPlan;
+            emitStage({
+              stageId: 'stage:native_active_verification_replan',
+              phase: 'verification',
+              title: 'Replan active verification',
+              target: activeVerificationPlan.trigger,
+              status: 'completed',
+              summary: planChanged
+                ? `主动验证已根据修复后的 ${activeVerificationEvidence.changedFiles.length} 个变更文件重新规划。`
+                : '主动验证计划在修复后保持不变。',
+              input: {
+                trigger: activeVerificationPlan.trigger,
+                changedFiles: activeVerificationEvidence.changedFiles,
+                plannedChecks: activeVerificationPlan.checks,
+                omittedChecks: activeVerificationPlan.omittedChecks,
+                previousPlannedChecks: previousActiveVerificationPlan.checks,
+                previousOmittedChecks: previousActiveVerificationPlan.omittedChecks
+              }
+            });
+            const repairedVerificationResult = await runActiveVerificationGate({
+              params: runtimeParams,
+              plan: activeVerificationPlan,
+              emitStage,
+              emitToolUse,
+              emitToolResult
+            });
+            activeVerificationResult = repairedVerificationResult;
+            steps.push(createStep(
+              'planning',
+              '执行主动验证修复',
+              repairedVerificationResult.summary,
+              repairedVerificationResult.status === 'passed' ? 'completed' : 'failed'
+            ));
+            if (!repairedVerificationResult.blocking || repairedVerificationResult.status !== 'failed') {
+              steps.push(createStep('planning', '主动验证修复通过', repairedVerificationResult.summary, 'completed'));
+            }
+          } catch (error) {
+            emitStage({
+              stageId: 'stage:native_active_verification_repair',
+              phase: 'verification_repair',
+              title: 'Repair failed verification',
+              target: activeVerificationResult.trigger,
+              status: 'failed',
+              summary: error instanceof Error ? error.message : '主动验证修复回合失败。',
+              errorMessage: error instanceof Error ? error.message : 'active_verification_repair_failed'
+            });
+          }
+        }
+
+      }
+      if (activeVerificationResult.blocking && activeVerificationResult.status === 'failed') {
+        repairChangeSummary ??= await collectActiveVerificationChangeSummary(
+          runtimeParams,
+          activeVerificationEvidence
+        );
+        const rollbackAvailable = Boolean(runtimeParams.checkpointSnapshotId);
+        emitStage({
+          stageId: 'stage:native_active_verification_handoff',
+          phase: 'verification_handoff',
+          title: 'Verification handoff',
+          target: activeVerificationResult.trigger,
+          status: 'failed',
+          summary: activeVerificationResult.diagnosis
+            ? `${activeVerificationResult.diagnosis.kind}: ${activeVerificationResult.diagnosis.suggestedFocus}`
+            : activeVerificationResult.summary,
+          input: {
+            trigger: activeVerificationResult.trigger,
+            repairAttempted,
+            diagnosis: activeVerificationResult.diagnosis,
+            omittedChecks: activeVerificationResult.omittedChecks,
+            rollbackAvailable,
+            changeSummary: repairChangeSummary
+              ? {
+                  source: repairChangeSummary.source,
+                  truncated: repairChangeSummary.truncated,
+                  length: repairChangeSummary.summary.length
+                }
+              : undefined
+          }
+        });
+        const verificationReply = formatActiveVerificationFailureReply(loopState.accumulated.trim(), activeVerificationResult, {
+          repairAttempted,
+          changeSummary: repairChangeSummary,
+          rollbackAvailable
+        });
+        return {
+          assistantMessage: verificationReply,
+          assistantMetadata: outputCollector.buildMetadata(verificationReply, {
+            type: 'fallback',
+            text: verificationReply,
+            reason: 'active_verification_failed'
+          }),
+          assistantIntent: 'fallback',
+          fallbackDetail: activeVerificationResult.summary,
+          status: 'failed',
+          operationLog: outputCollector.buildOperationLog(),
+          usedProviderId: params.provider.id,
+          usedModel: params.provider.model,
+          sessionRuntimePatch,
+          steps: [
+            ...steps,
+            createStep('fallback', '主动验证未通过', activeVerificationResult.summary, 'failed')
+          ]
+        };
+      }
+    }
+
     const stopHookResult = await runLifecycleHooks({
       event: 'Stop',
       status: 'completed',
       metadata: {
-        replyLength: loopState.accumulated.trim().length
+        replyLength: loopState.accumulated.trim().length,
+        activeVerificationStatus: activeVerificationResult?.status
       }
     });
     if (stopHookResult.results.length > 0) {

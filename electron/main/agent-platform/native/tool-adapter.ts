@@ -1,4 +1,7 @@
 import { tool, type ToolSet } from 'ai';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { AgentLifecycleHookConfig, AgentLifecycleHookEvaluationResult, AgentPermissionImpact, AppState, McpPlugin, Project } from '../../../../shared/types';
 import { resolveNativeToolPermission, type NativeToolPermissionContext } from './tool-permission';
 import { getAgentToolDefinition, listReadOnlyWorkspaceToolDefinitions, type AgentToolDefinition } from '../tool-registry';
@@ -6,9 +9,12 @@ import { executeAgentToolAction, type AgentToolExecutionOptions, type WorkspaceT
 import { resolveMcpToolPolicy, type ResolvedMcpToolPolicy } from '../mcp-policy';
 import { makeSessionMcpToolPermissionKey } from '../permission-session-store';
 import { runAgentLifecycleHooks, type AgentLifecycleHookStageEvent } from '../agent-hooks';
+import type { ProjectInstructionGuardResult } from '../project-instruction-tracker';
+import type { AgentToolFamily } from '../tool-policy';
 
 export const NATIVE_TOOL_OUTPUT_MAX_CHARS = 12_000;
 const NATIVE_TOOL_OUTPUT_TAIL_CHARS = 2_000;
+const NATIVE_TOOL_OUTPUT_ARTIFACT_DIR = 'funplay-agent-artifacts';
 
 export const NATIVE_READ_ONLY_WORKSPACE_TOOL_NAMES = listReadOnlyWorkspaceToolDefinitions().map((definition) => definition.name);
 export const NATIVE_WRITE_WORKSPACE_TOOL_NAMES = ['create_directory', 'write_file', 'edit_file', 'multi_edit', 'patch_file', 'checkpoint_rollback', 'funplay_memory_remember', 'funplay_schedule_task', 'funplay_cancel_task', 'media_save_base64', 'image_generate', 'generate_asset', 'import_generated_asset', 'open_engine_hub', 'open_engine_project', 'install_engine_bridge'] as const;
@@ -57,6 +63,7 @@ export interface NativeWorkspaceToolAdapterOptions {
   includeWriteTools?: boolean;
   includeMcpToolCalls?: boolean;
   includeCommandTools?: boolean;
+  allowedToolFamilies?: AgentToolFamily[];
   excludeTools?: Array<WorkspaceToolAction['type']>;
   requestUserInput?: (action: Extract<WorkspaceToolAction, { type: 'ask_user' }>) => Promise<WorkspaceToolActionResult>;
   requestMcpUserInput?: AgentToolExecutionOptions['requestUserInput'];
@@ -69,6 +76,10 @@ export interface NativeWorkspaceToolAdapterOptions {
   };
   onLifecycleHook?: (hook: AgentLifecycleHookEvaluationResult) => void;
   emitLifecycleHookStage?: (stage: AgentLifecycleHookStageEvent) => void;
+  projectInstructionGuard?: (input: {
+    toolName: string;
+    input: Record<string, unknown>;
+  }) => ProjectInstructionGuardResult | undefined;
   runSubagent?: (action: Extract<WorkspaceToolAction, { type: 'run_subagent' }>) => Promise<WorkspaceToolActionResult>;
   runSubagents?: (action: Extract<WorkspaceToolAction, { type: 'run_subagents' }>) => Promise<WorkspaceToolActionResult>;
   startSubagent?: (action: Extract<WorkspaceToolAction, { type: 'subagent_start' }>) => Promise<WorkspaceToolActionResult>;
@@ -92,6 +103,7 @@ export interface NativeRuntimeToolDefinition<TInput extends Record<string, unkno
   checkPermissions?: AgentToolDefinition<TInput>['checkPermissions'];
   getPermissionDetail?: AgentToolDefinition<TInput>['getPermissionDetail'];
   isConcurrencySafe?: AgentToolDefinition<TInput>['isConcurrencySafe'];
+  classifySideEffect?: AgentToolDefinition<TInput>['classifySideEffect'];
   render?: AgentToolDefinition<TInput>['render'];
   progress?: AgentToolDefinition<TInput>['progress'];
   mapResult?: AgentToolDefinition<TInput>['mapResult'];
@@ -246,6 +258,95 @@ function compactToolSummary(summary: string): {
   };
 }
 
+function sanitizeNativeArtifactSegment(value: string): string {
+  return value
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48) || 'tool';
+}
+
+function hasCommandOutputArtifact(artifacts: WorkspaceToolActionResult['artifacts'] | undefined): boolean {
+  return artifacts?.some((artifact) => artifact.type === 'command_output') ?? false;
+}
+
+function summarizeToolInputKeys(input: Record<string, unknown>): string {
+  const keys = Object.keys(input).sort();
+  return keys.length > 0 ? keys.join(', ') : 'none';
+}
+
+async function writeNativeToolOutputArtifact(input: {
+  options: NativeWorkspaceToolAdapterOptions;
+  definition: NativeRuntimeToolDefinition;
+  toolInput: Record<string, unknown>;
+  source: 'workspace_result' | 'protocol_result';
+  content: string;
+}): Promise<NonNullable<WorkspaceToolActionResult['artifacts']>[number] | undefined> {
+  try {
+    const output = [
+      `Tool: ${input.definition.name}`,
+      `Title: ${input.definition.title}`,
+      `Project: ${input.options.project.name} (${input.options.project.id})`,
+      `Source: ${input.source}`,
+      `Original output length: ${input.content.length} chars`,
+      `Input keys: ${summarizeToolInputKeys(input.toolInput)}`,
+      '',
+      input.content
+    ].join('\n');
+    const artifactDir = join(
+      tmpdir(),
+      NATIVE_TOOL_OUTPUT_ARTIFACT_DIR,
+      sanitizeNativeArtifactSegment(input.options.project.id)
+    );
+    await mkdir(artifactDir, { recursive: true });
+    const artifactPath = join(
+      artifactDir,
+      `${Date.now()}-${sanitizeNativeArtifactSegment(input.definition.name)}-${Math.random().toString(36).slice(2, 8)}.txt`
+    );
+    await writeFile(artifactPath, output, 'utf8');
+    return {
+      type: 'command_output',
+      path: artifactPath,
+      title: `${input.definition.name} output`,
+      mimeType: 'text/plain',
+      size: Buffer.byteLength(output, 'utf8')
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+async function attachTruncatedToolOutputArtifact<T extends ReturnType<typeof toToolOutput>>(input: {
+  options: NativeWorkspaceToolAdapterOptions;
+  definition: NativeRuntimeToolDefinition;
+  toolInput: Record<string, unknown>;
+  output: T;
+  source: 'workspace_result' | 'protocol_result';
+  originalContent: string;
+  truncated: boolean;
+}): Promise<T> {
+  if (!input.truncated || hasCommandOutputArtifact(input.output.artifacts)) {
+    return input.output;
+  }
+  const artifact = await writeNativeToolOutputArtifact({
+    options: input.options,
+    definition: input.definition,
+    toolInput: input.toolInput,
+    source: input.source,
+    content: input.originalContent
+  });
+  if (!artifact) {
+    return input.output;
+  }
+  return {
+    ...input.output,
+    artifacts: [
+      ...(input.output.artifacts ?? []),
+      artifact
+    ]
+  };
+}
+
 function createUnsafeToolQueue(): <T>(operation: () => Promise<T>) => Promise<T> {
   let queue = Promise.resolve();
   return async (operation) => {
@@ -276,12 +377,43 @@ export function listNativeWorkspaceToolDefinitions(options: NativeWorkspaceToolA
         .filter((definition): definition is AgentToolDefinition => Boolean(definition))
     : [];
   const excluded = new Set(options.excludeTools ?? []);
+  const allowedFamilies = options.allowedToolFamilies ? new Set(options.allowedToolFamilies) : undefined;
   return [...readOnlyTools, ...writeTools, ...mcpToolCalls, ...(options.dynamicTools ?? []), ...commandTools]
-    .filter((definition) => !excluded.has(definition.name as WorkspaceToolAction['type']));
+    .filter((definition) => !excluded.has(definition.name as WorkspaceToolAction['type']))
+    .filter((definition) => !allowedFamilies || allowedFamilies.has(resolveNativeAgentToolFamily(definition)));
 }
 
-export function listNativeWorkspaceToolNames(options: Pick<NativeWorkspaceToolAdapterOptions, 'includeWriteTools' | 'includeMcpToolCalls' | 'includeCommandTools' | 'excludeTools'> = {}): string[] {
+export function listNativeWorkspaceToolNames(options: Pick<NativeWorkspaceToolAdapterOptions, 'includeWriteTools' | 'includeMcpToolCalls' | 'includeCommandTools' | 'allowedToolFamilies' | 'excludeTools'> = {}): string[] {
   return listNativeWorkspaceToolDefinitions(options as NativeWorkspaceToolAdapterOptions).map((definition) => definition.name);
+}
+
+function resolveNativeAgentToolFamily(definition: NativeRuntimeToolDefinition): AgentToolFamily {
+  const family = definition.toolLanguage?.family;
+  if (family === 'memory') {
+    return 'memory';
+  }
+  if (family === 'notification') {
+    return 'notification';
+  }
+  if (family === 'mcp') {
+    return 'mcp';
+  }
+  if (family === 'browser') {
+    return 'browser';
+  }
+  if (family === 'engine') {
+    return 'engine';
+  }
+  if (family === 'media') {
+    return 'media';
+  }
+  if (family === 'command' || family === 'terminal') {
+    return 'command';
+  }
+  if (!definition.readOnly || family === 'edit' || family === 'checkpoint') {
+    return 'workspace_write';
+  }
+  return 'read_only';
 }
 
 function createMcpPermissionImpact(plugin: McpPlugin, toolName: string, policy: ResolvedMcpToolPolicy): NonNullable<AgentPermissionImpact['mcp']> {
@@ -425,12 +557,12 @@ function mapNativeRuntimeToolResult(
   }) ?? result;
 }
 
-function toMappedToolOutput(
+async function toMappedToolOutput(
   options: NativeWorkspaceToolAdapterOptions,
   definition: NativeRuntimeToolDefinition,
   input: Record<string, unknown>,
   result: WorkspaceToolActionResult
-): ReturnType<typeof toToolOutput> {
+): Promise<ReturnType<typeof toToolOutput>> {
   const mapped = mapNativeRuntimeToolResult(options, definition, input, result);
   const mappingContext = {
     project: options.project,
@@ -442,21 +574,44 @@ function toMappedToolOutput(
   const protocolResult = definition.mapToolResultToProtocolResult?.(mapped, mappingContext);
   const searchText = definition.extractSearchText?.(mapped, mappingContext);
   if (!protocolResult) {
-    return {
+    const output = {
       ...toToolOutput(mapped),
       searchText
     };
+    return attachTruncatedToolOutputArtifact({
+      options,
+      definition,
+      toolInput: input,
+      output,
+      source: 'workspace_result',
+      originalContent: mapped.summary,
+      truncated: Boolean(output.summaryTruncated)
+    });
   }
   const compacted = compactToolSummary(protocolResult.content);
-  const baseOutput = toToolOutput(mapped);
-  return {
+  const baseOutput = {
+    ...toToolOutput(mapped),
+    summaryTruncated: undefined,
+    originalSummaryLength: undefined
+  };
+  const output = {
     ...baseOutput,
     ...protocolResult,
     summary: compacted.summary,
-    summaryTruncated: compacted.truncated || baseOutput.summaryTruncated || undefined,
-    originalSummaryLength: compacted.truncated ? protocolResult.content.length : baseOutput.originalSummaryLength,
+    artifacts: protocolResult.artifacts ?? baseOutput.artifacts,
+    summaryTruncated: compacted.truncated || undefined,
+    originalSummaryLength: compacted.truncated ? protocolResult.content.length : undefined,
     searchText: protocolResult.searchText ?? searchText
   };
+  return attachTruncatedToolOutputArtifact({
+    options,
+    definition,
+    toolInput: input,
+    output,
+    source: 'protocol_result',
+    originalContent: protocolResult.content,
+    truncated: compacted.truncated
+  });
 }
 
 function appendLifecycleHookContextToToolOutput<T extends ReturnType<typeof toToolOutput>>(output: T, contexts: string[]): T {
@@ -472,6 +627,14 @@ function appendLifecycleHookContextToToolOutput<T extends ReturnType<typeof toTo
       '[Lifecycle hook additional context]',
       ...cleaned
     ].join('\n')
+  };
+}
+
+function projectInstructionGuardToWorkspaceResult(guard: ProjectInstructionGuardResult): WorkspaceToolActionResult {
+  return {
+    ok: false,
+    isError: true,
+    summary: guard.summary
   };
 }
 
@@ -525,7 +688,7 @@ export function createNativeWorkspaceTools(options: NativeWorkspaceToolAdapterOp
           const normalizedInput = (input ?? {}) as Record<string, unknown>;
           const preToolHooks = await runWorkspaceToolLifecycleHooks(options, definition, 'PreToolUse', normalizedInput);
           if (preToolHooks.blocked) {
-            return toMappedToolOutput(options, definition, normalizedInput, {
+            return await toMappedToolOutput(options, definition, normalizedInput, {
               ok: false,
               isError: true,
               summary: [
@@ -535,15 +698,27 @@ export function createNativeWorkspaceTools(options: NativeWorkspaceToolAdapterOp
             });
           }
           const executeTool = async () => {
+            const projectInstructionGuard = options.projectInstructionGuard?.({
+              toolName: definition.name,
+              input: normalizedInput
+            });
+            if (projectInstructionGuard) {
+              return await toMappedToolOutput(
+                options,
+                definition,
+                normalizedInput,
+                projectInstructionGuardToWorkspaceResult(projectInstructionGuard)
+              );
+            }
             const denied = await guardWorkspaceTool(options, definition, normalizedInput);
             if (denied) {
-              return toMappedToolOutput(options, definition, normalizedInput, denied);
+              return await toMappedToolOutput(options, definition, normalizedInput, denied);
             }
             if (definition.execute) {
-              return toMappedToolOutput(options, definition, normalizedInput, await definition.execute(normalizedInput));
+              return await toMappedToolOutput(options, definition, normalizedInput, await definition.execute(normalizedInput));
             }
             if (!definition.toAction) {
-              return toMappedToolOutput(options, definition, normalizedInput, {
+              return await toMappedToolOutput(options, definition, normalizedInput, {
                 ok: false,
                 isError: true,
                 summary: `工具 ${definition.name} 没有可执行动作。`
@@ -552,55 +727,55 @@ export function createNativeWorkspaceTools(options: NativeWorkspaceToolAdapterOp
             const action = definition.toAction(normalizedInput);
             if (action.type === 'ask_user') {
               if (!options.requestUserInput) {
-                return toMappedToolOutput(options, definition, normalizedInput, {
+                return await toMappedToolOutput(options, definition, normalizedInput, {
                   ok: false,
                   isError: true,
                   summary: '当前 Native tool loop 没有启用用户输入请求器。'
                 });
               }
-              return toMappedToolOutput(options, definition, normalizedInput, await options.requestUserInput(action));
+              return await toMappedToolOutput(options, definition, normalizedInput, await options.requestUserInput(action));
             }
             if (action.type === 'run_subagent') {
               if (!options.runSubagent) {
-                return toMappedToolOutput(options, definition, normalizedInput, {
+                return await toMappedToolOutput(options, definition, normalizedInput, {
                   ok: false,
                   isError: true,
                   summary: '当前 Native tool loop 没有启用子任务执行器。'
                 });
               }
-              return toMappedToolOutput(options, definition, normalizedInput, await options.runSubagent(action));
+              return await toMappedToolOutput(options, definition, normalizedInput, await options.runSubagent(action));
             }
             if (action.type === 'run_subagents') {
               if (!options.runSubagents) {
-                return toMappedToolOutput(options, definition, normalizedInput, {
+                return await toMappedToolOutput(options, definition, normalizedInput, {
                   ok: false,
                   isError: true,
                   summary: '当前 Native tool loop 没有启用并行子任务执行器。'
                 });
               }
-              return toMappedToolOutput(options, definition, normalizedInput, await options.runSubagents(action));
+              return await toMappedToolOutput(options, definition, normalizedInput, await options.runSubagents(action));
             }
             if (action.type === 'subagent_start') {
               if (!options.startSubagent) {
-                return toMappedToolOutput(options, definition, normalizedInput, {
+                return await toMappedToolOutput(options, definition, normalizedInput, {
                   ok: false,
                   isError: true,
                   summary: '当前 Native tool loop 没有启用后台子任务执行器。'
                 });
               }
-              return toMappedToolOutput(options, definition, normalizedInput, await options.startSubagent(action));
+              return await toMappedToolOutput(options, definition, normalizedInput, await options.startSubagent(action));
             }
             if (action.type === 'subagent_status') {
               if (!options.readSubagentStatus) {
-                return toMappedToolOutput(options, definition, normalizedInput, {
+                return await toMappedToolOutput(options, definition, normalizedInput, {
                   ok: false,
                   isError: true,
                   summary: '当前 Native tool loop 没有启用后台子任务状态读取器。'
                 });
               }
-              return toMappedToolOutput(options, definition, normalizedInput, await options.readSubagentStatus(action));
+              return await toMappedToolOutput(options, definition, normalizedInput, await options.readSubagentStatus(action));
             }
-            return toMappedToolOutput(
+            return await toMappedToolOutput(
               options,
               definition,
               normalizedInput,

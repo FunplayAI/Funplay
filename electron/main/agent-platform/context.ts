@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { basename, dirname, resolve } from 'node:path';
+import { basename, dirname, relative, resolve } from 'node:path';
 import {
   DEFAULT_PROJECT_SESSION_MODE,
   buildSessionConversationTurns,
@@ -9,9 +9,11 @@ import {
   getChatMessageContextText,
   summarizeArchivedConversationTurns
 } from '../../../shared/project-sessions';
-import type { McpPlugin, Project } from '../../../shared/types';
+import type { AgentOperationRecord, ChatMessage, McpPlugin, Project } from '../../../shared/types';
 import type { GenericAgentWorkspaceContext, GenericProjectContextIndex } from './types';
 import { buildAgentSkillRegistry, resolveAgentSkillActivations } from './skill-registry';
+
+type GenericWorkspaceEvidence = NonNullable<GenericAgentWorkspaceContext['workspaceEvidence']>;
 
 function trimContent(content: string, maxLength = 1600): string {
   return content.length > maxLength ? `${content.slice(0, maxLength)}…` : content;
@@ -41,6 +43,12 @@ const MAX_CONTEXT_INDEX_DEPENDENCIES = 40;
 const MAX_CONTEXT_INDEX_ENTRYPOINTS = 18;
 const MAX_CONTEXT_INDEX_CONFIG_FILES = 24;
 const MAX_CONTEXT_INDEX_RECENT_FILES = 24;
+const MAX_CROSS_SESSION_SUMMARIES = 6;
+const MAX_RELATED_SESSION_EVIDENCE = 6;
+const MAX_WORKSPACE_EVIDENCE_ITEMS = 8;
+const MAX_WORKSPACE_EVIDENCE_CHARS = 1800;
+const MAX_WORKSPACE_EVIDENCE_FILE_BYTES = 240_000;
+const MAX_RECENT_VERIFICATION_FAILURE_FILES = 4;
 const CONTEXT_INDEX_CONFIG_CANDIDATES = [
   'package.json',
   'pnpm-lock.yaml',
@@ -51,6 +59,13 @@ const CONTEXT_INDEX_CONFIG_CANDIDATES = [
   'tsconfig.json',
   'vite.config.ts',
   'vite.config.js',
+  'vitest.config.ts',
+  'vitest.config.js',
+  'playwright.config.ts',
+  'playwright.config.js',
+  'playwright.config.mjs',
+  'cypress.config.ts',
+  'cypress.config.js',
   'electron.vite.config.ts',
   'electron.vite.config.js',
   'next.config.js',
@@ -189,7 +204,22 @@ function stringFromUnknown(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
+function parsePackageManagerSpec(value: unknown): GenericProjectContextIndex['packageManager'] {
+  const spec = stringFromUnknown(value);
+  if (!spec) {
+    return undefined;
+  }
+  const match = /^(npm|pnpm|yarn|bun)(?:@|$)/i.exec(spec);
+  const name = match?.[1]?.toLowerCase();
+  return name === 'npm' || name === 'pnpm' || name === 'yarn' || name === 'bun'
+    ? name
+    : undefined;
+}
+
 function detectPackageManager(rootPath: string): GenericProjectContextIndex['packageManager'] {
+  const packageJson = readJsonFile(rootPath, 'package.json');
+  const declared = parsePackageManagerSpec(packageJson?.packageManager);
+  if (declared) return declared;
   if (existsSync(resolve(rootPath, 'pnpm-lock.yaml'))) return 'pnpm';
   if (existsSync(resolve(rootPath, 'yarn.lock'))) return 'yarn';
   if (existsSync(resolve(rootPath, 'bun.lockb')) || existsSync(resolve(rootPath, 'bun.lock'))) return 'bun';
@@ -379,6 +409,33 @@ function isPathInsideRoot(rootPath: string, absolutePath: string): boolean {
   return absolutePath === rootPath || absolutePath.startsWith(`${rootPath}/`);
 }
 
+function normalizeWorkspaceEvidencePath(rootPath: string, token: string): string | undefined {
+  const cleaned = token
+    .trim()
+    .replace(/^file:\/\//, '')
+    .replace(/^[@'"`({\[<]+|['"`)}\]>,.;]+$/g, '')
+    .replace(/:(\d+)(:\d+)?$/, '')
+    .replaceAll('\\', '/')
+    .replace(/^\.\//, '')
+    .replace(/\/+$/, '');
+
+  if (!cleaned || cleaned.includes('://')) {
+    return undefined;
+  }
+
+  const absolutePath = cleaned.startsWith('/') ? resolve(cleaned) : resolve(rootPath, cleaned);
+  if (!isPathInsideRoot(rootPath, absolutePath)) {
+    return undefined;
+  }
+
+  const normalized = relative(rootPath, absolutePath).replaceAll('\\', '/');
+  if (!normalized || normalized.startsWith('..') || normalized.split('/').includes('..')) {
+    return undefined;
+  }
+
+  return normalized;
+}
+
 function normalizeInstructionPathToken(token: string): string | undefined {
   const normalized = token
     .trim()
@@ -414,6 +471,393 @@ function extractInstructionPathTokens(message = ''): string[] {
       .map((token) => normalizeInstructionPathToken(token))
       .filter((token): token is string => Boolean(token))
   )].slice(0, MAX_PROJECT_INSTRUCTION_PATH_TOKENS);
+}
+
+function parseReferenceLine(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+  if (typeof value === 'string' && /^\d+$/.test(value)) {
+    const parsed = Number.parseInt(value, 10);
+    return parsed > 0 ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function extractPathReferencesFromText(text = ''): Array<{ path: string; line?: number }> {
+  const references: Array<{ path: string; line?: number }> = [];
+  const seen = new Set<string>();
+  const pattern = /((?:file:\/\/)?(?:\/|\.\/)?(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,12})(?::(\d+)(?::\d+)?)?/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) && references.length < MAX_RECENT_VERIFICATION_FAILURE_FILES * 3) {
+    const path = match[1] ?? '';
+    const line = parseReferenceLine(match[2]);
+    const key = `${path}:${line ?? ''}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    references.push(line !== undefined ? { path, line } : { path });
+  }
+  return references;
+}
+
+function isRecentVerificationFailureOperation(record: AgentOperationRecord): boolean {
+  if (record.status !== 'failed') {
+    return false;
+  }
+  const haystack = [
+    record.id,
+    record.phase,
+    record.title,
+    record.target
+  ].filter(Boolean).join('\n').toLowerCase();
+  return haystack.includes('native_active_verification') ||
+    haystack.includes('verification_handoff') ||
+    haystack.includes('active verification');
+}
+
+function extractVerificationReferencesFromOperation(record: AgentOperationRecord): Array<{ path: string; line?: number }> {
+  const references: Array<{ path: string; line?: number }> = [];
+  const seen = new Set<string>();
+  const push = (path: string | undefined, line?: number): void => {
+    if (!path) {
+      return;
+    }
+    const key = `${path}:${line ?? ''}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    references.push(line !== undefined ? { path, line } : { path });
+  };
+
+  const input = recordFromUnknown(record.input);
+  const diagnosis = recordFromUnknown(input.diagnosis);
+  const diagnosisReferences = Array.isArray(diagnosis.references) ? diagnosis.references : [];
+  for (const reference of diagnosisReferences) {
+    const value = recordFromUnknown(reference);
+    push(stringFromUnknown(value.path), parseReferenceLine(value.line));
+  }
+
+  const evidenceText = [
+    record.summary,
+    record.errorMessage,
+    stringFromUnknown(diagnosis.summary),
+    stringFromUnknown(diagnosis.suggestedFocus),
+    ...(Array.isArray(diagnosis.evidence) ? diagnosis.evidence.map((value) => typeof value === 'string' ? value : '') : [])
+  ].filter(Boolean).join('\n');
+  for (const reference of extractPathReferencesFromText(evidenceText)) {
+    push(reference.path, reference.line);
+  }
+
+  return references;
+}
+
+function collectRecentVerificationFailureFiles(messages: ChatMessage[]): Array<{ path: string; line?: number }> {
+  const candidates: Array<{ path: string; line?: number }> = [];
+  const seen = new Set<string>();
+  const push = (candidate: { path: string; line?: number }): void => {
+    const key = `${candidate.path}:${candidate.line ?? ''}`;
+    if (seen.has(key) || candidates.length >= MAX_RECENT_VERIFICATION_FAILURE_FILES) {
+      return;
+    }
+    seen.add(key);
+    candidates.push(candidate);
+  };
+
+  for (const message of messages.slice(-8).reverse()) {
+    const operationLog = message.metadata?.operationLog ?? [];
+    for (const record of operationLog.slice().reverse()) {
+      if (!isRecentVerificationFailureOperation(record)) {
+        continue;
+      }
+      for (const reference of extractVerificationReferencesFromOperation(record)) {
+        push(reference);
+      }
+      if (candidates.length >= MAX_RECENT_VERIFICATION_FAILURE_FILES) {
+        return candidates;
+      }
+    }
+  }
+
+  return candidates;
+}
+
+function extractContextTerms(message = ''): string[] {
+  const normalized = message.toLowerCase();
+  const latinTerms = [...normalized.matchAll(/\b[a-z][a-z0-9_-]{2,}\b/g)].map((match) => match[0]);
+  const cjkTerms = [...message.matchAll(/[\u4e00-\u9fa5]{2,}/g)].flatMap((match) => {
+    const value = match[0];
+    return value.length > 8 ? [value.slice(0, 8)] : [value];
+  });
+  const stopWords = new Set([
+    'the',
+    'and',
+    'for',
+    'with',
+    'this',
+    'that',
+    'please',
+    'implement',
+    'agent'
+  ]);
+  return [...new Set([...latinTerms, ...cjkTerms].filter((term) => !stopWords.has(term)))]
+    .slice(0, 16);
+}
+
+function summarizeSessionMessages(messages: string[], maxChars: number): {
+  summary: string;
+  truncated?: boolean;
+} {
+  const raw = messages
+    .map((content) => content.trim())
+    .filter(Boolean)
+    .join('\n\n');
+  const truncated = truncateWithFlag(raw, maxChars);
+  return {
+    summary: truncated.value ?? '',
+    truncated: truncated.truncated
+  };
+}
+
+function collectCrossSessionSummaries(
+  project: Project,
+  activeSessionId: string,
+  terms: string[]
+): GenericAgentWorkspaceContext['crossSessionSummaries'] {
+  return [...(project.sessions ?? [])]
+    .filter((session) =>
+      session.id !== activeSessionId &&
+      session.chat.length > 0 &&
+      Boolean(session.runtimeOverrides?.nativeContextSummary || session.runtimeOverrides?.claudeContextSummary)
+    )
+    .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+    .slice(0, MAX_CROSS_SESSION_SUMMARIES)
+    .map((session) => {
+      const summarySource =
+        session.runtimeOverrides?.nativeContextSummary ||
+        session.runtimeOverrides?.claudeContextSummary;
+      const summarySourcePreview = summarySource ? truncateWithFlag(summarySource.trim(), 900) : undefined;
+      const summarized = summarySourcePreview
+        ? {
+            summary: summarySourcePreview.value ?? '',
+            truncated: summarySourcePreview.truncated
+          }
+        : summarizeSessionMessages([], 900);
+      const matchedTerm = terms.find((term) =>
+        `${session.title}\n${summarized.summary}`.toLowerCase().includes(term.toLowerCase())
+      );
+      return {
+        sessionId: session.id,
+        title: session.title,
+        updatedAt: session.updatedAt,
+        messageCount: session.chat.length,
+        latestSummary: summarized.summary,
+        source: matchedTerm ? `matched:${matchedTerm}` : summarySource ? 'runtime_summary' : 'recent_messages',
+        truncated: summarized.truncated
+      };
+    });
+}
+
+function collectRelatedSessionEvidence(
+  project: Project,
+  activeSessionId: string,
+  terms: string[]
+): GenericAgentWorkspaceContext['relatedSessionEvidence'] {
+  if (terms.length === 0) {
+    return [];
+  }
+  const evidence: GenericAgentWorkspaceContext['relatedSessionEvidence'] = [];
+  for (const session of project.sessions ?? []) {
+    if (session.id === activeSessionId || session.chat.length === 0) {
+      continue;
+    }
+    const summarySource =
+      session.runtimeOverrides?.nativeContextSummary ||
+      session.runtimeOverrides?.claudeContextSummary;
+    if (!summarySource) {
+      continue;
+    }
+    const haystack = summarySource;
+    const haystackLower = haystack.toLowerCase();
+    const matchedTerm = terms.find((term) => haystackLower.includes(term.toLowerCase()));
+    if (!matchedTerm) {
+      continue;
+    }
+    const matchIndex = Math.max(0, haystackLower.indexOf(matchedTerm.toLowerCase()));
+    const start = Math.max(0, matchIndex - 280);
+    const rawExcerpt = haystack.slice(start, matchIndex + matchedTerm.length + 520).trim();
+    const excerpt = truncateWithFlag(rawExcerpt, 900);
+    evidence.push({
+      sessionId: session.id,
+      title: session.title,
+      matchedTerm,
+      excerpt: excerpt.value ?? '',
+      source: 'chat_search',
+      truncated: excerpt.truncated || start > 0
+    });
+  }
+  return evidence
+    .sort((left, right) => left.title.localeCompare(right.title))
+    .slice(0, MAX_RELATED_SESSION_EVIDENCE);
+}
+
+function readWorkspaceEvidenceFile(rootPath: string, relativePath: string, line?: number): {
+  excerpt?: string;
+  truncated?: boolean;
+} {
+  const normalized = normalizeWorkspaceEvidencePath(rootPath, relativePath);
+  if (!normalized) {
+    return {};
+  }
+  const absolutePath = resolve(rootPath, normalized);
+  if (!isPathInsideRoot(rootPath, absolutePath) || !existsSync(absolutePath)) {
+    return {};
+  }
+  try {
+    const fileStat = statSync(absolutePath);
+    if (!fileStat.isFile() || fileStat.size > MAX_WORKSPACE_EVIDENCE_FILE_BYTES) {
+      return {};
+    }
+    const raw = readFileSync(absolutePath, 'utf8');
+    if (line !== undefined) {
+      const lines = raw.split(/\r?\n/);
+      const startIndex = Math.max(0, line - 8);
+      const endIndex = Math.min(lines.length, line + 7);
+      const excerpt = lines
+        .slice(startIndex, endIndex)
+        .map((value, index) => `${startIndex + index + 1}: ${value}`)
+        .join('\n');
+      const truncated = truncateWithFlag(excerpt, MAX_WORKSPACE_EVIDENCE_CHARS);
+      return {
+        excerpt: truncated.value,
+        truncated: truncated.truncated || startIndex > 0 || endIndex < lines.length
+      };
+    }
+    const truncated = truncateWithFlag(raw, MAX_WORKSPACE_EVIDENCE_CHARS);
+    return {
+      excerpt: truncated.value,
+      truncated: truncated.truncated
+    };
+  } catch {
+    return {};
+  }
+}
+
+function collectWorkspaceEvidence(input: {
+  project: Project;
+  projectContextIndex?: GenericProjectContextIndex;
+  message?: string;
+  recentMessages?: Array<{
+    content: string;
+  }>;
+  recentVerificationFailureFiles?: Array<{
+    path: string;
+    line?: number;
+  }>;
+  crossSessionSummaries: GenericAgentWorkspaceContext['crossSessionSummaries'];
+  relatedSessionEvidence: GenericAgentWorkspaceContext['relatedSessionEvidence'];
+}): GenericAgentWorkspaceContext['workspaceEvidence'] {
+  const rootPath = resolveProjectPath(input.project);
+  const evidence: GenericWorkspaceEvidence = [];
+  const seen = new Set<string>();
+  const pushEvidence = (item: GenericWorkspaceEvidence[number]): void => {
+    const key = `${item.kind}:${item.path ?? item.title ?? item.source}`;
+    if (seen.has(key) || evidence.length >= MAX_WORKSPACE_EVIDENCE_ITEMS) {
+      return;
+    }
+    seen.add(key);
+    evidence.push(item);
+  };
+
+  if (rootPath) {
+    const currentMessagePathTokens = extractInstructionPathTokens(input.message);
+    const recentMessagePathTokens = [
+      ...new Set(
+        (input.recentMessages ?? [])
+          .slice(-8)
+          .flatMap((message) => extractInstructionPathTokens(message.content))
+      )
+    ];
+    const pathCandidates: Array<{
+      path: string;
+      kind: GenericWorkspaceEvidence[number]['kind'];
+      source: string;
+      line?: number;
+    }> = [
+      ...currentMessagePathTokens.map((path) => ({
+        path,
+        kind: 'message_path' as const,
+        source: 'user_message_path'
+      })),
+      ...(input.recentVerificationFailureFiles ?? []).map((file) => ({
+        path: file.path,
+        kind: 'verification_failure_file' as const,
+        source: 'recent_verification_failure',
+        ...(file.line !== undefined ? { line: file.line } : {})
+      })),
+      ...recentMessagePathTokens.map((path) => ({
+        path,
+        kind: 'message_path' as const,
+        source: 'recent_message_path'
+      })),
+      ...(input.projectContextIndex?.recentFiles ?? []).map((file) => ({
+        path: file.path,
+        kind: 'recent_file' as const,
+        source: 'git_recent_file'
+      })),
+      ...(input.projectContextIndex?.entrypoints ?? []).map((entrypoint) => ({
+        path: entrypoint.path,
+        kind: 'entrypoint' as const,
+        source: entrypoint.reason
+      }))
+    ];
+
+    for (const candidate of pathCandidates) {
+      if (evidence.length >= MAX_WORKSPACE_EVIDENCE_ITEMS) {
+        break;
+      }
+      const path = normalizeWorkspaceEvidencePath(rootPath, candidate.path);
+      if (!path) {
+        continue;
+      }
+      const file = readWorkspaceEvidenceFile(rootPath, path, candidate.line);
+      if (!file.excerpt) {
+        continue;
+      }
+      pushEvidence({
+        kind: candidate.kind,
+        source: candidate.source,
+        path,
+        title: candidate.line ? `${path}:${candidate.line}` : path,
+        excerpt: file.excerpt,
+        truncated: file.truncated
+      });
+    }
+  }
+
+  for (const session of input.relatedSessionEvidence) {
+    pushEvidence({
+      kind: 'related_session',
+      source: session.source ?? 'related_session',
+      title: session.title,
+      excerpt: session.excerpt,
+      truncated: session.truncated
+    });
+  }
+
+  for (const session of input.crossSessionSummaries) {
+    pushEvidence({
+      kind: 'session_summary',
+      source: session.source ?? 'cross_session_summary',
+      title: session.title,
+      excerpt: session.latestSummary,
+      truncated: session.truncated
+    });
+  }
+
+  return evidence;
 }
 
 function resolveInstructionDirectoriesForToken(rootPath: string, token: string): string[] {
@@ -542,6 +986,25 @@ export function buildGenericWorkspaceContext(
   const allTurns = buildSessionConversationTurns(activeSession.chat, Number.MAX_SAFE_INTEGER);
   const recentTurns = allTurns.slice(-6);
   const archivedTurns = allTurns.slice(0, -6);
+  const projectContextIndex = collectProjectContextIndex(ensured);
+  const contextTerms = extractContextTerms(message);
+  const crossSessionSummaries = collectCrossSessionSummaries(ensured, activeSession.id, contextTerms);
+  const relatedSessionEvidence = collectRelatedSessionEvidence(ensured, activeSession.id, contextTerms);
+  const recentMessages = activeSession.chat.slice(-10).map((message) => ({
+    role: message.role,
+    content: trimContent(getChatMessageContextText(message)),
+    createdAt: message.createdAt
+  }));
+  const recentVerificationFailureFiles = collectRecentVerificationFailureFiles(activeSession.chat);
+  const workspaceEvidence = collectWorkspaceEvidence({
+    project: ensured,
+    projectContextIndex,
+    message,
+    recentMessages,
+    recentVerificationFailureFiles,
+    crossSessionSummaries,
+    relatedSessionEvidence
+  });
 
   const enabledSkills = (ensured.agentPolicy?.skills ?? []).filter((skill) => skill.enabled);
   const filesystemSkills = buildAgentSkillRegistry({
@@ -560,7 +1023,7 @@ export function buildGenericWorkspaceContext(
     runtimeEnvironment: collectRuntimeEnvironment(ensured),
     projectBrief: ensured.contextSummary?.projectBrief || ensured.blueprint?.premise || ensured.pitch,
     currentGoal: ensured.contextSummary?.currentGoal,
-    projectContextIndex: collectProjectContextIndex(ensured),
+    projectContextIndex,
     runtimeSummary: ensured.runtimeState
       ? [
           `projectExists=${ensured.runtimeState.projectExists}`,
@@ -584,13 +1047,10 @@ export function buildGenericWorkspaceContext(
     archivedTurnCount: archivedTurns.length,
     archivedSummary: summarizeArchivedConversationTurns(archivedTurns),
     recentTurns,
-    recentMessages: activeSession.chat.slice(-10).map((message) => ({
-      role: message.role,
-      content: trimContent(getChatMessageContextText(message)),
-      createdAt: message.createdAt
-    })),
-    crossSessionSummaries: [],
-    relatedSessionEvidence: [],
+    recentMessages,
+    crossSessionSummaries,
+    relatedSessionEvidence,
+    workspaceEvidence,
     projectInstructions: collectProjectInstructions(ensured, message),
     toolContext: {
       plugins: plugins.map((plugin) => ({

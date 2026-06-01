@@ -2,9 +2,11 @@ import type { ToolSet } from 'ai';
 import { z } from 'zod';
 import type { OpenAiCompatibleToolDefinition } from '../../openai-compatible-client';
 import type { ConversationOperationStageEvent } from '../operation-log';
+import type { AgentToolFamily } from '../tool-policy';
 import type { GenericAgentRuntimeParams } from '../types';
 import { emitRuntimeLifecycleHook } from '../runtime-event-emitter';
 import type { WorkspaceToolAction } from '../workspace-tools';
+import type { ProjectInstructionGuardResult } from '../project-instruction-tracker';
 import { materializeNativeMcpTools, type NativeMcpMaterializationFailure } from './mcp-tool-materializer';
 import {
   createNativeWorkspaceTools,
@@ -17,6 +19,7 @@ export interface NativeToolPoolMode {
   includeWriteTools: boolean;
   includeMcpToolCalls: boolean;
   includeCommandTools: boolean;
+  allowedToolFamilies?: AgentToolFamily[];
   excludeTools?: Array<WorkspaceToolAction['type']>;
 }
 
@@ -41,6 +44,11 @@ export interface NativeToolPool {
     emitStage?: (stage: ConversationOperationStageEvent) => void;
   }) => Promise<boolean>;
 }
+
+export type NativeToolPoolProjectInstructionGuard = (input: {
+  toolName: string;
+  input: Record<string, unknown>;
+}) => ProjectInstructionGuardResult | undefined;
 
 function summarizeMcpMaterializationFailures(failures: NativeMcpMaterializationFailure[]): string {
   return failures
@@ -182,6 +190,7 @@ function createNativeToolAdapterOptions(input: {
   dynamicMcpTools: NativeRuntimeToolDefinition[];
   delegates?: NativeToolPoolDelegates;
   emitStage?: (stage: ConversationOperationStageEvent) => void;
+  projectInstructionGuard?: NativeToolPoolProjectInstructionGuard;
 }): NativeWorkspaceToolAdapterOptions {
   return {
     project: input.params.project,
@@ -193,6 +202,7 @@ function createNativeToolAdapterOptions(input: {
     includeWriteTools: input.mode.includeWriteTools,
     includeMcpToolCalls: input.mode.includeMcpToolCalls,
     includeCommandTools: input.mode.includeCommandTools,
+    allowedToolFamilies: input.mode.allowedToolFamilies,
     excludeTools: input.mode.excludeTools,
     dynamicTools: input.dynamicMcpTools,
     permissionContext: {
@@ -208,6 +218,7 @@ function createNativeToolAdapterOptions(input: {
     },
     onLifecycleHook: (hook) => emitRuntimeLifecycleHook(input.params, hook),
     emitLifecycleHookStage: input.emitStage,
+    projectInstructionGuard: input.projectInstructionGuard,
     requestUserInput: input.delegates?.requestUserInput,
     requestMcpUserInput: input.delegates?.requestMcpUserInput,
     runSubagent: input.delegates?.runSubagent,
@@ -222,6 +233,7 @@ export async function createNativeToolPool(input: {
   mode: NativeToolPoolMode;
   delegates?: NativeToolPoolDelegates;
   emitStage?: (stage: ConversationOperationStageEvent) => void;
+  projectInstructionGuard?: NativeToolPoolProjectInstructionGuard;
 }): Promise<NativeToolPool> {
   const dynamicMcpTools = await prepareNativeDynamicMcpTools(
     input.params,
@@ -260,7 +272,8 @@ export async function createNativeToolPool(input: {
       mode: input.mode,
       dynamicMcpTools: pool.dynamicMcpTools,
       delegates: input.delegates,
-      emitStage: input.emitStage
+      emitStage: input.emitStage,
+      projectInstructionGuard: input.projectInstructionGuard
     });
     pool.definitions = listNativeWorkspaceToolDefinitions(adapterOptions);
     pool.names = pool.definitions.map((definition) => definition.name);

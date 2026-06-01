@@ -1,0 +1,37 @@
+{
+  "id": "native-terminal-write-verify",
+  "title": "Native runtime verifies terminal stdin workspace writes",
+  "description": "Runs the native runtime against a scripted provider that starts a persistent terminal, writes a project-mutating command through terminal_write, then proves the host treats terminal stdin as a write side effect and runs active verification.",
+  "capabilities": [
+    "native_runtime_execution",
+    "terminal_side_effect_verification",
+    "active_verification_gate"
+  ],
+  "timeoutMs": 120000,
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"funplay-agent-e2e-terminal-write-verify\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node acceptance/terminal-write-verify.test.mjs\"\n  }\n}\n"
+      },
+      {
+        "path": "acceptance/terminal-write-verify.test.mjs",
+        "content": "import assert from 'node:assert/strict';\nimport { readFile } from 'node:fs/promises';\n\nconst output = JSON.parse(await readFile(new URL('../src/agent-output.json', import.meta.url), 'utf8'));\nassert.equal(output.ready, true);\nassert.equal(output.marker, 'FUNPLAY_NATIVE_TERMINAL_WRITE_OK');\nconsole.log('native-terminal-write-verify acceptance passed');\n"
+      }
+    ]
+  },
+  "agentCommand": {
+    "command": "cd \"$FUNPLAY_REPO_ROOT\" && node --experimental-strip-types --import ./tests/register-ts-loader.mjs ./scripts/native-runtime-e2e.mjs terminal-write-verify \"$FUNPLAY_WORKSPACE_ROOT\"",
+    "cwd": ".",
+    "timeoutMs": 120000
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-npm-test",
+      "kind": "test",
+      "command": "npm test",
+      "required": true,
+      "timeoutMs": 30000
+    }
+  ]
+}

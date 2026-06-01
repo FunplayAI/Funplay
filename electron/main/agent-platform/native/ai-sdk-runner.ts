@@ -32,6 +32,7 @@ export async function runNativeAiSdkToolLoop(
     throw new Error('Native tool loop requires a provider.');
   }
   const model = createLanguageModel(params.provider);
+  const instructionTracker = new ProjectInstructionTracker(params.project, params.context.projectInstructions);
   const {
     includeWriteTools,
     includeMcpToolCalls,
@@ -42,8 +43,24 @@ export async function runNativeAiSdkToolLoop(
     title: '准备真实 Tool Schema',
     runningSummary: '正在初始化 Native 工作区工具池。',
     completedSummary: (toolCount) => `已注册 ${toolCount} 个 Native 工作区工具。`
+  }, {
+    projectInstructionGuard: ({ toolName, input }) => {
+      const guard = instructionTracker.guardWriteBeforeLocalInstructions(toolName, input);
+      if (guard) {
+        callbacks?.emitStage?.({
+          stageId: 'stage:native_ai_sdk_project_instruction_guard',
+          title: '写入前发现局部 Agent 指令',
+          target: toolName,
+          status: 'completed',
+          summary: `已在执行 ${toolName} 前载入 ${guard.paths.join(', ')}，本次写入已拦截并回放给模型重试。`,
+          input: {
+            paths: guard.paths
+          }
+        });
+      }
+      return guard;
+    }
   });
-  const instructionTracker = new ProjectInstructionTracker(params.project, params.context.projectInstructions);
 
   const loopState: NativeAiSdkLoopState = {
     messages: buildNativeToolLoopMessages({
@@ -63,7 +80,9 @@ export async function runNativeAiSdkToolLoop(
     streamedText: false,
     toolCalls: [],
     partialWriteContinuationCount: 0,
+    editFailureContinuationCount: 0,
     incompleteTodoContinuationCount: 0,
+    editFailureRecoveries: [],
     latestTodoSnapshot: resolveLatestTodoSnapshotFromHistory(params)
   };
   const stepState = new NativeAiSdkStepState();

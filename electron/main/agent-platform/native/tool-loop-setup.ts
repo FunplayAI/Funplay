@@ -1,23 +1,26 @@
 import type { GenericAgentRuntimeParams } from '../types';
+import type { AgentToolFamily } from '../tool-policy';
 import type { NativeToolLoopCallbacks } from './tool-loop-controller';
 import { createNativeToolLoopDelegates } from './tool-loop-delegates';
-import { createNativeToolPool, type NativeToolPool } from './tool-pool';
+import { createNativeToolPool, type NativeToolPool, type NativeToolPoolProjectInstructionGuard } from './tool-pool';
 
 export interface NativeToolLoopFeatureFlags {
   includeWriteTools: boolean;
   includeMcpToolCalls: boolean;
   includeCommandTools: boolean;
+  allowedToolFamilies?: AgentToolFamily[];
 }
 
 export type NativeToolLoopSetupCallbacks = Pick<
   NativeToolLoopCallbacks,
   'emitStage' | 'includeWriteTools' | 'includeMcpToolCalls' | 'includeCommandTools'
->;
+> & Pick<NativeToolLoopCallbacks, 'allowedToolFamilies'>;
 
 export interface NativeToolLoopToolPoolSetup {
   includeWriteTools: boolean;
   includeMcpToolCalls: boolean;
   includeCommandTools: boolean;
+  allowedToolFamilies?: AgentToolFamily[];
   toolPool: NativeToolPool;
   toolNames: string[];
 }
@@ -26,7 +29,8 @@ export function resolveNativeToolLoopFeatureFlags(callbacks?: NativeToolLoopSetu
   return {
     includeWriteTools: Boolean(callbacks?.includeWriteTools),
     includeMcpToolCalls: Boolean(callbacks?.includeMcpToolCalls),
-    includeCommandTools: Boolean(callbacks?.includeCommandTools)
+    includeCommandTools: Boolean(callbacks?.includeCommandTools),
+    allowedToolFamilies: callbacks?.allowedToolFamilies
   };
 }
 
@@ -37,7 +41,10 @@ export async function initializeNativeToolLoopToolPool(
     title: string;
     runningSummary: string;
     completedSummary: (toolCount: number) => string;
-  }
+  },
+  options: {
+    projectInstructionGuard?: NativeToolPoolProjectInstructionGuard;
+  } = {}
 ): Promise<NativeToolLoopToolPoolSetup> {
   const flags = resolveNativeToolLoopFeatureFlags(callbacks);
   callbacks?.emitStage?.({
@@ -51,7 +58,8 @@ export async function initializeNativeToolLoopToolPool(
     params,
     mode: flags,
     delegates: createNativeToolLoopDelegates(params),
-    emitStage: callbacks?.emitStage
+    emitStage: callbacks?.emitStage,
+    projectInstructionGuard: options.projectInstructionGuard
   });
   const toolNames = toolPool.names;
   callbacks?.emitStage?.({
@@ -65,6 +73,7 @@ export async function initializeNativeToolLoopToolPool(
       includeWriteTools: flags.includeWriteTools,
       includeMcpToolCalls: flags.includeMcpToolCalls,
       includeCommandTools: flags.includeCommandTools,
+      allowedToolFamilies: flags.allowedToolFamilies,
       dynamicMcpToolCount: toolPool.dynamicMcpTools.length
     }
   });

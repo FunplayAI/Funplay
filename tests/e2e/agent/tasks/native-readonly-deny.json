@@ -1,0 +1,37 @@
+{
+  "id": "native-readonly-deny",
+  "title": "Native runtime does not write in read-only mode",
+  "description": "Runs the native runtime against a scripted provider that emits a rogue write_file call in read-only mode, then verifies the host rejects it without creating the requested file.",
+  "capabilities": [
+    "native_runtime_execution",
+    "read_only_write_boundary",
+    "read_only_rogue_write_rejection"
+  ],
+  "timeoutMs": 60000,
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"funplay-agent-e2e-readonly-deny\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node acceptance/readonly-deny.test.mjs\"\n  }\n}\n"
+      },
+      {
+        "path": "acceptance/readonly-deny.test.mjs",
+        "content": "import assert from 'node:assert/strict';\nimport { existsSync } from 'node:fs';\n\nassert.equal(existsSync(new URL('../blocked.txt', import.meta.url)), false);\nconsole.log('native-readonly-deny acceptance passed');\n"
+      }
+    ]
+  },
+  "agentCommand": {
+    "command": "cd \"$FUNPLAY_REPO_ROOT\" && node --experimental-strip-types --import ./tests/register-ts-loader.mjs ./scripts/native-runtime-e2e.mjs readonly-deny \"$FUNPLAY_WORKSPACE_ROOT\"",
+    "cwd": ".",
+    "timeoutMs": 60000
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-npm-test",
+      "kind": "test",
+      "command": "npm test",
+      "required": true,
+      "timeoutMs": 30000
+    }
+  ]
+}

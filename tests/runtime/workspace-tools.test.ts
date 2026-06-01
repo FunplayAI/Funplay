@@ -87,6 +87,8 @@ test('workspace write tool writes inside project and blocks traversal', async ()
     });
     assert.equal(traversalResult.ok, false);
     assert.equal(traversalResult.isError, true);
+    assert.equal(traversalResult.edit?.failureKind, 'path_error');
+    assert.match(traversalResult.edit?.recoveryHint ?? '', /项目目录内/);
 
     const traversalDirectoryResult = await executeWorkspaceToolAction(project, {
       type: 'create_directory',
@@ -207,6 +209,18 @@ test('workspace find, read range, and edit tools support code-style workflows', 
     assert.match(ambiguousResult.summary, /匹配了/);
     assert.equal(ambiguousResult.edit?.failureKind, 'ambiguous_match');
     assert.match(ambiguousResult.edit?.recoveryHint ?? '', /preview_patch/);
+
+    const missingResult = await executeWorkspaceToolAction(project, {
+      type: 'edit_file',
+      path: 'alpha.ts',
+      oldText: 'missing old text',
+      newText: 'replacement'
+    });
+    assert.equal(missingResult.ok, false);
+    assert.equal(missingResult.isError, true);
+    assert.match(missingResult.summary, /没有在 alpha\.ts 中找到 oldText/);
+    assert.equal(missingResult.edit?.failureKind, 'missing_match');
+    assert.match(missingResult.edit?.recoveryHint ?? '', /更精确 oldText/);
   } finally {
     await rm(projectPath, { recursive: true, force: true });
   }
@@ -569,6 +583,18 @@ test('workspace run_command executes in project with timeout and cwd guards', as
     assert.equal(commandResult.command?.cwd, '.');
     assert.equal(commandResult.artifacts?.[0]?.type, 'command_output');
 
+    const longOutputResult = await executeWorkspaceToolAction(project, {
+      type: 'run_command',
+      command: "node -e \"process.stdout.write('x'.repeat(70000))\"",
+      timeoutMs: 5_000
+    });
+    assert.equal(longOutputResult.ok, true);
+    assert.equal(longOutputResult.command?.outputTruncated, true);
+    assert.equal(longOutputResult.artifacts?.[0]?.type, 'command_output');
+    assert.ok(longOutputResult.artifacts?.[0]?.path);
+    assert.equal((await stat(longOutputResult.artifacts?.[0]?.path ?? '')).isFile(), true);
+    assert.match(await readFile(longOutputResult.artifacts?.[0]?.path ?? '', 'utf8'), /Command: node -e/);
+
     const quotedAmpersandResult = await executeWorkspaceToolAction(project, {
       type: 'run_command',
       command: "printf 'a & b'",
@@ -690,6 +716,62 @@ test('workspace persistent terminal reuses shell state and can be stopped', asyn
     assert.equal(stopped.terminal?.sessionId, sessionId);
     assert.equal(stopped.terminal?.status, 'stopped');
     assert.equal(stopped.terminal?.detectedPorts?.includes(5173), true);
+  } finally {
+    disposePersistentTerminals();
+    await rm(projectPath, { recursive: true, force: true });
+  }
+});
+
+test('workspace terminal_read writes command_output artifact for truncated terminal logs', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-terminal-artifact-'));
+  try {
+    const project = buildProject(projectPath);
+    const started = await executeAgentToolAction(project, {
+      type: 'terminal_start',
+      name: 'terminal artifact test',
+      cwd: '.',
+      reason: 'test terminal artifact'
+    });
+    const sessionId = started.summary.match(/ID: (term_[a-z0-9]+)/)?.[1];
+    assert.ok(sessionId);
+
+    const written = await executeAgentToolAction(project, {
+      type: 'terminal_write',
+      sessionId,
+      input: "node -e \"for (let i = 0; i < 180; i += 1) console.log('artifact-line-' + i)\"",
+      reason: 'produce long terminal output'
+    });
+    assert.equal(written.ok, true);
+
+    let read = await executeAgentToolAction(project, {
+      type: 'terminal_read',
+      sessionId,
+      maxChars: 1000
+    });
+    for (let attempt = 0; attempt < 10 && !read.summary.includes('artifact-line-179'); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      read = await executeAgentToolAction(project, {
+        type: 'terminal_read',
+        sessionId,
+        maxChars: 1000
+      });
+    }
+
+    assert.match(read.summary, /output=tail\(1000 chars\)/);
+    assert.equal(read.artifacts?.[0]?.type, 'command_output');
+    assert.ok(read.artifacts?.[0]?.path);
+    assert.equal((await stat(read.artifacts[0].path)).isFile(), true);
+    const artifactContent = await readFile(read.artifacts[0].path, 'utf8');
+    assert.match(artifactContent, new RegExp(`Terminal: ${sessionId}`));
+    assert.match(artifactContent, /artifact-line-0/);
+    assert.match(artifactContent, /artifact-line-179/);
+
+    await executeAgentToolAction(project, {
+      type: 'terminal_stop',
+      sessionId,
+      signal: 'SIGTERM',
+      reason: 'test cleanup'
+    });
   } finally {
     disposePersistentTerminals();
     await rm(projectPath, { recursive: true, force: true });

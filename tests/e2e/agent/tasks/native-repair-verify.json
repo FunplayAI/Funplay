@@ -1,0 +1,37 @@
+{
+  "id": "native-repair-verify",
+  "title": "Native runtime repairs a failed verification",
+  "description": "Runs the native runtime through a failed active verification, performs one controlled repair pass, and proves the rerun passes.",
+  "capabilities": [
+    "native_runtime_execution",
+    "active_verification_gate",
+    "verification_repair_pass"
+  ],
+  "timeoutMs": 120000,
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"funplay-agent-e2e-repair-verify\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node acceptance/repair-verify.test.mjs\"\n  }\n}\n"
+      },
+      {
+        "path": "acceptance/repair-verify.test.mjs",
+        "content": "import assert from 'node:assert/strict';\nimport { readFile } from 'node:fs/promises';\n\nconst output = JSON.parse(await readFile(new URL('../src/agent-output.json', import.meta.url), 'utf8'));\nassert.equal(output.ready, true);\nassert.equal(output.marker, 'FUNPLAY_NATIVE_REPAIR_OK');\nconsole.log('native-repair-verify acceptance passed');\n"
+      }
+    ]
+  },
+  "agentCommand": {
+    "command": "cd \"$FUNPLAY_REPO_ROOT\" && node --experimental-strip-types --import ./tests/register-ts-loader.mjs ./scripts/native-runtime-e2e.mjs repair-verify \"$FUNPLAY_WORKSPACE_ROOT\"",
+    "cwd": ".",
+    "timeoutMs": 120000
+  },
+  "acceptance": [
+    {
+      "id": "acceptance-npm-test",
+      "kind": "test",
+      "command": "npm test",
+      "required": true,
+      "timeoutMs": 30000
+    }
+  ]
+}

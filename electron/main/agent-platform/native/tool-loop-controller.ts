@@ -4,6 +4,7 @@ import {
   type AgentCoreRuntimeBridgeToolResult
 } from '../../agent-core/index';
 import type { ConversationOperationStageEvent } from '../operation-log';
+import type { AgentToolFamily } from '../tool-policy';
 import type { GenericAgentRuntimeParams } from '../types';
 
 export interface NativeToolLoopCallbacks {
@@ -14,6 +15,7 @@ export interface NativeToolLoopCallbacks {
   includeWriteTools?: boolean;
   includeMcpToolCalls?: boolean;
   includeCommandTools?: boolean;
+  allowedToolFamilies?: AgentToolFamily[];
 }
 
 export type NativeRunControllerProviderStepOptions = AgentCoreRuntimeBridgeProviderStepOptions;

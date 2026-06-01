@@ -1,0 +1,37 @@
+{
+  "id": "native-repair-fail-handoff",
+  "title": "Native runtime explains failed repair handoff",
+  "description": "Runs the native runtime through a failed active verification and a failed controlled repair pass, then verifies the final handoff includes diagnosis and change context.",
+  "capabilities": [
+    "native_runtime_execution",
+    "active_verification_gate",
+    "failed_repair_handoff"
+  ],
+  "timeoutMs": 120000,
+  "workspace": {
+    "files": [
+      {
+        "path": "package.json",
+        "content": "{\n  \"name\": \"funplay-agent-e2e-repair-fail-handoff\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node acceptance/repair-fail-handoff.test.mjs\"\n  }\n}\n"
+      },
+      {
+        "path": "acceptance/repair-fail-handoff.test.mjs",
+        "content": "import assert from 'node:assert/strict';\nimport { readFile } from 'node:fs/promises';\n\nconst output = JSON.parse(await readFile(new URL('../src/agent-output.json', import.meta.url), 'utf8'));\nassert.equal(output.ready, true);\nassert.equal(output.marker, 'FUNPLAY_NATIVE_REPAIR_OK');\n"
+      }
+    ]
+  },
+  "agentCommand": {
+    "command": "cd \"$FUNPLAY_REPO_ROOT\" && node --experimental-strip-types --import ./tests/register-ts-loader.mjs ./scripts/native-runtime-e2e.mjs repair-fail-handoff \"$FUNPLAY_WORKSPACE_ROOT\"",
+    "cwd": ".",
+    "timeoutMs": 120000
+  },
+  "acceptance": [
+    {
+      "id": "agent-handoff-assertions",
+      "kind": "test",
+      "command": "node -e \"console.log('handoff assertions ran inside native-runtime-e2e')\"",
+      "required": true,
+      "timeoutMs": 30000
+    }
+  ]
+}

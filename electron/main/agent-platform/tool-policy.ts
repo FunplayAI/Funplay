@@ -1,7 +1,20 @@
 import type { GenericAgentRuntimeParams } from './types';
 
-export type AgentToolIntentKind = 'workspace_write' | 'command' | 'memory_write' | 'notification';
+export type AgentToolIntentKind = 'workspace_write' | 'command' | 'engine' | 'media' | 'mcp' | 'memory_write' | 'notification';
 export type AgentToolIntentConfidence = 'none' | 'medium' | 'high';
+export type AgentExecutionProfileId = 'read_only' | 'side_effect' | 'build';
+export type AgentToolFamily =
+  | 'read_only'
+  | 'workspace_write'
+  | 'command'
+  | 'browser'
+  | 'engine'
+  | 'media'
+  | 'mcp'
+  | 'memory'
+  | 'notification';
+export type AgentSideEffectPolicy = 'none' | 'host_controlled';
+export type AgentVerificationPolicy = 'none' | 'write_blocking';
 
 export interface AgentToolIntentSignal {
   kind: AgentToolIntentKind;
@@ -13,8 +26,18 @@ export interface AgentToolIntentSignal {
 export interface AgentToolPolicyDecision {
   workspaceWrite: AgentToolIntentSignal;
   command: AgentToolIntentSignal;
+  engine: AgentToolIntentSignal;
+  media: AgentToolIntentSignal;
+  mcp: AgentToolIntentSignal;
   memoryWrite: AgentToolIntentSignal;
   notification: AgentToolIntentSignal;
+  executionProfile: {
+    id: AgentExecutionProfileId;
+    allowedToolFamilies: AgentToolFamily[];
+    sideEffectPolicy: AgentSideEffectPolicy;
+    verificationPolicy: AgentVerificationPolicy;
+    evidence: string[];
+  };
   requiresWorkspaceWritePermission: boolean;
   exposesHighRiskTools: boolean;
   summary: string;
@@ -39,7 +62,7 @@ interface IntentPattern {
 const workspaceWritePatterns: IntentPattern[] = [
   {
     label: 'explicit-file-write',
-    regex: /(修改|编辑|重构|重写|创建|新建|新增|删除|写入|覆盖|更新|生成|实现|集成|引入).{0,32}(文件|文件夹|目录|代码|项目|页面|组件|脚本|函数|类|测试|游戏|应用|工程|资源|素材|src|assets|readme|\.tsx?|\.jsx?|\.html|\.css|\.json|\.md|\.cs|\.py|\.go|\.rs)/i,
+    regex: /(修改|编辑|重构|重写|创建|新建|新增|删除|写入|覆盖|更新|生成|实现|集成|引入).{0,32}(文件|文件夹|目录|代码|项目|页面|组件|脚本|函数|类|测试|游戏|应用|工程|src|readme|\.tsx?|\.jsx?|\.html|\.css|\.json|\.md|\.cs|\.py|\.go|\.rs)/i,
     confidence: 'high'
   },
   {
@@ -74,6 +97,60 @@ const commandPatterns: IntentPattern[] = [
     label: 'run-command',
     regex: /(运行|执行|测试|构建|检查|诊断|命令|终端|脚本|启动|安装依赖|run|execute|test|build|check|lint|typecheck|diagnose|command|terminal|script|npm|pnpm|yarn|pytest|cargo|go test)/i,
     confidence: 'high'
+  }
+];
+
+const enginePatterns: IntentPattern[] = [
+  {
+    label: 'engine-open',
+    regex: /(打开|启动|运行|唤起|连接).{0,32}(unity|engine|引擎|编辑器|editor|hub|launcher|项目工程|工程项目)/i,
+    confidence: 'high'
+  },
+  {
+    label: 'engine-bridge',
+    regex: /(安装|接入|配置|修复|刷新|检测|诊断).{0,32}(mcp|bridge|funplay bridge|unity package|引擎桥|桥接|引擎状态|unity|engine)/i,
+    confidence: 'high'
+  },
+  {
+    label: 'engine-tool-name',
+    regex: /\b(open_engine_project|open_engine_hub|install_engine_bridge|refresh_engine_runtime_state|diagnose_engine_status)\b/i,
+    confidence: 'high'
+  }
+];
+
+const mediaPatterns: IntentPattern[] = [
+  {
+    label: 'media-generate',
+    regex: /(生成|创建|制作|绘制|产出|生成一张|做一张).{0,32}(图片|图像|图标|插画|立绘|贴图|纹理|素材|音效|音频|音乐|sprite|asset|image|icon|illustration|texture|sound|audio|music)/i,
+    confidence: 'high'
+  },
+  {
+    label: 'media-attach-preview',
+    regex: /(预览|查看|展示|读取|附加|引用|attach|preview|show|inspect).{0,32}(图片|图像|素材|音频|媒体|media|image|asset|png|jpe?g|webp|gif|svg|mp3|wav|ogg)/i,
+    confidence: 'medium'
+  },
+  {
+    label: 'media-tool-name',
+    regex: /\b(media_attach_file|media_save_base64|image_generate|generate_asset|import_generated_asset|list_asset_generation_capabilities)\b/i,
+    confidence: 'high'
+  }
+];
+
+const mcpPatterns: IntentPattern[] = [
+  {
+    label: 'mcp-explicit',
+    regex: /\b(mcp|mcp server|mcp tool|mcp tools|mcp__[\w-]+__[\w.-]+|call_mcp_tool|list_mcp_tools|list_mcp_resources|read_mcp_resource)\b/i,
+    confidence: 'high'
+  },
+  {
+    label: 'mcp-cn-explicit',
+    regex: /(调用|使用|列出|发现|读取|检查|连接|通过).{0,24}(mcp|MCP|插件工具|外部工具|server 工具|服务器工具)/i,
+    confidence: 'high'
+  },
+  {
+    label: 'mcp-resource',
+    regex: /(读取|查看|列出|检查).{0,24}(mcp resource|mcp resources|MCP 资源|资源模板|resource template)/i,
+    confidence: 'medium'
   }
 ];
 
@@ -147,6 +224,71 @@ function evaluateSignalWithContinuationContext(
   };
 }
 
+function resolveExecutionProfile(input: {
+  workspaceWrite: AgentToolIntentSignal;
+  command: AgentToolIntentSignal;
+  engine: AgentToolIntentSignal;
+  media: AgentToolIntentSignal;
+  mcp: AgentToolIntentSignal;
+  memoryWrite: AgentToolIntentSignal;
+  notification: AgentToolIntentSignal;
+  evidence: string[];
+}): AgentToolPolicyDecision['executionProfile'] {
+  if (input.workspaceWrite.detected) {
+    const allowedToolFamilies: AgentToolFamily[] = ['read_only', 'workspace_write', 'command', 'browser', 'mcp', 'memory'];
+    if (input.engine.detected) {
+      allowedToolFamilies.push('engine');
+    }
+    if (input.media.detected) {
+      allowedToolFamilies.push('media');
+    }
+    if (input.notification.detected) {
+      allowedToolFamilies.push('notification');
+    }
+    return {
+      id: 'build',
+      allowedToolFamilies,
+      sideEffectPolicy: 'host_controlled',
+      verificationPolicy: 'write_blocking',
+      evidence: input.evidence
+    };
+  }
+
+  if (input.command.detected || input.engine.detected || input.media.detected || input.mcp.detected || input.memoryWrite.detected || input.notification.detected) {
+    const allowedToolFamilies: AgentToolFamily[] = ['read_only', 'command', 'browser'];
+    if (input.engine.detected) {
+      allowedToolFamilies.push('engine');
+    }
+    if (input.media.detected) {
+      allowedToolFamilies.push('media');
+    }
+    if (input.mcp.detected) {
+      allowedToolFamilies.push('mcp');
+    }
+    if (input.memoryWrite.detected) {
+      allowedToolFamilies.push('memory');
+    }
+    if (input.notification.detected) {
+      allowedToolFamilies.push('notification');
+    }
+    return {
+      id: 'side_effect',
+      allowedToolFamilies,
+      sideEffectPolicy: 'host_controlled',
+      verificationPolicy: 'none',
+      evidence: input.evidence
+    };
+  }
+
+  return {
+    id: 'read_only',
+    allowedToolFamilies: ['read_only', 'command', 'browser', 'engine'],
+    sideEffectPolicy: 'none',
+    verificationPolicy: 'none',
+    evidence: input.evidence
+  };
+}
+
 export function resolveAgentToolPolicy(input: AgentToolPolicyInput): AgentToolPolicyDecision;
 export function resolveAgentToolPolicy(params: Pick<GenericAgentRuntimeParams, 'message' | 'context'>): AgentToolPolicyDecision;
 export function resolveAgentToolPolicy(input: AgentToolPolicyInput | Pick<GenericAgentRuntimeParams, 'message' | 'context'>): AgentToolPolicyDecision {
@@ -164,10 +306,23 @@ export function resolveAgentToolPolicy(input: AgentToolPolicyInput | Pick<Generi
   });
   const workspaceWrite = evaluateSignalWithContinuationContext('workspace_write', text, continuationText, workspaceWritePatterns);
   const command = evaluateSignalWithContinuationContext('command', text, continuationText, commandPatterns);
+  const engine = evaluateSignalWithContinuationContext('engine', text, continuationText, enginePatterns);
+  const media = evaluateSignalWithContinuationContext('media', text, continuationText, mediaPatterns);
+  const mcp = evaluateSignalWithContinuationContext('mcp', text, continuationText, mcpPatterns);
   const memoryWrite = evaluateSignalWithContinuationContext('memory_write', text, continuationText, memoryWritePatterns);
   const notification = evaluateSignalWithContinuationContext('notification', text, continuationText, notificationPatterns);
-  const signals = [workspaceWrite, command, memoryWrite, notification];
+  const signals = [workspaceWrite, command, engine, media, mcp, memoryWrite, notification];
   const evidence = signals.flatMap((signal) => signal.evidence.map((item) => `${signal.kind}:${item}`));
+  const executionProfile = resolveExecutionProfile({
+    workspaceWrite,
+    command,
+    engine,
+    media,
+    mcp,
+    memoryWrite,
+    notification,
+    evidence
+  });
   const requiresWorkspaceWritePermission = workspaceWrite.detected;
   const exposesHighRiskTools = signals.some((signal) => signal.detected);
   const detectedKinds = signals.filter((signal) => signal.detected).map((signal) => signal.kind);
@@ -175,8 +330,12 @@ export function resolveAgentToolPolicy(input: AgentToolPolicyInput | Pick<Generi
   return {
     workspaceWrite,
     command,
+    engine,
+    media,
+    mcp,
     memoryWrite,
     notification,
+    executionProfile,
     requiresWorkspaceWritePermission,
     exposesHighRiskTools,
     summary: detectedKinds.length ? `Detected tool intents: ${detectedKinds.join(', ')}` : 'No high-risk tool intent detected.',
@@ -190,6 +349,7 @@ export function formatToolPolicyForStage(policy: AgentToolPolicyDecision): Recor
     evidence: policy.evidence,
     requiresWorkspaceWritePermission: policy.requiresWorkspaceWritePermission,
     exposesHighRiskTools: policy.exposesHighRiskTools,
+    executionProfile: policy.executionProfile,
     workspaceWrite: {
       detected: policy.workspaceWrite.detected,
       confidence: policy.workspaceWrite.confidence,
@@ -199,6 +359,21 @@ export function formatToolPolicyForStage(policy: AgentToolPolicyDecision): Recor
       detected: policy.command.detected,
       confidence: policy.command.confidence,
       evidence: policy.command.evidence
+    },
+    engine: {
+      detected: policy.engine.detected,
+      confidence: policy.engine.confidence,
+      evidence: policy.engine.evidence
+    },
+    media: {
+      detected: policy.media.detected,
+      confidence: policy.media.confidence,
+      evidence: policy.media.evidence
+    },
+    mcp: {
+      detected: policy.mcp.detected,
+      confidence: policy.mcp.confidence,
+      evidence: policy.mcp.evidence
     },
     memoryWrite: {
       detected: policy.memoryWrite.detected,

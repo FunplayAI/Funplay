@@ -8,6 +8,7 @@ import type { GenericAgentRuntimeParams } from '../types';
 import { normalizeAiSdkUsage } from '../usage';
 import { emitRuntimeStatus, emitRuntimeTextDelta, emitRuntimeUsage } from '../runtime-event-emitter';
 import { type NativeTodoSnapshot } from './continuation-policy';
+import type { NativeEditFailureRecovery } from './continuation-policy';
 import { NativeAiSdkStepState } from './ai-sdk-step-state';
 import { withDynamicInstructionMessage } from './tool-loop-message-adapter';
 import { NEVER_STOP_ON_STEP_COUNT } from './tool-loop-options';
@@ -38,7 +39,9 @@ export interface NativeAiSdkLoopState {
   streamedText: boolean;
   toolCalls: string[];
   partialWriteContinuationCount: number;
+  editFailureContinuationCount: number;
   incompleteTodoContinuationCount: number;
+  editFailureRecoveries: NativeEditFailureRecovery[];
   latestTodoSnapshot?: NativeTodoSnapshot;
 }
 
@@ -48,6 +51,22 @@ export interface NativeAiSdkProviderStepResult {
   responseMessages: ModelMessage[];
   finalCandidate: string;
   providerStep: AgentCoreProviderStepResult;
+}
+
+function collectAiSdkEditFailureRecoveries(toolResults: ReturnType<NativeAiSdkStepState['drainStepToolResults']>): NativeEditFailureRecovery[] {
+  return toolResults
+    .filter((toolResult) =>
+      Boolean(toolResult.isError) &&
+      Boolean(toolResult.edit?.failureKind) &&
+      ['write_file', 'edit_file', 'multi_edit', 'patch_file'].includes(toolResult.toolName ?? '')
+    )
+    .map((toolResult) => ({
+      toolName: toolResult.toolName ?? 'unknown_tool',
+      path: typeof toolResult.toolInput?.path === 'string' ? toolResult.toolInput.path : undefined,
+      failureKind: toolResult.edit?.failureKind,
+      recoveryHint: toolResult.recoveryHint ?? toolResult.edit?.recoveryHint,
+      summary: toolResult.content
+    }));
 }
 
 export async function runNativeAiSdkProviderStep(input: {
@@ -206,7 +225,9 @@ export async function runNativeAiSdkProviderStep(input: {
                 type: 'provider_step_recorded',
                 providerStep
               });
-              for (const toolResult of input.stepState.drainStepToolResults()) {
+              const stepToolResults = input.stepState.drainStepToolResults();
+              input.loopState.editFailureRecoveries.push(...collectAiSdkEditFailureRecoveries(stepToolResults));
+              for (const toolResult of stepToolResults) {
                 providerEventObserver.observe({
                   type: 'tool_result_recorded',
                   toolResult

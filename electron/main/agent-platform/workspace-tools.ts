@@ -1,11 +1,13 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { appendFile, mkdir, readFile, readdir, stat } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { basename, extname, join, resolve } from 'node:path';
 import { DEFAULT_AGENT_SETTINGS, DEFAULT_AI_SETTINGS, DEFAULT_MCP_SETTINGS } from '../../../shared/types';
 import type {
   AppState,
   AppNotificationPriority,
+  AgentToolArtifact,
   AgentUserInputOption,
   ChatMediaBlock,
   EngineProjectDimension,
@@ -67,6 +69,7 @@ import {
   listPersistentTerminals,
   readPersistentTerminal,
   readPersistentTerminalMetadata,
+  snapshotPersistentTerminalOutput,
   startPersistentTerminal,
   stopPersistentTerminal,
   writePersistentTerminal
@@ -81,6 +84,7 @@ import {
 } from './media-tools';
 import { performMemoryGet, performMemoryRecent, performMemoryRemember, performMemorySearch } from './memory-tools';
 import { buildAgentSkillRegistry, findAgentSkillPackage, listAgentSkillSupportingFiles, readAgentSkillSupportingFile } from './skill-registry';
+import { createUnsupportedEngineResult, getEngineAdapter, type EngineAdapterCapability } from './engine-adapters';
 import {
   MAX_TREE_ITEMS,
   MAX_FILE_PREVIEW_CHARS,
@@ -123,6 +127,7 @@ const MAX_MCP_URI_CHARS = 2048;
 const MAX_MCP_TOOL_NAME_CHARS = 160;
 const MAX_MCP_ARGS_JSON_CHARS = 64_000;
 const MAX_SKILL_INSTRUCTION_CHARS = 24_000;
+const COMMAND_OUTPUT_ARTIFACT_DIR = 'funplay-agent-artifacts';
 
 function normalizeDocumentMaxChars(maxChars: number | undefined): number {
   if (typeof maxChars !== 'number' || !Number.isFinite(maxChars)) {
@@ -734,7 +739,7 @@ function classifyEditFailure(action: WorkspaceToolAction, errorMessage: string):
   }
   if (action.type === 'edit_file' || action.type === 'multi_edit') {
     if (/匹配了 \d+ 处/.test(errorMessage)) return 'ambiguous_match';
-    if (/没有找到|未找到|匹配了 0 处/.test(errorMessage)) return 'missing_match';
+    if (/没有.*找到|未找到|not found|no match|匹配了 0 处/i.test(errorMessage)) return 'missing_match';
     return 'unknown';
   }
   if (action.type === 'write_file') {
@@ -952,6 +957,80 @@ function summarizeEnvironmentAction(result: EnvironmentActionResult, diagnostics
   ].filter(Boolean).join('\n');
 }
 
+function sanitizeArtifactSegment(value: string): string {
+  return value
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48) || 'command';
+}
+
+async function writeCommandOutputArtifact(input: {
+  project: Project;
+  command: string;
+  cwd: string;
+  exitCode?: number | null;
+  signal?: string | null;
+  timedOut: boolean;
+  stdout: string;
+  stderr: string;
+  combined: string;
+}): Promise<AgentToolArtifact | undefined> {
+  try {
+    const output = [
+      `Command: ${input.command}`,
+      `Cwd: ${input.cwd}`,
+      `Exit code: ${input.exitCode ?? 'none'}`,
+      input.signal ? `Signal: ${input.signal}` : '',
+      input.timedOut ? 'Timed out: yes' : 'Timed out: no',
+      '',
+      input.combined
+    ].filter(Boolean).join('\n');
+    const artifactDir = join(tmpdir(), COMMAND_OUTPUT_ARTIFACT_DIR, sanitizeArtifactSegment(input.project.id));
+    await mkdir(artifactDir, { recursive: true });
+    const artifactPath = join(
+      artifactDir,
+      `${Date.now()}-${sanitizeArtifactSegment(input.command)}-${Math.random().toString(36).slice(2, 8)}.txt`
+    );
+    await writeFile(artifactPath, output, 'utf8');
+    return {
+      type: 'command_output',
+      path: artifactPath,
+      title: input.command,
+      mimeType: 'text/plain',
+      size: Buffer.byteLength(output, 'utf8')
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+async function writeTerminalOutputArtifact(input: {
+  project: Project;
+  sessionId: string;
+  title?: string;
+}): Promise<AgentToolArtifact | undefined> {
+  try {
+    const snapshot = snapshotPersistentTerminalOutput(input.sessionId);
+    const artifactDir = join(tmpdir(), COMMAND_OUTPUT_ARTIFACT_DIR, sanitizeArtifactSegment(input.project.id));
+    await mkdir(artifactDir, { recursive: true });
+    const artifactPath = join(
+      artifactDir,
+      `${Date.now()}-terminal-${sanitizeArtifactSegment(input.sessionId)}-${Math.random().toString(36).slice(2, 8)}.txt`
+    );
+    await writeFile(artifactPath, snapshot.output, 'utf8');
+    return {
+      type: 'command_output',
+      path: artifactPath,
+      title: input.title ?? `Terminal ${input.sessionId}`,
+      mimeType: 'text/plain',
+      size: snapshot.size
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 async function executeEngineControlAction(
   project: Project,
   action: Extract<WorkspaceToolAction, {
@@ -966,6 +1045,33 @@ async function executeEngineControlAction(
   options: AgentToolExecutionOptions
 ): Promise<WorkspaceToolActionResult> {
   const state = options.appState ?? createDetachedEngineToolState(project);
+  const platform = resolveEnginePlatform(project, action.platform);
+  const adapter = getEngineAdapter(platform);
+  const capability: EngineAdapterCapability =
+    action.type === 'diagnose_engine_status'
+      ? 'diagnose'
+      : action.type === 'refresh_engine_runtime_state'
+        ? 'refresh'
+        : action.type === 'open_engine_hub'
+          ? 'openHub'
+          : action.type === 'open_engine_project'
+            ? 'openProject'
+            : action.type === 'install_engine_bridge'
+              ? 'installBridge'
+              : action.actionId === 'open_unity_hub' || action.actionId === 'select_unity_hub'
+                ? 'openHub'
+                : action.actionId === 'open_unity_project' || action.actionId === 'import_unity_project' || action.actionId === 'create_unity_project'
+                  ? 'openProject'
+                  : action.actionId === 'install_project_bridge'
+                    ? 'installBridge'
+                    : 'diagnose';
+  if (!adapter.capabilities[capability].supported) {
+    return createUnsupportedEngineResult({
+      platform,
+      capability,
+      projectPath: resolveEngineProjectPath(project, 'projectPath' in action ? action.projectPath : undefined)
+    });
+  }
   const persistState = async () => {
     if (options.appState && options.persistAppState) {
       await options.persistAppState(options.appState);
@@ -973,7 +1079,6 @@ async function executeEngineControlAction(
   };
 
   if (action.type === 'refresh_engine_runtime_state') {
-    const platform = resolveEnginePlatform(project, action.platform);
     const projectPath = resolveEngineProjectPath(project, action.projectPath);
     const runtimeState = await getProjectRuntimeState(state, {
       platform,
@@ -1148,7 +1253,7 @@ async function runWorkspaceCommand(
       });
     });
 
-    child.on('close', (code, signal) => {
+    child.on('close', async (code, signal) => {
       clearTimeout(timeout);
       options.abortSignal?.removeEventListener('abort', abort);
       const stdout = Buffer.concat(stdoutChunks).toString('utf8');
@@ -1161,6 +1266,19 @@ async function runWorkspaceCommand(
       const structuredStdout = truncateStructuredOutput(stdout);
       const structuredStderr = truncateStructuredOutput(stderr);
       const ok = code === 0 && !timedOut && !signal;
+      const fullOutputArtifact = truncated.truncated || structuredStdout.truncated || structuredStderr.truncated
+        ? await writeCommandOutputArtifact({
+            project,
+            command,
+            cwd: relativeCwd,
+            exitCode: code,
+            signal,
+            timedOut,
+            stdout,
+            stderr,
+            combined
+          })
+        : undefined;
 
       finish({
         ok,
@@ -1185,8 +1303,8 @@ async function runWorkspaceCommand(
           stderr: structuredStderr.output,
           outputTruncated: truncated.truncated || structuredStdout.truncated || structuredStderr.truncated
         },
-        artifacts: [{
-          type: 'command_output',
+        artifacts: [fullOutputArtifact ?? {
+          type: 'command_output' as const,
           title: command,
           size: stdout.length + stderr.length
         }]
@@ -1999,13 +2117,24 @@ export async function executeAgentToolAction(
         sinceSeq: action.sinceSeq,
         maxChars: action.maxChars
       });
+      const liveTerminal = readPersistentTerminalMetadata(action.sessionId);
+      const terminal = {
+        ...parseTerminalReadSummary(summary, action.sessionId),
+        ...liveTerminal
+      };
+      const outputWasTruncated = /^output=tail\(/m.test(summary);
+      const terminalOutputArtifact = outputWasTruncated || (terminal.totalOutputChars ?? 0) > MAX_COMMAND_OUTPUT_CHARS
+        ? await writeTerminalOutputArtifact({
+            project,
+            sessionId: action.sessionId,
+            title: terminal.command ?? terminal.name ?? action.sessionId
+          })
+        : undefined;
       return {
         ok: true,
         summary,
-        terminal: {
-          ...parseTerminalReadSummary(summary, action.sessionId),
-          ...readPersistentTerminalMetadata(action.sessionId)
-        }
+        terminal,
+        artifacts: terminalOutputArtifact ? [terminalOutputArtifact] : undefined
       };
     }
 
@@ -2310,12 +2439,13 @@ export async function executeAgentToolAction(
     const [result] = await _applyWorkspaceWriteOperations(project, [action], {
       checkpointSnapshotId: options.checkpointSnapshotId
     });
+    const writeErrorMessage = result?.error ?? 'unknown error';
     return {
       ok: Boolean(result?.success),
       isError: !result?.success,
       summary: result?.success
         ? `已写入 ${result.path} (${result.size} bytes)`
-        : `写入失败 ${action.path}: ${result?.error ?? 'unknown error'}`,
+        : `写入失败 ${action.path}: ${writeErrorMessage}`,
       changedFiles: result
         ? [{
             path: result.path,
@@ -2336,7 +2466,7 @@ export async function executeAgentToolAction(
             patchFirst: false,
             preflight: 'failed',
             changedFileCount: 0,
-            failureKind: 'unknown',
+            failureKind: classifyEditFailure(action, writeErrorMessage),
             recoveryHint: '确认路径在项目目录内，必要时先创建父目录。'
           })
     };

@@ -241,6 +241,21 @@ function toNativeMcpToolDefinition(plugin: McpPlugin, mcpTool: UnityMcpTool, use
       result.mcp?.target ? `MCP target: ${result.mcp.target}` : ''
     ].filter(Boolean).join('\n'),
     isConcurrencySafe: () => policy.readOnly,
+    classifySideEffect: () => policy.readOnly
+      ? {
+          kind: 'none',
+          confidence: 'none',
+          evidence: []
+        }
+      : {
+          kind: 'external',
+          confidence: 'medium',
+          evidence: [
+            'tool:mcp',
+            `plugin:${plugin.id}`,
+            `mcp:${mcpTool.name}`
+          ]
+        },
     toAction: (input) => ({
       type: 'call_mcp_tool',
       pluginId: plugin.id,

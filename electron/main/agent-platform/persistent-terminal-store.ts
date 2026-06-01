@@ -59,6 +59,7 @@ interface PersistentTerminalSession {
   process: ChildProcessWithoutNullStreams;
   chunks: TerminalOutputChunk[];
   totalChars: number;
+  droppedChars: number;
   nextSeq: number;
 }
 
@@ -131,7 +132,9 @@ function appendChunk(session: PersistentTerminalSession, stream: TerminalOutputC
 
   while (session.totalChars > MAX_TERMINAL_OUTPUT_CHARS && session.chunks.length > 1) {
     const removed = session.chunks.shift();
-    session.totalChars -= removed?.text.length ?? 0;
+    const removedLength = removed?.text.length ?? 0;
+    session.totalChars -= removedLength;
+    session.droppedChars += removedLength;
   }
 }
 
@@ -260,6 +263,7 @@ export function startPersistentTerminal(project: Project, input: PersistentTermi
     process: child,
     chunks: [],
     totalChars: 0,
+    droppedChars: 0,
     nextSeq: 1
   };
   sessions.set(id, session);
@@ -299,6 +303,35 @@ export function startPersistentTerminal(project: Project, input: PersistentTermi
 
 export function readPersistentTerminalMetadata(sessionId: string): AgentToolTerminalResult {
   return buildTerminalMetadata(getSession(sessionId));
+}
+
+export function snapshotPersistentTerminalOutput(sessionId: string): {
+  output: string;
+  size: number;
+  truncated?: boolean;
+} {
+  const session = getSession(sessionId);
+  const output = [
+    `Terminal: ${session.id}`,
+    `Name: ${session.name}`,
+    `Status: ${session.status}`,
+    `Cwd: ${session.relativeCwd}`,
+    session.command ? `Command: ${session.command}` : '',
+    session.pid ? `Pid: ${session.pid}` : '',
+    session.exitCode !== undefined ? `Exit code: ${session.exitCode ?? 'none'}` : '',
+    session.signal ? `Signal: ${session.signal}` : '',
+    `Created: ${session.createdAt}`,
+    `Updated: ${session.updatedAt}`,
+    `Retained output chars: ${session.totalChars}`,
+    session.droppedChars > 0 ? `Dropped output chars: ${session.droppedChars}` : '',
+    '',
+    ...session.chunks.map((chunk) => `[${chunk.seq} ${chunk.timestamp} ${chunk.stream}] ${chunk.text}`)
+  ].filter(Boolean).join('\n');
+  return {
+    output,
+    size: Buffer.byteLength(output, 'utf8'),
+    truncated: session.droppedChars > 0 || undefined
+  };
 }
 
 export function writePersistentTerminal(input: PersistentTerminalWriteInput): string {

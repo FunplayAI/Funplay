@@ -1,7 +1,12 @@
 import type { AgentToolTransactionSummary } from '../../../../shared/types';
 import { makeId } from '../../../../shared/utils';
 import type { OpenAiCompatibleToolCall } from '../../openai-compatible-client';
-import { ProjectInstructionTracker } from '../project-instruction-tracker';
+import {
+  createProjectInstructionGuardSummary,
+  isProjectInstructionGuardedWriteTool,
+  ProjectInstructionTracker,
+  type ProjectInstructionGuardResult
+} from '../project-instruction-tracker';
 import { createToolExecutorTransactionSummary } from '../tool-executor';
 import {
   collectEditFailureRecovery,
@@ -47,6 +52,8 @@ interface NativeStreamingToolPrecompute {
   cachedToolResult?: CachedToolResult;
   malformedToolResult?: NativeWorkspaceToolOutput;
   invalidToolInputResult?: NativeWorkspaceToolOutput;
+  projectInstructionGuardResult?: NativeWorkspaceToolOutput;
+  projectInstructionGuard?: ProjectInstructionGuardResult;
   precomputedToolResult?: NativeWorkspaceToolOutput;
   resultSource?: NativeWorkspaceToolResultSource;
   validation?: NativeWorkspaceToolValidationResult;
@@ -93,17 +100,70 @@ function createMalformedToolResult(toolCall: OpenAiCompatibleToolCall): NativeWo
   };
 }
 
+function createProjectInstructionGuardToolOutput(guard: ProjectInstructionGuardResult): NativeWorkspaceToolOutput {
+  return {
+    ok: false,
+    isError: true,
+    failureKind: guard.failureKind,
+    recoveryHint: guard.recoveryHint,
+    summary: guard.summary
+  };
+}
+
+function guardWriteBeforeLocalInstructions(input: {
+  instructionTracker: ProjectInstructionTracker;
+  toolName: string;
+  arguments?: Record<string, unknown>;
+}): ProjectInstructionGuardResult | undefined {
+  const tracker = input.instructionTracker as ProjectInstructionTracker & {
+    guardWriteBeforeLocalInstructions?: ProjectInstructionTracker['guardWriteBeforeLocalInstructions'];
+  };
+  if (typeof tracker.guardWriteBeforeLocalInstructions === 'function') {
+    return tracker.guardWriteBeforeLocalInstructions(input.toolName, input.arguments);
+  }
+  if (!isProjectInstructionGuardedWriteTool(input.toolName)) {
+    return undefined;
+  }
+  const instructions = input.instructionTracker.discoverFromToolInput(input.toolName, input.arguments);
+  if (instructions.length === 0) {
+    return undefined;
+  }
+  const paths = instructions.map((instruction) => instruction.path);
+  return {
+    instructions,
+    paths,
+    failureKind: 'project_instructions_required',
+    recoveryHint: 'Read the newly injected local project instructions, then retry the write only if it still satisfies those rules.',
+    summary: createProjectInstructionGuardSummary({
+      toolName: input.toolName,
+      paths
+    })
+  };
+}
+
 function createPrecomputedToolResult(input: {
   state: NativeToolLoopState;
   toolUseId: string;
   toolCall: OpenAiCompatibleToolCall;
+  instructionTracker: ProjectInstructionTracker;
 }): NativeStreamingToolPrecompute {
   const cachedToolResult = input.state.completedToolResultsByUseId.get(input.toolUseId);
   const malformedToolResult = createMalformedToolResult(input.toolCall);
   const invalidToolInputResult = malformedToolResult ? undefined : createInvalidMultiEditInputResult(input.toolCall);
+  const projectInstructionGuard =
+    cachedToolResult || malformedToolResult || invalidToolInputResult
+      ? undefined
+      : guardWriteBeforeLocalInstructions({
+          instructionTracker: input.instructionTracker,
+          toolName: input.toolCall.name,
+          arguments: input.toolCall.arguments
+        });
+  const projectInstructionGuardResult = projectInstructionGuard
+    ? createProjectInstructionGuardToolOutput(projectInstructionGuard)
+    : undefined;
   const resultSource: NativeWorkspaceToolResultSource | undefined = cachedToolResult
     ? 'cached'
-    : malformedToolResult || invalidToolInputResult
+    : malformedToolResult || invalidToolInputResult || projectInstructionGuardResult
       ? 'validation_failed'
       : undefined;
   const precomputedToolResult: NativeWorkspaceToolOutput | undefined = cachedToolResult
@@ -123,8 +183,8 @@ function createPrecomputedToolResult(input: {
         artifacts: cachedToolResult.artifacts,
         searchText: cachedToolResult.searchText
       }
-    : malformedToolResult ?? invalidToolInputResult;
-  const validation: NativeWorkspaceToolValidationResult | undefined = malformedToolResult || invalidToolInputResult
+    : malformedToolResult ?? invalidToolInputResult ?? projectInstructionGuardResult;
+  const validation: NativeWorkspaceToolValidationResult | undefined = malformedToolResult || invalidToolInputResult || projectInstructionGuardResult
     ? {
         status: 'failed',
         summary: precomputedToolResult?.summary,
@@ -137,6 +197,8 @@ function createPrecomputedToolResult(input: {
     cachedToolResult,
     malformedToolResult,
     invalidToolInputResult,
+    projectInstructionGuardResult,
+    projectInstructionGuard,
     precomputedToolResult,
     resultSource,
     validation
@@ -196,7 +258,7 @@ function createNativeStreamingToolRecorder(input: {
       role: 'tool',
       toolCallId: invocation.toolUseId,
       name: invocation.toolCall.name,
-      content: summary
+      content: formatToolResultContentForModel(summary, toolResult)
     });
   };
 
@@ -204,6 +266,27 @@ function createNativeStreamingToolRecorder(input: {
     recordToolResult,
     recordToolUseStart
   };
+}
+
+function formatToolResultContentForModel(summary: string, toolResult: NativeWorkspaceToolOutput): string {
+  if (!toolResult.isError) {
+    return summary;
+  }
+  const failureKind = toolResult.failureKind ?? toolResult.edit?.failureKind ?? toolResult.mcp?.failureKind;
+  const recoveryHint = toolResult.recoveryHint ?? toolResult.edit?.recoveryHint;
+  const metadata = [
+    failureKind && !summary.includes(failureKind) ? `Failure kind: ${failureKind}` : '',
+    recoveryHint && !summary.includes(recoveryHint) ? `Recovery hint: ${recoveryHint}` : ''
+  ].filter(Boolean);
+  if (metadata.length === 0) {
+    return summary;
+  }
+  return [
+    summary,
+    '',
+    '[Tool failure recovery]',
+    ...metadata
+  ].join('\n');
 }
 
 function normalizeNativeToolInvocation(input: {
@@ -281,12 +364,14 @@ async function executeInvocation(input: {
   abortSignal?: AbortSignal;
   state: NativeToolLoopState;
   toolPool: NativeToolPool;
+  instructionTracker: ProjectInstructionTracker;
 }): Promise<NativeStreamingToolExecution> {
   const { toolCall, toolUseId } = input.invocation;
   const precompute = createPrecomputedToolResult({
     state: input.state,
     toolUseId,
-    toolCall
+    toolCall,
+    instructionTracker: input.instructionTracker
   });
   let transaction;
   let abortLike = false;
@@ -352,6 +437,18 @@ function recordExecutionSideEffects(input: {
   });
   if (todoSnapshot) {
     input.state.latestTodoSnapshot = todoSnapshot;
+  }
+  if (precompute.projectInstructionGuard) {
+    input.callbacks?.emitStage?.({
+      stageId: `stage:native_project_instruction_guard:${toolUseId}`,
+      title: '写入前发现局部 Agent 指令',
+      target: toolCall.name,
+      status: 'completed',
+      summary: `已在执行 ${toolCall.name} 前载入 ${precompute.projectInstructionGuard.paths.join(', ')}，本次写入已拦截并回放给模型重试。`,
+      input: {
+        paths: precompute.projectInstructionGuard.paths
+      }
+    });
   }
   if (precompute.cachedToolResult) {
     input.callbacks?.emitStage?.({
@@ -516,14 +613,16 @@ export async function executeNativeStreamingToolPlan(input: {
               invocation,
               abortSignal: input.abortSignal,
               state: input.state,
-              toolPool: input.toolPool
+              toolPool: input.toolPool,
+              instructionTracker: input.instructionTracker
             })
           ))
         : [await executeInvocation({
             invocation: batch.invocations[0],
             abortSignal: input.abortSignal,
             state: input.state,
-            toolPool: input.toolPool
+            toolPool: input.toolPool,
+            instructionTracker: input.instructionTracker
           })];
 
       let abortLikeExecution: NativeStreamingToolExecution | undefined;
