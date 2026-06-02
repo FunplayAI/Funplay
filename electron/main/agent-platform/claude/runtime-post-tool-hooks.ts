@@ -77,8 +77,7 @@ export function createClaudePostToolUseHookQueue(options: {
     content: ClaudeContentBlock[] | string | undefined,
     source: ClaudePostToolUseHookSource
   ): Promise<void> => {
-    let queuedRun: Promise<void>;
-    queuedRun = runForContent(content, source)
+    const queuedRun: Promise<void> = runForContent(content, source)
       .catch((error) => {
         options.emitStage({
           stageId: 'stage:lifecycle_hook:PostToolUse:claude_error',

@@ -268,6 +268,10 @@ export const claudeCodeSdkRuntime: GenericAgentRuntime = {
       publishFinalAgentCoreParts,
       buildFinalMetadata
     } = claudeProviderEvents;
+    // Assigned below once cwd is resolved; the getCwd closure handed to the
+    // lifecycle must capture this binding before that assignment, so const
+    // (declaration === initialization) is not possible here.
+    // eslint-disable-next-line prefer-const
     let claudeRuntimeCwd: string | undefined;
     const claudeLifecycle = createClaudeRuntimeLifecycle({
       params,
