@@ -11,6 +11,7 @@ const rendererEntry = resolve(repoRoot, 'out/renderer/index.html');
 const reportDir = resolve(repoRoot, 'out/desktop-ui-electron-smoke');
 const reportPath = resolve(reportDir, 'latest-report.md');
 const artifactDir = resolve(reportDir, 'artifacts');
+const realisticArtifactDir = resolve(artifactDir, 'realistic');
 const preloadPath = join(tmpdir(), `funplay-ui-smoke-preload-${Date.now()}.cjs`);
 const rendererMessages = [];
 
@@ -648,9 +649,34 @@ async function emulateAccessibilityMedia(webContents) {
 }
 
 async function capture(window, name) {
+  // Forced-colors screenshot (the smoke runs under forced-colors emulation):
+  // useful for reviewing the high-contrast / accessibility rendering.
   const image = await window.webContents.capturePage();
   const path = resolve(artifactDir, `${name}.png`);
   await writeFile(path, image.toPNG());
+
+  // Companion realistic-color screenshot for visual review. Forced-colors
+  // emulation repaints the UI in the high-contrast system palette, making the
+  // artifacts above useless for judging real product colors. Briefly drop
+  // forced-colors (keep reduced-motion so frames stay stable), capture into
+  // artifacts/realistic/, then restore forced-colors so the forced-colors a11y
+  // assertions later in the run still see it.
+  const dbg = window.webContents.debugger;
+  if (dbg.isAttached()) {
+    await dbg.sendCommand('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-reduced-motion', value: 'reduce' }]
+    });
+    await new Promise((done) => setTimeout(done, 120));
+    const realisticImage = await window.webContents.capturePage();
+    await writeFile(resolve(realisticArtifactDir, `${name}.png`), realisticImage.toPNG());
+    await dbg.sendCommand('Emulation.setEmulatedMedia', {
+      features: [
+        { name: 'prefers-reduced-motion', value: 'reduce' },
+        { name: 'forced-colors', value: 'active' }
+      ]
+    });
+  }
+
   return path;
 }
 
@@ -1037,6 +1063,8 @@ function buildReport(rows, accessibilityAudits, layoutAudits) {
     '',
     'This smoke uses a controlled preload API and app-scoped `BrowserWindow.capturePage()` screenshots only. It does not use whole-desktop screenshots.',
     '',
+    'The Screenshot column below is captured under forced-colors emulation (accessibility rendering). Realistic-color companions for visual review are written to `artifacts/realistic/` with the same filenames.',
+    '',
     '| State | Theme | Section | Modal | Screenshot |',
     '|---|---:|---:|---:|---|',
     ...rows.map((row) => `| ${row.state} | ${row.detail.theme || '-'} | ${row.detail.section || '-'} | ${row.detail.modalOpen ? 'open' : 'closed'} | ${row.screenshot} |`),
@@ -1071,6 +1099,7 @@ function buildReport(rows, accessibilityAudits, layoutAudits) {
 async function main() {
   await writePreload();
   await mkdir(artifactDir, { recursive: true });
+  await mkdir(realisticArtifactDir, { recursive: true });
   await app.whenReady();
 
   const win = new BrowserWindow({
