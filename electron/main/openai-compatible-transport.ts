@@ -51,9 +51,24 @@ function buildRequestHeaders(provider: AiProvider, accept: string): Record<strin
 }
 
 const FETCH_RETRY_DELAYS_MS = [0, 250];
-const HTTP_RETRY_DELAYS_MS = [1000, 3000];
-const HTTP_RETRY_DELAY_CAP_MS = 5000;
+const HTTP_MAX_RETRIES = 4;
+const HTTP_RETRY_BASE_MS = 500;
+const HTTP_RETRY_DELAY_CAP_MS = 20_000;
 const RETRYABLE_HTTP_STATUS_CODES = new Set([408, 409, 425, 429, 500, 502, 503, 504, 529]);
+
+/**
+ * Delay before an HTTP retry. A server-provided Retry-After (already capped in
+ * readRetryAfterMs) always wins; otherwise standard exponential backoff with
+ * equal jitter: base * 2^attempt, capped, then half-fixed + half-random so a
+ * rate-limited provider isn't hammered by perfectly synchronized retries.
+ */
+export function computeHttpRetryDelayMs(attempt: number, retryAfterMs: number | undefined): number {
+  if (typeof retryAfterMs === 'number' && retryAfterMs >= 0) {
+    return retryAfterMs;
+  }
+  const exponential = Math.min(HTTP_RETRY_BASE_MS * 2 ** Math.max(0, attempt), HTTP_RETRY_DELAY_CAP_MS);
+  return Math.round(exponential / 2 + Math.random() * (exponential / 2));
+}
 
 export function createApiError(message: string, options?: {
   statusCode?: number;
@@ -747,7 +762,7 @@ export async function postResponsesStream(
     signal: requestSignal
   } satisfies RequestInit;
   try {
-    for (let attempt = 0; attempt <= HTTP_RETRY_DELAYS_MS.length; attempt += 1) {
+    for (let attempt = 0; attempt <= HTTP_MAX_RETRIES; attempt += 1) {
       let response: Response;
       try {
         response = await fetchOpenAiCompatible(url, requestInit, {
@@ -769,8 +784,8 @@ export async function postResponsesStream(
       if (!response.ok) {
         const responseText = await response.text();
         const responseBody = parseMaybeJson(responseText);
-        if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_RETRY_DELAYS_MS.length) {
-          await waitForRetry(readRetryAfterMs(response, responseBody) ?? HTTP_RETRY_DELAYS_MS[attempt] ?? 0, requestSignal);
+        if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_MAX_RETRIES) {
+          await waitForRetry(computeHttpRetryDelayMs(attempt, readRetryAfterMs(response, responseBody)), requestSignal);
           continue;
         }
         throw createApiError(createHttpResponseErrorMessage('OpenAI-compatible streaming request failed', response.status, responseBody, attempt), {
@@ -864,8 +879,8 @@ export async function postResponsesStream(
     const responseBody = parseMaybeJson(responseText);
 
     if (!response.ok) {
-      if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_RETRY_DELAYS_MS.length) {
-        await waitForRetry(readRetryAfterMs(response, responseBody) ?? HTTP_RETRY_DELAYS_MS[attempt] ?? 0, requestSignal);
+      if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_MAX_RETRIES) {
+        await waitForRetry(computeHttpRetryDelayMs(attempt, readRetryAfterMs(response, responseBody)), requestSignal);
         continue;
       }
       throw createApiError(createHttpResponseErrorMessage('OpenAI-compatible streaming request failed', response.status, responseBody, attempt), {
@@ -1120,7 +1135,7 @@ export async function postChatCompletionsStream(
     signal: requestSignal
   } satisfies RequestInit;
   try {
-    for (let attempt = 0; attempt <= HTTP_RETRY_DELAYS_MS.length; attempt += 1) {
+    for (let attempt = 0; attempt <= HTTP_MAX_RETRIES; attempt += 1) {
       let response: Response;
       try {
         response = await fetchOpenAiCompatible(url, requestInit, {
@@ -1142,8 +1157,8 @@ export async function postChatCompletionsStream(
       if (!response.ok) {
         const responseText = await response.text();
         const responseBody = parseMaybeJson(responseText);
-        if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_RETRY_DELAYS_MS.length) {
-          await waitForRetry(readRetryAfterMs(response, responseBody) ?? HTTP_RETRY_DELAYS_MS[attempt] ?? 0, requestSignal);
+        if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_MAX_RETRIES) {
+          await waitForRetry(computeHttpRetryDelayMs(attempt, readRetryAfterMs(response, responseBody)), requestSignal);
           continue;
         }
         throw createApiError(createHttpResponseErrorMessage('OpenAI-compatible chat streaming request failed', response.status, responseBody, attempt), {
@@ -1230,8 +1245,8 @@ export async function postChatCompletionsStream(
     const responseText = await response.text();
     const responseBody = parseMaybeJson(responseText);
     if (!response.ok) {
-      if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_RETRY_DELAYS_MS.length) {
-        await waitForRetry(readRetryAfterMs(response, responseBody) ?? HTTP_RETRY_DELAYS_MS[attempt] ?? 0, requestSignal);
+      if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_MAX_RETRIES) {
+        await waitForRetry(computeHttpRetryDelayMs(attempt, readRetryAfterMs(response, responseBody)), requestSignal);
         continue;
       }
       throw createApiError(createHttpResponseErrorMessage('OpenAI-compatible chat streaming request failed', response.status, responseBody, attempt), {
