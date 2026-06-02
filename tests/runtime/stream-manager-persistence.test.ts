@@ -9,7 +9,7 @@ import { appendProjectConversationTurn, getActiveProjectSession, replaceProjectS
 import { getRuntimeRun, initializeStore, listRuntimeRuns, setState, getState, upsertRuntimeRun } from '../../electron/main/store.ts';
 import { respondToAgentPermissionRequest, respondToAgentUserInputRequest, resumeAgentRun, startAgentPromptStream } from '../../electron/main/agent-platform/stream-manager.ts';
 import { buildResumeContextForRun } from '../../electron/main/agent-platform/stream-resume.ts';
-import { recordActiveRunAgentCoreState, recordActiveRunSkillActivation, recordActiveRunStreamDelta, recordActiveRunTimelineEntry, recordActiveRunToolResult, recordActiveRunToolUse, recordActiveRunUsage, registerActiveRun, unregisterActiveRun, updateActiveRunStatus, updateActiveRunToolBoundary } from '../../electron/main/agent-platform/run-registry.ts';
+import { findActiveRunByStream, interruptActiveRun, recordActiveRunAgentCoreState, recordActiveRunSkillActivation, recordActiveRunStreamDelta, recordActiveRunTimelineEntry, recordActiveRunToolResult, recordActiveRunToolUse, recordActiveRunUsage, registerActiveRun, unregisterActiveRun, updateActiveRunStatus, updateActiveRunToolBoundary } from '../../electron/main/agent-platform/run-registry.ts';
 import { makeStageHandler, makeToolUseHandler } from '../../electron/main/agent-platform/stream-event-dispatcher.ts';
 import { makePermissionHandlers, makeUserInputHandlers } from '../../electron/main/agent-platform/stream-interactions.ts';
 import { executeAgentToolAction } from '../../electron/main/agent-platform/workspace-tools.ts';
@@ -1203,6 +1203,72 @@ test('completed runtime runs stay visible but are not resumable', async () => {
     assert.equal(completed?.status, 'completed');
     assert.equal(completed?.canResume, false);
   } finally {
+    await rm(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test('interrupting a conversation persists the partial turn instead of discarding it', async () => {
+  const userDataPath = await mkdtemp(join(tmpdir(), 'funplay-store-interrupt-partial-'));
+  const originalFetch = globalThis.fetch;
+  try {
+    await initializeStore(userDataPath);
+    const project = buildProject();
+    await setState({
+      ...getState(),
+      ...(buildState(project) as AppState),
+      // Don't let a provider failure fall back to the local planner — we want the
+      // abort to propagate as a real interruption, not a fallback completion.
+      aiSettings: { defaultProviderId: 'provider_default', fallbackToLocalPlanner: false }
+    });
+
+    // The provider request hangs until the run is aborted, then rejects like a
+    // real aborted fetch — simulating "stop pressed mid-generation".
+    globalThis.fetch = ((_url, init) => new Promise((_resolve, reject) => {
+      const signal = (init as RequestInit | undefined)?.signal;
+      const abort = (): void => {
+        const error = new Error('The operation was aborted.');
+        error.name = 'AbortError';
+        reject(error);
+      };
+      if (signal?.aborted) {
+        abort();
+        return;
+      }
+      signal?.addEventListener('abort', abort, { once: true });
+    })) as typeof fetch;
+
+    const finalEvent = await waitForFinalStreamEvent(async (dispatchEvent) => {
+      const handle = startAgentPromptStream({
+        getState,
+        persistState: setState,
+        projectId: project.id,
+        message: '请帮我整理资源目录',
+        dispatchEvent
+      });
+      // Let the run register and reach the hanging request, then interrupt it.
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      const activeRun = findActiveRunByStream(handle.streamId);
+      assert.ok(activeRun, 'expected an active run to interrupt');
+      interruptActiveRun(activeRun.id);
+    });
+
+    // The whole turn must survive: cancelled carries the committed project, and
+    // the persisted session keeps the user message (the core regression).
+    assert.equal(finalEvent.type, 'cancelled');
+    assert.ok(
+      finalEvent.type === 'cancelled' && finalEvent.project,
+      'cancelled event should carry the committed partial project'
+    );
+    const reloaded = getState().projects.find((item) => item.id === project.id);
+    const chat = reloaded ? getActiveProjectSession(reloaded).chat : [];
+    const userMessage = chat.find((message) => message.role === 'user');
+    assert.equal(userMessage?.content, '请帮我整理资源目录', 'user message must survive interruption');
+    assert.ok(
+      chat.some((message) => message.role === 'assistant'),
+      'an assistant partial/placeholder reply should be persisted alongside the user message'
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
     await rm(userDataPath, { recursive: true, force: true });
   }
 });

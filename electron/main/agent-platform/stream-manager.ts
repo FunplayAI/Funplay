@@ -7,13 +7,14 @@ import {
   hasSessionWritePermission
 } from './permission-session-store';
 import { addSessionCheckpointSnapshot } from '../project-service';
-import { executeGenericAgentTask as executeAgentTask } from './task-executor';
+import { executeGenericAgentTask as executeAgentTask, AgentRunInterruptedError } from './task-executor';
 import {
   findActiveRunByStream,
   getActiveOrPersistedRun,
   recordActiveRunPermissionResolved,
   registerActiveRun,
-  removePersistedRun
+  removePersistedRun,
+  unregisterActiveRun
 } from './run-registry';
 import {
   cancelPendingPermissionsForStream,
@@ -300,11 +301,35 @@ export function startAgentPromptStream(params: {
         finishedAt: nowIso()
       });
     } catch (error) {
-      finalOutcome = processStreamError(ctx, error, {
-        interruptMessage: 'Agent run was interrupted before completion.',
-        failMessage: 'AI stream failed.',
-        errorMetadata: { ...eventSink.getMetadata() }
-      }).finalOutcome;
+      if (error instanceof AgentRunInterruptedError) {
+        // Interrupted mid-turn: persist the partial turn (user message + the
+        // text streamed so far) and hand it to the renderer via cancelled.project,
+        // so the whole session row isn't lost. Mirrors the completed merge+persist.
+        const latestState = stateAdapter.getState();
+        const latestResolved = stateAdapter.resolveProjectContext(params.projectId);
+        const committed = stateAdapter.mergeUpdatedProject(latestResolved, error.partialProject, sessionId);
+        await stateAdapter.persistState({ ...latestState });
+        params.dispatchEvent({
+          type: 'cancelled',
+          streamId,
+          projectId: params.projectId,
+          sessionId,
+          project: committed,
+          startedAt,
+          finishedAt: nowIso()
+        });
+        unregisterActiveRun(activeRun.id, {
+          finalStatus: 'interrupted',
+          error: 'Agent run was interrupted before completion.'
+        });
+        finalOutcome = 'interrupted';
+      } else {
+        finalOutcome = processStreamError(ctx, error, {
+          interruptMessage: 'Agent run was interrupted before completion.',
+          failMessage: 'AI stream failed.',
+          errorMetadata: { ...eventSink.getMetadata() }
+        }).finalOutcome;
+      }
     } finally {
       finalizeStream(ctx, finalOutcome);
     }

@@ -393,7 +393,16 @@ function App(): JSX.Element {
       if (event.type === 'cancelled') {
         const current =
           listStreamSessions().find((stream) => stream.streamId === event.streamId) ?? activePromptStreamRef.current;
-        if (current?.streamId === event.streamId) {
+        if (event.project) {
+          // Interrupted, but the partial turn (user message + text streamed so
+          // far) was persisted on the main side. Commit it like a completed turn
+          // so the session row survives, and do NOT restore the draft — the user
+          // message now lives in the session, restoring would duplicate it.
+          const interruptedProject = event.project;
+          setProjects((projectsValue) =>
+            projectsValue.map((project) => (project.id === interruptedProject.id ? interruptedProject : project))
+          );
+        } else if (current?.streamId === event.streamId) {
           setSessionDrafts((value) => ({
             ...value,
             [current.sessionId]: value[current.sessionId] || current.prompt

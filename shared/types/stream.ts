@@ -262,6 +262,13 @@ export interface PromptStreamCancelledEvent {
   streamId: string;
   projectId: string;
   sessionId: string;
+  /**
+   * When an in-flight run is interrupted, the partial conversation turn (user
+   * message + whatever the agent had streamed so far) is committed and carried
+   * here so the renderer can persist it instead of losing the whole turn.
+   * Absent when there was nothing to preserve.
+   */
+  project?: Project;
   startedAt: string;
   finishedAt: string;
 }

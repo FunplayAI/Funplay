@@ -22,6 +22,24 @@ import { prepareNativeContextHandoff, resetNativeContextCompressionState } from 
 import { recordActiveRunAgentCoreParts, recordActiveRunLifecycleHook, recordActiveRunSkillActivation } from './run-registry';
 import { loadAgentLifecycleHookConfigForProject } from './agent-hooks';
 
+/**
+ * Thrown when a conversation run is interrupted (stop pressed / abort signal
+ * fired) after the turn already started. Carries the committed partial turn
+ * (user message + whatever the agent had streamed so far) so the caller can
+ * persist it instead of discarding the whole turn. Without this, an interrupted
+ * turn never reaches `appendProjectConversationTurn` and the entire session row
+ * is lost on the next DELETE-then-insert persist.
+ */
+export class AgentRunInterruptedError extends Error {
+  readonly partialProject: Project;
+
+  constructor(partialProject: Project) {
+    super('Agent run was interrupted before completion.');
+    this.name = 'AgentRunInterruptedError';
+    this.partialProject = partialProject;
+  }
+}
+
 function createStep(kind: GameAgentStep['kind'], title: string, detail: string, status: GameAgentStep['status']): GameAgentStep {
   return {
     id: makeId('step'),
@@ -353,39 +371,72 @@ export async function executeGenericConversation(task: GenericAgentConversationT
   };
 
   const eventProjection = createRuntimeEventResultProjection(runtimeParams);
-  for await (const event of executeGenericAgentRuntimeEventStream(runtime, runtimeParams)) {
-    eventProjection.observe(event);
-    if (event.type === 'status') {
-      task.onStatus?.(event.phase, event.message);
-    } else if (event.type === 'text_delta') {
-      task.onTextDelta?.(event.delta, event.accumulated);
-    } else if (event.type === 'thinking_delta') {
-      task.onThinkingDelta?.(event.delta, event.accumulated);
-    } else if (event.type === 'tool_use') {
-      task.onToolUse?.(event.tool);
-    } else if (event.type === 'tool_result') {
-      task.onToolResult?.(event.result);
-    } else if (event.type === 'stage') {
-      task.onStage?.(event.stage);
-    } else if (event.type === 'permission_request') {
-      task.onPermissionRequest?.(event.request);
-    } else if (event.type === 'user_input_request') {
-      task.onUserInputRequest?.(event.request);
-    } else if (event.type === 'usage') {
-      onUsage(event.usage);
-    } else if (event.type === 'lifecycle_hook') {
-      if (task.activeRunId) {
-        recordActiveRunLifecycleHook(task.activeRunId, event.hook);
+  let lastAccumulatedAssistantText = '';
+  try {
+    for await (const event of executeGenericAgentRuntimeEventStream(runtime, runtimeParams)) {
+      eventProjection.observe(event);
+      if (event.type === 'status') {
+        task.onStatus?.(event.phase, event.message);
+      } else if (event.type === 'text_delta') {
+        lastAccumulatedAssistantText = event.accumulated;
+        task.onTextDelta?.(event.delta, event.accumulated);
+      } else if (event.type === 'thinking_delta') {
+        task.onThinkingDelta?.(event.delta, event.accumulated);
+      } else if (event.type === 'tool_use') {
+        task.onToolUse?.(event.tool);
+      } else if (event.type === 'tool_result') {
+        task.onToolResult?.(event.result);
+      } else if (event.type === 'stage') {
+        task.onStage?.(event.stage);
+      } else if (event.type === 'permission_request') {
+        task.onPermissionRequest?.(event.request);
+      } else if (event.type === 'user_input_request') {
+        task.onUserInputRequest?.(event.request);
+      } else if (event.type === 'usage') {
+        onUsage(event.usage);
+      } else if (event.type === 'lifecycle_hook') {
+        if (task.activeRunId) {
+          recordActiveRunLifecycleHook(task.activeRunId, event.hook);
+        }
+      } else if (event.type === 'agent_core_parts') {
+        if (task.activeRunId) {
+          recordActiveRunAgentCoreParts(task.activeRunId, event.parts);
+        }
+        task.onAgentCoreParts?.(event.parts);
+        continue;
+      } else {
+        result = event.result;
       }
-    } else if (event.type === 'agent_core_parts') {
-      if (task.activeRunId) {
-        recordActiveRunAgentCoreParts(task.activeRunId, event.parts);
-      }
-      task.onAgentCoreParts?.(event.parts);
-      continue;
-    } else {
-      result = event.result;
     }
+  } catch (error) {
+    // Interrupted (stop / abort): commit the partial turn (user message + the
+    // text streamed so far) and re-throw carrying it, so the run-manager can
+    // persist it instead of losing the whole turn. Non-abort errors propagate.
+    if (task.abortSignal?.aborted || (error instanceof Error && error.name === 'AbortError')) {
+      const interruptedAt = nowIso();
+      const interruptedProject = appendProjectConversationTurn(currentProject, {
+        userMessageId: task.userMessageId,
+        userMessage: task.message,
+        userDisplayMessage: task.displayMessage,
+        userAttachments: task.attachments,
+        assistantMessage: lastAccumulatedAssistantText.trim() || '_（本轮已中断，未生成完整回复）_',
+        assistantMetadata: {
+          intent: 'chat',
+          agentStartedAt: startedAt,
+          agentFinishedAt: interruptedAt,
+          executionSummary: '本轮在完成前被中断，已保留用户消息与已生成的部分内容。'
+        },
+        updatedAt: interruptedAt,
+        activityTitle: '通用 Agent 已中断',
+        activityDetail: '本轮在完成前被中断，已保留用户消息与已生成的部分内容。'
+      });
+      throw new AgentRunInterruptedError({
+        ...interruptedProject,
+        activeSessionId: activeSession.id,
+        updatedAt: interruptedAt
+      });
+    }
+    throw error;
   }
   if (!result) {
     throw new Error(`Runtime ${runtime.id} completed without a result event.`);
