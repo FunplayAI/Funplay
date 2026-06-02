@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -18,6 +18,41 @@ const rendererMessages = [];
 if (!existsSync(rendererEntry)) {
   console.error('Built renderer not found. Run `npm run build` before `npm run ui:electron-smoke`.');
   app.exit(1);
+  process.exit(1);
+}
+
+// --- Stale-bundle guard ----------------------------------------------------
+// ui:electron-smoke loads the prebuilt out/renderer via loadFile and does NOT
+// build it. If any source under src/ or shared/ is newer than the bundle, the
+// captured screenshots and DOM/layout/a11y assertions silently reflect OUTDATED
+// UI (this exact trap cost real debugging time). Fail fast instead of testing
+// a stale build by accident.
+function newestMtimeUnder(dir) {
+  let newest = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = resolve(dir, entry.name);
+    newest = Math.max(newest, entry.isDirectory() ? newestMtimeUnder(full) : statSync(full).mtimeMs);
+  }
+  return newest;
+}
+
+const bundleMtime = statSync(rendererEntry).mtimeMs;
+let newestSrcMtime = 0;
+for (const dirName of ['src', 'shared']) {
+  const sourceDir = resolve(repoRoot, dirName);
+  if (existsSync(sourceDir)) {
+    newestSrcMtime = Math.max(newestSrcMtime, newestMtimeUnder(sourceDir));
+  }
+}
+if (newestSrcMtime > bundleMtime) {
+  const staleSeconds = Math.round((newestSrcMtime - bundleMtime) / 1000);
+  console.error(
+    `Renderer bundle is STALE: out/renderer is ${staleSeconds}s older than the newest file under src/ or shared/.\n` +
+      'ui:electron-smoke loads the prebuilt bundle (loadFile) and does NOT build it — you would be testing outdated UI.\n' +
+      'Run `npm run build` (or `npx electron-vite build`) first, then re-run `npm run ui:electron-smoke`.'
+  );
+  app.exit(1);
+  process.exit(1);
 }
 
 const now = new Date().toISOString();
