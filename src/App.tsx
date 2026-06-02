@@ -14,6 +14,7 @@ import { useOnboarding } from './hooks/useOnboarding';
 import { useAgentRuntimeActivity } from './hooks/useAgentRuntimeActivity';
 import { useAssetGenerationCenter } from './hooks/useAssetGenerationCenter';
 import { usePromptAttachmentImport } from './hooks/usePromptAttachmentImport';
+import { useMcpManager } from './hooks/useMcpManager';
 import { formatProjectDocument } from '../shared/planner';
 import { ensureProjectSessions } from '../shared/project-sessions';
 import {
@@ -27,22 +28,12 @@ import {
   type EnvironmentActionKind,
   type EnvironmentActionResult,
   type EnvironmentDiagnostics,
-  type McpConnectionSnapshot,
-  type McpPlugin,
-  type McpPluginInput,
-  type McpRawAuditEntry,
-  type McpToolSnapshot,
   type PromptAttachment,
   type PromptStreamEvent,
   type ProjectFileEntry,
   type Project,
   type ProjectSessionEffort,
   type ProjectSessionRuntimeId,
-  type UnityMcpPrompt,
-  type UnityMcpResource,
-  type UnityMcpResourceTemplate,
-  type UnityMcpServerInfo,
-  type UnityMcpTool,
   type UnitySettings
 } from '../shared/types';
 import { AppShell, StandaloneAppShell } from './components/layout/AppShell';
@@ -60,17 +51,10 @@ import {
 import { AgentChatView } from './components/chat/AgentChatView';
 import type { QueuedPromptItem } from './components/chat/ChatComposer';
 import { getVisibleRuntimeStatusMessage } from './components/chat/runtime-display';
-import {
-  FileInspectorPanel,
-  SidebarPanel
-} from './components/layout/WorkspacePanels';
+import { FileInspectorPanel, SidebarPanel } from './components/layout/WorkspacePanels';
 import { McpPluginModal } from './components/settings-modals';
 import type { SessionCheckpointListItem, SessionListState } from './components/layout/SessionManagementPanel';
-import type {
-  AppSettingsTab,
-  ProjectMcpBindingDraft,
-  ProjectSettingsTab,
-} from './lib/app-types';
+import type { AppSettingsTab, ProjectSettingsTab } from './lib/app-types';
 import {
   buildProjectSwitcherItem,
   buildSessionListState,
@@ -82,7 +66,6 @@ import {
   shouldUseFastRuntimeRefresh,
   wait
 } from './lib/app-helpers';
-import { canProjectUseMcpPlugin, getProjectMcpServerIds } from './lib/mcp-project-helpers';
 import { WelcomeScreen } from './components/pages/WelcomeScreen';
 import { OnboardingScreen } from './components/pages/OnboardingScreen';
 import { McpManagementPage } from './components/pages/McpManagementPage';
@@ -118,34 +101,21 @@ function App(): JSX.Element {
   const [appMode, setAppMode] = useState<AppMode>('welcome');
   const [section, setSection] = useState<WorkspaceSection>('agent');
   const [projectSettingsTab, setProjectSettingsTab] = useState<ProjectSettingsTab>('engine');
-  const [showPluginModal, setShowPluginModal] = useState(false);
   const [showAppSettingsModal, setShowAppSettingsModal] = useState(false);
   const [appSettingsInitialTab, setAppSettingsInitialTab] = useState<AppSettingsTab>('appearance');
   const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(false);
-  const [editingPlugin, setEditingPlugin] = useState<McpPlugin | null>(null);
-  const [mcpModalProjectId, setMcpModalProjectId] = useState<string | undefined>(undefined);
   const [projectPendingDelete, setProjectPendingDelete] = useState<Project | null>(null);
-  const [selectedMcpPluginId, setSelectedMcpPluginId] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [bootstrapError, setBootstrapError] = useState('');
   const [isDeletingProject, setIsDeletingProject] = useState(false);
-  const [isRefreshingPlugin, setIsRefreshingPlugin] = useState(false);
 
   const [projects, setProjects] = useState<Project[]>([]);
-  const [mcpPlugins, setMcpPlugins] = useState<McpPlugin[]>([]);
-  const [assetGenerationProviderConfigs, setAssetGenerationProviderConfigs] = useState<AssetGenerationProviderConfig[]>([]);
+  const [assetGenerationProviderConfigs, setAssetGenerationProviderConfigs] = useState<AssetGenerationProviderConfig[]>(
+    []
+  );
   const [settings, setSettings] = useState<UnitySettings>(emptySettings);
   const [settingsDraft, setSettingsDraft] = useState(emptySettings);
   const [selectedProjectId, setSelectedProjectId] = useState('');
-  const [unityServerInfo, setUnityServerInfo] = useState<UnityMcpServerInfo | null>(null);
-  const [unityTools, setUnityTools] = useState<UnityMcpTool[]>([]);
-  const [unityResources, setUnityResources] = useState<UnityMcpResource[]>([]);
-  const [unityPrompts, setUnityPrompts] = useState<UnityMcpPrompt[]>([]);
-  const [unityResourceTemplates, setUnityResourceTemplates] = useState<UnityMcpResourceTemplate[]>([]);
-  const [mcpToolSnapshots, setMcpToolSnapshots] = useState<McpToolSnapshot[]>([]);
-  const [mcpRawAudits, setMcpRawAudits] = useState<McpRawAuditEntry[]>([]);
-  const [pluginError, setPluginError] = useState('');
-  const [mcpConnectionStatuses, setMcpConnectionStatuses] = useState<Record<string, McpConnectionSnapshot>>({});
   const [sessionDrafts, setSessionDrafts] = useState<Record<string, string>>({});
   const [sessionAttachments, setSessionAttachments] = useState<Record<string, PromptAttachment[]>>({});
   const [sessionComposerErrors, setSessionComposerErrors] = useState<Record<string, string>>({});
@@ -155,7 +125,6 @@ function App(): JSX.Element {
   const [deleteProjectSourceFiles, setDeleteProjectSourceFiles] = useState(false);
   const [assetLibraryViewByProject, setAssetLibraryViewByProject] = useState<Record<string, AssetLibraryViewId>>({});
 
-  const [projectBindings, setProjectBindings] = useState<ProjectMcpBindingDraft>([]);
   const activeSessionSwitchTokenRef = useRef(0);
   const dequeueSessionIdsRef = useRef<Set<string>>(new Set());
   const sessionMutationQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -174,21 +143,37 @@ function App(): JSX.Element {
 
   const { uiPreferences, setUiPreferences, platformCards } = useUiPreferences();
   const {
-    leftSidebarCollapsed, setLeftSidebarCollapsed,
-    rightInspectorCollapsed, setRightInspectorCollapsed,
-    leftSidebarWidth, setLeftSidebarWidth,
-    rightInspectorWidth, setRightInspectorWidth
+    leftSidebarCollapsed,
+    setLeftSidebarCollapsed,
+    rightInspectorCollapsed,
+    setRightInspectorCollapsed,
+    leftSidebarWidth,
+    setLeftSidebarWidth,
+    rightInspectorWidth,
+    setRightInspectorWidth
   } = useWorkspaceLayout();
   const { appNotifications, dismissNotification } = useAppNotifications();
-  const { appUpdateStatus, refreshAppUpdateStatus, checkForUpdates: handleCheckForUpdates, downloadUpdate: handleDownloadUpdate, installUpdate: handleInstallUpdate } = useAppUpdateStatus();
   const {
-    providers, setProviders,
-    aiSettings, setAiSettings,
-    agentSettings, setAgentSettings,
-    providerTests, setProviderTests,
+    appUpdateStatus,
+    refreshAppUpdateStatus,
+    checkForUpdates: handleCheckForUpdates,
+    downloadUpdate: handleDownloadUpdate,
+    installUpdate: handleInstallUpdate
+  } = useAppUpdateStatus();
+  const {
+    providers,
+    setProviders,
+    aiSettings,
+    setAiSettings,
+    agentSettings,
+    setAgentSettings,
+    providerTests,
+    setProviderTests,
     refreshProviderStateFromMain,
-    handleCreateProvider, handleUpdateProvider,
-    handleDeleteProvider, handleTestProvider,
+    handleCreateProvider,
+    handleUpdateProvider,
+    handleDeleteProvider,
+    handleTestProvider,
     handleSetDefaultProvider
   } = useProviderManager();
 
@@ -204,7 +189,7 @@ function App(): JSX.Element {
     setOnboardingProjectPath,
     handleCreateProject,
     openProject,
-    language: uiPreferences.language,
+    language: uiPreferences.language
   });
 
   useEffect(() => {
@@ -239,39 +224,86 @@ function App(): JSX.Element {
         setOnboardingProjectPath(payload.settings.lastCreatedProjectDirectory || '~/Downloads');
         setSelectedProjectId(payload.projects[0]?.id ?? '');
         setOnboardingEnginePluginId(
-          payload.mcpPlugins.find((plugin) => !plugin.projectId && plugin.kind === 'engine' && /unity/i.test(plugin.name))?.id ??
+          payload.mcpPlugins.find(
+            (plugin) => !plugin.projectId && plugin.kind === 'engine' && /unity/i.test(plugin.name)
+          )?.id ??
             payload.mcpPlugins.find((plugin) => !plugin.projectId && plugin.kind === 'engine' && plugin.enabled)?.id ??
             ''
         );
         setAppMode(payload.projects.length > 0 ? 'workspace' : 'welcome');
       })
       .catch((error) => {
-        setBootstrapError(error instanceof Error ? error.message : localize(uiPreferences.language, '应用启动失败', 'Failed to launch app'));
+        setBootstrapError(
+          error instanceof Error
+            ? error.message
+            : localize(uiPreferences.language, '应用启动失败', 'Failed to launch app')
+        );
       })
       .finally(() => {
         setIsLoading(false);
       });
   }, []);
 
-
   const { selectedProject, selectedProjectView, selectedSessionId } = useSelectedProjectView({
     projects,
     selectedProjectId,
     localActiveSessionByProject
   });
-  const selectedAssetLibraryView = selectedProjectView ? assetLibraryViewByProject[selectedProjectView.id] ?? 'all' : 'all';
+  const {
+    mcpPlugins,
+    setMcpPlugins,
+    unityServerInfo,
+    unityTools,
+    unityResources,
+    unityPrompts,
+    unityResourceTemplates,
+    mcpToolSnapshots,
+    mcpRawAudits,
+    pluginError,
+    mcpConnectionStatuses,
+    projectBindings,
+    isRefreshingPlugin,
+    setSelectedMcpPluginId,
+    editingPlugin,
+    setEditingPlugin,
+    showPluginModal,
+    setShowPluginModal,
+    mcpModalProjectId,
+    setMcpModalProjectId,
+    activeProjectMcpPlugins,
+    selectedMcpPlugin,
+    projectMcpSelectedPlugin,
+    globalMcpPlugins,
+    selectedGlobalMcpPlugin,
+    projectMcpConnectionStatus,
+    globalMcpConnectionStatus,
+    handleToggleProjectMcpPlugin,
+    handleRefreshPluginMeta,
+    handleReconnectMcpPlugin,
+    handleStopMcpPlugin,
+    handleSendRawMcpRequest,
+    handleCreatePlugin,
+    handleUpdatePlugin,
+    handleToggleMcpPluginEnabled,
+    handleDeletePlugin
+  } = useMcpManager({
+    selectedProject,
+    selectedProjectView,
+    setProjects,
+    retryRefreshProjectRuntimeState,
+    language: uiPreferences.language
+  });
+  const selectedAssetLibraryView = selectedProjectView
+    ? (assetLibraryViewByProject[selectedProjectView.id] ?? 'all')
+    : 'all';
   const selectedProjectRuntimePath = selectedProjectView?.engine?.projectPath ?? '';
   const selectedProjectUseFastRuntimeRefresh = shouldUseFastRuntimeRefresh(selectedProjectView);
-  const {
-    activeStreamSessions,
-    activePromptStream,
-    selectedProjectStream,
-    agentRuntimeStatuses
-  } = useAgentRuntimeActivity({
-    enabled: appMode === 'workspace',
-    projectId: selectedProjectView?.id,
-    sessionId: selectedSessionId || undefined
-  });
+  const { activeStreamSessions, activePromptStream, selectedProjectStream, agentRuntimeStatuses } =
+    useAgentRuntimeActivity({
+      enabled: appMode === 'workspace',
+      projectId: selectedProjectView?.id,
+      sessionId: selectedSessionId || undefined
+    });
   const activePromptStreamRef = useRef<StreamSessionState | null>(null);
   const selectedProjectIdRef = useRef(selectedProjectId);
 
@@ -324,10 +356,26 @@ function App(): JSX.Element {
         toolFailed: localize(uiPreferences.language, '工具调用失败。', 'Tool call failed.'),
         waitingPermission: localize(uiPreferences.language, '等待权限确认…', 'Waiting for permission…'),
         waitingUserInput: localize(uiPreferences.language, '等待用户回答…', 'Waiting for user input…'),
-        permissionAllowed: localize(uiPreferences.language, '已允许本轮写入操作。', 'Write access allowed for this turn.'),
-        permissionAllowedSession: localize(uiPreferences.language, '已允许当前会话写入操作。', 'Write access allowed for this session.'),
-        permissionDenied: localize(uiPreferences.language, '已拒绝本轮写入操作。', 'Write access denied for this turn.'),
-        userInputSubmitted: localize(uiPreferences.language, '已提交回答，Agent 正在继续。', 'Answer submitted. Agent is continuing.'),
+        permissionAllowed: localize(
+          uiPreferences.language,
+          '已允许本轮写入操作。',
+          'Write access allowed for this turn.'
+        ),
+        permissionAllowedSession: localize(
+          uiPreferences.language,
+          '已允许当前会话写入操作。',
+          'Write access allowed for this session.'
+        ),
+        permissionDenied: localize(
+          uiPreferences.language,
+          '已拒绝本轮写入操作。',
+          'Write access denied for this turn.'
+        ),
+        userInputSubmitted: localize(
+          uiPreferences.language,
+          '已提交回答，Agent 正在继续。',
+          'Answer submitted. Agent is continuing.'
+        ),
         completed: localize(uiPreferences.language, '已生成完成，正在写入会话…', 'Completed. Writing into the session…')
       });
 
@@ -343,7 +391,8 @@ function App(): JSX.Element {
       }
 
       if (event.type === 'cancelled') {
-        const current = listStreamSessions().find((stream) => stream.streamId === event.streamId) ?? activePromptStreamRef.current;
+        const current =
+          listStreamSessions().find((stream) => stream.streamId === event.streamId) ?? activePromptStreamRef.current;
         if (current?.streamId === event.streamId) {
           setSessionDrafts((value) => ({
             ...value,
@@ -353,14 +402,19 @@ function App(): JSX.Element {
         if (current?.sessionId) {
           setSessionComposerErrors((value) => ({
             ...value,
-            [current.sessionId]: localize(uiPreferences.language, '已取消本轮生成。', 'The current response was cancelled.')
+            [current.sessionId]: localize(
+              uiPreferences.language,
+              '已取消本轮生成。',
+              'The current response was cancelled.'
+            )
           }));
         }
         return;
       }
 
       if (event.type === 'error') {
-        const current = listStreamSessions().find((stream) => stream.streamId === event.streamId) ?? activePromptStreamRef.current;
+        const current =
+          listStreamSessions().find((stream) => stream.streamId === event.streamId) ?? activePromptStreamRef.current;
         if (current?.streamId === event.streamId) {
           setSessionDrafts((value) => ({
             ...value,
@@ -386,66 +440,9 @@ function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    if (!selectedProject) {
-      setProjectBindings([]);
-      setSkillDraft(createEmptyProjectSkillDraft());
-      setEditingSkillId('');
-      return;
-    }
-
-    setProjectBindings(getProjectMcpServerIds(selectedProject));
     setSkillDraft(createEmptyProjectSkillDraft());
     setEditingSkillId('');
   }, [selectedProject]);
-
-  useEffect(() => {
-    if (mcpPlugins.length === 0) {
-      setSelectedMcpPluginId('');
-      return;
-    }
-
-    if (selectedMcpPluginId && mcpPlugins.some((plugin) => plugin.id === selectedMcpPluginId)) {
-      return;
-    }
-
-    const preferredPluginId =
-      projectBindings[0] ||
-      mcpPlugins.find((plugin) => canProjectUseMcpPlugin(selectedProject, plugin) && plugin.enabled)?.id ||
-      mcpPlugins.find((plugin) => canProjectUseMcpPlugin(selectedProject, plugin))?.id ||
-      '';
-
-    setSelectedMcpPluginId(preferredPluginId);
-  }, [mcpPlugins, selectedMcpPluginId, projectBindings, selectedProject]);
-
-  useEffect(() => {
-    setPluginError('');
-    setUnityServerInfo(null);
-    setUnityTools([]);
-    setUnityResources([]);
-    setUnityPrompts([]);
-    setUnityResourceTemplates([]);
-    setMcpToolSnapshots([]);
-    setMcpRawAudits([]);
-    if (!selectedMcpPluginId) {
-      return;
-    }
-
-    let cancelled = false;
-    window.funplay.listMcpRawAudits(selectedMcpPluginId)
-      .then((audits) => {
-        if (!cancelled) {
-          setMcpRawAudits(audits);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setMcpRawAudits([]);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedMcpPluginId]);
 
   useEffect(() => {
     if (appMode !== 'workspace' || !selectedProjectId || !selectedProjectRuntimePath) {
@@ -530,48 +527,22 @@ function App(): JSX.Element {
     setSelectedProjectId(projects[0].id);
   }, [appMode, selectedProjectId, projects]);
 
-  const {
-    assetGenerationProviders,
-    handleGenerateAsset,
-    handleImportGeneratedAsset,
-    handleCancelAssetGenerationJob
-  } = useAssetGenerationCenter({
-    appMode,
-    mcpPlugins,
-    assetGenerationProviderConfigs,
-    selectedProjectView,
-    language: uiPreferences.language,
-    setProjects,
-    refreshProjectFiles
-  });
+  const { assetGenerationProviders, handleGenerateAsset, handleImportGeneratedAsset, handleCancelAssetGenerationJob } =
+    useAssetGenerationCenter({
+      appMode,
+      mcpPlugins,
+      assetGenerationProviderConfigs,
+      selectedProjectView,
+      language: uiPreferences.language,
+      setProjects,
+      refreshProjectFiles
+    });
 
-  const activeProjectMcpPlugins = mcpPlugins.filter((plugin) => projectBindings.includes(plugin.id) && plugin.enabled && canProjectUseMcpPlugin(selectedProjectView, plugin));
-  const activeEnginePlugin = activeProjectMcpPlugins.find((plugin) => plugin.kind === 'engine') ?? null;
-  const selectedMcpPlugin = mcpPlugins.find((plugin) => plugin.id === selectedMcpPluginId) ?? null;
-  const projectMcpSelectedPlugin = selectedMcpPlugin ?? activeProjectMcpPlugins[0] ?? null;
-  const globalMcpPlugins = mcpPlugins.filter((plugin) => !plugin.projectId);
-  const selectedGlobalMcpPlugin =
-    selectedMcpPlugin && !selectedMcpPlugin.projectId ? selectedMcpPlugin : globalMcpPlugins[0] ?? null;
-  const projectMcpConnectionStatus = projectMcpSelectedPlugin ? mcpConnectionStatuses[projectMcpSelectedPlugin.id] ?? null : null;
-  const globalMcpConnectionStatus = selectedGlobalMcpPlugin ? mcpConnectionStatuses[selectedGlobalMcpPlugin.id] ?? null : null;
-
-  useEffect(() => {
-    if (!projectMcpSelectedPlugin) {
-      return;
-    }
-    void refreshMcpConnectionStatus(projectMcpSelectedPlugin);
-  }, [projectMcpSelectedPlugin?.id]);
-
-  useEffect(() => {
-    if (!selectedGlobalMcpPlugin || selectedGlobalMcpPlugin.id === projectMcpSelectedPlugin?.id) {
-      return;
-    }
-    void refreshMcpConnectionStatus(selectedGlobalMcpPlugin);
-  }, [selectedGlobalMcpPlugin?.id, projectMcpSelectedPlugin?.id]);
-
-  const selectedActiveSession = selectedProjectView?.sessions.find((session) => session.id === selectedSessionId) ?? null;
+  const selectedActiveSession =
+    selectedProjectView?.sessions.find((session) => session.id === selectedSessionId) ?? null;
   const selectedSessionRuntime = selectedActiveSession?.runtimeOverrides;
-  const selectedProjectPermissionMode = selectedProjectView?.agentPolicy?.permissionMode ?? agentSettings.permissionMode;
+  const selectedProjectPermissionMode =
+    selectedProjectView?.agentPolicy?.permissionMode ?? agentSettings.permissionMode;
   const selectedSessionPermissionMode = selectedSessionRuntime?.permissionMode ?? selectedProjectPermissionMode;
   const selectedSessionEffort = selectedSessionRuntime?.effort ?? 'auto';
   const selectedDefaultProvider =
@@ -581,24 +552,20 @@ function App(): JSX.Element {
   const selectedProvider =
     (selectedSessionRuntime?.providerId
       ? providers.find((provider) => provider.id === selectedSessionRuntime.providerId && provider.enabled)
-      : undefined) ??
-    selectedDefaultProvider;
-  const selectedComposerValue = selectedSessionId ? sessionDrafts[selectedSessionId] ?? '' : '';
-  const selectedComposerAttachments = selectedSessionId ? sessionAttachments[selectedSessionId] ?? [] : [];
-  const selectedComposerError = selectedSessionId ? sessionComposerErrors[selectedSessionId] ?? '' : '';
-  const selectedQueuedPrompts = selectedSessionId ? queuedPromptsBySession[selectedSessionId] ?? [] : [];
-  const {
-    handlePickPromptAttachments,
-    handleImportPromptAttachmentFiles,
-    removePromptAttachment
-  } = usePromptAttachmentImport({
-    projectId: selectedProjectView?.id,
-    sessionId: selectedSessionId,
-    sessionAttachments,
-    setSessionAttachments,
-    setSessionComposerErrors,
-    language: uiPreferences.language
-  });
+      : undefined) ?? selectedDefaultProvider;
+  const selectedComposerValue = selectedSessionId ? (sessionDrafts[selectedSessionId] ?? '') : '';
+  const selectedComposerAttachments = selectedSessionId ? (sessionAttachments[selectedSessionId] ?? []) : [];
+  const selectedComposerError = selectedSessionId ? (sessionComposerErrors[selectedSessionId] ?? '') : '';
+  const selectedQueuedPrompts = selectedSessionId ? (queuedPromptsBySession[selectedSessionId] ?? []) : [];
+  const { handlePickPromptAttachments, handleImportPromptAttachmentFiles, removePromptAttachment } =
+    usePromptAttachmentImport({
+      projectId: selectedProjectView?.id,
+      sessionId: selectedSessionId,
+      sessionAttachments,
+      setSessionAttachments,
+      setSessionComposerErrors,
+      language: uiPreferences.language
+    });
   const selectedProjectSessionStates = useMemo<Record<string, SessionListState>>(() => {
     if (!selectedProjectView) {
       return {};
@@ -611,15 +578,17 @@ function App(): JSX.Element {
           session,
           language: uiPreferences.language,
           isStreaming: Boolean(
-            activeStreamSessions.some((stream) =>
-              stream.projectId === selectedProjectView.id &&
-              stream.sessionId === session.id &&
-              !['completed', 'cancelled', 'error'].includes(stream.phase)
+            activeStreamSessions.some(
+              (stream) =>
+                stream.projectId === selectedProjectView.id &&
+                stream.sessionId === session.id &&
+                !['completed', 'cancelled', 'error'].includes(stream.phase)
             )
           ),
           statusMessage: getVisibleRuntimeStatusMessage(
-            activeStreamSessions.find((stream) => stream.projectId === selectedProjectView.id && stream.sessionId === session.id)
-              ?.statusMessage,
+            activeStreamSessions.find(
+              (stream) => stream.projectId === selectedProjectView.id && stream.sessionId === session.id
+            )?.statusMessage,
             uiPreferences.developerMode,
             uiPreferences.language
           ),
@@ -628,7 +597,14 @@ function App(): JSX.Element {
         })
       ])
     );
-  }, [activeStreamSessions, queuedPromptsBySession, selectedProjectView, sessionComposerErrors, uiPreferences.developerMode, uiPreferences.language]);
+  }, [
+    activeStreamSessions,
+    queuedPromptsBySession,
+    selectedProjectView,
+    sessionComposerErrors,
+    uiPreferences.developerMode,
+    uiPreferences.language
+  ]);
   const selectedProjectSessionCheckpoints = useMemo<Record<string, SessionCheckpointListItem[]>>(() => {
     if (!selectedProjectView) {
       return {};
@@ -657,7 +633,11 @@ function App(): JSX.Element {
     }
 
     return selectedProjectView.snapshots
-      .filter((snapshot) => snapshot.sessionCheckpoint?.sessionId === selectedSessionId && snapshot.sessionCheckpoint?.triggerUserMessageId)
+      .filter(
+        (snapshot) =>
+          snapshot.sessionCheckpoint?.sessionId === selectedSessionId &&
+          snapshot.sessionCheckpoint?.triggerUserMessageId
+      )
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
       .reduce<Record<string, string>>((accumulator, snapshot) => {
         const messageId = snapshot.sessionCheckpoint?.triggerUserMessageId;
@@ -677,7 +657,9 @@ function App(): JSX.Element {
     return enqueueSessionMutation(() => window.funplay.updateProjectSessionRuntime(projectId, sessionId, runtime))
       .then((updated) => {
         setProjects((current) =>
-          current.map((project) => (project.id === updated.id ? mergeProjectSessionSelection(project, updated) : project))
+          current.map((project) =>
+            project.id === updated.id ? mergeProjectSessionSelection(project, updated) : project
+          )
         );
       })
       .catch((error) => {
@@ -703,7 +685,14 @@ function App(): JSX.Element {
           activeSessionByProject: localActiveSessionByProject
         })
       ),
-    [activeStreamSessions, agentRuntimeStatuses, localActiveSessionByProject, projects, queuedPromptsBySession, sessionComposerErrors]
+    [
+      activeStreamSessions,
+      agentRuntimeStatuses,
+      localActiveSessionByProject,
+      projects,
+      queuedPromptsBySession,
+      sessionComposerErrors
+    ]
   );
   const virtualProjectFiles = selectedProjectView ? buildVirtualProjectFiles(selectedProjectView) : [];
 
@@ -743,10 +732,17 @@ function App(): JSX.Element {
     fileInspectorSaveError,
     setFileInspectorSaveError,
     fileInspectorSavedAt,
-    handleOpenProjectFile, handleCloseFileInspector,
+    handleOpenProjectFile,
+    handleCloseFileInspector,
     handleSaveSelectedProjectFile,
     handleOpenVirtualFile
-  } = useFileInspector(selectedProject, refreshProjectFiles, virtualProjectFiles, setRightInspectorCollapsed, uiPreferences.language);
+  } = useFileInspector(
+    selectedProject,
+    refreshProjectFiles,
+    virtualProjectFiles,
+    setRightInspectorCollapsed,
+    uiPreferences.language
+  );
 
   const {
     restoreCheckpointPreview,
@@ -815,7 +811,10 @@ function App(): JSX.Element {
     setAssetGenerationProviderConfigs((current) => [provider, ...current.filter((item) => item.id !== provider.id)]);
   }
 
-  async function handleUpdateAssetGenerationProvider(providerId: string, input: AssetGenerationProviderInput): Promise<void> {
+  async function handleUpdateAssetGenerationProvider(
+    providerId: string,
+    input: AssetGenerationProviderInput
+  ): Promise<void> {
     const provider = await window.funplay.updateAssetGenerationProvider(providerId, input);
     setAssetGenerationProviderConfigs((current) => current.map((item) => (item.id === provider.id ? provider : item)));
   }
@@ -871,7 +870,6 @@ function App(): JSX.Element {
     }
   }, [activeStreamSessions, projects, queuedPromptsBySession]);
 
-
   function openProject(projectId: string): void {
     const project = projects.find((item) => item.id === projectId);
     setSelectedProjectId(projectId);
@@ -911,7 +909,11 @@ function App(): JSX.Element {
       ? await window.funplay.updateProjectMcpConfig(project.id, 'engine', onboardingEnginePluginId)
       : project;
     const enginePluginId = nextProject.mcpBindings.engine;
-    if (input.engine?.platform === 'unity' && enginePluginId && !mcpPlugins.some((plugin) => plugin.id === enginePluginId)) {
+    if (
+      input.engine?.platform === 'unity' &&
+      enginePluginId &&
+      !mcpPlugins.some((plugin) => plugin.id === enginePluginId)
+    ) {
       const payload = await window.funplay.bootstrap();
       setMcpPlugins(payload.mcpPlugins);
       setSelectedMcpPluginId(enginePluginId);
@@ -974,7 +976,7 @@ function App(): JSX.Element {
         const nextProjectId = result.remainingProjects[0]?.id ?? '';
         if (nextProjectId) {
           openProject(nextProjectId);
-      } else {
+        } else {
           setSelectedProjectId('');
           setAppMode('welcome');
           setSection('agent');
@@ -1005,7 +1007,9 @@ function App(): JSX.Element {
       prompt,
       '',
       localize(uiPreferences.language, '排队时保留的附件路径：', 'Attachment paths kept for the queued prompt:'),
-      ...attachments.map((attachment, index) => `${index + 1}. ${attachment.name} -> ${attachment.relativePath || attachment.path}`)
+      ...attachments.map(
+        (attachment, index) => `${index + 1}. ${attachment.name} -> ${attachment.relativePath || attachment.path}`
+      )
     ].join('\n');
   }
 
@@ -1040,15 +1044,18 @@ function App(): JSX.Element {
     });
   }
 
-  function seedPromptHandle(handle: {
-    streamId: string;
-    projectId: string;
-    sessionId: string;
-    startedAt: string;
-    prompt?: string;
-    attachments?: PromptAttachment[];
-    kind?: 'conversation' | 'bootstrap';
-  }, fallbackPrompt: string): void {
+  function seedPromptHandle(
+    handle: {
+      streamId: string;
+      projectId: string;
+      sessionId: string;
+      startedAt: string;
+      prompt?: string;
+      attachments?: PromptAttachment[];
+      kind?: 'conversation' | 'bootstrap';
+    },
+    fallbackPrompt: string
+  ): void {
     seedStreamSession({
       streamId: handle.streamId,
       projectId: handle.projectId,
@@ -1063,16 +1070,23 @@ function App(): JSX.Element {
       activityItems: [],
       phase: 'starting',
       kind: handle.kind,
-      statusMessage: localize(uiPreferences.language, '已提交给 AI，正在准备上下文…', 'Queued for AI. Preparing context…'),
+      statusMessage: localize(
+        uiPreferences.language,
+        '已提交给 AI，正在准备上下文…',
+        'Queued for AI. Preparing context…'
+      ),
       startedAt: handle.startedAt
     });
   }
 
-  async function handleSubmitComposer(content?: string, sessionIdOverride?: string, projectIdOverride?: string): Promise<void> {
-    const targetProject =
-      projectIdOverride
-        ? projects.find((project) => project.id === projectIdOverride)
-        : selectedProjectView;
+  async function handleSubmitComposer(
+    content?: string,
+    sessionIdOverride?: string,
+    projectIdOverride?: string
+  ): Promise<void> {
+    const targetProject = projectIdOverride
+      ? projects.find((project) => project.id === projectIdOverride)
+      : selectedProjectView;
     if (!targetProject) {
       return;
     }
@@ -1085,7 +1099,11 @@ function App(): JSX.Element {
 
     const attachments = sessionAttachments[sessionId] ?? [];
     const prompt = (content ?? sessionDrafts[sessionId] ?? '').trim();
-    const message = prompt || (attachments.length ? localize(uiPreferences.language, '请查看附件并继续处理。', 'Please review the attachments and continue.') : '');
+    const message =
+      prompt ||
+      (attachments.length
+        ? localize(uiPreferences.language, '请查看附件并继续处理。', 'Please review the attachments and continue.')
+        : '');
     if (!message && attachments.length === 0) {
       return;
     }
@@ -1106,20 +1124,36 @@ function App(): JSX.Element {
     }
     try {
       await sessionMutationQueueRef.current;
-      const handle = await window.funplay.startPromptStream(targetProjectView.id, message, sessionId, attachments, uiPreferences.language);
+      const handle = await window.funplay.startPromptStream(
+        targetProjectView.id,
+        message,
+        sessionId,
+        attachments,
+        uiPreferences.language
+      );
       setSessionDrafts((current) => ({ ...current, [sessionId]: '' }));
       setSessionAttachments((current) => ({ ...current, [sessionId]: [] }));
-      seedPromptHandle({
-        ...handle,
-        kind: 'conversation',
-        prompt: handle.prompt || message,
-        attachments
-      }, message);
+      seedPromptHandle(
+        {
+          ...handle,
+          kind: 'conversation',
+          prompt: handle.prompt || message,
+          attachments
+        },
+        message
+      );
     } catch (error) {
       setSessionDrafts((current) => ({ ...current, [sessionId]: message }));
       setSessionComposerErrors((current) => ({
         ...current,
-        [sessionId]: error instanceof Error ? error.message : localize(uiPreferences.language, '发送失败，请检查 AI Provider 配置。', 'Send failed. Check your AI Provider settings.')
+        [sessionId]:
+          error instanceof Error
+            ? error.message
+            : localize(
+                uiPreferences.language,
+                '发送失败，请检查 AI Provider 配置。',
+                'Send failed. Check your AI Provider settings.'
+              )
       }));
     }
   }
@@ -1145,7 +1179,7 @@ function App(): JSX.Element {
 
   async function handleSelectSession(sessionId: string, projectIdOverride?: string): Promise<void> {
     const targetProject = projectIdOverride
-      ? projects.find((project) => project.id === projectIdOverride) ?? null
+      ? (projects.find((project) => project.id === projectIdOverride) ?? null)
       : selectedProject;
     if (!targetProject) {
       setSection('agent');
@@ -1188,7 +1222,9 @@ function App(): JSX.Element {
       )
     );
 
-    const updated = await enqueueSessionMutation(() => window.funplay.setActiveProjectSession(currentProjectId, sessionId));
+    const updated = await enqueueSessionMutation(() =>
+      window.funplay.setActiveProjectSession(currentProjectId, sessionId)
+    );
     if (activeSessionSwitchTokenRef.current !== token) {
       return;
     }
@@ -1203,7 +1239,9 @@ function App(): JSX.Element {
     if (!selectedProject) {
       return;
     }
-    const updated = await enqueueSessionMutation(() => window.funplay.renameProjectSession(selectedProject.id, sessionId, title));
+    const updated = await enqueueSessionMutation(() =>
+      window.funplay.renameProjectSession(selectedProject.id, sessionId, title)
+    );
     setProjects((current) =>
       current.map((project) => (project.id === updated.id ? mergeProjectSessionSelection(project, updated) : project))
     );
@@ -1213,7 +1251,9 @@ function App(): JSX.Element {
     if (!selectedProject) {
       return;
     }
-    const updated = await enqueueSessionMutation(() => window.funplay.deleteProjectSession(selectedProject.id, sessionId));
+    const updated = await enqueueSessionMutation(() =>
+      window.funplay.deleteProjectSession(selectedProject.id, sessionId)
+    );
     setProjects((current) => current.map((project) => (project.id === updated.id ? updated : project)));
     setLocalActiveSessionByProject((current) => ({
       ...current,
@@ -1254,11 +1294,14 @@ function App(): JSX.Element {
         [handle.projectId]: handle.sessionId
       }));
       setSection('agent');
-      seedPromptHandle({
-        ...handle,
-        kind: handle.kind,
-        prompt: handle.prompt || localize(uiPreferences.language, '恢复 Agent 运行', 'Resume Agent run')
-      }, localize(uiPreferences.language, '恢复 Agent 运行', 'Resume Agent run'));
+      seedPromptHandle(
+        {
+          ...handle,
+          kind: handle.kind,
+          prompt: handle.prompt || localize(uiPreferences.language, '恢复 Agent 运行', 'Resume Agent run')
+        },
+        localize(uiPreferences.language, '恢复 Agent 运行', 'Resume Agent run')
+      );
     } catch (error) {
       const sessionId = selectedSessionId || selectedProjectView.sessions[0]?.id || selectedProjectView.id;
       setSessionComposerErrors((current) => ({
@@ -1269,28 +1312,6 @@ function App(): JSX.Element {
             : localize(uiPreferences.language, '恢复 Agent 运行失败。', 'Failed to resume the Agent run.')
       }));
     }
-  }
-
-  async function handleUpdateProjectMcpServers(pluginIds: string[]): Promise<void> {
-    if (!selectedProject) {
-      return;
-    }
-
-    const updated = await window.funplay.updateProjectMcpServers(selectedProject.id, pluginIds);
-    setProjects((current) => current.map((project) => (project.id === updated.id ? updated : project)));
-    setProjectBindings(getProjectMcpServerIds(updated));
-
-    if (pluginIds.some((pluginId) => mcpPlugins.find((plugin) => plugin.id === pluginId)?.kind === 'engine')) {
-      void retryRefreshProjectRuntimeState(selectedProject.id);
-    }
-  }
-
-  async function handleToggleProjectMcpPlugin(pluginId: string, enabled: boolean): Promise<void> {
-    setSelectedMcpPluginId(pluginId);
-    const next = enabled
-      ? [...new Set([...projectBindings, pluginId])]
-      : projectBindings.filter((id) => id !== pluginId);
-    await handleUpdateProjectMcpServers(next);
   }
 
   async function refreshProjectRuntimeStateById(projectId: string): Promise<Project | null> {
@@ -1328,7 +1349,9 @@ function App(): JSX.Element {
     unityEditorVersion?: string;
   } {
     if (!project.engine?.projectPath || project.engine.platform === 'web') {
-      throw new Error(localize(uiPreferences.language, '当前项目没有可打开的引擎路径。', 'This project has no engine path to open.'));
+      throw new Error(
+        localize(uiPreferences.language, '当前项目没有可打开的引擎路径。', 'This project has no engine path to open.')
+      );
     }
     return {
       platform: project.engine.platform,
@@ -1347,7 +1370,9 @@ function App(): JSX.Element {
     return window.funplay.diagnoseEnvironment(buildSelectedProjectEnvironmentInput(selectedProjectView));
   }
 
-  async function runSelectedProjectEnvironmentAction(actionId: EnvironmentActionKind): Promise<EnvironmentActionResult> {
+  async function runSelectedProjectEnvironmentAction(
+    actionId: EnvironmentActionKind
+  ): Promise<EnvironmentActionResult> {
     if (!selectedProjectView) {
       throw new Error(localize(uiPreferences.language, '请先选择一个项目。', 'Select a project first.'));
     }
@@ -1359,154 +1384,12 @@ function App(): JSX.Element {
     return result;
   }
 
-  async function refreshMcpConnectionStatus(plugin: McpPlugin): Promise<McpConnectionSnapshot | null> {
-    try {
-      const status = await window.funplay.getMcpConnectionStatus(plugin.id);
-      setMcpConnectionStatuses((current) => ({
-        ...current,
-        [plugin.id]: status
-      }));
-      return status;
-    } catch {
-      return null;
-    }
-  }
-
-  function clearPluginMeta(): void {
-    setUnityServerInfo(null);
-    setUnityTools([]);
-    setUnityResources([]);
-    setUnityPrompts([]);
-    setUnityResourceTemplates([]);
-    setMcpToolSnapshots([]);
-    setMcpRawAudits([]);
-  }
-
-  async function refreshMcpLocalDiagnostics(pluginId: string): Promise<void> {
-    try {
-      const [snapshots, rawAudits] = await Promise.all([
-        window.funplay.listMcpToolSnapshots(pluginId),
-        window.funplay.listMcpRawAudits(pluginId)
-      ]);
-      setMcpToolSnapshots(snapshots);
-      setMcpRawAudits(rawAudits);
-    } catch {
-      setMcpToolSnapshots([]);
-      setMcpRawAudits([]);
-    }
-  }
-
-  async function loadMcpPluginMetadata(pluginId: string): Promise<void> {
-    const serverInfo = await window.funplay.getMcpServerInfo(pluginId);
-    const [tools, resources, prompts, resourceTemplates] = await Promise.all([
-      window.funplay.listMcpTools(pluginId),
-      window.funplay.listMcpResources(pluginId),
-      window.funplay.listMcpPrompts(pluginId),
-      window.funplay.listMcpResourceTemplates(pluginId)
-    ]);
-    setUnityServerInfo(serverInfo);
-    setUnityTools(tools);
-    setUnityResources(resources);
-    setUnityPrompts(prompts);
-    setUnityResourceTemplates(resourceTemplates);
-  }
-
-  async function handleRefreshPluginMeta(pluginOverride?: McpPlugin | null): Promise<void> {
-    const targetPlugin = pluginOverride ?? selectedMcpPlugin ?? activeProjectMcpPlugins[0] ?? activeEnginePlugin;
-    if (!targetPlugin) {
-      return;
-    }
-
-    setIsRefreshingPlugin(true);
-    setPluginError('');
-    clearPluginMeta();
-    try {
-      await refreshMcpLocalDiagnostics(targetPlugin.id);
-      const health = await window.funplay.checkMcpHealth(targetPlugin.id);
-      await refreshMcpConnectionStatus(targetPlugin);
-      if (health.status !== 'online') {
-        setPluginError(health.message);
-        return;
-      }
-      await loadMcpPluginMetadata(targetPlugin.id);
-      await refreshMcpConnectionStatus(targetPlugin);
-    } catch (error) {
-      setPluginError(error instanceof Error ? error.message : localize(uiPreferences.language, '刷新失败', 'Refresh failed'));
-      await refreshMcpConnectionStatus(targetPlugin);
-    } finally {
-      setIsRefreshingPlugin(false);
-    }
-  }
-
-  async function handleReconnectMcpPlugin(pluginOverride?: McpPlugin | null): Promise<void> {
-    const targetPlugin = pluginOverride ?? selectedMcpPlugin ?? activeProjectMcpPlugins[0] ?? activeEnginePlugin;
-    if (!targetPlugin) {
-      return;
-    }
-
-    setIsRefreshingPlugin(true);
-    setPluginError('');
-    clearPluginMeta();
-    try {
-      await refreshMcpLocalDiagnostics(targetPlugin.id);
-      const health = await window.funplay.reconnectMcp(targetPlugin.id);
-      await refreshMcpConnectionStatus(targetPlugin);
-      if (health.status !== 'online') {
-        setPluginError(health.message);
-        return;
-      }
-      await loadMcpPluginMetadata(targetPlugin.id);
-      await refreshMcpConnectionStatus(targetPlugin);
-    } catch (error) {
-      setPluginError(error instanceof Error ? error.message : localize(uiPreferences.language, '重启失败', 'Restart failed'));
-      await refreshMcpConnectionStatus(targetPlugin);
-    } finally {
-      setIsRefreshingPlugin(false);
-    }
-  }
-
-  async function handleStopMcpPlugin(pluginOverride?: McpPlugin | null): Promise<void> {
-    const targetPlugin = pluginOverride ?? selectedMcpPlugin ?? activeProjectMcpPlugins[0] ?? activeEnginePlugin;
-    if (!targetPlugin) {
-      return;
-    }
-
-    setPluginError('');
-    try {
-      const status = await window.funplay.stopMcp(targetPlugin.id);
-      setMcpConnectionStatuses((current) => ({
-        ...current,
-        [targetPlugin.id]: status
-      }));
-      clearPluginMeta();
-    } catch (error) {
-      setPluginError(error instanceof Error ? error.message : localize(uiPreferences.language, '停止失败', 'Stop failed'));
-      await refreshMcpConnectionStatus(targetPlugin);
-    }
-  }
-
-  async function handleSendRawMcpRequest(pluginId: string, method: string, params: Record<string, unknown>) {
-    try {
-      return await window.funplay.sendRawMcpRequest(pluginId, method, params);
-    } finally {
-      try {
-        const audits = await window.funplay.listMcpRawAudits(pluginId);
-        setMcpRawAudits(audits);
-      } catch {
-        setMcpRawAudits([]);
-      }
-    }
-  }
-
-
   async function handleImportClaudeSession(sdkSessionId: string): Promise<void> {
     if (!selectedProjectView) {
       return;
     }
     const result = await window.funplay.importClaudeCliSession(selectedProjectView.id, sdkSessionId);
-    setProjects((current) =>
-      current.map((project) => (project.id === result.project.id ? result.project : project))
-    );
+    setProjects((current) => current.map((project) => (project.id === result.project.id ? result.project : project)));
     setLocalActiveSessionByProject((current) => ({
       ...current,
       [result.project.id]: result.sessionId
@@ -1517,84 +1400,14 @@ function App(): JSX.Element {
     setSection('agent');
   }
 
-  async function handleCreatePlugin(input: McpPluginInput): Promise<void> {
-    const plugin = await window.funplay.createMcpPlugin(input);
-    setMcpPlugins((current) => [plugin, ...current]);
-    setSelectedMcpPluginId(plugin.id);
-    if (input.projectId && selectedProject?.id === input.projectId) {
-      const updated = await window.funplay.updateProjectMcpServers(input.projectId, [...new Set([...projectBindings, plugin.id])]);
-      setProjects((current) => current.map((project) => (project.id === updated.id ? updated : project)));
-      setProjectBindings(getProjectMcpServerIds(updated));
-    }
-    setShowPluginModal(false);
-    setEditingPlugin(null);
-    setMcpModalProjectId(undefined);
-  }
-
-  async function handleUpdatePlugin(pluginId: string, input: McpPluginInput): Promise<void> {
-    const updated = await window.funplay.updateMcpPlugin(pluginId, input);
-    setMcpPlugins((current) => current.map((plugin) => (plugin.id === updated.id ? updated : plugin)));
-    setShowPluginModal(false);
-    setEditingPlugin(null);
-    setMcpModalProjectId(undefined);
-  }
-
-  async function handleToggleMcpPluginEnabled(plugin: McpPlugin, enabled: boolean): Promise<void> {
-    const updated = await window.funplay.updateMcpPlugin(plugin.id, {
-      projectId: plugin.projectId,
-      name: plugin.name,
-      kind: plugin.kind,
-      transport: plugin.transport,
-      baseUrl: plugin.baseUrl,
-      command: plugin.command,
-      args: plugin.args,
-      cwd: plugin.cwd,
-      env: plugin.env,
-      defaultToolPermission: plugin.defaultToolPermission,
-      defaultToolRisk: plugin.defaultToolRisk,
-      toolPolicies: plugin.toolPolicies,
-      enabled,
-      notes: plugin.notes
-    });
-    setMcpPlugins((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-    if (!enabled) {
-      await handleStopMcpPlugin(updated);
-    }
-  }
-
-  async function handleDeletePlugin(pluginId: string): Promise<void> {
-    await window.funplay.deleteMcpPlugin(pluginId);
-    setMcpPlugins((current) => current.filter((plugin) => plugin.id !== pluginId));
-    setMcpConnectionStatuses((current) => {
-      const next = { ...current };
-      delete next[pluginId];
-      return next;
-    });
-    setProjects((current) =>
-      current.map((project) => ({
-        ...project,
-        mcpBindings: {
-          ...project.mcpBindings,
-          servers: project.mcpBindings.servers?.filter((id) => id !== pluginId),
-          engine: project.mcpBindings.engine === pluginId ? undefined : project.mcpBindings.engine,
-          asset: project.mcpBindings.asset === pluginId ? undefined : project.mcpBindings.asset,
-          qa: project.mcpBindings.qa === pluginId ? undefined : project.mcpBindings.qa,
-          custom: project.mcpBindings.custom === pluginId ? undefined : project.mcpBindings.custom
-        }
-      }))
-    );
-    setProjectBindings((current) => current.filter((id) => id !== pluginId));
-  }
-
   if (isLoading) {
     return (
       <UiLanguageProvider language={uiPreferences.language}>
         <>
-          <div className="app-bootstrap-screen">{localize(uiPreferences.language, '正在加载 Funplay…', 'Loading Funplay…')}</div>
-          <NotificationToastStack
-            notifications={appNotifications}
-            onDismiss={dismissNotification}
-          />
+          <div className="app-bootstrap-screen">
+            {localize(uiPreferences.language, '正在加载 Funplay…', 'Loading Funplay…')}
+          </div>
+          <NotificationToastStack notifications={appNotifications} onDismiss={dismissNotification} />
         </>
       </UiLanguageProvider>
     );
@@ -1610,10 +1423,7 @@ function App(): JSX.Element {
               <div>{bootstrapError}</div>
             </div>
           </div>
-          <NotificationToastStack
-            notifications={appNotifications}
-            onDismiss={dismissNotification}
-          />
+          <NotificationToastStack notifications={appNotifications} onDismiss={dismissNotification} />
         </>
       </UiLanguageProvider>
     );
@@ -1633,10 +1443,7 @@ function App(): JSX.Element {
             onOpen={openProject}
             onOpenExisting={() => void onboarding.handlePickExistingProjectFromWelcome()}
           />
-          <NotificationToastStack
-            notifications={appNotifications}
-            onDismiss={dismissNotification}
-          />
+          <NotificationToastStack notifications={appNotifications} onDismiss={dismissNotification} />
         </>
       </UiLanguageProvider>
     );
@@ -1677,10 +1484,7 @@ function App(): JSX.Element {
             onNext={() => void onboarding.handleFinishOnboarding()}
             onEnter={() => void onboarding.handleEnterWorkspace()}
           />
-          <NotificationToastStack
-            notifications={appNotifications}
-            onDismiss={dismissNotification}
-          />
+          <NotificationToastStack notifications={appNotifications} onDismiss={dismissNotification} />
         </>
       </UiLanguageProvider>
     );
@@ -1792,21 +1596,28 @@ function App(): JSX.Element {
           {section === 'agent' ? (
             <AgentWorkbench
               project={selectedProjectView}
-              sidePanel={selectedProjectView && sessionChangePanelOpen ? (
-                <SessionChangesPanel
-                  preview={sessionChangePanelPreview}
-                  isLoading={sessionChangePanelLoading}
-                  onRestore={(snapshotId) => void handleRequestRestoreSessionCheckpoint(selectedSessionId, snapshotId)}
-                  onClose={() => setSessionChangePanelOpen(false)}
-                />
-              ) : undefined}
+              sidePanel={
+                selectedProjectView && sessionChangePanelOpen ? (
+                  <SessionChangesPanel
+                    preview={sessionChangePanelPreview}
+                    isLoading={sessionChangePanelLoading}
+                    onRestore={(snapshotId) =>
+                      void handleRequestRestoreSessionCheckpoint(selectedSessionId, snapshotId)
+                    }
+                    onClose={() => setSessionChangePanelOpen(false)}
+                  />
+                ) : undefined
+              }
             >
               <AgentChatView
                 project={selectedProjectView}
                 provider={selectedProvider}
                 providers={providers.filter((provider) => provider.enabled)}
                 permissionMode={selectedSessionPermissionMode}
-                openablePaths={[...projectFiles.filter((file) => file.type !== 'directory').map((file) => file.path), ...virtualProjectFiles.map((file) => file.path)]}
+                openablePaths={[
+                  ...projectFiles.filter((file) => file.type !== 'directory').map((file) => file.path),
+                  ...virtualProjectFiles.map((file) => file.path)
+                ]}
                 defaultProviderId={selectedDefaultProvider?.id}
                 sessionProviderId={selectedSessionRuntime?.providerId}
                 sessionModel={selectedSessionRuntime?.model}
@@ -1829,7 +1640,9 @@ function App(): JSX.Element {
                 composerAttachments={selectedComposerAttachments}
                 composerError={selectedComposerError}
                 queuedPrompts={selectedQueuedPrompts}
-                isSending={Boolean(selectedProjectStream && !['completed', 'cancelled', 'error'].includes(selectedProjectStream.phase))}
+                isSending={Boolean(
+                  selectedProjectStream && !['completed', 'cancelled', 'error'].includes(selectedProjectStream.phase)
+                )}
                 onComposerChange={(value) => {
                   if (selectedSessionId) {
                     updateSessionDraft(selectedSessionId, value);
@@ -1853,43 +1666,47 @@ function App(): JSX.Element {
                   if (!selectedProjectStream?.pendingPermission) {
                     return;
                   }
-                  void window.funplay.respondPromptPermission(selectedProjectStream.pendingPermission.requestId, decision).catch((error) => {
-                    if (!selectedSessionId) {
-                      return;
-                    }
-                    setSessionComposerErrors((current) => ({
-                      ...current,
-                      [selectedSessionId]:
-                        error instanceof Error
-                          ? error.message
-                          : localize(
-                              uiPreferences.language,
-                              '权限响应失败，请重试。',
-                              'Failed to submit the permission decision. Please try again.'
-                            )
-                    }));
-                  });
+                  void window.funplay
+                    .respondPromptPermission(selectedProjectStream.pendingPermission.requestId, decision)
+                    .catch((error) => {
+                      if (!selectedSessionId) {
+                        return;
+                      }
+                      setSessionComposerErrors((current) => ({
+                        ...current,
+                        [selectedSessionId]:
+                          error instanceof Error
+                            ? error.message
+                            : localize(
+                                uiPreferences.language,
+                                '权限响应失败，请重试。',
+                                'Failed to submit the permission decision. Please try again.'
+                              )
+                      }));
+                    });
                 }}
                 onRespondUserInput={(response) => {
                   if (!selectedProjectStream?.pendingUserInput) {
                     return;
                   }
-                  void window.funplay.respondPromptUserInput(selectedProjectStream.pendingUserInput.requestId, response).catch((error) => {
-                    if (!selectedSessionId) {
-                      return;
-                    }
-                    setSessionComposerErrors((current) => ({
-                      ...current,
-                      [selectedSessionId]:
-                        error instanceof Error
-                          ? error.message
-                          : localize(
-                              uiPreferences.language,
-                              '回答提交失败，请重试。',
-                              'Failed to submit the answer. Please try again.'
-                            )
-                    }));
-                  });
+                  void window.funplay
+                    .respondPromptUserInput(selectedProjectStream.pendingUserInput.requestId, response)
+                    .catch((error) => {
+                      if (!selectedSessionId) {
+                        return;
+                      }
+                      setSessionComposerErrors((current) => ({
+                        ...current,
+                        [selectedSessionId]:
+                          error instanceof Error
+                            ? error.message
+                            : localize(
+                                uiPreferences.language,
+                                '回答提交失败，请重试。',
+                                'Failed to submit the answer. Please try again.'
+                              )
+                      }));
+                    });
                 }}
                 onUpdateSessionRuntime={(runtime) => {
                   void updateSelectedSessionRuntime(
@@ -1933,7 +1750,9 @@ function App(): JSX.Element {
                   }
                   void handleOpenProjectFile(path);
                 }}
-                onRestoreCheckpoint={(snapshotId) => void handleRequestRestoreSessionCheckpoint(selectedSessionId, snapshotId)}
+                onRestoreCheckpoint={(snapshotId) =>
+                  void handleRequestRestoreSessionCheckpoint(selectedSessionId, snapshotId)
+                }
               />
             </AgentWorkbench>
           ) : null}
@@ -2004,17 +1823,25 @@ function App(): JSX.Element {
                 if (!selectedProjectView) {
                   return;
                 }
-                const updated = await window.funplay.updateProjectAgentPolicy(selectedProjectView.id, { permissionMode });
+                const updated = await window.funplay.updateProjectAgentPolicy(selectedProjectView.id, {
+                  permissionMode
+                });
                 setProjects((current) => current.map((project) => (project.id === updated.id ? updated : project)));
               }}
               onUpdateSessionRuntime={(runtime) =>
                 updateSelectedSessionRuntime(
                   runtime,
-                  localize(uiPreferences.language, '会话运行设置更新失败。', 'Failed to update session runtime settings.')
+                  localize(
+                    uiPreferences.language,
+                    '会话运行设置更新失败。',
+                    'Failed to update session runtime settings.'
+                  )
                 )
               }
               onResumeAgentRun={(runId) => void handleResumeAgentRun(runId)}
-              onRefreshPluginMeta={() => void handleRefreshPluginMeta(selectedMcpPlugin ?? activeProjectMcpPlugins[0] ?? null)}
+              onRefreshPluginMeta={() =>
+                void handleRefreshPluginMeta(selectedMcpPlugin ?? activeProjectMcpPlugins[0] ?? null)
+              }
               onOpenMcpRegistry={() => openAppSettings('mcp')}
             />
           ) : null}
@@ -2044,10 +1871,7 @@ function App(): JSX.Element {
         </div>
       </AppShell>
 
-      <NotificationToastStack
-        notifications={appNotifications}
-        onDismiss={dismissNotification}
-      />
+      <NotificationToastStack notifications={appNotifications} onDismiss={dismissNotification} />
 
       {showAppSettingsModal ? (
         <AppSettingsModal
@@ -2096,7 +1920,8 @@ function App(): JSX.Element {
             const next = await window.funplay.updateWebSearchSettings(settings);
             setAiSettings(next);
           }}
-          onCreateProvider={handleCreateProvider} onUpdateProvider={handleUpdateProvider}
+          onCreateProvider={handleCreateProvider}
+          onUpdateProvider={handleUpdateProvider}
           onListProviderModels={(input) => window.funplay.listProviderModels(input)}
           onDeleteProvider={(providerId) => void handleDeleteProvider(providerId)}
           onTestProvider={(providerId) => void handleTestProvider(providerId)}
