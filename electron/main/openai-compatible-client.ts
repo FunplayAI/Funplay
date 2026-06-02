@@ -34,13 +34,14 @@ export type {
   OpenAiCompatibleToolMessage,
   OpenAiCompatibleToolStepResult
 } from './openai-compatible-types';
+import { stripOpenAiCompatibleEndpointSuffix } from './provider-base-url';
 
 function trimSlash(value: string): string {
   return value.trim().replace(/\/+$/, '');
 }
 
 function normalizeOpenAiCompatibleBaseUrl(provider: AiProvider): string {
-  const baseUrl = trimSlash(provider.baseUrl);
+  const baseUrl = stripOpenAiCompatibleEndpointSuffix(trimSlash(provider.baseUrl));
   if (!baseUrl) {
     return baseUrl;
   }

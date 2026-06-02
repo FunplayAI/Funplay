@@ -6,25 +6,7 @@ import type { LanguageModel } from 'ai';
 import type { AiProvider } from '../../shared/types';
 import { materializeNativeProvider } from './agent-platform/provider-resolver';
 import { createProviderFetch } from './provider-runtime-options';
-
-function normalizeAnthropicBaseUrl(url: string): string {
-  const cleaned = url.trim().replace(/\/+$/, '');
-  if (!cleaned) {
-    return 'https://api.anthropic.com/v1';
-  }
-  if (cleaned.endsWith('/v1')) {
-    return cleaned;
-  }
-  try {
-    const parsed = new URL(cleaned);
-    if (parsed.pathname === '/' || parsed.pathname === '') {
-      return `${cleaned}/v1`;
-    }
-  } catch {
-    return cleaned;
-  }
-  return cleaned;
-}
+import { normalizeAnthropicBaseUrl } from './provider-base-url';
 
 function readEnvOverride(provider: AiProvider, key: string): string | undefined {
   return provider.envOverrides?.[key]?.trim() || process.env[key]?.trim() || undefined;
