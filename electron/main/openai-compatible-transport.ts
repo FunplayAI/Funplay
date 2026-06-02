@@ -1,5 +1,5 @@
 import type { AiProvider, AiProviderApiMode } from '../../shared/types';
-import type { OpenAiCompatibleError, OpenAiCompatibleRequest } from './openai-compatible-types';
+import type { OpenAiCompatibleError } from './openai-compatible-types';
 import {
   createProviderRequestAbort,
   resolveProviderChunkTimeoutMs,
@@ -670,6 +670,116 @@ export function stripLeadingThinkBlock(content: string): { text: string; reasoni
   return { text: content.slice(match[0].length), reasoning: match[1].trim() };
 }
 
+const THINK_OPEN_TAG = '<think>';
+const THINK_CLOSE_TAG = '</think>';
+
+/**
+ * Streaming counterpart to {@link stripLeadingThinkBlock}. Reasoning models such
+ * as MiniMax-M3 inline their chain-of-thought as a leading <think>...</think>
+ * block in the *content* stream. The tag can be split across SSE chunks (one
+ * chunk ends "<thi", the next starts "nk>"), so a small state machine + buffer is
+ * needed to keep the visible reply from ever flashing the think markup: text
+ * inside the block is routed to reasoning, everything after </think> to text.
+ */
+export interface ThinkStreamSplitState {
+  mode: 'pending' | 'in-think' | 'passthrough';
+  buffer: string;
+}
+
+export function createThinkStreamSplitState(): ThinkStreamSplitState {
+  return { mode: 'pending', buffer: '' };
+}
+
+/** Length of the longest suffix of `text` that is a proper prefix of `tag` (0 if none). */
+function trailingPartialTagLength(text: string, tag: string): number {
+  const max = Math.min(text.length, tag.length - 1);
+  for (let len = max; len > 0; len -= 1) {
+    if (tag.startsWith(text.slice(text.length - len))) {
+      return len;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Feed one streamed content delta through the splitter. Returns the portion of
+ * this delta that is visible reply `text` and the portion that is `reasoning`;
+ * either may be empty. Bytes that cannot yet be classified (a possible partial
+ * tag straddling a chunk boundary) stay buffered until the next delta.
+ */
+export function pushThroughThinkStream(
+  split: ThinkStreamSplitState,
+  delta: string
+): { text: string; reasoning: string } {
+  split.buffer += delta;
+  let text = '';
+  let reasoning = '';
+
+  for (;;) {
+    if (split.mode === 'pending') {
+      const leadingWs = split.buffer.match(/^\s*/)?.[0] ?? '';
+      const rest = split.buffer.slice(leadingWs.length);
+      if (rest.length === 0) {
+        // Only whitespace so far — can't yet tell if <think> follows. Keep buffering.
+        break;
+      }
+      if (rest.startsWith(THINK_OPEN_TAG)) {
+        // Leading think block opens: drop the whitespace + tag, switch to in-think.
+        split.buffer = rest.slice(THINK_OPEN_TAG.length);
+        split.mode = 'in-think';
+        continue;
+      }
+      if (THINK_OPEN_TAG.startsWith(rest)) {
+        // `rest` is still a proper prefix of "<think>" — wait for the rest of the tag.
+        break;
+      }
+      // No leading think block: flush everything (incl. whitespace) as visible text.
+      text += split.buffer;
+      split.buffer = '';
+      split.mode = 'passthrough';
+      break;
+    }
+
+    if (split.mode === 'in-think') {
+      const closeIdx = split.buffer.indexOf(THINK_CLOSE_TAG);
+      if (closeIdx === -1) {
+        // No close tag yet: emit reasoning but hold back a possible partial </think>.
+        const hold = trailingPartialTagLength(split.buffer, THINK_CLOSE_TAG);
+        reasoning += split.buffer.slice(0, split.buffer.length - hold);
+        split.buffer = hold ? split.buffer.slice(split.buffer.length - hold) : '';
+        break;
+      }
+      reasoning += split.buffer.slice(0, closeIdx);
+      split.buffer = split.buffer.slice(closeIdx + THINK_CLOSE_TAG.length);
+      // Mirror the trailing \s* the non-streaming pattern consumes after </think>.
+      split.buffer = split.buffer.replace(/^\s*/, '');
+      split.mode = 'passthrough';
+      continue;
+    }
+
+    // passthrough: everything is visible text from here on.
+    text += split.buffer;
+    split.buffer = '';
+    break;
+  }
+
+  return { text, reasoning };
+}
+
+/**
+ * Flush any buffered tail when the stream ends. A still-open think block (stream
+ * truncated mid-thought) flushes as reasoning — consistent with what was already
+ * streamed; anything else (a partial open tag / whitespace) flushes as text.
+ */
+export function flushThinkStream(split: ThinkStreamSplitState): { text: string; reasoning: string } {
+  const tail = split.buffer;
+  split.buffer = '';
+  if (split.mode === 'in-think') {
+    return { text: '', reasoning: tail };
+  }
+  return { text: tail, reasoning: '' };
+}
+
 export function extractTextFromChatChoices(body: unknown): string {
   if (!isRecord(body)) {
     return '';
@@ -966,6 +1076,7 @@ function consumeChatCompletionsSseEvent(
     events: Record<string, unknown>[];
     text: string;
     reasoningContent: string;
+    thinkSplit: ThinkStreamSplitState;
     toolCalls: Map<number, ChatToolCallDeltaState>;
     finishReason?: string;
     usage?: unknown;
@@ -1009,9 +1120,16 @@ function consumeChatCompletionsSseEvent(
     if (!delta) {
       return;
     }
-    if (typeof delta.content === 'string') {
-      state.text += delta.content;
-      onDelta?.(delta.content, state.text);
+    if (typeof delta.content === 'string' && delta.content.length > 0) {
+      const split = pushThroughThinkStream(state.thinkSplit, delta.content);
+      if (split.text) {
+        state.text += split.text;
+        onDelta?.(split.text, state.text);
+      }
+      if (split.reasoning) {
+        state.reasoningContent += split.reasoning;
+        onReasoningDelta?.(split.reasoning, state.reasoningContent);
+      }
     }
     const reasoningDelta = delta.reasoning_content ?? delta.reasoningContent ?? delta.reasoning;
     if (typeof reasoningDelta === 'string') {
@@ -1052,6 +1170,7 @@ function finalizeChatCompletionsSseState(state: {
   events: Record<string, unknown>[];
   text: string;
   reasoningContent: string;
+  thinkSplit?: ThinkStreamSplitState;
   toolCalls: Map<number, ChatToolCallDeltaState>;
   finishReason?: string;
   usage?: unknown;
@@ -1059,6 +1178,15 @@ function finalizeChatCompletionsSseState(state: {
   model?: string;
   created?: unknown;
 }): ChatCompletionsSseParseResult {
+  if (state.thinkSplit) {
+    const tail = flushThinkStream(state.thinkSplit);
+    if (tail.text) {
+      state.text += tail.text;
+    }
+    if (tail.reasoning) {
+      state.reasoningContent += tail.reasoning;
+    }
+  }
   const toolCalls = [...state.toolCalls.entries()]
     .sort(([left], [right]) => left - right)
     .map(([index, toolCall]) => ({
@@ -1123,6 +1251,7 @@ export function parseChatCompletionsSseText(
     events: [] as Record<string, unknown>[],
     text: '',
     reasoningContent: '',
+    thinkSplit: createThinkStreamSplitState(),
     toolCalls: new Map<number, ChatToolCallDeltaState>(),
     finishReason: undefined as string | undefined,
     usage: undefined as unknown,
@@ -1207,6 +1336,7 @@ export async function postChatCompletionsStream(
         events: [] as Record<string, unknown>[],
         text: '',
         reasoningContent: '',
+        thinkSplit: createThinkStreamSplitState(),
         toolCalls: new Map<number, ChatToolCallDeltaState>(),
         finishReason: undefined as string | undefined,
         usage: undefined as unknown,
