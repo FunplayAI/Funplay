@@ -6,6 +6,26 @@ This project follows a pre-1.0 release flow. Minor versions may include breaking
 
 ## Unreleased
 
+## 0.3.7 - 2026-06-02
+
+### Added
+
+- Added exponential backoff with jitter for native OpenAI-compatible HTTP retries.
+- Added provider onboarding gating so the chat view directs users to configure an AI provider before starting agent work.
+- Added pure JavaScript zip reading for Windows-compatible packaged runtime and document flows.
+- Added refreshed 2026 provider presets in the provider catalog.
+
+### Changed
+
+- Improved cross-platform path validation and shell spawning for Windows environments.
+- Improved provider base URL handling so pasted full endpoint URLs are normalized more reliably.
+- Improved native reasoning handling by stripping inline `<think>` blocks from chat content and streaming reasoning separately.
+- Improved MiniMax and compatible tool schema handling by always sending valid object parameter schemas.
+
+### Fixed
+
+- Fixed interrupted agent runs so the conversation turn is preserved for resume and replay.
+
 ## 0.3.6 - 2026-06-01
 
 ### Added

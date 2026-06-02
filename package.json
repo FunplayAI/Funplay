@@ -1,6 +1,6 @@
 {
   "name": "funplay",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "private": true,
   "license": "MIT",
   "description": "AI game development workbench for multi-engine game creation.",
