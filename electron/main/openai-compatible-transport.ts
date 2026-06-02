@@ -654,6 +654,22 @@ function extractTextFromContentPart(part: unknown): string {
   return '';
 }
 
+const LEADING_THINK_PATTERN = /^\s*<think>([\s\S]*?)<\/think>\s*/;
+
+/**
+ * Reasoning models like MiniMax-M3 inline their chain-of-thought as a leading
+ * <think>...</think> block in the message content (instead of a separate
+ * reasoning_content field). Strip it so it doesn't leak into the visible reply;
+ * the captured thought is returned separately to surface as reasoning.
+ */
+export function stripLeadingThinkBlock(content: string): { text: string; reasoning: string } {
+  const match = content.match(LEADING_THINK_PATTERN);
+  if (!match) {
+    return { text: content, reasoning: '' };
+  }
+  return { text: content.slice(match[0].length), reasoning: match[1].trim() };
+}
+
 export function extractTextFromChatChoices(body: unknown): string {
   if (!isRecord(body)) {
     return '';
@@ -667,13 +683,13 @@ export function extractTextFromChatChoices(body: unknown): string {
       const message = isRecord(choice.message) ? choice.message : undefined;
       const delta = isRecord(choice.delta) ? choice.delta : undefined;
       const content = message?.content ?? delta?.content ?? choice.text;
-      if (typeof content === 'string') {
-        return content;
-      }
-      if (Array.isArray(content)) {
-        return content.map(extractTextFromContentPart).join('');
-      }
-      return '';
+      const raw =
+        typeof content === 'string'
+          ? content
+          : Array.isArray(content)
+            ? content.map(extractTextFromContentPart).join('')
+            : '';
+      return stripLeadingThinkBlock(raw).text;
     })
     .join('\n')
     .trim();
@@ -698,7 +714,19 @@ export function extractReasoningFromChatChoices(body: unknown): string {
         delta?.reasoning_content ??
         delta?.reasoningContent ??
         delta?.reasoning;
-      return typeof reasoningContent === 'string' ? reasoningContent : '';
+      if (typeof reasoningContent === 'string' && reasoningContent.trim()) {
+        return reasoningContent;
+      }
+      // Fallback: models like MiniMax-M3 inline reasoning as a leading <think>
+      // block in content rather than a reasoning_content field.
+      const content = message?.content ?? delta?.content ?? choice.text;
+      const raw =
+        typeof content === 'string'
+          ? content
+          : Array.isArray(content)
+            ? content.map(extractTextFromContentPart).join('')
+            : '';
+      return stripLeadingThinkBlock(raw).reasoning;
     })
     .join('\n')
     .trim();
