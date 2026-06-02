@@ -23,6 +23,7 @@ import {
 import type { AgentPromptStreamState } from './agent/agent-stream-state';
 import { estimateCurrentSessionContextUsage } from './agent/context-estimate';
 import { EngineStatusDialog, formatEnginePlatformLabel } from './agent/EngineStatusDialog';
+import { Button } from '../ui/index';
 
 export type { AgentPromptStreamState } from './agent/agent-stream-state';
 
@@ -232,6 +233,11 @@ export function AgentChatView(props: {
       return;
     }
 
+    if (!props.provider) {
+      props.onOpenAppSettings();
+      return;
+    }
+
     if (props.isSending) {
       props.onQueuePrompt(prompt || t('请查看附件并继续处理。', 'Please review the attachments and continue.'));
       props.onComposerChange('');
@@ -284,6 +290,16 @@ export function AgentChatView(props: {
           </div>
 
           <div className="agent-chat-composer-layer">
+            {props.provider ? null : (
+              <div className="agent-provider-gate" role="status">
+                <span className="agent-provider-gate-text">
+                  {t('还没配置 AI 模型，配置后即可开始对话。', 'No AI model configured yet — add one to start chatting.')}
+                </span>
+                <Button size="sm" variant="primary" onClick={props.onOpenAppSettings}>
+                  {t('配置 AI 模型', 'Configure AI model')}
+                </Button>
+              </div>
+            )}
             <div className="agent-chat-column">
               <ChatComposer
                 draft={props.composerDraft}

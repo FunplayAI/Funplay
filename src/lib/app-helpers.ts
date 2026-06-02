@@ -17,9 +17,10 @@ import {
   type ProjectFileEntry,
   type ProjectMemoryFileSummary,
   type ProjectSetupMode,
+  type PromptAttachment,
   type ScheduledNotificationTask
 } from '../../shared/types';
-import { getDocumentLanguage, localize } from '../i18n';
+import { getDocumentLanguage, localize, type UiLanguage } from '../i18n';
 import type { ProjectFileItem } from '../components/layout/WorkspacePanels';
 import type { QueuedPromptItem } from '../components/chat/ChatComposer';
 import type { SessionListState } from '../components/layout/SessionManagementPanel';
@@ -68,6 +69,24 @@ function createDefaultUiPreferences(): UiPreferences {
 
 export function countProjectMessages(project: Project): number {
   return project.sessions.reduce((total, session) => total + session.chat.length, 0);
+}
+
+export function formatQueuedPromptWithAttachments(
+  prompt: string,
+  attachments: PromptAttachment[],
+  language: UiLanguage
+): string {
+  if (attachments.length === 0) {
+    return prompt;
+  }
+  return [
+    prompt,
+    '',
+    localize(language, '排队时保留的附件路径：', 'Attachment paths kept for the queued prompt:'),
+    ...attachments.map(
+      (attachment, index) => `${index + 1}. ${attachment.name} -> ${attachment.relativePath || attachment.path}`
+    )
+  ].join('\n');
 }
 
 export function mergeProjectRuntimeRefresh(current: Project, incoming: Project): Project {

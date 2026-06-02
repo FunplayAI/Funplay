@@ -61,6 +61,7 @@ import {
   buildVirtualProjectFiles,
   createEmptyProjectSkillDraft,
   formatAbsoluteTime,
+  formatQueuedPromptWithAttachments,
   mergeProjectRuntimeRefresh,
   mergeProjectSessionSelection,
   shouldUseFastRuntimeRefresh,
@@ -1008,20 +1009,6 @@ function App(): JSX.Element {
     setSessionComposerErrors((current) => ({ ...current, [sessionId]: '' }));
   }
 
-  function formatQueuedPromptWithAttachments(prompt: string, attachments: PromptAttachment[]): string {
-    if (attachments.length === 0) {
-      return prompt;
-    }
-    return [
-      prompt,
-      '',
-      localize(uiPreferences.language, '排队时保留的附件路径：', 'Attachment paths kept for the queued prompt:'),
-      ...attachments.map(
-        (attachment, index) => `${index + 1}. ${attachment.name} -> ${attachment.relativePath || attachment.path}`
-      )
-    ].join('\n');
-  }
-
   function queuePromptForSession(sessionId: string, content: string): void {
     const prompt = content.trim();
     if (!sessionId || !prompt) {
@@ -1118,7 +1105,7 @@ function App(): JSX.Element {
     }
 
     if (getStreamSessionForSession(targetProjectView.id, sessionId)) {
-      queuePromptForSession(sessionId, formatQueuedPromptWithAttachments(message, attachments));
+      queuePromptForSession(sessionId, formatQueuedPromptWithAttachments(message, attachments, uiPreferences.language));
       setSessionDrafts((current) => ({ ...current, [sessionId]: '' }));
       setSessionAttachments((current) => ({ ...current, [sessionId]: [] }));
       return;

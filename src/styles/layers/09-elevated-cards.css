@@ -791,6 +791,27 @@
   margin: 0 auto;
 }
 
+.agent-provider-gate {
+  width: min(100%, var(--chat-column-width));
+  margin: 0 auto 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--fp-accent, #6366f1);
+  background: var(--fp-surface-panel, #fff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.agent-provider-gate-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--fp-text-primary, inherit);
+}
+
 .agent-header {
   display: flex;
   align-items: flex-start;

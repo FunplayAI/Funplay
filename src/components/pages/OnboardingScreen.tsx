@@ -556,7 +556,7 @@ export function OnboardingScreen(props: {
                     </div>
                     <div><span>{t('项目路径', 'Project Path')}</span><strong>{props.projectPath}</strong></div>
                   </div>
-                  <div className="helper-copy">{t('MCP、Skills 等二级项目配置，可在进入工作台后继续完成；AI Provider 统一在应用设置中配置。', 'Secondary project settings like MCP and Skills can be completed after entering the workspace; AI Providers are configured centrally in App Settings.')}</div>
+                  <div className="helper-copy">{t('进入工作台后，第一步请在应用设置里添加 AI 模型（Provider），否则无法开始对话；MCP、Skills 等可稍后再配置。', 'After entering the workspace, first add an AI model (Provider) in App Settings — chatting requires it — then set up MCP, Skills, and the rest later.')}</div>
                 </div>
               </div>
 

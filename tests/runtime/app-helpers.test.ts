@@ -1,8 +1,8 @@
 import './test-helpers.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractSessionMessagePreview, resolveOnboardingProjectName } from '../../src/lib/app-helpers.ts';
-import type { ChatMessage } from '../../shared/types.ts';
+import { extractSessionMessagePreview, formatQueuedPromptWithAttachments, resolveOnboardingProjectName } from '../../src/lib/app-helpers.ts';
+import type { ChatMessage, PromptAttachment } from '../../shared/types.ts';
 
 test('session message preview strips internal token usage projection', () => {
   const message: ChatMessage = {
@@ -13,6 +13,21 @@ test('session message preview strips internal token usage projection', () => {
   };
 
   assert.equal(extractSessionMessagePreview(message), '完成。');
+});
+
+test('formatQueuedPromptWithAttachments returns the prompt unchanged when there are no attachments', () => {
+  assert.equal(formatQueuedPromptWithAttachments('做个跳跃游戏', [], 'zh-CN'), '做个跳跃游戏');
+});
+
+test('formatQueuedPromptWithAttachments lists attachment paths, preferring relativePath over path', () => {
+  const attachments = [
+    { id: 'att_1', name: 'hero.png', path: '/abs/hero.png', relativePath: 'art/hero.png' },
+    { id: 'att_2', name: 'sfx.wav', path: '/abs/sfx.wav' }
+  ] as PromptAttachment[];
+  const result = formatQueuedPromptWithAttachments('use these', attachments, 'en-US');
+  assert.match(result, /Attachment paths kept/);
+  assert.match(result, /1\. hero\.png -> art\/hero\.png/);
+  assert.match(result, /2\. sfx\.wav -> \/abs\/sfx\.wav/);
 });
 
 test('session message preview hides usage-only legacy content', () => {
