@@ -231,7 +231,11 @@ textarea {
 
 .fp-info-card {
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.92);
+  /* Theme token (not hardcoded white): under [data-theme='dark'] this flips to a
+     dark panel (tokens.css: light #fff / dark slate-800). The old hardcoded white
+     kept the card light in dark mode, so the light-flipped field values rendered
+     invisible (white-on-white). */
+  background: var(--fp-surface-panel);
 }
 
 .fp-info-card-title {

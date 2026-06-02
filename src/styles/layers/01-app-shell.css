@@ -508,7 +508,11 @@
 .skill-card,
 .provider-channel-card,
 .placeholder-page {
-  background: #fff;
+  /* Theme token, not hardcoded #fff — these surface cards must flip to a dark
+     panel under [data-theme='dark'] (tokens.css铁律: never read data-theme in
+     component rules, only consume tokens). Light value resolves to #ffffff, so
+     light mode is visually unchanged. */
+  background: var(--fp-surface-panel);
   border: 1px solid var(--line);
   border-radius: 20px;
 }
@@ -3498,6 +3502,10 @@
 
 .engine-settings-grid {
   display: grid;
+  /* Container-aware columns: 2-up when the (three-pane-nested) detail body is
+     wide enough, 1-up when narrow — WITHOUT keying off viewport width, which is
+     decoupled from this container's real width and was the cause of the
+     right-side whitespace (viewport 1280 but detail body only ~860). */
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
 }
@@ -4182,7 +4190,6 @@
   .settings-page,
   .provider-channel-grid,
   .skill-grid,
-  .engine-settings-grid,
   .provider-preset-card-grid,
   .asset-overview-grid,
   .cli-content-grid,

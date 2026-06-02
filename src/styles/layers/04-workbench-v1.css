@@ -459,7 +459,6 @@ body {
     width: 100%;
   }
 
-  .engine-settings-grid,
   .project-settings-detail-body > .settings-page {
     grid-template-columns: minmax(0, 1fr);
   }

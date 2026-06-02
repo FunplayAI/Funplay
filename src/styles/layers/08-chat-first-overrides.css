@@ -722,7 +722,11 @@
 .workspace-sidebar .file-tree-folder-label,
 .workspace-sidebar .file-item.tree {
   width: 100%;
-  min-height: var(--fp-control-height);
+  /* File-tree rows previously reused --fp-control-height (38px, sized for form
+     controls), which made the tree too sparse — especially with many files.
+     A tighter row height + small padding keeps rows clickable but denser. */
+  min-height: 28px;
+  padding-block: 3px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
