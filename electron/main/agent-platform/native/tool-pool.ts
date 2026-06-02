@@ -154,14 +154,22 @@ async function refreshNativeDynamicMcpToolsBetweenTurns(input: {
   return nextTools;
 }
 
-function toOpenAiCompatibleToolParameters(definition: NativeRuntimeToolDefinition): Record<string, unknown> {
-  if (definition.inputJsonSchema) {
-    const schema = { ...definition.inputJsonSchema };
-    delete schema.$schema;
-    return schema;
-  }
-  const schema = z.toJSONSchema(definition.inputSchema) as Record<string, unknown>;
+export function toOpenAiCompatibleToolParameters(definition: NativeRuntimeToolDefinition): Record<string, unknown> {
+  const schema = definition.inputJsonSchema
+    ? { ...definition.inputJsonSchema }
+    : (z.toJSONSchema(definition.inputSchema) as Record<string, unknown>);
   delete schema.$schema;
+  // Strict OpenAI-compatible providers (e.g. MiniMax — error 2013 "function
+  // name or parameters is empty") reject a tool whose parameters isn't a proper
+  // object JSON Schema. Guarantee type:object + a properties object even for
+  // no-argument tools, where z.toJSONSchema / MCP schemas may omit them.
+  if (schema.type !== 'object') {
+    schema.type = 'object';
+  }
+  const properties = schema.properties;
+  if (typeof properties !== 'object' || properties === null || Array.isArray(properties)) {
+    schema.properties = {};
+  }
   return schema;
 }
 
