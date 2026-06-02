@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { resolveInteractiveShell } from './system-shell';
 import { resolve } from 'node:path';
 import type { AgentToolTerminalResult, Project } from '../../../shared/types';
 import { makeId, nowIso } from '../../../shared/utils';
@@ -233,10 +234,10 @@ export function startPersistentTerminal(project: Project, input: PersistentTermi
 } {
   cleanupOldSessions();
   const { rootPath, cwdPath, relativeCwd } = resolveTerminalCwd(project, input.cwd);
-  const shell = process.env.SHELL || '/bin/sh';
+  const { shell, args: shellArgs } = resolveInteractiveShell();
   const id = makeId('term');
   const createdAt = nowIso();
-  const child = spawn(shell, ['-i'], {
+  const child = spawn(shell, shellArgs, {
     cwd: cwdPath,
     env: {
       ...process.env,

@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { resolveRunCommandShell } from './system-shell';
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -1134,7 +1135,7 @@ async function runWorkspaceCommand(
 
   const { cwdPath, relativeCwd } = resolveCommandCwd(project, action.cwd);
   const timeoutMs = normalizeCommandTimeout(action.timeoutMs);
-  const shell = process.env.SHELL || '/bin/sh';
+  const { shell, args: shellArgs } = resolveRunCommandShell(command);
   if (hasShellBackgroundControlOperator(command)) {
     const terminalCommand = stripTrailingShellBackgroundControlOperator(command);
     if (terminalCommand) {
@@ -1195,7 +1196,7 @@ async function runWorkspaceCommand(
     let timedOut = false;
     let settled = false;
 
-    const child = spawn(shell, ['-lc', command], {
+    const child = spawn(shell, shellArgs, {
       cwd: cwdPath,
       env: {
         ...process.env,

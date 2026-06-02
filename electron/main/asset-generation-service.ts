@@ -20,6 +20,7 @@ import {
   validateAssetGenerationRequestImageDimensions
 } from '../../shared/asset-generation-validation';
 import { resolveProjectRootPathForProject } from './project-file-service';
+import { isPathInsideRoot } from './path-guard';
 import { callUnityTool, listUnityTools } from './unity-mcp-client';
 import {
   deleteAssetGenerationProviderSecret,
@@ -444,7 +445,7 @@ function resolveProjectOutputPath(project: Project, relativePath: string): strin
     throw new Error('非法素材输出路径。');
   }
   const absolutePath = resolve(rootPath, normalized);
-  if (absolutePath !== rootPath && !absolutePath.startsWith(`${rootPath}/`)) {
+  if (!isPathInsideRoot(rootPath, absolutePath)) {
     throw new Error('非法素材输出路径。');
   }
   return absolutePath;

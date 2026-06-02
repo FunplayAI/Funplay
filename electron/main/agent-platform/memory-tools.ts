@@ -11,6 +11,7 @@ import {
   projectMemoryEntryKindTag
 } from '../memory-service';
 import { resolveProjectRootPathForProject } from '../project-file-service';
+import { isPathInsideRoot } from '../path-guard';
 import type { WorkspaceToolAction, WorkspaceToolActionResult } from './workspace-tools';
 
 const MAX_MEMORY_SEARCH_RESULTS = 10;
@@ -50,7 +51,7 @@ function resolveMemoryPath(rootPath: string, filePath: string): {
 } {
   const relativePath = normalizeMemoryPath(filePath);
   const absolutePath = resolve(rootPath, relativePath);
-  if (absolutePath !== rootPath && !absolutePath.startsWith(`${rootPath}/`)) {
+  if (!isPathInsideRoot(rootPath, absolutePath)) {
     throw new Error('非法 memory 文件路径。');
   }
   return { relativePath, absolutePath };

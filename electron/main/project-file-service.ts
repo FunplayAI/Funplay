@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { resolve, relative, basename, dirname } from 'node:path';
 import type { AppState, Project, ProjectDocumentPreview, ProjectDocumentPreviewPage, ProjectFileContent, ProjectFileEntry } from '../../shared/types';
+import { isPathInsideRoot } from './path-guard';
 import { renderPdfPreviewThumbnail } from './pdf-preview-renderer';
 import { renderPptxPreviewThumbnails } from './pptx-preview-renderer';
 
@@ -132,7 +133,7 @@ function resolveProjectFilePath(project: Project, filePath: string): {
   }
 
   const resolvedFilePath = resolve(rootPath, normalizedInput);
-  if (resolvedFilePath !== rootPath && !resolvedFilePath.startsWith(`${rootPath}/`)) {
+  if (!isPathInsideRoot(rootPath, resolvedFilePath)) {
     throw new Error('非法文件路径。');
   }
 

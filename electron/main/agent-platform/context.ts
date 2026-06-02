@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { basename, dirname, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import {
   DEFAULT_PROJECT_SESSION_MODE,
   buildSessionConversationTurns,
@@ -406,7 +406,14 @@ export function formatProjectContextIndexSummary(index: GenericProjectContextInd
 }
 
 function isPathInsideRoot(rootPath: string, absolutePath: string): boolean {
-  return absolutePath === rootPath || absolutePath.startsWith(`${rootPath}/`);
+  // Cross-platform containment check. The old `startsWith(`${rootPath}/`)` broke
+  // on Windows, where resolve() yields backslash paths and the forward-slash
+  // prefix never matched. path.relative normalises separators per platform.
+  if (absolutePath === rootPath) {
+    return true;
+  }
+  const rel = relative(rootPath, absolutePath);
+  return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel);
 }
 
 function normalizeWorkspaceEvidencePath(rootPath: string, token: string): string | undefined {

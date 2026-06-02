@@ -6,6 +6,7 @@ import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Project } from '../../../shared/types';
 import { resolveProjectRootPathForProject } from '../project-file-service';
+import { isPathInsideRoot } from '../path-guard';
 
 type BrowserWindow = import('electron').BrowserWindow;
 
@@ -159,7 +160,7 @@ function normalizeBrowserUrl(project: Project, inputUrl: string, toolName = 'bro
   if (parsed.protocol === 'file:') {
     const rootPath = resolveProjectRootPathForProject(project);
     const filePath = fileURLToPath(parsed);
-    if (filePath !== rootPath && !filePath.startsWith(`${rootPath}/`)) {
+    if (!isPathInsideRoot(rootPath, filePath)) {
       throw new Error('浏览器检查工具仅允许打开项目目录内的 file URL。');
     }
     return parsed.toString();

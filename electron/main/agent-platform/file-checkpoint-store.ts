@@ -3,6 +3,7 @@ import { dirname, relative, resolve } from 'node:path';
 import type { Project } from '../../../shared/types';
 import { clearFileCheckpointEntries, listFileCheckpointEntries, upsertFileCheckpointEntry } from '../store';
 import { buildCompactUnifiedDiff } from '../project-file-service';
+import { isPathInsideRoot } from '../path-guard';
 
 interface FileSnapshot {
   path: string;
@@ -30,7 +31,7 @@ function resolveProjectFilePath(project: Project, filePath: string): {
   }
 
   const resolvedFilePath = resolve(rootPath, normalizedInput);
-  if (resolvedFilePath !== rootPath && !resolvedFilePath.startsWith(`${rootPath}/`)) {
+  if (!isPathInsideRoot(rootPath, resolvedFilePath)) {
     throw new Error('非法文件路径。');
   }
   if (resolvedFilePath === rootPath) {
