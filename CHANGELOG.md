@@ -6,6 +6,26 @@ This project follows a pre-1.0 release flow. Minor versions may include breaking
 
 ## Unreleased
 
+## 0.3.6 - 2026-06-01
+
+### Added
+
+- Added native agent E2E verification coverage with real write-and-verify tasks and stronger active verification reporting.
+- Added an agent eval framework with parity-oriented task fixtures for native and Claude-backed runtime comparisons.
+- Added native tool-loop step budget handling, final summarization prompts, provider chunk timeout defaults, and optional model-assisted context handoff summaries.
+- Added OpenAI-compatible tool-call repair for malformed arguments, prefixed tool names, and common naming variations.
+
+### Changed
+
+- Hardened native agent write execution so workspace side effects are followed by blocking verification before reporting success.
+- Split Project Settings into focused components and extracted MCP management logic for a leaner app shell.
+- Tightened UI smoke checks with realistic-color screenshot companions and fail-fast detection for stale renderer bundles.
+- Improved dark card legibility, file tree density, and two-column settings layout fill behavior.
+
+### Fixed
+
+- Fixed Claude runtime lint regressions around constant bindings.
+
 ## 0.3.5 - 2026-05-28
 
 ### Added

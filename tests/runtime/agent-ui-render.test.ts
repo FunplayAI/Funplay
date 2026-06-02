@@ -22,7 +22,10 @@ import { OnboardingScreen } from '../../src/components/pages/OnboardingScreen.ts
 import { WebSearchSettingsPage } from '../../src/components/pages/WebSearchSettingsPage.tsx';
 import { ProviderSettingsPage, RuntimeDoctorDialog } from '../../src/components/pages/ProviderSettingsPage.tsx';
 import { AssetProviderSettingsPage } from '../../src/components/pages/AssetProviderSettingsPage.tsx';
-import { ProjectAgentRunsSettings, ProjectAgentSettings, ProjectSettingsPage, ProjectTokenUsageSettings } from '../../src/components/pages/ProjectSettingsPage.tsx';
+import { ProjectSettingsPage } from '../../src/components/pages/ProjectSettingsPage.tsx';
+import { ProjectAgentRunsSettings } from '../../src/components/pages/project-settings/ProjectAgentRunsSettings.tsx';
+import { ProjectAgentSettings } from '../../src/components/pages/project-settings/ProjectAgentSettings.tsx';
+import { ProjectTokenUsageSettings } from '../../src/components/pages/project-settings/ProjectTokenUsageSettings.tsx';
 import { McpManagementPage, McpRawAuditCard, McpRawDiagnosticsCard, McpToolSnapshotCard, PluginListCard, ServerListRow } from '../../src/components/pages/McpManagementPage.tsx';
 import { McpRegistrySettingsPage } from '../../src/components/pages/McpRegistrySettingsPage.tsx';
 import { ProviderEditor } from '../../src/components/modals/ProviderEditor.tsx';
