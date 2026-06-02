@@ -22,6 +22,7 @@ type OpenAiCompatibleUpstreamFamily =
   | 'qwen'
   | 'zhipu'
   | 'mimo'
+  | 'minimax'
   | 'unknown';
 
 function getProviderModelMarker(context: {
@@ -50,6 +51,9 @@ function inferUpstreamFamily(context: TransformContext): OpenAiCompatibleUpstrea
   }
   if (marker.includes('mimo')) {
     return 'mimo';
+  }
+  if (marker.includes('minimax')) {
+    return 'minimax';
   }
   return 'unknown';
 }
@@ -200,13 +204,18 @@ function inferSchemaTransform(context: TransformContext): OpenAiCompatibleSchema
     case 'qwen':
     case 'zhipu':
     case 'mimo':
+    case 'minimax':
     case 'unknown':
       return 'default';
   }
 }
 
 function shouldOmitEmptyParameters(schema: Record<string, unknown>, context: TransformContext): boolean {
-  if (inferUpstreamFamily(context) === 'mimo') {
+  // MiMo and MiniMax reject tools without a parameters field — they require a
+  // full object schema even for no-argument tools (MiniMax error 2013 "function
+  // name or parameters is empty"). Never omit empty parameters for them.
+  const family = inferUpstreamFamily(context);
+  if (family === 'mimo' || family === 'minimax') {
     return false;
   }
   const properties = isRecord(schema.properties) ? schema.properties : undefined;

@@ -316,6 +316,35 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     description: '小米 MiMo OpenAI Chat Completions 兼容通道，支持流式工具调用和 reasoning_content。'
   },
   {
+    id: 'minimax',
+    name: 'MiniMax',
+    protocol: 'openai-compatible',
+    apiMode: 'chat',
+    authStyle: 'api_key',
+    baseUrl: 'https://api.minimaxi.com/v1',
+    defaultModel: 'MiniMax-M3',
+    availableModels: [
+      { modelId: 'MiniMax-M3', displayName: 'MiniMax M3', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 40960 } },
+      { modelId: 'MiniMax-M2', displayName: 'MiniMax M2', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 40960 } }
+    ],
+    openAiCompatible: {
+      supportsChatCompletions: true,
+      supportsResponses: false,
+      streamingToolCalls: true,
+      reasoningContent: true,
+      interleavedReasoningField: 'reasoning_content',
+      chatTokenParameter: 'max_tokens',
+      toolChoiceModes: ['auto']
+    },
+    providerMeta: {
+      apiKeyUrl: 'https://platform.minimaxi.com/user-center/basic-information/interface-key',
+      docsUrl: 'https://platform.minimaxi.com/docs/api-reference/text-chat-openai',
+      billingModel: 'pay_as_you_go'
+    },
+    apiKeyHint: '需要 MiniMax API Key',
+    description: 'MiniMax OpenAI Chat Completions 兼容通道（api.minimaxi.com/v1），支持流式工具调用。注意用 OpenAI 兼容端点，不要用 text-chat-anthropic。'
+  },
+  {
     id: 'custom-openai',
     name: 'Custom OpenAI-Compatible',
     protocol: 'openai-compatible',
