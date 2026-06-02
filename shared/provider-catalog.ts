@@ -49,10 +49,11 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     apiMode: 'responses',
     authStyle: 'api_key',
     baseUrl: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-4.1',
+    defaultModel: 'gpt-5.5',
     availableModels: [
-      { modelId: 'gpt-5.4', displayName: 'GPT-5.4', capabilities: { toolUse: true, vision: true, contextWindow: 1_050_000, maxOutputTokens: 128_000 } },
-      { modelId: 'gpt-4.1', displayName: 'GPT-4.1', capabilities: { toolUse: true, vision: true, contextWindow: 1_047_576, maxOutputTokens: 32_768 } }
+      { modelId: 'gpt-5.5', displayName: 'GPT-5.5', capabilities: { toolUse: true, vision: true, contextWindow: 400_000, maxOutputTokens: 128_000 } },
+      { modelId: 'gpt-5.5-pro', displayName: 'GPT-5.5 Pro', capabilities: { toolUse: true, vision: true, contextWindow: 400_000, maxOutputTokens: 128_000 } },
+      { modelId: 'gpt-5.2', displayName: 'GPT-5.2', capabilities: { toolUse: true, vision: true, contextWindow: 400_000, maxOutputTokens: 128_000 } }
     ],
     openAiCompatible: {
       supportsChatCompletions: true,
@@ -77,7 +78,7 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     apiMode: 'chat',
     authStyle: 'api_key',
     baseUrl: 'https://openrouter.ai/api/v1',
-    defaultModel: 'openai/gpt-4.1-mini',
+    defaultModel: 'openai/gpt-5.5',
     openAiCompatible: {
       supportsChatCompletions: true,
       supportsResponses: false,
@@ -94,26 +95,26 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     protocol: 'anthropic',
     authStyle: 'api_key',
     baseUrl: 'https://api.anthropic.com',
-    defaultModel: 'claude-sonnet-4-20250514',
-    upstreamModel: 'claude-sonnet-4-20250514',
+    defaultModel: 'claude-sonnet-4-6',
+    upstreamModel: 'claude-sonnet-4-6',
     defaultRoleModels: {
-      default: 'claude-sonnet-4-20250514',
-      reasoning: 'claude-opus-4-7',
+      default: 'claude-sonnet-4-6',
+      reasoning: 'claude-opus-4-8',
       small: 'claude-haiku-4-5-20251001',
       haiku: 'claude-haiku-4-5-20251001',
-      sonnet: 'claude-sonnet-4-20250514',
-      opus: 'claude-opus-4-7'
+      sonnet: 'claude-sonnet-4-6',
+      opus: 'claude-opus-4-8'
     },
     availableModels: [
       {
-        modelId: 'claude-sonnet-4-20250514',
-        displayName: 'Claude Sonnet 4',
+        modelId: 'claude-sonnet-4-6',
+        displayName: 'Claude Sonnet 4.6',
         role: 'sonnet',
         capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 200000, supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high'] }
       },
       {
-        modelId: 'claude-opus-4-7',
-        displayName: 'Claude Opus 4.7',
+        modelId: 'claude-opus-4-8',
+        displayName: 'Claude Opus 4.8',
         role: 'opus',
         capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 1000000, supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'], supportsAdaptiveThinking: true }
       },
@@ -139,10 +140,10 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     protocol: 'google',
     authStyle: 'api_key',
     baseUrl: 'https://generativelanguage.googleapis.com',
-    defaultModel: 'gemini-2.5-pro',
+    defaultModel: 'gemini-3.1-pro-preview',
     availableModels: [
-      { modelId: 'gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 1_048_576, maxOutputTokens: 65_536 } },
-      { modelId: 'gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 1_048_576, maxOutputTokens: 65_536 } }
+      { modelId: 'gemini-3.1-pro-preview', displayName: 'Gemini 3.1 Pro', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 1_048_576, maxOutputTokens: 65_536 } },
+      { modelId: 'gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 1_048_576, maxOutputTokens: 65_536 } }
     ],
     apiKeyHint: '需要 Google AI API Key',
     description: 'Google Gemini 官方 API。'
@@ -154,7 +155,7 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     apiMode: 'chat',
     authStyle: 'api_key',
     baseUrl: 'https://api.deepseek.com/v1',
-    defaultModel: 'deepseek-chat',
+    defaultModel: 'deepseek-v4-flash',
     availableModels: [
       { modelId: 'deepseek-chat', upstreamModelId: 'deepseek-v4-flash', displayName: 'DeepSeek Chat', capabilities: { toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 384_000 } },
       { modelId: 'deepseek-reasoner', upstreamModelId: 'deepseek-v4-flash', displayName: 'DeepSeek Reasoner', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 384_000 } },
@@ -180,10 +181,11 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     apiMode: 'chat',
     authStyle: 'api_key',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    defaultModel: 'qwen-plus',
+    defaultModel: 'qwen3-max',
     availableModels: [
-      { modelId: 'qwen-plus', displayName: 'Qwen Plus', capabilities: { toolUse: true, vision: true } },
-      { modelId: 'qwen-turbo', displayName: 'Qwen Turbo', capabilities: { toolUse: true } }
+      { modelId: 'qwen3-max', displayName: 'Qwen3 Max', capabilities: { toolUse: true, contextWindow: 262_144, maxOutputTokens: 32_768 } },
+      { modelId: 'qwen3.5-plus', displayName: 'Qwen3.5 Plus', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 65_536 } },
+      { modelId: 'qwen3.5-flash', displayName: 'Qwen3.5 Flash', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 65_536 } }
     ],
     openAiCompatible: {
       supportsChatCompletions: true,
@@ -239,7 +241,7 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     defaultModel: 'glm-5.1',
     availableModels: [
       { modelId: 'glm-5.1', displayName: 'GLM 5.1', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 200_000, maxOutputTokens: 128_000 } },
-      { modelId: 'glm-4.6', displayName: 'GLM 4.6', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 200_000, maxOutputTokens: 128_000 } }
+      { modelId: 'glm-5', displayName: 'GLM 5', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 200_000, maxOutputTokens: 128_000 } }
     ],
     openAiCompatible: {
       supportsChatCompletions: true,
@@ -266,7 +268,7 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     apiMode: 'chat',
     authStyle: 'api_key',
     baseUrl: 'https://api.siliconflow.cn/v1',
-    defaultModel: 'deepseek-ai/DeepSeek-V2.5',
+    defaultModel: 'deepseek-ai/DeepSeek-V4-Pro',
     openAiCompatible: {
       supportsChatCompletions: true,
       supportsResponses: false,
@@ -292,10 +294,7 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     defaultModel: 'mimo-v2.5-pro',
     availableModels: [
       { modelId: 'mimo-v2.5-pro', displayName: 'MiMo V2.5 Pro', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 131072 } },
-      { modelId: 'mimo-v2.5', displayName: 'MiMo V2.5', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 1_000_000, maxOutputTokens: 32768 } },
-      { modelId: 'mimo-v2-pro', displayName: 'MiMo V2 Pro', capabilities: { reasoning: true, toolUse: true, contextWindow: 131072, maxOutputTokens: 131072 } },
-      { modelId: 'mimo-v2-omni', displayName: 'MiMo V2 Omni', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 32768, maxOutputTokens: 32768 } },
-      { modelId: 'mimo-v2-flash', displayName: 'MiMo V2 Flash', capabilities: { toolUse: true, contextWindow: 65536, maxOutputTokens: 65536 } }
+      { modelId: 'mimo-v2.5', displayName: 'MiMo V2.5', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 1_000_000, maxOutputTokens: 32768 } }
     ],
     openAiCompatible: {
       supportsChatCompletions: true,
@@ -325,7 +324,7 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     defaultModel: 'MiniMax-M3',
     availableModels: [
       { modelId: 'MiniMax-M3', displayName: 'MiniMax M3', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 40960 } },
-      { modelId: 'MiniMax-M2', displayName: 'MiniMax M2', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 40960 } }
+      { modelId: 'MiniMax-M2.7', displayName: 'MiniMax M2.7', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 40960 } }
     ],
     openAiCompatible: {
       supportsChatCompletions: true,

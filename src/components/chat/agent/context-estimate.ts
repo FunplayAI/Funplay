@@ -205,7 +205,7 @@ function resolveContextTokenBudget(modelLabel: string, provider: AiProvider | nu
     return resolvedLimits.effectiveContextWindowTokens;
   }
   const model = modelLabel.toLowerCase();
-  if (model.includes('gemini-1.5') || model.includes('gemini-2.5')) {
+  if (model.includes('gemini-1.5') || model.includes('gemini-2.5') || model.includes('gemini-3')) {
     return 1_048_576;
   }
   if (model.includes('gpt-4.1')) {
@@ -216,6 +216,9 @@ function resolveContextTokenBudget(modelLabel: string, provider: AiProvider | nu
   }
   if (model.includes('gpt-5')) {
     return 400_000;
+  }
+  if (model.includes('opus-4-7') || model.includes('opus-4-8')) {
+    return 1_000_000;
   }
   if (model.includes('claude')) {
     return 200_000;

@@ -136,6 +136,8 @@ export const CLAUDE_MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   'claude-opus-4': 200000,
   'claude-opus-4-20250514': 200000,
   'claude-opus-4-7': 1_000_000,
+  'claude-opus-4-8': 1_000_000,
+  'claude-sonnet-4-6': 200000,
   'claude-haiku-4': 200000,
   'claude-haiku-4-5': 200000,
   'claude-haiku-4-5-20251001': 200000

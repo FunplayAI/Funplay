@@ -180,7 +180,7 @@ export function resolveNativeContextWindowTokens(provider?: AiProvider, session?
   }
 
   const marker = candidates.join(' ').toLowerCase();
-  if (marker.includes('opus-4-7')) {
+  if (marker.includes('opus-4-7') || marker.includes('opus-4-8')) {
     return 1_000_000;
   }
   if (marker.includes('gpt-5.4')) {
@@ -192,7 +192,7 @@ export function resolveNativeContextWindowTokens(provider?: AiProvider, session?
   if (marker.includes('gpt-4.1')) {
     return 1_047_576;
   }
-  if (marker.includes('gemini-1.5') || marker.includes('gemini-2.5')) {
+  if (marker.includes('gemini-1.5') || marker.includes('gemini-2.5') || marker.includes('gemini-3')) {
     return 1_048_576;
   }
   if (marker.includes('glm-5.1') || marker.includes('glm-4.6')) {

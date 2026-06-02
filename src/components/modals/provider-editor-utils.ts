@@ -12,12 +12,12 @@ export const claudeRoleModelFields: Array<{
   en: string;
   placeholder: string;
 }> = [
-  { key: 'default', zh: '默认', en: 'Default', placeholder: 'gpt-5.4-xhigh' },
-  { key: 'haiku', zh: '快速/Haiku', en: 'Fast / Haiku', placeholder: 'gpt-5.4-mini' },
-  { key: 'sonnet', zh: '标准/Sonnet', en: 'Standard / Sonnet', placeholder: 'gpt-5.4-xhigh' },
+  { key: 'default', zh: '默认', en: 'Default', placeholder: 'gpt-5.5-xhigh' },
+  { key: 'haiku', zh: '快速/Haiku', en: 'Fast / Haiku', placeholder: 'gpt-5.5-mini' },
+  { key: 'sonnet', zh: '标准/Sonnet', en: 'Standard / Sonnet', placeholder: 'gpt-5.5-xhigh' },
   { key: 'opus', zh: '高阶/Opus', en: 'Advanced / Opus', placeholder: 'gpt-5.5' },
-  { key: 'small', zh: '小模型', en: 'Small', placeholder: 'gpt-5.4-mini' },
-  { key: 'reasoning', zh: '推理', en: 'Reasoning', placeholder: 'gpt-5.4-xhigh' }
+  { key: 'small', zh: '小模型', en: 'Small', placeholder: 'gpt-5.5-mini' },
+  { key: 'reasoning', zh: '推理', en: 'Reasoning', placeholder: 'gpt-5.5-xhigh' }
 ];
 
 const defaultPreset = AI_PROVIDER_PRESETS[0];

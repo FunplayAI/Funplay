@@ -21,6 +21,7 @@ test('provider catalog exposes common channels plus one generic OpenAI-compatibl
       'zhipu-glm',
       'siliconflow',
       'xiaomi-mimo',
+      'minimax',
       'custom-openai'
     ]
   );
@@ -66,13 +67,13 @@ test('provider catalog carries verified context and output limits for common pro
   const zhipu = AI_PROVIDER_PRESETS.find((preset) => preset.id === 'zhipu-glm');
   const mimo = AI_PROVIDER_PRESETS.find((preset) => preset.id === 'xiaomi-mimo');
 
-  assert.equal(openai?.availableModels?.find((model) => model.modelId === 'gpt-5.4')?.capabilities?.contextWindow, 1_050_000);
-  assert.equal(openai?.availableModels?.find((model) => model.modelId === 'gpt-5.4')?.capabilities?.maxOutputTokens, 128_000);
-  assert.equal(openai?.availableModels?.find((model) => model.modelId === 'gpt-4.1')?.capabilities?.contextWindow, 1_047_576);
-  assert.equal(openai?.availableModels?.find((model) => model.modelId === 'gpt-4.1')?.capabilities?.maxOutputTokens, 32_768);
+  assert.equal(openai?.availableModels?.find((model) => model.modelId === 'gpt-5.5')?.capabilities?.contextWindow, 400_000);
+  assert.equal(openai?.availableModels?.find((model) => model.modelId === 'gpt-5.5')?.capabilities?.maxOutputTokens, 128_000);
+  assert.equal(openai?.availableModels?.find((model) => model.modelId === 'gpt-5.2')?.capabilities?.contextWindow, 400_000);
+  assert.equal(openai?.availableModels?.find((model) => model.modelId === 'gpt-5.2')?.capabilities?.maxOutputTokens, 128_000);
 
-  assert.equal(gemini?.availableModels?.find((model) => model.modelId === 'gemini-2.5-pro')?.capabilities?.contextWindow, 1_048_576);
-  assert.equal(gemini?.availableModels?.find((model) => model.modelId === 'gemini-2.5-pro')?.capabilities?.maxOutputTokens, 65_536);
+  assert.equal(gemini?.availableModels?.find((model) => model.modelId === 'gemini-3.1-pro-preview')?.capabilities?.contextWindow, 1_048_576);
+  assert.equal(gemini?.availableModels?.find((model) => model.modelId === 'gemini-3.1-pro-preview')?.capabilities?.maxOutputTokens, 65_536);
 
   assert.equal(deepseek?.availableModels?.find((model) => model.modelId === 'deepseek-chat')?.capabilities?.maxOutputTokens, 384_000);
 
@@ -88,16 +89,16 @@ test('provider token limit resolution merges stale stored models with newer pres
     name: 'OpenAI',
     protocol: 'openai-compatible',
     baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-4.1',
+    model: 'gpt-5.5',
     availableModels: [
-      { modelId: 'gpt-4.1', displayName: 'GPT-4.1', capabilities: { toolUse: true, vision: true, contextWindow: 1_000_000 } }
+      { modelId: 'gpt-5.5', displayName: 'GPT-5.5', capabilities: { toolUse: true, vision: true, contextWindow: 1_000_000 } }
     ],
     contextWindowTokens: undefined,
     maxOutputTokens: undefined
   });
 
-  assert.equal(limits.modelId, 'gpt-4.1');
-  assert.equal(limits.presetContextWindowTokens, 1_047_576);
-  assert.equal(limits.presetMaxOutputTokens, 32_768);
-  assert.equal(limits.effectiveMaxOutputTokens, 32_768);
+  assert.equal(limits.modelId, 'gpt-5.5');
+  assert.equal(limits.presetContextWindowTokens, 400_000);
+  assert.equal(limits.presetMaxOutputTokens, 128_000);
+  assert.equal(limits.effectiveMaxOutputTokens, 128_000);
 });
