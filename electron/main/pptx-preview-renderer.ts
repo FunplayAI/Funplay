@@ -1,12 +1,12 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { readZipEntryText } from './zip-reader';
 import { access, copyFile, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const CACHE_VERSION = 1;
-const MAX_ZIP_TEXT_BYTES = 2 * 1024 * 1024;
 const LIBREOFFICE_TIMEOUT_MS = 30_000;
 const PDF_RENDER_TIMEOUT_MS = 25_000;
 const QUICKLOOK_TIMEOUT_MS = 6_000;
@@ -727,37 +727,8 @@ function getRuntimeRoots(): string[] {
   ].filter((item): item is string => Boolean(item));
 }
 
-async function runUnzip(args: string[], maxBytes = MAX_ZIP_TEXT_BYTES): Promise<string | undefined> {
-  return await new Promise((resolveResult) => {
-    const child = spawn('unzip', args, {
-      stdio: ['ignore', 'pipe', 'ignore']
-    });
-    const chunks: Buffer[] = [];
-    let byteLength = 0;
-    let killed = false;
-    child.stdout?.on('data', (data: Buffer) => {
-      byteLength += data.length;
-      if (byteLength > maxBytes) {
-        killed = true;
-        child.kill('SIGTERM');
-        return;
-      }
-      chunks.push(data);
-    });
-    child.on('error', () => resolveResult(undefined));
-    child.on('close', (code) => {
-      if (code !== 0 && !killed) {
-        resolveResult(undefined);
-        return;
-      }
-      resolveResult(Buffer.concat(chunks).toString('utf8'));
-    });
-  });
-}
-
-async function readZipEntryText(absolutePath: string, entry: string): Promise<string | undefined> {
-  return await runUnzip(['-p', absolutePath, entry]);
-}
+// readZipEntryText comes from the cross-platform zip-reader (imported above);
+// the old spawn('unzip') failed on Windows.
 
 function resolveSlideRelationshipEntry(slideEntry: string): string {
   return slideEntry.replace(/^ppt\/slides\//i, 'ppt/slides/_rels/').replace(/\.xml$/i, '.xml.rels');

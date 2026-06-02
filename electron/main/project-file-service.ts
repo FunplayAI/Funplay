@@ -1,5 +1,5 @@
-import { spawn } from 'node:child_process';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { listZipEntries, readZipEntryText } from './zip-reader';
 import { resolve, relative, basename, dirname } from 'node:path';
 import type { AppState, Project, ProjectDocumentPreview, ProjectDocumentPreviewPage, ProjectFileContent, ProjectFileEntry } from '../../shared/types';
 import { isPathInsideRoot } from './path-guard';
@@ -26,7 +26,6 @@ const MAX_BINARY_PREVIEW_BYTES = 12 * 1024 * 1024;
 const MAX_DOCUMENT_PREVIEW_PAGES = 30;
 const MAX_DOCUMENT_PREVIEW_CHARS = 80_000;
 const MAX_DOCUMENT_PREVIEW_PAGE_CHARS = 3_000;
-const MAX_ZIP_TEXT_BYTES = 2 * 1024 * 1024;
 const BINARY_EXTENSIONS = new Set([
   '.png',
   '.jpg',
@@ -265,42 +264,8 @@ function chunkDocxParagraphs(paragraphs: string[]): ProjectDocumentPreviewPage[]
   return pages;
 }
 
-async function runUnzip(args: string[], maxBytes = MAX_ZIP_TEXT_BYTES): Promise<string | undefined> {
-  return await new Promise((resolveResult) => {
-    const child = spawn('unzip', args, {
-      stdio: ['ignore', 'pipe', 'ignore']
-    });
-    const chunks: Buffer[] = [];
-    let byteLength = 0;
-    let killed = false;
-    child.stdout?.on('data', (data: Buffer) => {
-      byteLength += data.length;
-      if (byteLength > maxBytes) {
-        killed = true;
-        child.kill('SIGTERM');
-        return;
-      }
-      chunks.push(data);
-    });
-    child.on('error', () => resolveResult(undefined));
-    child.on('close', (code) => {
-      if (code !== 0 && !killed) {
-        resolveResult(undefined);
-        return;
-      }
-      resolveResult(Buffer.concat(chunks).toString('utf8'));
-    });
-  });
-}
-
-async function listZipEntries(absolutePath: string): Promise<string[]> {
-  const output = await runUnzip(['-Z1', absolutePath], 300_000);
-  return output?.split('\n').map((line) => line.trim()).filter(Boolean) ?? [];
-}
-
-async function readZipEntryText(absolutePath: string, entry: string): Promise<string | undefined> {
-  return await runUnzip(['-p', absolutePath, entry]);
-}
+// listZipEntries / readZipEntryText come from the cross-platform zip-reader
+// (imported above); the old spawn('unzip') failed on Windows.
 
 async function createPptxDocumentPreview(
   absolutePath: string,

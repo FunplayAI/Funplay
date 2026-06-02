@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { resolveRunCommandShell } from './system-shell';
+import { listZipEntries, readZipEntryText } from '../zip-reader';
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -103,7 +104,6 @@ import {
   RECENT_MEMORY_DAYS,
   MAX_DOCUMENT_CHARS,
   DEFAULT_DOCUMENT_CHARS,
-  MAX_ZIP_TEXT_BYTES,
   type WorkspaceWriteOperation,
   type WorkspaceWriteResult,
   type WorkspaceToolAction,
@@ -270,42 +270,8 @@ function extractPdfText(bytes: Buffer, selection: PageSelection | undefined, max
   };
 }
 
-async function runUnzip(args: string[], maxBytes = MAX_ZIP_TEXT_BYTES): Promise<string | undefined> {
-  return await new Promise((resolveResult) => {
-    const child = spawn('unzip', args, {
-      stdio: ['ignore', 'pipe', 'ignore']
-    });
-    const chunks: Buffer[] = [];
-    let byteLength = 0;
-    let killed = false;
-    child.stdout?.on('data', (data: Buffer) => {
-      byteLength += data.length;
-      if (byteLength > maxBytes) {
-        killed = true;
-        child.kill('SIGTERM');
-        return;
-      }
-      chunks.push(data);
-    });
-    child.on('error', () => resolveResult(undefined));
-    child.on('close', (code) => {
-      if (code !== 0 && !killed) {
-        resolveResult(undefined);
-        return;
-      }
-      resolveResult(Buffer.concat(chunks).toString('utf8'));
-    });
-  });
-}
-
-async function listZipEntries(absolutePath: string): Promise<string[]> {
-  const output = await runUnzip(['-Z1', absolutePath], 300_000);
-  return output?.split('\n').map((line) => line.trim()).filter(Boolean) ?? [];
-}
-
-async function readZipEntryText(absolutePath: string, entry: string): Promise<string | undefined> {
-  return await runUnzip(['-p', absolutePath, entry]);
-}
+// listZipEntries / readZipEntryText come from the cross-platform zip-reader
+// (imported above); the old spawn('unzip') failed on Windows.
 
 async function extractOfficeDocumentText(
   absolutePath: string,

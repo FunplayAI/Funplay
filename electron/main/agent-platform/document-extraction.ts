@@ -1,9 +1,8 @@
-import { spawn } from 'node:child_process';
 import { extname } from 'node:path';
+import { listZipEntries, readZipEntryText } from '../zip-reader';
 
 const DEFAULT_DOCUMENT_CHARS = 12_000;
 const MAX_DOCUMENT_CHARS = 20_000;
-const MAX_ZIP_TEXT_BYTES = 2 * 1024 * 1024;
 
 export function normalizeDocumentMaxChars(maxChars: number | undefined): number {
   if (typeof maxChars !== 'number' || !Number.isFinite(maxChars)) {
@@ -145,42 +144,9 @@ export function extractPdfText(bytes: Buffer, selection: PageSelection | undefin
   };
 }
 
-export async function runUnzip(args: string[], maxBytes = MAX_ZIP_TEXT_BYTES): Promise<string | undefined> {
-  return await new Promise((resolveResult) => {
-    const child = spawn('unzip', args, {
-      stdio: ['ignore', 'pipe', 'ignore']
-    });
-    const chunks: Buffer[] = [];
-    let byteLength = 0;
-    let killed = false;
-    child.stdout?.on('data', (data: Buffer) => {
-      byteLength += data.length;
-      if (byteLength > maxBytes) {
-        killed = true;
-        child.kill('SIGTERM');
-        return;
-      }
-      chunks.push(data);
-    });
-    child.on('error', () => resolveResult(undefined));
-    child.on('close', (code) => {
-      if (code !== 0 && !killed) {
-        resolveResult(undefined);
-        return;
-      }
-      resolveResult(Buffer.concat(chunks).toString('utf8'));
-    });
-  });
-}
-
-export async function listZipEntries(absolutePath: string): Promise<string[]> {
-  const output = await runUnzip(['-Z1', absolutePath], 300_000);
-  return output?.split('\n').map((line) => line.trim()).filter(Boolean) ?? [];
-}
-
-export async function readZipEntryText(absolutePath: string, entry: string): Promise<string | undefined> {
-  return await runUnzip(['-p', absolutePath, entry]);
-}
+// Zip entry reading moved to the cross-platform zip-reader (yauzl) — the old
+// spawn('unzip') failed on Windows. Re-exported here for existing importers.
+export { listZipEntries, readZipEntryText };
 
 export async function extractOfficeDocumentText(
   absolutePath: string,
