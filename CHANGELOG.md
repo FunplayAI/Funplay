@@ -19,7 +19,6 @@ This project follows a pre-1.0 release flow. Minor versions may include breaking
 
 - Fixed Windows GitHub Release publishing so updater metadata-referenced installer assets are present even when builder output uses a different filename style.
 - Fixed Cocos onboarding so MCP connectivity only completes after the online server confirms the current project path, and so already-open Cocos projects are not relaunched.
-- Fixed shared checkbox rendering so global input chrome no longer appears around checkboxes.
 
 ## 0.3.7 - 2026-06-02
 
