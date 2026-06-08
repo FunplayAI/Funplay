@@ -21,6 +21,11 @@ export type EnvironmentActionKind =
   | 'import_unity_project'
   | 'open_unity_project'
   | 'install_project_bridge'
+  | 'install_cocos_dashboard'
+  | 'open_cocos_dashboard'
+  | 'create_cocos_project'
+  | 'open_cocos_project'
+  | 'install_cocos_bridge'
   | 'verify_project_path';
 export type EnvironmentTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'needs_user';
 export type EnvironmentTaskStage =

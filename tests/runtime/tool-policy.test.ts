@@ -93,19 +93,24 @@ test('tool policy detects command and durable side-effect intents', () => {
 });
 
 test('tool policy exposes engine side-effect tools without general workspace writes', () => {
-  const policy = resolveAgentToolPolicy({
-    message: '打开 Unity 项目并安装 Funplay Bridge'
-  });
+  for (const message of [
+    '打开 Unity 项目并安装 Funplay Bridge',
+    '接入 Cocos MCP 并检测 Creator 项目状态'
+  ]) {
+    const policy = resolveAgentToolPolicy({
+      message
+    });
 
-  assert.equal(policy.engine.detected, true);
-  assert.equal(policy.engine.confidence, 'high');
-  assert.equal(policy.requiresWorkspaceWritePermission, false);
-  assert.equal(policy.workspaceWrite.detected, false);
-  assert.equal(policy.exposesHighRiskTools, true);
-  assert.equal(policy.executionProfile.id, 'side_effect');
-  assert.equal(policy.executionProfile.allowedToolFamilies.includes('engine'), true);
-  assert.equal(policy.executionProfile.allowedToolFamilies.includes('workspace_write'), false);
-  assert.ok(policy.evidence.some((item) => item.startsWith('engine:')));
+    assert.equal(policy.engine.detected, true);
+    assert.equal(policy.engine.confidence, 'high');
+    assert.equal(policy.requiresWorkspaceWritePermission, false);
+    assert.equal(policy.workspaceWrite.detected, false);
+    assert.equal(policy.exposesHighRiskTools, true);
+    assert.equal(policy.executionProfile.id, 'side_effect');
+    assert.equal(policy.executionProfile.allowedToolFamilies.includes('engine'), true);
+    assert.equal(policy.executionProfile.allowedToolFamilies.includes('workspace_write'), false);
+    assert.ok(policy.evidence.some((item) => item.startsWith('engine:')));
+  }
 });
 
 test('tool policy exposes media tools without general workspace writes', () => {

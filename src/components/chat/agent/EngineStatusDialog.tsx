@@ -23,7 +23,9 @@ export function EngineStatusDialog(props: {
 }): JSX.Element {
   const language = useUiLanguage();
   const t = (zh: string, en: string): string => localize(language, zh, en);
-  const hubCheck = findEnvironmentCheck(props.diagnostics, 'unity-hub');
+  const platform = props.project.engine?.platform ?? props.diagnostics?.platform ?? 'unity';
+  const labels = getEngineStatusLabels(platform, language);
+  const hubCheck = findEnvironmentCheck(props.diagnostics, platform === 'cocos' ? 'cocos-dashboard' : 'unity-hub');
   const projectCheck = findEnvironmentCheck(props.diagnostics, 'engine-opened');
   const projectValidityCheck = findEnvironmentCheck(props.diagnostics, 'engine-project');
   const bridgeInstalledCheck = findEnvironmentCheck(props.diagnostics, 'bridge-installed');
@@ -33,9 +35,9 @@ export function EngineStatusDialog(props: {
     : bridgeInstalledCheck?.status === 'failed'
       ? 'failed'
       : bridgeInstalledCheck?.status === 'warning' || bridgeConnectedCheck?.status === 'warning'
-        ? 'warning'
-        : bridgeConnectedCheck?.status ?? bridgeInstalledCheck?.status ?? 'pending';
-  const hubStatus = hubCheck?.actions.some((action) => action.id === 'open_unity_hub')
+      ? 'warning'
+      : bridgeConnectedCheck?.status ?? bridgeInstalledCheck?.status ?? 'pending';
+  const hubStatus = platform === 'unity' && hubCheck?.actions.some((action) => action.id === 'open_unity_hub')
     ? 'warning'
     : hubCheck?.status ?? 'pending';
   const projectActions = dedupeEnvironmentActions([
@@ -53,7 +55,7 @@ export function EngineStatusDialog(props: {
         <div className="modal-header">
           <div>
             <div className="eyebrow">{t('引擎状态', 'Engine Status')}</div>
-            <h2 id="engine-status-title" className="page-title">{formatEnginePlatformLabel(props.project.engine?.platform ?? 'unity')}</h2>
+            <h2 id="engine-status-title" className="page-title">{formatEnginePlatformLabel(platform)}</h2>
           </div>
           <div className="engine-status-header-actions">
             <IconButton
@@ -70,7 +72,7 @@ export function EngineStatusDialog(props: {
           {props.error ? <div className="warning-banner compact error">{props.error}</div> : null}
           {props.actionMessage ? <div className="status-banner compact ok">{props.actionMessage}</div> : null}
           <EngineStatusRow
-            title="Unity Hub"
+            title={labels.hub}
             status={hubStatus}
             detail={hubCheck?.detail ?? t('尚未检测。', 'Not checked yet.')}
             actions={hubCheck?.actions ?? []}
@@ -78,7 +80,7 @@ export function EngineStatusDialog(props: {
             onRunAction={props.onRunAction}
           />
           <EngineStatusRow
-            title={t('Unity 项目', 'Unity Project')}
+            title={labels.project}
             status={projectCheck?.status ?? projectValidityCheck?.status ?? 'pending'}
             detail={[projectValidityCheck?.detail, projectCheck?.detail].filter(Boolean).join(' · ') || t('尚未检测。', 'Not checked yet.')}
             actions={projectActions}
@@ -86,7 +88,7 @@ export function EngineStatusDialog(props: {
             onRunAction={props.onRunAction}
           />
           <EngineStatusRow
-            title="Unity MCP"
+            title={labels.mcp}
             status={mcpStatus}
             detail={[bridgeInstalledCheck?.detail, bridgeConnectedCheck?.detail].filter(Boolean).join(' · ') || t('尚未检测。', 'Not checked yet.')}
             actions={mcpActions}
@@ -126,7 +128,7 @@ function EngineStatusRow(props: {
               size="sm"
               variant={action.primary ? 'primary' : 'secondary'}
               loading={props.actionId === action.id}
-              leadingIcon={action.id === 'install_project_bridge' ? <Wrench size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
+              leadingIcon={action.id === 'install_project_bridge' || action.id === 'install_cocos_bridge' ? <Wrench size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
               onClick={() => props.onRunAction(action.id)}
             >
               {action.label || t('打开', 'Open')}
@@ -151,6 +153,39 @@ function formatEnvironmentStatusLabel(language: UiLanguage, status: EnvironmentC
   if (status === 'warning') return localize(language, '需处理', 'Needs Action');
   if (status === 'failed') return localize(language, '不可用', 'Unavailable');
   return localize(language, '待检测', 'Pending');
+}
+
+function getEngineStatusLabels(platform: NonNullable<Project['engine']>['platform'], language: UiLanguage): {
+  hub: string;
+  project: string;
+  mcp: string;
+} {
+  if (platform === 'cocos') {
+    return {
+      hub: 'Cocos Dashboard',
+      project: localize(language, 'Cocos 项目', 'Cocos Project'),
+      mcp: 'Cocos MCP'
+    };
+  }
+  if (platform === 'godot') {
+    return {
+      hub: 'Godot',
+      project: localize(language, 'Godot 项目', 'Godot Project'),
+      mcp: 'Godot MCP'
+    };
+  }
+  if (platform === 'unreal') {
+    return {
+      hub: 'Unreal Launcher',
+      project: localize(language, 'Unreal 项目', 'Unreal Project'),
+      mcp: 'Unreal MCP'
+    };
+  }
+  return {
+    hub: 'Unity Hub',
+    project: localize(language, 'Unity 项目', 'Unity Project'),
+    mcp: 'Unity MCP'
+  };
 }
 
 export function formatEnginePlatformLabel(platform: Exclude<Project['engine'], undefined>['platform']): string {

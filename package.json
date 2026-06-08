@@ -1,6 +1,6 @@
 {
   "name": "funplay",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "private": true,
   "license": "MIT",
   "description": "AI game development workbench for multi-engine game creation.",
@@ -31,6 +31,7 @@
     "release:gate": "node scripts/release-gate.mjs",
     "release:verify-runtime-deps": "node scripts/verify-packaged-runtime-deps.mjs",
     "release:verify-mac-updates": "node scripts/merge-mac-update-metadata.mjs --verify release/latest-mac.yml --check-artifacts",
+    "release:prepare-mac-artifacts": "node scripts/prepare-mac-release-artifacts.mjs",
     "runtime:pptx:check": "node scripts/prepare-pptx-runtime.mjs --check",
     "runtime:pptx:prepare": "node scripts/prepare-pptx-runtime.mjs",
     "ensure:claude-sdk:darwin-x64": "node scripts/ensure-claude-sdk-darwin-x64.mjs",

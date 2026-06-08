@@ -7,7 +7,6 @@ import type {
   AgentRuntimeStatus,
   AgentSkillCatalogItem,
   AgentSkillCatalogResult,
-  AgentSkillRegistrySnapshot,
   AiProvider,
   McpConnectionSnapshot,
   McpPlugin,
@@ -64,11 +63,8 @@ export function ProjectSettingsPage(props: {
   skillDraft: ProjectAgentSkillDraft;
   editingSkillId: string;
   skillCatalog: AgentSkillCatalogResult | null;
-  skillRegistry: AgentSkillRegistrySnapshot | null;
   isLoadingSkillCatalog: boolean;
-  isLoadingSkillRegistry: boolean;
   skillCatalogError: string;
-  skillRegistryError: string;
   providers: AiProvider[];
   activeProvider: AiProvider | null;
   defaultProviderId?: string;
@@ -81,7 +77,6 @@ export function ProjectSettingsPage(props: {
   onUpdateProjectPermissionMode: (permissionMode: AgentPermissionMode) => Promise<void>;
   onUpdateSessionRuntime: (runtime: SessionRuntimeUpdate) => Promise<void>;
   onRefreshSkillCatalog: () => Promise<void>;
-  onRefreshSkillRegistry: () => Promise<void>;
   onInstallCatalogSkill: (skill: AgentSkillCatalogItem) => Promise<void>;
   onChangeSkillDraft: (draft: ProjectAgentSkillDraft) => void;
   onSaveProjectSkill: () => Promise<void>;
@@ -288,13 +283,9 @@ export function ProjectSettingsPage(props: {
               draft={props.skillDraft}
               editingSkillId={props.editingSkillId}
               catalog={props.skillCatalog}
-              registry={props.skillRegistry}
               isLoadingCatalog={props.isLoadingSkillCatalog}
-              isLoadingRegistry={props.isLoadingSkillRegistry}
               catalogError={props.skillCatalogError}
-              registryError={props.skillRegistryError}
               onRefreshCatalog={props.onRefreshSkillCatalog}
-              onRefreshRegistry={props.onRefreshSkillRegistry}
               onInstallCatalogSkill={props.onInstallCatalogSkill}
               onChangeDraft={props.onChangeSkillDraft}
               onSaveSkill={props.onSaveProjectSkill}

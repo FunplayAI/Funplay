@@ -1,10 +1,15 @@
 import type { AppState, McpPlugin, McpPluginBindings, McpPluginInput, McpPluginKind, McpSettings, Project } from '../../shared/types';
 import { makeId, nowIso } from '../../shared/utils';
+import { DEFAULT_COCOS_MCP_BASE_URL } from './agent-platform/cocos-adapter';
 
 const DEFAULT_UNITY_MCP_BASE_URL = 'http://127.0.0.1:8765/';
 
 function isUnityEnginePlugin(plugin: McpPlugin): boolean {
-  return !plugin.projectId && plugin.kind === 'engine' && /\b(unity|mcp|bridge)\b/i.test(`${plugin.name} ${plugin.notes ?? ''}`);
+  return plugin.kind === 'engine' && /\bunity\b/i.test(`${plugin.name} ${plugin.notes ?? ''}`);
+}
+
+function isCocosEnginePlugin(plugin: McpPlugin): boolean {
+  return plugin.kind === 'engine' && /\bcocos\b/i.test(`${plugin.name} ${plugin.notes ?? ''}`);
 }
 
 function normalizeProjectMcpServerIds(bindings: McpPluginBindings | undefined): string[] {
@@ -20,6 +25,27 @@ function normalizeProjectMcpServerIds(bindings: McpPluginBindings | undefined): 
 
 function canProjectUsePlugin(plugin: McpPlugin, projectId: string): boolean {
   return !plugin.projectId || plugin.projectId === projectId;
+}
+
+function normalizeEngineMcpProjectName(project: { name?: string; id?: string }): string {
+  const name = project.name?.trim().replace(/\s+/g, ' ');
+  return name || project.id || 'Untitled Project';
+}
+
+function buildEngineMcpPluginName(platform: 'unity' | 'cocos', project: { name?: string; id?: string }): string {
+  return `${platform === 'cocos' ? 'Cocos' : 'Unity'} MCP - ${normalizeEngineMcpProjectName(project)}`;
+}
+
+function isEnginePluginForPlatform(plugin: McpPlugin, platform: 'unity' | 'cocos'): boolean {
+  return platform === 'cocos' ? isCocosEnginePlugin(plugin) : isUnityEnginePlugin(plugin);
+}
+
+function isGlobalUnityEnginePlugin(plugin: McpPlugin): boolean {
+  return !plugin.projectId && isUnityEnginePlugin(plugin);
+}
+
+function isGlobalCocosEnginePlugin(plugin: McpPlugin): boolean {
+  return !plugin.projectId && isCocosEnginePlugin(plugin);
 }
 
 function buildBindingsFromServerIds(plugins: McpPlugin[], pluginIds: string[]): McpPluginBindings {
@@ -138,7 +164,7 @@ export function getActivePluginByKind(_state: AppState, _kind: McpPluginKind): M
 export function ensureUnityMcpPlugin(state: AppState): McpPlugin {
   const baseUrl = state.settings.baseUrl?.trim() || DEFAULT_UNITY_MCP_BASE_URL;
   const timestamp = nowIso();
-  const existingIndex = state.mcpPlugins.findIndex(isUnityEnginePlugin);
+  const existingIndex = state.mcpPlugins.findIndex(isGlobalUnityEnginePlugin);
   if (existingIndex >= 0) {
     const current = state.mcpPlugins[existingIndex];
     const updated: McpPlugin = {
@@ -167,23 +193,7 @@ export function ensureUnityMcpPlugin(state: AppState): McpPlugin {
   return plugin;
 }
 
-export function ensureUnityProjectMcpBinding(state: AppState, project: { engine?: { platform?: string }; mcpPluginId?: string; mcpBindings?: McpPluginBindings }): McpPlugin | undefined {
-  if (project.engine?.platform !== 'unity') {
-    return undefined;
-  }
-
-  const boundPlugin = resolveProjectPluginByKind(state, project.mcpBindings, 'engine');
-  if (boundPlugin) {
-    project.mcpPluginId = boundPlugin.id;
-    project.mcpBindings = {
-      ...(project.mcpBindings ?? {}),
-      servers: [...new Set([...(project.mcpBindings?.servers ?? []), boundPlugin.id])],
-      engine: boundPlugin.id
-    };
-    return boundPlugin;
-  }
-
-  const plugin = ensureUnityMcpPlugin(state);
+function bindEnginePlugin(project: { mcpPluginId?: string; mcpBindings?: McpPluginBindings }, plugin: McpPlugin): McpPlugin {
   project.mcpPluginId = plugin.id;
   project.mcpBindings = {
     ...(project.mcpBindings ?? {}),
@@ -191,6 +201,135 @@ export function ensureUnityProjectMcpBinding(state: AppState, project: { engine?
     engine: plugin.id
   };
   return plugin;
+}
+
+export function ensureCocosMcpPlugin(state: AppState): McpPlugin {
+  const timestamp = nowIso();
+  const existingIndex = state.mcpPlugins.findIndex(isGlobalCocosEnginePlugin);
+  if (existingIndex >= 0) {
+    const current = state.mcpPlugins[existingIndex];
+    const updated: McpPlugin = {
+      ...current,
+      baseUrl: current.baseUrl?.trim() || DEFAULT_COCOS_MCP_BASE_URL,
+      enabled: true,
+      updatedAt: current.enabled && current.baseUrl?.trim() ? current.updatedAt : timestamp
+    };
+    state.mcpPlugins[existingIndex] = updated;
+    return updated;
+  }
+
+  const plugin: McpPlugin = {
+    id: makeId('mcp'),
+    name: 'Funplay Cocos MCP',
+    kind: 'engine',
+    transport: 'http',
+    baseUrl: DEFAULT_COCOS_MCP_BASE_URL,
+    enabled: true,
+    isDefault: false,
+    notes: 'Funplay built-in Cocos Creator MCP bridge. Install from https://github.com/FunplayAI/funplay-cocos-mcp.',
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+  state.mcpPlugins = [plugin, ...state.mcpPlugins];
+  return plugin;
+}
+
+function findProjectEngineMcpPlugin(
+  state: AppState,
+  project: { id?: string },
+  platform: 'unity' | 'cocos'
+): McpPlugin | undefined {
+  if (!project.id) {
+    return undefined;
+  }
+  return state.mcpPlugins.find((plugin) =>
+    plugin.projectId === project.id &&
+    plugin.kind === 'engine' &&
+    isEnginePluginForPlatform(plugin, platform)
+  );
+}
+
+function upsertProjectEngineMcpPlugin(
+  state: AppState,
+  project: { id?: string; name?: string },
+  platform: 'unity' | 'cocos'
+): McpPlugin {
+  if (!project.id) {
+    return platform === 'cocos' ? ensureCocosMcpPlugin(state) : ensureUnityMcpPlugin(state);
+  }
+
+  const baseUrl = platform === 'cocos'
+    ? DEFAULT_COCOS_MCP_BASE_URL
+    : state.settings.baseUrl?.trim() || DEFAULT_UNITY_MCP_BASE_URL;
+  const name = buildEngineMcpPluginName(platform, project);
+  const notes = platform === 'cocos'
+    ? 'Funplay built-in Cocos Creator MCP bridge. Install from https://github.com/FunplayAI/funplay-cocos-mcp.'
+    : 'Funplay built-in Unity MCP bridge.';
+  const timestamp = nowIso();
+  const existingIndex = state.mcpPlugins.findIndex((plugin) =>
+    plugin.projectId === project.id &&
+    plugin.kind === 'engine' &&
+    isEnginePluginForPlatform(plugin, platform)
+  );
+  if (existingIndex >= 0) {
+    const current = state.mcpPlugins[existingIndex];
+    const updated: McpPlugin = {
+      ...current,
+      name,
+      baseUrl: current.baseUrl?.trim() || baseUrl,
+      enabled: true,
+      notes: current.notes?.trim() || notes,
+      updatedAt: current.name === name && current.enabled && current.baseUrl?.trim() ? current.updatedAt : timestamp
+    };
+    state.mcpPlugins[existingIndex] = updated;
+    return updated;
+  }
+
+  const plugin: McpPlugin = {
+    id: makeId('mcp'),
+    projectId: project.id,
+    name,
+    kind: 'engine',
+    transport: 'http',
+    baseUrl,
+    enabled: true,
+    isDefault: false,
+    notes,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+  state.mcpPlugins = [plugin, ...state.mcpPlugins];
+  return plugin;
+}
+
+export function ensureEngineProjectMcpBinding(state: AppState, project: { id?: string; name?: string; engine?: { platform?: string }; mcpPluginId?: string; mcpBindings?: McpPluginBindings }): McpPlugin | undefined {
+  if (project.engine?.platform !== 'unity' && project.engine?.platform !== 'cocos') {
+    return undefined;
+  }
+  const platform = project.engine.platform;
+  const projectPlugin = findProjectEngineMcpPlugin(state, project, platform);
+  if (projectPlugin) {
+    return bindEnginePlugin(project, upsertProjectEngineMcpPlugin(state, project, platform));
+  }
+
+  const boundPlugin = resolveProjectPluginByKind(state, project.mcpBindings, 'engine');
+  if (
+    boundPlugin &&
+    boundPlugin.projectId === project.id &&
+    isEnginePluginForPlatform(boundPlugin, platform)
+  ) {
+    return bindEnginePlugin(project, upsertProjectEngineMcpPlugin(state, project, platform));
+  }
+
+  const plugin = upsertProjectEngineMcpPlugin(state, project, platform);
+  return bindEnginePlugin(project, plugin);
+}
+
+export function ensureUnityProjectMcpBinding(state: AppState, project: { id?: string; name?: string; engine?: { platform?: string }; mcpPluginId?: string; mcpBindings?: McpPluginBindings }): McpPlugin | undefined {
+  if (project.engine?.platform !== 'unity') {
+    return undefined;
+  }
+  return ensureEngineProjectMcpBinding(state, project);
 }
 
 export function resolveProjectPlugins(state: AppState, project: { id: string; mcpBindings?: McpPluginBindings }): McpPlugin[] {

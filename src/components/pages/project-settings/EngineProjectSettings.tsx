@@ -40,7 +40,7 @@ export function EngineProjectSettings(props: { project: Project | null }): JSX.E
         />
         <InfoRow
           label="Bridge / MCP"
-          value={props.project ? buildRuntimeSummary(props.project.runtimeState) : t('未检测', 'Not Checked')}
+          value={props.project ? buildRuntimeSummary(props.project.runtimeState, props.project.engine?.platform) : t('未检测', 'Not Checked')}
         />
         <InfoRow
           label={t('最近检测', 'Last Check')}

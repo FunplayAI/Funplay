@@ -22,6 +22,33 @@ function formatMcpEndpoint(plugin: McpPlugin): string {
     : plugin.baseUrl;
 }
 
+function resolveBuiltInEngineMcpPlatform(plugin: McpPlugin): 'unity' | 'cocos' | null {
+  if (plugin.kind !== 'engine') {
+    return null;
+  }
+  const text = `${plugin.name} ${plugin.notes ?? ''}`;
+  const builtIn = /Funplay built-in|GameBooom|FunseaAI|unity mcp|cocos mcp/i.test(text);
+  if (!builtIn) {
+    return null;
+  }
+  if (/\bcocos\b/i.test(text)) {
+    return 'cocos';
+  }
+  if (/\bunity\b/i.test(text)) {
+    return 'unity';
+  }
+  return null;
+}
+
+function formatProjectMcpPluginName(project: Project | null, plugin: McpPlugin): string {
+  const platform = resolveBuiltInEngineMcpPlatform(plugin);
+  if (!project || !platform) {
+    return plugin.name;
+  }
+  const projectName = project.name.trim() || project.id;
+  return `${platform === 'cocos' ? 'Cocos' : 'Unity'} MCP - ${projectName}`;
+}
+
 function formatConnectionStatus(language: 'zh-CN' | 'en-US', snapshot: McpConnectionSnapshot | null): string {
   if (!snapshot) {
     return localize(language, '未检测', 'Not checked');
@@ -220,6 +247,7 @@ export function McpManagementPage(props: {
   const projectPlugins = props.plugins.filter((plugin) => canProjectUsePlugin(props.project, plugin));
   const enabledProjectPluginIds = new Set(props.projectBindings);
   const detailPlugin = detailPluginId ? projectPlugins.find((plugin) => plugin.id === detailPluginId) ?? null : null;
+  const detailPluginDisplayName = detailPlugin ? formatProjectMcpPluginName(props.project, detailPlugin) : '';
 
   function openPluginDetail(plugin: McpPlugin): void {
     setDetailPluginId(plugin.id);
@@ -250,7 +278,7 @@ export function McpManagementPage(props: {
               <Button variant="ghost" size="sm" className="settings-detail-back-button" onClick={() => setDetailPluginId('')} leadingIcon={<ChevronLeft size={14} aria-hidden="true" />}>
                 {t('返回', 'Back')}
               </Button>
-              <h2>{detailPlugin.name}</h2>
+              <h2>{detailPluginDisplayName}</h2>
               <p>{detailPlugin.notes || detailPlugin.baseUrl || t('启用后 Agent 才会获得这个 MCP 的工具和资源。', 'Enable a server before the Agent can use its tools and resources.')}</p>
             </div>
             <div className="ghost-pill-group">
@@ -338,10 +366,12 @@ export function McpManagementPage(props: {
             const isProjectScoped = Boolean(plugin.projectId);
             const disabledByGlobal = !isProjectScoped && !plugin.enabled;
             const checked = enabledProjectPluginIds.has(plugin.id) && !disabledByGlobal;
+            const displayName = formatProjectMcpPluginName(props.project, plugin);
             return (
               <ServerListRow
                 key={plugin.id}
                 plugin={plugin}
+                displayName={displayName}
                 selected={false}
                 checked={checked}
                 disabled={!props.project || disabledByGlobal}
@@ -404,6 +434,7 @@ export function PluginListCard(props: { plugin: McpPlugin; selected: boolean; on
 
 export function ServerListRow(props: {
   plugin: McpPlugin;
+  displayName?: string;
   selected: boolean;
   checked: boolean;
   disabled?: boolean;
@@ -418,7 +449,7 @@ export function ServerListRow(props: {
     <div className={`mcp-server-row ${props.selected ? 'selected' : ''}`} role="listitem">
       <Button variant="ghost" size="compact" className="mcp-server-row-main" onClick={props.onSelect}>
         <span className="mcp-server-row-copy">
-          <strong>{props.plugin.name}</strong>
+          <strong>{props.displayName ?? props.plugin.name}</strong>
           {props.disabledNote ? <em>{props.disabledNote}</em> : null}
         </span>
       </Button>

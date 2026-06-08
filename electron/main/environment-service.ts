@@ -1,5 +1,5 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { existsSync, realpathSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createServer } from 'node:net';
@@ -16,10 +16,13 @@ import type {
   EnvironmentTaskStage,
   EnvironmentTaskStatus,
   InstalledUnityEditorOption,
+  McpConnectionSnapshot,
+  McpPlugin,
   PlatformChoice,
   ProjectRuntimeState,
   ProjectSetupMode,
   UnitySettings,
+  UnityHealthResult,
   UnityReleaseChannel
 } from '../../shared/types';
 import { checkUnityHealth } from './unity-bridge';
@@ -40,9 +43,8 @@ import {
   completeTask,
   taskStageUpdate,
   reconcileBridgeConnectedTasks,
-  hasPendingBridgeLinkedTask,
-  getPendingBridgeLinkedTaskProjectPath,
   bindTaskProjectPath,
+  getEnvironmentTaskProjectPath,
   listEnvironmentTasks as listEnvironmentTasksInternal
 } from './environment-task-manager';
 import {
@@ -53,6 +55,18 @@ import {
   syncDiscoveredUnityMcpEndpoint,
   waitForBridgeAfterOpen
 } from './unity-install-tasks';
+import {
+  DEFAULT_COCOS_MCP_BASE_URL,
+  createCocosProjectFromTemplate,
+  findCocosCreatorInstallation,
+  findCocosDashboardExecutable,
+  inspectCocosProject,
+  installCocosBridge,
+  isCocosBridgeInstalled,
+  openCocosDashboard,
+  openCocosProject
+} from './agent-platform/cocos-adapter';
+import { getMcpConnectionSnapshot, initializeMcpConnection, postMcpJsonRpcForConfig, type McpConnectionConfig } from './mcp-connection-manager';
 
 const execFileAsync = promisify(execFile);
 const shell = electron.shell;
@@ -169,6 +183,19 @@ export function normalizeProjectPath(projectPath: string): string {
   return projectPath.trim().replace(/^~/, process.env.HOME ?? '~');
 }
 
+function normalizeProjectPathForCompare(projectPath: string): string {
+  const normalized = resolve(normalizeProjectPath(projectPath)).replace(/\/+$/g, '');
+  try {
+    return existsSync(normalized) ? realpathSync(normalized).replace(/\/+$/g, '') : normalized;
+  } catch {
+    return normalized;
+  }
+}
+
+function projectPathsMatch(left: string | undefined, right: string | undefined): boolean {
+  return Boolean(left && right && normalizeProjectPathForCompare(left) === normalizeProjectPathForCompare(right));
+}
+
 function funplayMcpSettingsPath(projectPath: string): string {
   return join(normalizeProjectPath(projectPath), 'UserSettings', 'FunplayMcpSettings.json');
 }
@@ -192,6 +219,245 @@ function isUnityProjectCurrentlyOpen(projectPath: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isCocosProjectCurrentlyOpen(projectPath: string): boolean {
+  const normalized = normalizeProjectPath(projectPath);
+  try {
+    const output = execFileSync('ps', ['-ax', '-o', 'command='], { encoding: 'utf8' });
+    return output
+      .split('\n')
+      .some((line) => /CocosCreator/i.test(line) && line.includes('--project') && line.includes(normalized));
+  } catch {
+    return false;
+  }
+}
+
+function formatCocosDimensionLabel(dimension: EngineProjectDimension): string {
+  return dimension === '3d' ? '3D' : '2D';
+}
+
+function getCocosDashboardDownloadUrl(): string {
+  return 'https://www.cocos.com/en/creator-download';
+}
+
+function isCocosEngineMcpPlugin(plugin: McpPlugin | undefined): plugin is McpPlugin {
+  return Boolean(plugin && plugin.kind === 'engine' && /\bcocos\b/i.test(`${plugin.name} ${plugin.notes ?? ''}`));
+}
+
+function resolveCocosMcpPlugin(state: AppState, enginePluginId?: string): McpPlugin | undefined {
+  const requestedPlugin = enginePluginId ? state.mcpPlugins.find((item) => item.id === enginePluginId) : undefined;
+  if (isCocosEngineMcpPlugin(requestedPlugin)) {
+    return requestedPlugin;
+  }
+  return state.mcpPlugins.find((item) => item.enabled && isCocosEngineMcpPlugin(item)) ??
+    state.mcpPlugins.find(isCocosEngineMcpPlugin);
+}
+
+function buildCocosMcpConnectionConfig(state: AppState, enginePluginId?: string): McpConnectionConfig {
+  const plugin = resolveCocosMcpPlugin(state, enginePluginId);
+  return plugin
+    ? {
+        id: plugin.id,
+        name: plugin.name,
+        transport: plugin.transport,
+        baseUrl: plugin.baseUrl,
+        command: plugin.command,
+        args: plugin.args,
+        cwd: plugin.cwd,
+        env: plugin.env
+      }
+    : {
+        name: 'Funplay Cocos MCP',
+        transport: 'http',
+        baseUrl: DEFAULT_COCOS_MCP_BASE_URL
+      };
+}
+
+function parseCocosMcpPort(baseUrl: string): number {
+  try {
+    const parsed = new URL(baseUrl);
+    const port = Number(parsed.port);
+    if (Number.isFinite(port) && port > 0) {
+      return port;
+    }
+  } catch {
+    // Use the built-in extension default below.
+  }
+  return 8765;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function extractCocosProjectPathFromText(text: string): string | undefined {
+  const patterns = [
+    /^\s*-\s*Project Path:\s*(.+?)\s*$/im,
+    /^\s*Project Path:\s*(.+?)\s*$/im,
+    /["']?projectPath["']?\s*[:=]\s*["']([^"'\n\r]+)["']/i,
+    /["']?project_path["']?\s*[:=]\s*["']([^"'\n\r]+)["']/i,
+    /\bproject\s+path\b\s*[:=]\s*([^,\n\r}]+)/i
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const candidate = match?.[1]?.trim().replace(/^["']|["']$/g, '');
+    if (candidate) {
+      return candidate;
+    }
+  }
+  try {
+    return extractCocosProjectPath(JSON.parse(text));
+  } catch {
+    return undefined;
+  }
+}
+
+function extractCocosProjectPath(value: unknown, depth = 0): string | undefined {
+  if (depth > 8 || value === null || typeof value === 'undefined') {
+    return undefined;
+  }
+  if (typeof value === 'string') {
+    return extractCocosProjectPathFromText(value);
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const candidate = extractCocosProjectPath(item, depth + 1);
+      if (candidate) {
+        return candidate;
+      }
+    }
+    return undefined;
+  }
+
+  const record = asRecord(value);
+  if (!record) {
+    return undefined;
+  }
+  for (const key of ['projectPath', 'project_path', 'projectRoot', 'project_root', 'rootPath', 'root_path', 'cwd']) {
+    const candidate = record[key];
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  for (const key of ['project', 'data', 'result', 'structuredContent', 'content', 'contents']) {
+    const candidate = extractCocosProjectPath(record[key], depth + 1);
+    if (candidate) {
+      return candidate;
+    }
+  }
+  for (const item of Object.values(record)) {
+    const candidate = extractCocosProjectPath(item, depth + 1);
+    if (candidate) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+async function readCocosMcpProjectPath(config: McpConnectionConfig, abortSignal: AbortSignal): Promise<string | undefined> {
+  try {
+    const projectInfo = await postMcpJsonRpcForConfig<unknown>(config, 'tools/call', {
+      name: 'get_project_info',
+      arguments: {}
+    }, false, abortSignal, 1500);
+    const projectPath = extractCocosProjectPath(projectInfo);
+    if (projectPath) {
+      return projectPath;
+    }
+  } catch {
+    // Older or narrowed tool profiles may not expose get_project_info.
+  }
+
+  try {
+    const projectContext = await postMcpJsonRpcForConfig<unknown>(config, 'resources/read', {
+      uri: 'cocos://project/context'
+    }, false, abortSignal, 1500);
+    return extractCocosProjectPath(projectContext);
+  } catch {
+    return undefined;
+  }
+}
+
+function buildCocosBridgeHealth(
+  snapshot: McpConnectionSnapshot,
+  input: {
+    expectedProjectPath?: string;
+    detectedProjectPath?: string;
+  }
+): UnityHealthResult {
+  const serverLabel = snapshot.serverInfo
+    ? `${snapshot.serverInfo.name}${snapshot.serverInfo.version ? ` ${snapshot.serverInfo.version}` : ''}`
+    : 'Funplay Cocos MCP';
+  if (snapshot.status !== 'online') {
+    return {
+      status: 'offline',
+      checkedAt: snapshot.lastCheckedAt ?? nowIso(),
+      url: snapshot.baseUrl,
+      projectPath: input.detectedProjectPath,
+      message: `Cocos MCP 未连通${snapshot.lastError ? `：${snapshot.lastError}` : '。'}`
+    };
+  }
+
+  if (input.expectedProjectPath) {
+    if (!input.detectedProjectPath) {
+      return {
+        status: 'offline',
+        checkedAt: snapshot.lastCheckedAt ?? nowIso(),
+        url: snapshot.baseUrl,
+        message: 'Cocos MCP 已响应，但还不能确认它连接的是当前项目。请在 Cocos Creator 中打开 Funplay > MCP Server，并确认 get_project_info / cocos://project/context 可读取当前项目路径。'
+      };
+    }
+    if (!projectPathsMatch(input.detectedProjectPath, input.expectedProjectPath)) {
+      return {
+        status: 'offline',
+        checkedAt: snapshot.lastCheckedAt ?? nowIso(),
+        url: snapshot.baseUrl,
+        projectPath: input.detectedProjectPath,
+        message: `Cocos MCP 已响应，但当前连接的是 ${input.detectedProjectPath}，不是目标项目 ${input.expectedProjectPath}。请在目标项目中启动 Funplay MCP Server 后重新检测。`
+      };
+    }
+  }
+
+  return {
+    status: 'online',
+    checkedAt: snapshot.lastCheckedAt ?? nowIso(),
+    url: snapshot.baseUrl,
+    projectPath: input.detectedProjectPath ?? input.expectedProjectPath,
+    message: `Cocos MCP 已连通：${serverLabel}${input.detectedProjectPath ? ` · ${input.detectedProjectPath}` : ''}。`
+  };
+}
+
+async function checkCocosMcpConnection(state: AppState, enginePluginId?: string, expectedProjectPath?: string): Promise<{
+  snapshot: McpConnectionSnapshot;
+  health: UnityHealthResult;
+}> {
+  const config = buildCocosMcpConnectionConfig(state, enginePluginId);
+  let detectedProjectPath: string | undefined;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3500);
+  try {
+    await initializeMcpConnection(config, {
+      abortSignal: controller.signal
+    });
+    if (expectedProjectPath) {
+      detectedProjectPath = await readCocosMcpProjectPath(config, controller.signal);
+    }
+  } catch {
+    // Snapshot below records the offline reason.
+  } finally {
+    clearTimeout(timeout);
+  }
+  const snapshot = getMcpConnectionSnapshot(config);
+  return {
+    snapshot,
+    health: buildCocosBridgeHealth(snapshot, {
+      expectedProjectPath,
+      detectedProjectPath
+    })
+  };
 }
 
 function bridgePackageSpec(): { packageName: string; url: string } {
@@ -449,16 +715,52 @@ export function getUnityHubLaunchPath(settings?: Pick<UnitySettings, 'unityHubPa
 
 export const listEnvironmentTasks = listEnvironmentTasksInternal;
 
+const COCOS_BRIDGE_LINKED_ACTION_IDS = new Set<EnvironmentActionKind>([
+  'create_cocos_project',
+  'open_cocos_project',
+  'install_cocos_bridge'
+]);
+
+const UNITY_BRIDGE_LINKED_ACTION_IDS = new Set<EnvironmentActionKind>([
+  'create_unity_project',
+  'import_unity_project',
+  'open_unity_project',
+  'install_project_bridge',
+  'verify_project_path'
+]);
+
+function isPendingEnvironmentTask(task: EnvironmentTask): boolean {
+  return task.status === 'queued' || task.status === 'running' || task.status === 'needs_user';
+}
+
 export async function listEnvironmentTasksForState(state: AppState): Promise<EnvironmentTask[]> {
-  if (hasPendingBridgeLinkedTask()) {
-    const pendingProjectPath = getPendingBridgeLinkedTaskProjectPath();
-    const health = await checkUnityHealth(
-      state.settings.baseUrl || 'http://127.0.0.1:8765/',
-      pendingProjectPath ? { expectedProjectPath: pendingProjectPath } : {}
-    ).catch(() => undefined);
-    if (health?.status === 'online') {
-      syncDiscoveredUnityMcpEndpoint(state, health.url);
-      reconcileBridgeConnectedTasks(undefined, pendingProjectPath);
+  const pendingTasks = listEnvironmentTasksInternal().filter(isPendingEnvironmentTask);
+  for (const task of pendingTasks) {
+    const pendingProjectPath = getEnvironmentTaskProjectPath(task.id);
+    if (COCOS_BRIDGE_LINKED_ACTION_IDS.has(task.actionId)) {
+      if (!pendingProjectPath) {
+        continue;
+      }
+      const project = inspectCocosProject(pendingProjectPath);
+      if (!project.valid || !isCocosBridgeInstalled(project.projectPath)) {
+        continue;
+      }
+      const probe = await checkCocosMcpConnection(state, undefined, project.projectPath).catch(() => undefined);
+      if (probe?.health.status === 'online') {
+        reconcileBridgeConnectedTasks(probe.health.message, project.projectPath);
+      }
+      continue;
+    }
+
+    if (UNITY_BRIDGE_LINKED_ACTION_IDS.has(task.actionId)) {
+      const health = await checkUnityHealth(
+        state.settings.baseUrl || 'http://127.0.0.1:8765/',
+        pendingProjectPath ? { expectedProjectPath: pendingProjectPath } : {}
+      ).catch(() => undefined);
+      if (health?.status === 'online') {
+        syncDiscoveredUnityMcpEndpoint(state, health.url);
+        reconcileBridgeConnectedTasks(undefined, pendingProjectPath);
+      }
     }
   }
   return listEnvironmentTasksInternal();
@@ -497,10 +799,10 @@ export async function getProjectRuntimeState(
   const platform = input.platform ?? 'web';
   const projectPath = input.projectPath?.trim();
 
-  if (!projectPath || platform !== 'unity') {
+  if (!projectPath) {
     return {
       checkedAt,
-      projectExists: !!projectPath && existsSync(normalizeProjectPath(projectPath)),
+      projectExists: false,
       unityProjectValid: false,
       projectOpen: false,
       bridgeInstalled: false
@@ -508,6 +810,44 @@ export async function getProjectRuntimeState(
   }
 
   const normalizedProjectPath = normalizeProjectPath(projectPath);
+  if (platform === 'cocos') {
+    const cocosProject = inspectCocosProject(normalizedProjectPath);
+    const bridgeInstalled = cocosProject.valid && isCocosBridgeInstalled(cocosProject.projectPath);
+    const bridgeProbe = bridgeInstalled ? await checkCocosMcpConnection(state, undefined, cocosProject.projectPath) : undefined;
+    const bridgeHealth = bridgeProbe?.health;
+    const projectOpen = cocosProject.valid
+      ? isCocosProjectCurrentlyOpen(cocosProject.projectPath) || bridgeHealth?.status === 'online'
+      : false;
+    const mcpUrl = bridgeProbe?.snapshot.baseUrl ?? buildCocosMcpConnectionConfig(state).baseUrl ?? DEFAULT_COCOS_MCP_BASE_URL;
+    return {
+      checkedAt,
+      projectExists: cocosProject.exists,
+      unityProjectValid: cocosProject.valid,
+      projectOpen,
+      bridgeInstalled,
+      detectedDimension: 'unknown',
+      mcpSettings: bridgeInstalled
+        ? {
+            enabled: true,
+            port: parseCocosMcpPort(mcpUrl),
+            toolExportProfile: 'cocos',
+            url: mcpUrl
+          }
+        : undefined,
+      bridgeHealth
+    };
+  }
+
+  if (platform !== 'unity') {
+    return {
+      checkedAt,
+      projectExists: existsSync(normalizedProjectPath),
+      unityProjectValid: false,
+      projectOpen: false,
+      bridgeInstalled: false
+    };
+  }
+
   const projectExists = existsSync(normalizedProjectPath);
   const unityProjectValid = isValidUnityProject(normalizedProjectPath);
   const detectedDimension = unityProjectValid ? detectUnityProjectDimension(normalizedProjectPath) : 'unknown';
@@ -624,29 +964,209 @@ export async function diagnoseEnvironment(
   }
 
   if (input.platform === 'cocos') {
+    const cocosDimension = formatCocosDimensionLabel(input.dimension);
+    const cocosEnginePlugin = resolveCocosMcpPlugin(state, input.enginePluginId);
+    const dashboardPath = findCocosDashboardExecutable();
+    const creatorInstallation = findCocosCreatorInstallation();
+    const creatorInstalled = Boolean(creatorInstallation);
+    const dashboardInstalled = Boolean(dashboardPath);
+    const projectPathExists = existsSync(normalizedProjectPath);
+    const targetProjectPathExists = existsSync(targetProjectPath);
+    const hasProjectName = input.mode === 'import' ? true : !!input.projectName?.trim();
+    const cocosProject = inspectCocosProject(targetProjectPath);
+    const bridgeInstalled = cocosProject.valid && isCocosBridgeInstalled(cocosProject.projectPath);
+    const bridgeProbe = bridgeInstalled ? await checkCocosMcpConnection(state, cocosEnginePlugin?.id, cocosProject.projectPath) : null;
+    const bridgeHealth = bridgeProbe?.health;
+    const bridgeConnected = bridgeHealth?.status === 'online';
+    const projectAlreadyOpen = cocosProject.valid ? isCocosProjectCurrentlyOpen(cocosProject.projectPath) : false;
+    const projectEffectivelyOpen = projectAlreadyOpen || bridgeConnected;
+
     checks.push({
-      id: 'cocos-entry',
-      title: 'Cocos Creator',
-      description: '当前版本已增加 Cocos 引擎入口，但仅开放 2D 项目模式。',
-      status: 'warning',
+      id: 'cocos-dashboard',
+      title: 'Cocos Dashboard / Creator',
+      description: '用于管理 Cocos Creator 版本，并提供 2D / 3D 项目模板。',
+      status: creatorInstalled ? 'passed' : dashboardInstalled ? 'warning' : 'failed',
+      detail: creatorInstalled
+        ? [
+            `已检测到 Cocos Creator：${creatorInstallation!.executablePath}`,
+            creatorInstallation?.version ? `版本：${creatorInstallation.version}` : '',
+            dashboardInstalled ? `已检测到 Cocos Dashboard：${dashboardPath}` : '未检测到 Dashboard，但可以继续使用已安装 Creator。'
+          ].filter(Boolean).join('；')
+        : dashboardInstalled
+          ? `已检测到 Cocos Dashboard：${dashboardPath}。请先在 Dashboard 中安装 Cocos Creator 3.8+。`
+          : '未检测到 Cocos Dashboard 或 Cocos Creator。请先安装 Cocos Dashboard / Creator。',
+      actions: creatorInstalled
+        ? dashboardInstalled
+          ? [{ id: 'open_cocos_dashboard', label: '打开 Dashboard', description: '打开 Dashboard 管理 Creator 版本和项目。' }]
+          : []
+        : dashboardInstalled
+          ? [{ id: 'open_cocos_dashboard', label: '打开 Dashboard', description: '打开 Dashboard 安装 Cocos Creator。', primary: true }]
+          : [{ id: 'install_cocos_dashboard', label: '安装 Cocos', description: '打开 Cocos Creator 官方下载页。', primary: true }]
+    });
+
+    checks.push({
+      id: 'engine-project',
+      title: input.mode === 'create' ? 'Cocos 项目创建' : 'Cocos 项目导入',
+      description:
+        input.mode === 'create'
+          ? '使用 Cocos Creator 内置模板创建新的 2D / 3D 项目。'
+          : '选择并导入你已经存在的 Cocos Creator 项目目录。',
+      status:
+        input.mode === 'create'
+          ? cocosProject.valid
+            ? 'passed'
+            : projectPathExists && hasProjectName && creatorInstalled
+              ? 'warning'
+              : 'pending'
+          : cocosProject.valid
+            ? 'passed'
+            : targetProjectPathExists
+              ? 'warning'
+              : 'pending',
       detail:
         input.mode === 'create'
-          ? `当前已选择创建 Cocos 2D 项目：${input.projectName || '未命名项目'}`
-          : `当前已选择导入 Cocos 项目目录：${input.projectPath}`,
-      actions: []
+          ? !projectPathExists
+            ? '请先选择用于创建新项目的目录。'
+            : !hasProjectName
+              ? '请先填写项目名称。'
+              : cocosProject.valid
+                ? `已检测到已创建的 Cocos ${cocosDimension} 项目：${cocosProject.projectPath}`
+                : targetProjectPathExists
+                  ? `目标目录已存在但还不是有效 Cocos 项目：${targetProjectPath}`
+                  : creatorInstalled
+                    ? `已选择创建目录：${input.projectPath}，项目名称：${input.projectName}，将使用 Cocos Creator 内置 ${cocosDimension} 空模板创建项目。`
+                    : '请先安装 Cocos Creator，才能使用内置模板创建项目。'
+          : targetProjectPathExists
+            ? cocosProject.valid
+              ? `已检测到有效 Cocos 项目：${cocosProject.projectPath} · ${cocosDimension}`
+              : `已检测到目录：${targetProjectPath}，但缺少 ${cocosProject.missing.join('、') || 'Cocos 项目标识'}。`
+            : '还没有检测到现有项目目录，请先选择正确的 Cocos 项目路径。',
+      actions:
+        input.mode === 'create'
+          ? projectPathExists && hasProjectName
+            ? cocosProject.valid
+              ? [
+                  {
+                    id: 'verify_project_path',
+                    label: '校验创建结果',
+                    description: '重新校验目标目录是否是有效 Cocos 项目。',
+                    primary: true
+                  }
+                ]
+              : creatorInstalled
+                ? [
+                    {
+                      id: 'create_cocos_project',
+                      label: '创建 Cocos 模板项目',
+                      description: `使用 Cocos Creator 内置 ${cocosDimension} 空模板创建项目。`,
+                      primary: true
+                    }
+                  ]
+                : [
+                    {
+                      id: dashboardInstalled ? 'open_cocos_dashboard' : 'install_cocos_dashboard',
+                      label: dashboardInstalled ? '打开 Dashboard' : '安装 Cocos',
+                      description: dashboardInstalled ? '打开 Dashboard 安装 Cocos Creator。' : '打开 Cocos Creator 官方下载页。',
+                      primary: true
+                    }
+                  ]
+            : []
+          : targetProjectPathExists
+            ? [
+                {
+                  id: 'verify_project_path',
+                  label: '校验项目路径',
+                  description: '重新校验当前目录是否是有效 Cocos 项目。',
+                  primary: true
+                }
+              ]
+            : []
+    });
+
+    checks.push({
+      id: 'engine-opened',
+      title: 'Cocos 项目打开状态',
+      description: '如果当前项目已经由 Cocos Creator 打开，Funplay 不会重复触发打开动作。',
+      status: projectEffectivelyOpen ? 'passed' : cocosProject.valid ? 'warning' : 'pending',
+      detail: projectAlreadyOpen
+        ? '已检测到该项目当前就在 Cocos Creator 中打开。'
+        : bridgeConnected
+          ? '已通过 Cocos MCP 连通确认该项目已经打开。'
+          : cocosProject.valid
+            ? '该 Cocos 项目还没有检测到打开状态。'
+            : '等待先准备好有效的 Cocos 项目。',
+      actions:
+        cocosProject.valid && !projectEffectivelyOpen
+          ? [
+              {
+                id: 'open_cocos_project',
+                label: '打开 Cocos 项目',
+                description: '直接启动 Cocos Creator 打开该项目。',
+                primary: true
+              }
+            ]
+          : []
+    });
+
+    checks.push({
+      id: 'bridge-installed',
+      title: 'Funplay Cocos MCP',
+      description: 'Funplay 会把 funplay-cocos-mcp 扩展安装到当前 Cocos 项目的 extensions 目录。',
+      status: bridgeInstalled ? 'passed' : cocosProject.valid ? 'warning' : 'pending',
+      detail: bridgeInstalled
+        ? '已检测到项目中存在 funplay-cocos-mcp 扩展。'
+        : cocosProject.valid
+          ? '项目中还没有安装 funplay-cocos-mcp 扩展。'
+          : '等待先准备好有效的 Cocos 项目。',
+      actions:
+        cocosProject.valid && !bridgeInstalled
+          ? [
+              {
+                id: 'install_cocos_bridge',
+                label: '安装 Cocos MCP',
+                description: '克隆 FunplayAI/funplay-cocos-mcp 到项目 extensions 目录。',
+                primary: true
+              }
+            ]
+          : []
+    });
+
+    checks.push({
+      id: 'bridge-connected',
+      title: 'Cocos MCP 连通性',
+      description: '扩展安装完成并在 Cocos Creator 中启动 MCP Server 后，Funplay 会检测连通性。',
+      status: bridgeConnected ? 'passed' : bridgeInstalled ? 'warning' : 'pending',
+      detail: bridgeConnected
+        ? bridgeHealth.message
+        : bridgeInstalled
+          ? bridgeHealth?.message ?? `扩展已安装，但尚未连通 ${bridgeProbe?.snapshot.baseUrl ?? DEFAULT_COCOS_MCP_BASE_URL}。请在 Cocos Creator 中打开 Funplay > MCP Server 后重新检测。`
+          : '等待先安装 funplay-cocos-mcp 扩展。',
+      actions:
+        bridgeConnected
+          ? []
+          : cocosProject.valid && !projectEffectivelyOpen
+            ? [
+                {
+                  id: 'open_cocos_project',
+                  label: '打开 Cocos 项目',
+                  description: '打开项目后，在 Cocos Creator 中启动 Funplay MCP Server。',
+                  primary: true
+                }
+              ]
+            : []
     });
 
     return {
       platform: input.platform,
       mode: input.mode,
-      dimension: '2d',
+      dimension: input.dimension,
       checkedAt,
       projectPath: input.projectPath,
-      enginePluginId: input.enginePluginId,
+      enginePluginId: cocosEnginePlugin?.id,
       selectedUnityVersion: selectedUnityEditorOption?.version,
       availableUnityEditors,
       checks,
-      ready: false
+      ready: checks.every((check) => check.status === 'passed')
     };
   }
 
@@ -999,6 +1519,184 @@ export async function runEnvironmentAction(
     unityEditorVersion?: string;
   }
 ): Promise<EnvironmentActionResult> {
+  const targetProjectPath = resolveTargetProjectPath(input);
+  if (input.platform === 'cocos') {
+    switch (input.actionId) {
+      case 'install_cocos_dashboard': {
+        await shell.openExternal(getCocosDashboardDownloadUrl());
+        return {
+          actionId: input.actionId,
+          status: 'opened',
+          message: '已打开 Cocos Creator 官方下载页。'
+        };
+      }
+      case 'open_cocos_dashboard': {
+        const result = openCocosDashboard();
+        return {
+          actionId: input.actionId,
+          status: result.ok ? 'opened' : 'failed',
+          message: result.summary
+        };
+      }
+      case 'create_cocos_project': {
+        const task = createTask('create_cocos_project', '创建 Cocos 项目', '正在准备自动创建 Cocos 项目…');
+        bindTaskProjectPath(task.id, targetProjectPath);
+        taskStageUpdate(task.id, {
+          stage: 'checking',
+          status: 'running',
+          progress: 8,
+          message: '正在检查 Cocos Creator 模板、项目名称和目标目录…',
+          log: `目标项目路径：${targetProjectPath}`
+        });
+        const projectName = input.projectName?.trim();
+        if (!projectName) {
+          completeTask(task.id, 'failed', '请先填写项目名称。');
+          return {
+            actionId: input.actionId,
+            status: 'failed',
+            message: '请先填写项目名称。',
+            taskId: task.id
+          };
+        }
+
+        taskStageUpdate(task.id, {
+          stage: 'installing',
+          status: 'running',
+          progress: 24,
+          message: `正在从 Cocos Creator 内置 ${formatCocosDimensionLabel(input.dimension)} 模板生成项目…`,
+          log: `开始创建 Cocos ${formatCocosDimensionLabel(input.dimension)} 项目：${targetProjectPath}`
+        });
+        const created = createCocosProjectFromTemplate({
+          targetProjectPath,
+          projectName,
+          dimension: input.dimension
+        });
+        if (!created.ok) {
+          completeTask(task.id, 'failed', created.summary);
+          return {
+            actionId: input.actionId,
+            status: 'failed',
+            message: created.summary,
+            taskId: task.id
+          };
+        }
+
+        taskStageUpdate(task.id, {
+          stage: 'installing',
+          status: 'running',
+          progress: 64,
+          message: 'Cocos 项目已创建，正在安装 funplay-cocos-mcp 扩展…',
+          log: created.summary
+        });
+        const bridge = installCocosBridge({ projectPath: targetProjectPath });
+        if (!bridge.ok) {
+          completeTask(task.id, 'failed', bridge.summary);
+          return {
+            actionId: input.actionId,
+            status: 'failed',
+            message: bridge.summary,
+            taskId: task.id
+          };
+        }
+
+        taskStageUpdate(task.id, {
+          stage: 'validating',
+          status: 'running',
+          progress: 86,
+          message: 'Cocos 项目和 MCP 扩展已准备好，正在尝试打开项目…',
+          log: bridge.summary
+        });
+        const opened = openCocosProject({ projectPath: targetProjectPath });
+        completeTask(
+          task.id,
+          'needs_user',
+          opened.ok
+            ? 'Cocos 项目已创建，funplay-cocos-mcp 已安装，并已尝试打开项目。请在 Cocos Creator 中打开 Funplay > MCP Server，等连通性检测通过后流程才会完成。'
+            : `Cocos 项目已创建，funplay-cocos-mcp 已安装；请手动打开项目并启动 Funplay MCP Server。${opened.summary}`,
+          opened.ok ? 92 : 88
+        );
+        return {
+          actionId: input.actionId,
+          status: 'opened',
+          message: opened.ok
+            ? 'Cocos 项目已创建并打开，请在 Cocos Creator 中启动 Funplay MCP Server。'
+            : 'Cocos 项目已创建，请手动打开 Cocos Creator 项目并启动 Funplay MCP Server。',
+          taskId: task.id
+        };
+      }
+      case 'open_cocos_project': {
+        const task = createTask('open_cocos_project', '打开 Cocos 项目', '正在准备打开 Cocos 项目…');
+        bindTaskProjectPath(task.id, targetProjectPath);
+        taskStageUpdate(task.id, {
+          stage: 'checking',
+          status: 'running',
+          progress: 12,
+          message: '正在检查 Cocos 项目结构…',
+          log: `项目路径：${targetProjectPath}`
+        });
+        if (isCocosProjectCurrentlyOpen(targetProjectPath)) {
+          completeTask(
+            task.id,
+            'needs_user',
+            '已检测到该 Cocos 项目当前就在 Cocos Creator 中打开，Funplay 不会重复打开同一个项目。请在 Cocos Creator 中打开 Funplay > MCP Server 后重新检测。',
+            72
+          );
+          return {
+            actionId: input.actionId,
+            status: 'opened',
+            message: '该 Cocos 项目已经打开；请在 Cocos Creator 中启动 Funplay MCP Server。',
+            taskId: task.id
+          };
+        }
+        const result = openCocosProject({ projectPath: targetProjectPath });
+        completeTask(task.id, result.ok ? 'completed' : 'failed', result.summary);
+        return {
+          actionId: input.actionId,
+          status: result.ok ? 'opened' : 'failed',
+          message: result.summary,
+          taskId: task.id
+        };
+      }
+      case 'install_cocos_bridge': {
+        const task = createTask('install_cocos_bridge', '安装 Funplay Cocos MCP', '正在准备安装 funplay-cocos-mcp…');
+        bindTaskProjectPath(task.id, targetProjectPath);
+        taskStageUpdate(task.id, {
+          stage: 'checking',
+          status: 'running',
+          progress: 12,
+          message: '正在检查 Cocos 项目和 extensions 目录…',
+          log: `项目路径：${targetProjectPath}`
+        });
+        const result = installCocosBridge({ projectPath: targetProjectPath });
+        completeTask(task.id, result.ok ? 'completed' : 'failed', result.summary);
+        return {
+          actionId: input.actionId,
+          status: result.ok ? 'completed' : 'failed',
+          message: result.summary,
+          taskId: task.id
+        };
+      }
+      case 'verify_project_path': {
+        const project = inspectCocosProject(targetProjectPath);
+        return {
+          actionId: input.actionId,
+          status: project.valid ? 'completed' : 'failed',
+          message: project.valid
+            ? '项目路径校验通过，是有效的 Cocos 项目。'
+            : project.exists
+              ? `目标目录存在，但还不是有效的 Cocos 项目，缺少：${project.missing.join('、') || 'Cocos 项目标识'}。`
+              : '目标项目路径不存在，请检查后重试。'
+        };
+      }
+      default:
+        return {
+          actionId: input.actionId,
+          status: 'failed',
+          message: '暂不支持该 Cocos 动作。'
+        };
+    }
+  }
+
   if (input.platform !== 'unity') {
     return {
       actionId: input.actionId,
@@ -1007,7 +1705,6 @@ export async function runEnvironmentAction(
     };
   }
 
-  const targetProjectPath = resolveTargetProjectPath(input);
   switch (input.actionId) {
     case 'install_unity_hub': {
       const task = await startInstallUnityHubTask({

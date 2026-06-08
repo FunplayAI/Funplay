@@ -6,6 +6,21 @@ This project follows a pre-1.0 release flow. Minor versions may include breaking
 
 ## Unreleased
 
+## 0.3.8 - 2026-06-08
+
+### Changed
+
+- Parallelized macOS release packaging across arm64 and x64 jobs while preserving split update metadata.
+- Added first-class Cocos Creator integration with Funplay Cocos MCP binding, bridge installation, CLI diagnostics, 2D/3D project creation, and current-project connectivity checks.
+- Standardized engine MCP names as `Unity MCP - Project` and `Cocos MCP - Project`, including display fallbacks for legacy built-in bindings.
+- Simplified project Skills settings by hiding the Claude Code filesystem Skills registry panel.
+
+### Fixed
+
+- Fixed Windows GitHub Release publishing so updater metadata-referenced installer assets are present even when builder output uses a different filename style.
+- Fixed Cocos onboarding so MCP connectivity only completes after the online server confirms the current project path, and so already-open Cocos projects are not relaunched.
+- Fixed shared checkbox rendering so global input chrome no longer appears around checkboxes.
+
 ## 0.3.7 - 2026-06-02
 
 ### Added

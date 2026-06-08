@@ -87,6 +87,7 @@ import {
 import { performMemoryGet, performMemoryRecent, performMemoryRemember, performMemorySearch } from './memory-tools';
 import { buildAgentSkillRegistry, findAgentSkillPackage, listAgentSkillSupportingFiles, readAgentSkillSupportingFile } from './skill-registry';
 import { createUnsupportedEngineResult, getEngineAdapter, type EngineAdapterCapability } from './engine-adapters';
+import { diagnoseCocosEnvironment, installCocosBridge, openCocosDashboard, openCocosProject } from './cocos-adapter';
 import {
   MAX_TREE_ITEMS,
   MAX_FILE_PREVIEW_CHARS,
@@ -901,7 +902,11 @@ function formatRuntimeState(runtimeState: ProjectRuntimeState, platform: Platfor
     `Project path: ${projectPath || '(none)'}`,
     `Checked at: ${runtimeState.checkedAt}`,
     `Project exists: ${runtimeState.projectExists ? 'yes' : 'no'}`,
-    platform === 'unity' ? `Unity project valid: ${runtimeState.unityProjectValid ? 'yes' : 'no'}` : '',
+    platform === 'unity'
+      ? `Unity project valid: ${runtimeState.unityProjectValid ? 'yes' : 'no'}`
+      : platform === 'cocos'
+        ? `Cocos project valid: ${runtimeState.unityProjectValid ? 'yes' : 'no'}`
+        : '',
     `Project open: ${runtimeState.projectOpen ? 'yes' : 'no'}`,
     `Bridge installed: ${runtimeState.bridgeInstalled ? 'yes' : 'no'}`,
     runtimeState.detectedDimension ? `Detected dimension: ${runtimeState.detectedDimension}` : '',
@@ -1037,6 +1042,33 @@ async function executeEngineControlAction(
       platform,
       capability,
       projectPath: resolveEngineProjectPath(project, 'projectPath' in action ? action.projectPath : undefined)
+    });
+  }
+  if (platform === 'cocos') {
+    const projectPath = resolveEngineProjectPath(project, 'projectPath' in action ? action.projectPath : undefined);
+    if (capability === 'diagnose' || capability === 'refresh') {
+      return diagnoseCocosEnvironment({
+        project,
+        projectPath
+      });
+    }
+    if (capability === 'openHub') {
+      return openCocosDashboard();
+    }
+    if (capability === 'openProject') {
+      return openCocosProject({
+        projectPath
+      });
+    }
+    if (capability === 'installBridge') {
+      return installCocosBridge({
+        projectPath
+      });
+    }
+    return createUnsupportedEngineResult({
+      platform,
+      capability,
+      projectPath
     });
   }
   const persistState = async () => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { AgentSkillCatalogItem, AgentSkillCatalogResult, AgentSkillRegistrySnapshot, Project, ProjectAgentSkill } from '../../shared/types';
+import type { AgentSkillCatalogItem, AgentSkillCatalogResult, Project, ProjectAgentSkill } from '../../shared/types';
 import { localize, type UiLanguage } from '../i18n';
 import {
   createEmptyProjectSkillDraft,
@@ -29,11 +29,8 @@ export function useProjectSkills({
   const [skillDraft, setSkillDraft] = useState<ProjectAgentSkillDraft>(() => createEmptyProjectSkillDraft());
   const [editingSkillId, setEditingSkillId] = useState('');
   const [skillCatalog, setSkillCatalog] = useState<AgentSkillCatalogResult | null>(null);
-  const [skillRegistry, setSkillRegistry] = useState<AgentSkillRegistrySnapshot | null>(null);
   const [isLoadingSkillCatalog, setIsLoadingSkillCatalog] = useState(false);
-  const [isLoadingSkillRegistry, setIsLoadingSkillRegistry] = useState(false);
   const [skillCatalogError, setSkillCatalogError] = useState('');
-  const [skillRegistryError, setSkillRegistryError] = useState('');
 
   const loadSkillCatalog = useCallback(async (refresh = false): Promise<void> => {
     setIsLoadingSkillCatalog(true);
@@ -48,36 +45,12 @@ export function useProjectSkills({
     }
   }, [language]);
 
-  const loadSkillRegistry = useCallback(async (): Promise<void> => {
-    if (!selectedProjectView) {
-      setSkillRegistry(null);
-      return;
-    }
-    setIsLoadingSkillRegistry(true);
-    setSkillRegistryError('');
-    try {
-      const registry = await window.funplay.listProjectAgentSkillRegistry(selectedProjectView.id);
-      setSkillRegistry(registry);
-    } catch (error) {
-      setSkillRegistryError(error instanceof Error ? error.message : localize(language, 'Skill 平台索引读取失败。', 'Failed to load the Skill platform index.'));
-    } finally {
-      setIsLoadingSkillRegistry(false);
-    }
-  }, [language, selectedProjectView]);
-
   useEffect(() => {
     if (appMode !== 'workspace' || section !== 'settings' || projectSettingsTab !== 'skills' || skillCatalog || isLoadingSkillCatalog) {
       return;
     }
     void loadSkillCatalog(false);
   }, [appMode, section, projectSettingsTab, skillCatalog, isLoadingSkillCatalog, loadSkillCatalog]);
-
-  useEffect(() => {
-    if (appMode !== 'workspace' || section !== 'settings' || projectSettingsTab !== 'skills') {
-      return;
-    }
-    void loadSkillRegistry();
-  }, [appMode, section, projectSettingsTab, loadSkillRegistry]);
 
   async function updateSelectedProjectSkills(skills: ProjectAgentSkill[]): Promise<void> {
     if (!selectedProjectView) {
@@ -214,13 +187,9 @@ export function useProjectSkills({
     editingSkillId,
     setEditingSkillId,
     skillCatalog,
-    skillRegistry,
     isLoadingSkillCatalog,
-    isLoadingSkillRegistry,
     skillCatalogError,
-    skillRegistryError,
     loadSkillCatalog,
-    loadSkillRegistry,
     handleSaveProjectSkill,
     handleInstallCatalogSkill,
     handleToggleProjectSkill,

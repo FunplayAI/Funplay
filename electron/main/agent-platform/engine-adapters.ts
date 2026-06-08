@@ -67,6 +67,27 @@ const unityAdapter: EngineAdapter = {
   }
 };
 
+const cocosAdapter: EngineAdapter = {
+  platform: 'cocos',
+  displayName: 'Cocos Creator',
+  capabilities: {
+    diagnose: { supported: true },
+    refresh: { supported: true },
+    openHub: {
+      supported: true,
+      nextAction: 'Install Cocos Dashboard or set COCOS_DASHBOARD_EXECUTABLE if automatic discovery fails.'
+    },
+    openProject: {
+      supported: true,
+      nextAction: 'Install Cocos Creator via Dashboard or set COCOS_CREATOR_EXECUTABLE if automatic discovery fails.'
+    },
+    installBridge: {
+      supported: true,
+      nextAction: 'Clone FunplayAI/funplay-cocos-mcp into extensions/funplay-cocos-mcp, then open Funplay > MCP Server in Cocos Creator.'
+    }
+  }
+};
+
 const adapters = new Map<PlatformChoice, EngineAdapter>([
   ['unity', unityAdapter],
   ['web', {
@@ -84,11 +105,7 @@ const adapters = new Map<PlatformChoice, EngineAdapter>([
     displayName: 'Unreal',
     capabilities: unsupportedCapabilities('unreal')
   }],
-  ['cocos', {
-    platform: 'cocos',
-    displayName: 'Cocos',
-    capabilities: unsupportedCapabilities('cocos')
-  }]
+  ['cocos', cocosAdapter]
 ]);
 
 export function getEngineAdapter(platform: PlatformChoice): EngineAdapter {

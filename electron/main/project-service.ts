@@ -23,7 +23,7 @@ import type {
   ProjectSession,
   SessionCheckpointPreview
 } from '../../shared/types';
-import { ensureUnityProjectMcpBinding, resolveProjectPluginByKind, resolveProjectPlugins, updateProjectMcpServers } from './mcp-plugin-service';
+import { ensureEngineProjectMcpBinding, resolveProjectPluginByKind, resolveProjectPlugins, updateProjectMcpServers } from './mcp-plugin-service';
 import { executeGenericAgentTask as executeAgentTask } from './agent-platform/task-executor';
 import { resolveAgentProvider } from './agent-platform/provider-resolver';
 import { refreshProjectContext } from './game-context-manager';
@@ -84,7 +84,9 @@ export function resolveProjectChatContext(state: AppState, projectId: string, ta
   const provider = resolveAgentProvider(state, current);
   const activeMcpPlugins = resolveProjectPlugins(state, current);
   const activeEnginePlugin =
-    current.engine?.platform === 'unity' ? resolveProjectPluginByKind(state, current.mcpBindings, 'engine', current.id) : undefined;
+    current.engine?.platform === 'unity' || current.engine?.platform === 'cocos'
+      ? resolveProjectPluginByKind(state, current.mcpBindings, 'engine', current.id)
+      : undefined;
   const activeAssetPlugin = resolveProjectPluginByKind(state, current.mcpBindings, 'asset', current.id);
   const activeQaPlugin = resolveProjectPluginByKind(state, current.mcpBindings, 'qa', current.id);
   const activeCustomPlugin = resolveProjectPluginByKind(state, current.mcpBindings, 'custom', current.id);
@@ -135,7 +137,7 @@ export async function createProject(state: AppState, input: CreateProjectInput):
   await ensureGenericProjectDirectory(input);
 
   const seeded = createProjectFromInput(input);
-  const activeEnginePlugin = ensureUnityProjectMcpBinding(state, seeded);
+  const activeEnginePlugin = ensureEngineProjectMcpBinding(state, seeded);
   const defaultProvider = resolveAgentProvider(state, ensureProjectSessions(seeded));
   const activeAssetPlugin = resolveProjectPluginByKind(state, seeded.mcpBindings, 'asset');
   const activeQaPlugin = resolveProjectPluginByKind(state, seeded.mcpBindings, 'qa');

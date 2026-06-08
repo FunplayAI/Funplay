@@ -451,13 +451,12 @@ export function OnboardingScreen(props: {
                             <Button
                               variant="ghost"
                               size="compact"
-                              className={`setup-mode-card ${props.dimension === '3d' ? 'selected' : ''} ${props.platform !== 'unity' ? 'disabled-card' : ''}`}
-                              onClick={() => props.platform === 'unity' && props.onDimensionChange('3d')}
-                              disabled={props.platform !== 'unity'}
+                              className={`setup-mode-card ${props.dimension === '3d' ? 'selected' : ''}`}
+                              onClick={() => props.onDimensionChange('3d')}
                             >
                               <span className="option-card-copy">
                                 <strong>{t('3D 项目', '3D Project')}</strong>
-                                <span>{props.platform === 'unity' ? t('三维场景、平台跳跃、第三人称。', '3D scenes, platformers, third-person gameplay.') : t('当前引擎暂不支持 3D。', 'This engine does not support 3D yet.')}</span>
+                                <span>{t('三维场景、平台跳跃、角色控制或轻量 3D 原型。', '3D scenes, platformers, character control, or lightweight 3D prototypes.')}</span>
                               </span>
                             </Button>
                           </div>

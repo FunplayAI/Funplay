@@ -1,15 +1,17 @@
 import './test-helpers.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checkUnityHealth } from '../../electron/main/unity-bridge.ts';
 import { executeAgentToolAction } from '../../electron/main/agent-platform/workspace-tools.ts';
 import { openUnityProjectDirectly } from '../../electron/main/unity-install-tasks.ts';
 import { readUnityProjectVersion } from '../../electron/main/unity-version.ts';
+import { createCocosProjectFromTemplate } from '../../electron/main/agent-platform/cocos-adapter.ts';
 import {
   callUnityTool,
   completeUnityMcpArgument,
@@ -29,7 +31,7 @@ import {
   listEnvironmentTasks,
   taskStageUpdate
 } from '../../electron/main/environment-task-manager.ts';
-import { isLikelyUnityHubPath, listEnvironmentTasksForState, resolveUnityHubBinaryPath } from '../../electron/main/environment-service.ts';
+import { diagnoseEnvironment, getProjectRuntimeState, isLikelyUnityHubPath, listEnvironmentTasksForState, resolveUnityHubBinaryPath, runEnvironmentAction } from '../../electron/main/environment-service.ts';
 import { buildMcpPlugin, buildProject, buildState, buildStdioMcpPlugin, readJsonRequest, sendJsonRpc, startSdkHttpMcpServer, startTestMcpServer } from './test-helpers.ts';
 
 async function startUnityMcpServer(options: { projectPath?: string } = {}): Promise<{
@@ -95,6 +97,124 @@ async function startUnityMcpServer(options: { projectPath?: string } = {}): Prom
       });
     })
   };
+}
+
+async function startCocosMcpProjectServer(projectPath: string): Promise<{
+  baseUrl: string;
+  methods: string[];
+  close: () => Promise<void>;
+}> {
+  const methods: string[] = [];
+  const server = createServer(async (request, response) => {
+    const body = await readJsonRequest(request);
+    const method = typeof body.method === 'string' ? body.method : '';
+    methods.push(method);
+    if (method === 'notifications/initialized') {
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+    if (method === 'initialize') {
+      sendJsonRpc(response, body.id, {
+        protocolVersion: '2024-11-05',
+        serverInfo: {
+          name: 'Funplay Cocos MCP - Test',
+          version: '0.3.3'
+        },
+        capabilities: {
+          tools: {},
+          resources: {}
+        }
+      });
+      return;
+    }
+    if (method === 'tools/call') {
+      const params = body.params && typeof body.params === 'object' ? body.params as Record<string, unknown> : {};
+      if (params.name === 'get_project_info') {
+        sendJsonRpc(response, body.id, {
+          structuredContent: {
+            ok: true,
+            data: {
+              projectPath
+            }
+          },
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                projectPath
+              })
+            }
+          ]
+        });
+        return;
+      }
+    }
+    if (method === 'resources/read') {
+      sendJsonRpc(response, body.id, {
+        contents: [
+          {
+            uri: 'cocos://project/context',
+            mimeType: 'text/plain',
+            text: [
+              'Funplay Cocos MCP Project Context',
+              `- Project Path: ${projectPath}`
+            ].join('\n')
+          }
+        ]
+      });
+      return;
+    }
+    sendJsonRpc(response, body.id, {});
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address() as AddressInfo;
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}/`,
+    methods,
+    close: () => new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    })
+  };
+}
+
+async function writeCocosProjectFixture(projectPath: string): Promise<void> {
+  const bridgePath = join(projectPath, 'extensions', 'funplay-cocos-mcp');
+  await mkdir(join(projectPath, 'assets'), { recursive: true });
+  await mkdir(bridgePath, { recursive: true });
+  await writeFile(join(projectPath, 'package.json'), JSON.stringify({ name: 'Arrow' }), 'utf8');
+  await writeFile(join(bridgePath, 'package.json'), JSON.stringify({ name: 'funplay-cocos-mcp' }), 'utf8');
+  await writeFile(join(bridgePath, 'browser.js'), '', 'utf8');
+  await writeFile(join(bridgePath, 'server.json'), '{}', 'utf8');
+}
+
+async function writeFakeCocosCreator(executablePath: string, script = '#!/bin/sh\nwhile true; do sleep 1; done\n'): Promise<void> {
+  await mkdir(join(executablePath, '..'), { recursive: true });
+  await writeFile(executablePath, script, 'utf8');
+  await chmod(executablePath, 0o755);
+}
+
+async function stopChildProcess(child: ChildProcess | undefined): Promise<void> {
+  if (!child || child.exitCode !== null || child.killed) {
+    return;
+  }
+  child.kill('SIGTERM');
+  await Promise.race([
+    new Promise<void>((resolve) => child.once('exit', () => resolve())),
+    new Promise<void>((resolve) => setTimeout(resolve, 300))
+  ]);
+  if (child.exitCode === null && !child.killed) {
+    child.kill('SIGKILL');
+  }
 }
 
 test('environment task updates preserve existing fields and terminal completion', () => {
@@ -614,5 +734,382 @@ test('environment task polling does not complete a task from another Unity proje
     assert.equal(current?.message, 'Unity 项目已启动，正在等待 Bridge / MCP 连通…');
   } finally {
     await server.close();
+  }
+});
+
+test('cocos onboarding diagnostics mirror Unity-style staged setup and preserve 3D mode', async () => {
+  const state = buildState(buildProject());
+  const timestamp = new Date().toISOString();
+  state.mcpPlugins = [
+    {
+      id: 'mcp_stale_unity',
+      name: 'Unity MCP',
+      kind: 'engine',
+      transport: 'http',
+      baseUrl: 'http://127.0.0.1:9000/',
+      enabled: true,
+      isDefault: false,
+      notes: 'Funplay built-in Unity MCP bridge.',
+      createdAt: timestamp,
+      updatedAt: timestamp
+    },
+    {
+      id: 'mcp_cocos',
+      name: 'Funplay Cocos MCP',
+      kind: 'engine',
+      transport: 'http',
+      baseUrl: 'http://127.0.0.1:8765/',
+      enabled: true,
+      isDefault: false,
+      notes: 'Funplay built-in Cocos Creator MCP bridge.',
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+  ];
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-onboarding-'));
+  const fakeCreator = join(root, 'CocosCreator.app', 'Contents', 'MacOS', 'CocosCreator');
+  const fakeDashboard = join(root, 'CocosDashboard.app', 'Contents', 'MacOS', 'CocosDashboard');
+  const previousCreator = process.env.COCOS_CREATOR_EXECUTABLE;
+  const previousDashboard = process.env.COCOS_DASHBOARD_EXECUTABLE;
+  try {
+    await mkdir(join(fakeCreator, '..'), { recursive: true });
+    await mkdir(join(fakeDashboard, '..'), { recursive: true });
+    await writeFile(fakeCreator, '', 'utf8');
+    await writeFile(fakeDashboard, '', 'utf8');
+    process.env.COCOS_CREATOR_EXECUTABLE = fakeCreator;
+    process.env.COCOS_DASHBOARD_EXECUTABLE = fakeDashboard;
+
+    const diagnostics = await diagnoseEnvironment(state, {
+      platform: 'cocos',
+      mode: 'create',
+      dimension: '3d',
+      projectName: 'Arrow',
+      projectPath: root,
+      enginePluginId: 'mcp_stale_unity'
+    });
+    const ids = diagnostics.checks.map((check) => check.id);
+    const projectCheck = diagnostics.checks.find((check) => check.id === 'engine-project');
+
+    assert.deepEqual(ids, ['cocos-dashboard', 'engine-project', 'engine-opened', 'bridge-installed', 'bridge-connected']);
+    assert.equal(diagnostics.dimension, '3d');
+    assert.equal(diagnostics.enginePluginId, 'mcp_cocos');
+    assert.equal(diagnostics.ready, false);
+    assert.equal(diagnostics.checks[0]?.status, 'passed');
+    assert.equal(projectCheck?.status, 'warning');
+    assert.match(projectCheck?.detail ?? '', /Cocos Creator 内置 3D 空模板/);
+    assert.equal(projectCheck?.actions[0]?.id, 'create_cocos_project');
+    assert.doesNotMatch(JSON.stringify(diagnostics), /仅开放 2D|2D 项目模式/);
+  } finally {
+    if (typeof previousCreator === 'undefined') {
+      delete process.env.COCOS_CREATOR_EXECUTABLE;
+    } else {
+      process.env.COCOS_CREATOR_EXECUTABLE = previousCreator;
+    }
+    if (typeof previousDashboard === 'undefined') {
+      delete process.env.COCOS_DASHBOARD_EXECUTABLE;
+    } else {
+      process.env.COCOS_DASHBOARD_EXECUTABLE = previousDashboard;
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('cocos template creator can generate a local 3D project without Dashboard interaction', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-template-'));
+  const fakeCreator = join(root, 'CocosCreator.app', 'Contents', 'MacOS', 'CocosCreator');
+  const templatePath = join(root, 'CocosCreator.app', 'Contents', 'Resources', 'templates', 'empty');
+  const targetProjectPath = join(root, 'Arrow');
+  try {
+    await mkdir(templatePath, { recursive: true });
+    await mkdir(join(fakeCreator, '..'), { recursive: true });
+    await writeFile(fakeCreator, '', 'utf8');
+    await writeFile(join(root, 'CocosCreator.app', 'Contents', 'Resources', 'templates', 'list.json'), '[]', 'utf8');
+    await writeFile(join(templatePath, 'package.json'), JSON.stringify({ name: 'empty' }), 'utf8');
+    await writeFile(join(templatePath, 'tsconfig.json'), '{}', 'utf8');
+
+    const result = createCocosProjectFromTemplate({
+      targetProjectPath,
+      projectName: 'Arrow',
+      dimension: '3d',
+      env: {
+        ...process.env,
+        COCOS_CREATOR_EXECUTABLE: fakeCreator
+      }
+    });
+
+    assert.equal(result.ok, true);
+    assert.match(result.summary, /Template: empty/);
+    assert.equal(JSON.parse(await readFile(join(targetProjectPath, 'package.json'), 'utf8')).name, 'Arrow');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('cocos project runtime state reports online Cocos MCP when the bridge server responds', async () => {
+  const state = buildState(buildProject());
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-runtime-'));
+  const server = await startCocosMcpProjectServer(root);
+  const timestamp = new Date().toISOString();
+  state.mcpPlugins = [{
+    id: 'mcp_cocos',
+    name: 'Funplay Cocos MCP',
+    kind: 'engine',
+    transport: 'http',
+    baseUrl: server.baseUrl,
+    enabled: true,
+    isDefault: false,
+    notes: 'Funplay built-in Cocos Creator MCP bridge.',
+    createdAt: timestamp,
+    updatedAt: timestamp
+  }];
+  try {
+    const bridgePath = join(root, 'extensions', 'funplay-cocos-mcp');
+    await mkdir(join(root, 'assets'), { recursive: true });
+    await mkdir(bridgePath, { recursive: true });
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'Arrow' }), 'utf8');
+    await writeFile(join(bridgePath, 'package.json'), JSON.stringify({ name: 'funplay-cocos-mcp' }), 'utf8');
+    await writeFile(join(bridgePath, 'browser.js'), '', 'utf8');
+    await writeFile(join(bridgePath, 'server.json'), '{}', 'utf8');
+
+    const runtimeState = await getProjectRuntimeState(state, {
+      platform: 'cocos',
+      projectPath: root
+    });
+
+    assert.equal(runtimeState.projectExists, true);
+    assert.equal(runtimeState.unityProjectValid, true);
+    assert.equal(runtimeState.bridgeInstalled, true);
+    assert.equal(runtimeState.bridgeHealth?.status, 'online');
+    assert.equal(runtimeState.projectOpen, true);
+    assert.equal(runtimeState.mcpSettings?.url.replace(/\/$/, ''), server.baseUrl.replace(/\/$/, ''));
+    assert.equal(runtimeState.bridgeHealth?.projectPath, root);
+    assert.match(runtimeState.bridgeHealth?.message ?? '', /Cocos MCP 已连通/);
+    assert.equal(server.methods.includes('tools/call'), true);
+  } finally {
+    resetMcpConnection(server.baseUrl);
+    await server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('cocos onboarding keeps MCP connectivity pending when the online server belongs to another project', async () => {
+  const state = buildState(buildProject());
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-mismatch-'));
+  const otherRoot = await mkdtemp(join(tmpdir(), 'funplay-cocos-other-'));
+  const server = await startCocosMcpProjectServer(otherRoot);
+  const timestamp = new Date().toISOString();
+  state.mcpPlugins = [{
+    id: 'mcp_cocos',
+    name: 'Funplay Cocos MCP',
+    kind: 'engine',
+    transport: 'http',
+    baseUrl: server.baseUrl,
+    enabled: true,
+    isDefault: false,
+    notes: 'Funplay built-in Cocos Creator MCP bridge.',
+    createdAt: timestamp,
+    updatedAt: timestamp
+  }];
+  try {
+    const bridgePath = join(root, 'extensions', 'funplay-cocos-mcp');
+    await mkdir(join(root, 'assets'), { recursive: true });
+    await mkdir(bridgePath, { recursive: true });
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'Arrow' }), 'utf8');
+    await writeFile(join(bridgePath, 'package.json'), JSON.stringify({ name: 'funplay-cocos-mcp' }), 'utf8');
+    await writeFile(join(bridgePath, 'browser.js'), '', 'utf8');
+    await writeFile(join(bridgePath, 'server.json'), '{}', 'utf8');
+
+    const diagnostics = await diagnoseEnvironment(state, {
+      platform: 'cocos',
+      mode: 'import',
+      dimension: '2d',
+      projectPath: root,
+      enginePluginId: 'mcp_cocos'
+    });
+    const connectionCheck = diagnostics.checks.find((check) => check.id === 'bridge-connected');
+
+    assert.equal(connectionCheck?.status, 'warning');
+    assert.match(connectionCheck?.detail ?? '', /不是目标项目/);
+    assert.equal(diagnostics.ready, false);
+  } finally {
+    resetMcpConnection(server.baseUrl);
+    await server.close();
+    await rm(root, { recursive: true, force: true });
+    await rm(otherRoot, { recursive: true, force: true });
+  }
+});
+
+test('cocos onboarding hides open-project action when the project is already open', async () => {
+  const state = buildState(buildProject());
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-already-open-'));
+  const projectPath = join(root, 'Arrow');
+  const fakeCreator = join(root, 'CocosCreator');
+  const previousCreator = process.env.COCOS_CREATOR_EXECUTABLE;
+  let child: ChildProcess | undefined;
+  const timestamp = new Date().toISOString();
+  state.mcpPlugins = [{
+    id: 'mcp_cocos_offline',
+    name: 'Funplay Cocos MCP',
+    kind: 'engine',
+    transport: 'http',
+    baseUrl: 'http://127.0.0.1:1/',
+    enabled: true,
+    isDefault: false,
+    notes: 'Funplay built-in Cocos Creator MCP bridge.',
+    createdAt: timestamp,
+    updatedAt: timestamp
+  }];
+  try {
+    await writeCocosProjectFixture(projectPath);
+    await writeFakeCocosCreator(fakeCreator);
+    process.env.COCOS_CREATOR_EXECUTABLE = fakeCreator;
+    child = spawn(fakeCreator, ['--project', projectPath], {
+      stdio: 'ignore'
+    });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const diagnostics = await diagnoseEnvironment(state, {
+      platform: 'cocos',
+      mode: 'import',
+      dimension: '2d',
+      projectPath,
+      enginePluginId: 'mcp_cocos_offline'
+    });
+    const openedCheck = diagnostics.checks.find((check) => check.id === 'engine-opened');
+    const connectionCheck = diagnostics.checks.find((check) => check.id === 'bridge-connected');
+
+    assert.equal(openedCheck?.status, 'passed');
+    assert.equal(openedCheck?.actions.length, 0);
+    assert.equal(connectionCheck?.status, 'warning');
+    assert.equal(connectionCheck?.actions.some((action) => action.id === 'open_cocos_project'), false);
+    assert.equal(JSON.stringify(diagnostics).includes('open_cocos_project'), false);
+  } finally {
+    await stopChildProcess(child);
+    resetMcpConnection('http://127.0.0.1:1/');
+    if (typeof previousCreator === 'undefined') {
+      delete process.env.COCOS_CREATOR_EXECUTABLE;
+    } else {
+      process.env.COCOS_CREATOR_EXECUTABLE = previousCreator;
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('cocos open-project action does not relaunch an already open project', async () => {
+  environmentTasks.clear();
+  const state = buildState(buildProject());
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-open-guard-'));
+  const projectPath = join(root, 'Arrow');
+  const fakeCreator = join(root, 'CocosCreator');
+  const previousCreator = process.env.COCOS_CREATOR_EXECUTABLE;
+  let child: ChildProcess | undefined;
+  try {
+    await writeCocosProjectFixture(projectPath);
+    await writeFakeCocosCreator(fakeCreator);
+    process.env.COCOS_CREATOR_EXECUTABLE = fakeCreator;
+    child = spawn(fakeCreator, ['--project', projectPath], {
+      stdio: 'ignore'
+    });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const result = await runEnvironmentAction(state, {
+      actionId: 'open_cocos_project',
+      platform: 'cocos',
+      mode: 'import',
+      dimension: '2d',
+      projectPath
+    });
+    const task = result.taskId ? environmentTasks.get(result.taskId) : undefined;
+
+    assert.equal(result.status, 'opened');
+    assert.match(result.message, /已经打开/);
+    assert.equal(task?.status, 'needs_user');
+    assert.equal(task?.stage, 'waiting_manual');
+    assert.equal(task?.progress, 72);
+    assert.match(task?.message ?? '', /不会重复打开同一个项目/);
+  } finally {
+    await stopChildProcess(child);
+    if (typeof previousCreator === 'undefined') {
+      delete process.env.COCOS_CREATOR_EXECUTABLE;
+    } else {
+      process.env.COCOS_CREATOR_EXECUTABLE = previousCreator;
+    }
+    environmentTasks.clear();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('cocos create project task waits for real MCP connectivity before completing', async () => {
+  environmentTasks.clear();
+  const state = buildState(buildProject());
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-create-wait-'));
+  const fakeCreator = join(root, 'CocosCreator.app', 'Contents', 'MacOS', 'CocosCreator');
+  const templatePath = join(root, 'CocosCreator.app', 'Contents', 'Resources', 'templates', 'empty');
+  const targetProjectPath = join(root, 'Arrow');
+  const previousCreator = process.env.COCOS_CREATOR_EXECUTABLE;
+  try {
+    await mkdir(join(fakeCreator, '..'), { recursive: true });
+    await mkdir(templatePath, { recursive: true });
+    await writeFile(fakeCreator, '#!/bin/sh\nexit 0\n', 'utf8');
+    await chmod(fakeCreator, 0o755);
+    await writeFile(join(root, 'CocosCreator.app', 'Contents', 'Resources', 'templates', 'list.json'), '[]', 'utf8');
+    await writeFile(join(templatePath, 'package.json'), JSON.stringify({ name: 'empty' }), 'utf8');
+    await writeFile(join(templatePath, 'tsconfig.json'), '{}', 'utf8');
+    const templateBridgePath = join(templatePath, 'extensions', 'funplay-cocos-mcp');
+    await mkdir(templateBridgePath, { recursive: true });
+    await writeFile(join(templateBridgePath, 'package.json'), JSON.stringify({ name: 'funplay-cocos-mcp' }), 'utf8');
+    await writeFile(join(templateBridgePath, 'browser.js'), '', 'utf8');
+    await writeFile(join(templateBridgePath, 'server.json'), '{}', 'utf8');
+    process.env.COCOS_CREATOR_EXECUTABLE = fakeCreator;
+
+    const result = await runEnvironmentAction(state, {
+      actionId: 'create_cocos_project',
+      platform: 'cocos',
+      mode: 'create',
+      dimension: '3d',
+      projectName: 'Arrow',
+      projectPath: root
+    });
+    const task = result.taskId ? environmentTasks.get(result.taskId) : undefined;
+
+    assert.equal(result.status, 'opened');
+    assert.equal(task?.status, 'needs_user');
+    assert.equal(task?.stage, 'waiting_manual');
+    assert.equal(task?.progress, 92);
+    assert.match(task?.message ?? '', /Funplay > MCP Server|启动 Funplay MCP Server/);
+
+    const server = await startCocosMcpProjectServer(targetProjectPath);
+    const timestamp = new Date().toISOString();
+    state.mcpPlugins = [{
+      id: 'mcp_cocos',
+      name: 'Funplay Cocos MCP',
+      kind: 'engine',
+      transport: 'http',
+      baseUrl: server.baseUrl,
+      enabled: true,
+      isDefault: false,
+      notes: 'Funplay built-in Cocos Creator MCP bridge.',
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }];
+    try {
+      const tasks = await listEnvironmentTasksForState(state);
+      const reconciledTask = tasks.find((item) => item.id === result.taskId);
+
+      assert.equal(reconciledTask?.status, 'completed');
+      assert.equal(reconciledTask?.stage, 'completed');
+      assert.match(reconciledTask?.message ?? '', /Cocos MCP 已连通/);
+    } finally {
+      resetMcpConnection(server.baseUrl);
+      await server.close();
+    }
+  } finally {
+    if (typeof previousCreator === 'undefined') {
+      delete process.env.COCOS_CREATOR_EXECUTABLE;
+    } else {
+      process.env.COCOS_CREATOR_EXECUTABLE = previousCreator;
+    }
+    environmentTasks.clear();
+    await rm(root, { recursive: true, force: true });
   }
 });

@@ -103,12 +103,12 @@ const commandPatterns: IntentPattern[] = [
 const enginePatterns: IntentPattern[] = [
   {
     label: 'engine-open',
-    regex: /(打开|启动|运行|唤起|连接).{0,32}(unity|engine|引擎|编辑器|editor|hub|launcher|项目工程|工程项目)/i,
+    regex: /(打开|启动|运行|唤起|连接).{0,32}(unity|cocos|creator|engine|引擎|编辑器|editor|hub|launcher|dashboard|项目工程|工程项目)/i,
     confidence: 'high'
   },
   {
     label: 'engine-bridge',
-    regex: /(安装|接入|配置|修复|刷新|检测|诊断).{0,32}(mcp|bridge|funplay bridge|unity package|引擎桥|桥接|引擎状态|unity|engine)/i,
+    regex: /(安装|接入|配置|修复|刷新|检测|诊断).{0,32}(mcp|bridge|funplay bridge|unity package|cocos|creator|引擎桥|桥接|引擎状态|unity|engine)/i,
     confidence: 'high'
   },
   {

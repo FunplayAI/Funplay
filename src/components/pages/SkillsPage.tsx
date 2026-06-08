@@ -1,6 +1,6 @@
 import { type JSX } from 'react';
 import { Download, Pencil, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
-import type { AgentSkillCatalogItem, AgentSkillCatalogResult, AgentSkillRegistrySnapshot, Project, ProjectAgentSkill } from '../../../shared/types';
+import type { AgentSkillCatalogItem, AgentSkillCatalogResult, Project, ProjectAgentSkill } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import type { ProjectAgentSkillDraft } from '../../lib/app-types';
 import { makeCatalogProjectSkillId } from '../../lib/app-helpers';
@@ -11,13 +11,9 @@ export function SkillsPage(props: {
   draft: ProjectAgentSkillDraft;
   editingSkillId: string;
   catalog: AgentSkillCatalogResult | null;
-  registry: AgentSkillRegistrySnapshot | null;
   isLoadingCatalog: boolean;
-  isLoadingRegistry: boolean;
   catalogError: string;
-  registryError: string;
   onRefreshCatalog: () => Promise<void>;
-  onRefreshRegistry: () => Promise<void>;
   onInstallCatalogSkill: (skill: AgentSkillCatalogItem) => Promise<void>;
   onChangeDraft: (draft: ProjectAgentSkillDraft) => void;
   onSaveSkill: () => Promise<void>;
@@ -46,73 +42,6 @@ export function SkillsPage(props: {
           <div className="helper-copy">{t('这里维护的是用户赋予 Agent 的项目级工作技能与准则，不暴露内置工具能力。', 'These are user-provided project skills and working rules for the agent; built-in tool capabilities stay hidden.')}</div>
         </div>
         <div className="skills-count-pill">{t(`${enabledCount}/${skills.length} 已启用`, `${enabledCount}/${skills.length} enabled`)}</div>
-      </div>
-
-      <div className="skill-catalog-panel">
-        <div className="skill-editor-header">
-          <div>
-            <strong>{t('Claude Code 文件系统 Skills', 'Claude Code Filesystem Skills')}</strong>
-            <span>
-              {props.registry
-                ? t(
-                    `${props.registry.skills.length} 个索引 · ${props.registry.conflicts.length} 个覆盖冲突 · ${props.registry.sourcePrecedence.length} 个来源`,
-                    `${props.registry.skills.length} indexed · ${props.registry.conflicts.length} overrides · ${props.registry.sourcePrecedence.length} sources`
-                  )
-                : t('读取项目与用户 .claude/skills 的平台索引。', 'Read the platform index from project and user .claude/skills.')}
-            </span>
-          </div>
-          <Button
-            size="sm"
-            variant="secondary"
-            leadingIcon={<RefreshCw size={13} aria-hidden="true" />}
-            loading={props.isLoadingRegistry}
-            disabled={!props.project}
-            onClick={() => void props.onRefreshRegistry()}
-          >
-            {props.isLoadingRegistry ? t('刷新中…', 'Refreshing…') : t('刷新索引', 'Refresh Index')}
-          </Button>
-        </div>
-        {props.registryError ? <div className="warning-banner error">{props.registryError}</div> : null}
-        <div className="skill-card-meta">
-          {t('优先级：项目 Skill 先发现，用户 Skill 后覆盖；Agent 只自动激活可信且不需要额外审批的匹配项。', 'Precedence: project skills are discovered first and user skills override later; the Agent only auto-activates trusted matching skills that do not require extra approval.')}
-        </div>
-        {props.registry?.sourcePrecedence.length ? (
-          <div className="skill-card-meta">
-            {props.registry.sourcePrecedence.map((source) => `${source.source}:${source.priority}`).join(' → ')}
-          </div>
-        ) : null}
-        {props.registry?.conflicts.length ? (
-          <div className="warning-banner">
-            {props.registry.conflicts.map((conflict) =>
-              t(
-                `${conflict.name} 由 ${conflict.candidates.at(-1)?.source ?? 'unknown'} 覆盖 ${conflict.candidates.length - 1} 个同名来源`,
-                `${conflict.name} is resolved from ${conflict.candidates.at(-1)?.source ?? 'unknown'} over ${conflict.candidates.length - 1} same-name source(s)`
-              )
-            ).join('\n')}
-          </div>
-        ) : null}
-        <div className="skill-catalog-grid">
-          {props.registry?.skills.slice(0, 12).map((skill) => (
-            <div key={skill.id} className="skill-catalog-card">
-              <div className="skill-card-top">
-                <strong>{skill.name}</strong>
-                <span className={`skill-status ${skill.trustLevel === 'trusted' ? 'ok' : skill.permissionPolicy === 'approval_required' ? 'warning' : 'neutral'}`}>
-                  {skill.trustLevel}
-                </span>
-              </div>
-              {skill.description ? <p>{skill.description}</p> : null}
-              <div className="skill-card-meta">{skill.source} · {skill.verificationStatus}</div>
-              <div className="skill-card-meta">{skill.permissionPolicy} · {skill.scriptPolicy}</div>
-              {skill.allowedTools?.length ? <div className="skill-card-meta">{t('建议工具：', 'Suggested tools: ')}{skill.allowedTools.join(', ')}</div> : null}
-            </div>
-          ))}
-          {props.registry && props.registry.skills.length === 0 ? (
-            <div className="empty-state">
-              <strong>{t('没有发现文件系统 Skills', 'No filesystem skills found')}</strong>
-              <span>{t('在项目或用户目录创建 .claude/skills/*/SKILL.md 后会显示在这里。', 'Create .claude/skills/*/SKILL.md in the project or user directory to show entries here.')}</span>
-            </div>
-          ) : null}
-        </div>
       </div>
 
       <div className="skill-catalog-panel">

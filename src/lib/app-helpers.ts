@@ -825,8 +825,10 @@ export function formatProjectStatus(status: Project['status']): string {
   return labels[status];
 }
 
-export function buildRuntimeSummary(runtimeState?: Project['runtimeState']): string {
+export function buildRuntimeSummary(runtimeState?: Project['runtimeState'], platform: PlatformChoice = 'unity'): string {
   const language = getDocumentLanguage();
+  const engineLabel = platform === 'cocos' ? 'Cocos Creator' : platform === 'unity' ? 'Unity' : formatPlatformLabel(platform);
+  const projectLabel = platform === 'cocos' ? 'Cocos' : platform === 'unity' ? 'Unity' : formatPlatformLabel(platform);
   if (!runtimeState) {
     return localize(language, '还没有读取到项目运行态。', 'Project runtime state has not been loaded yet.');
   }
@@ -834,7 +836,7 @@ export function buildRuntimeSummary(runtimeState?: Project['runtimeState']): str
     return localize(language, '项目目录不存在。', 'Project directory does not exist.');
   }
   if (!runtimeState.unityProjectValid) {
-    return localize(language, '当前路径还不是有效的 Unity 项目。', 'The current path is not a valid Unity project.');
+    return localize(language, `当前路径还不是有效的 ${projectLabel} 项目。`, `The current path is not a valid ${projectLabel} project.`);
   }
   if (!runtimeState.bridgeInstalled) {
     return localize(language, 'Bridge 未安装。', 'Bridge is not installed.');
@@ -843,7 +845,7 @@ export function buildRuntimeSummary(runtimeState?: Project['runtimeState']): str
     return localize(language, 'Bridge / MCP 已连通。', 'Bridge / MCP is connected.');
   }
   if (runtimeState.projectOpen) {
-    return localize(language, 'Unity 已打开，等待 MCP 连通。', 'Unity is open and waiting for MCP connection.');
+    return localize(language, `${engineLabel} 已打开，等待 MCP 连通。`, `${engineLabel} is open and waiting for MCP connection.`);
   }
   return localize(language, '项目未打开或 MCP 尚未启动。', 'The project is not open or MCP has not started yet.');
 }
@@ -1072,8 +1074,8 @@ export function getPlatformCards(language: LanguagePreference): Array<{
 }> {
   return [
     { id: 'web', name: localize(language, '通用项目', 'Generic Project'), description: localize(language, '代码 / 文档 / Web', 'Code / Docs / Web') },
-    { id: 'unity', name: 'Unity', description: localize(language, '需要绑定 unity-mcp', 'Requires unity-mcp binding') },
-    { id: 'cocos', name: 'Cocos', description: localize(language, '仅支持 2D', '2D only') },
+    { id: 'unity', name: 'Unity', description: localize(language, '支持 2D / 3D', 'Supports 2D / 3D') },
+    { id: 'cocos', name: 'Cocos', description: localize(language, '支持 2D / 3D', 'Supports 2D / 3D') },
     { id: 'godot', name: 'Godot', description: localize(language, '即将支持', 'Coming soon'), disabled: true },
     { id: 'unreal', name: 'Unreal', description: localize(language, '即将支持', 'Coming soon'), disabled: true }
   ];

@@ -9,7 +9,8 @@ import {
   renameProjectSession,
   resolveProjectChatContext
 } from '../../electron/main/project-service.ts';
-import type { AppState, CreateProjectInput } from '../../shared/types.ts';
+import { ensureEngineProjectMcpBinding } from '../../electron/main/mcp-plugin-service.ts';
+import type { AppState, CreateProjectInput, EngineProjectDimension } from '../../shared/types.ts';
 import { buildProject, buildState } from './test-helpers.ts';
 
 function text(value: unknown): string {
@@ -27,6 +28,21 @@ function createUnityProjectInput(name = 'bird'): CreateProjectInput {
       setupMode: 'create',
       projectPath: `/tmp/${name}`,
       dimension: '2d'
+    }
+  };
+}
+
+function createCocosProjectInput(name = 'cocos-bird', dimension: EngineProjectDimension = '2d'): CreateProjectInput {
+  return {
+    name,
+    templateId: 'engine-game-prototype',
+    artStyle: '像素风格',
+    pitch: `由 AI 与引擎控制器共同制作的 Cocos ${dimension === '2d' ? '2D' : '3D'} 游戏原型`,
+    engine: {
+      platform: 'cocos',
+      setupMode: 'import',
+      projectPath: `/tmp/${name}`,
+      dimension
     }
   };
 }
@@ -61,10 +77,58 @@ test('unity project creation registers and binds the built-in Unity MCP plugin',
   const plugin = state.mcpPlugins.find((item) => item.id === enginePluginId);
 
   assert.ok(enginePluginId);
-  assert.equal(plugin?.name, 'Unity MCP');
+  assert.equal(plugin?.projectId, project.id);
+  assert.equal(plugin?.name, 'Unity MCP - unity-auto-mcp');
   assert.equal(plugin?.kind, 'engine');
   assert.equal(plugin?.enabled, true);
   assert.equal(plugin?.baseUrl, state.settings.baseUrl);
+});
+
+test('cocos project creation registers and binds the built-in Funplay Cocos MCP plugin', async () => {
+  const state = buildState(buildProject()) as AppState;
+  state.mcpPlugins = [];
+
+  const project = await createProject(state, createCocosProjectInput('cocos-auto-mcp', '3d'));
+  const enginePluginId = project.mcpBindings.engine;
+  const plugin = state.mcpPlugins.find((item) => item.id === enginePluginId);
+
+  assert.ok(enginePluginId);
+  assert.equal(project.engine?.dimension, '3d');
+  assert.equal(plugin?.projectId, project.id);
+  assert.equal(plugin?.name, 'Cocos MCP - cocos-auto-mcp');
+  assert.equal(plugin?.kind, 'engine');
+  assert.equal(plugin?.enabled, true);
+  assert.equal(plugin?.baseUrl, 'http://127.0.0.1:8765/');
+});
+
+test('cocos project binding ignores a stale Unity MCP engine binding', () => {
+  const state = buildState(buildProject()) as AppState;
+  const timestamp = new Date().toISOString();
+  state.mcpPlugins = [{
+    id: 'mcp_stale_unity',
+    name: 'Unity MCP',
+    kind: 'engine',
+    transport: 'http',
+    baseUrl: 'http://127.0.0.1:9000/',
+    enabled: true,
+    isDefault: false,
+    notes: 'Funplay built-in Unity MCP bridge.',
+    createdAt: timestamp,
+    updatedAt: timestamp
+  }];
+  const project = createProjectFromInput(createCocosProjectInput('cocos-stale-binding', '2d'));
+  project.mcpPluginId = 'mcp_stale_unity';
+  project.mcpBindings = {
+    servers: ['mcp_stale_unity'],
+    engine: 'mcp_stale_unity'
+  };
+
+  const plugin = ensureEngineProjectMcpBinding(state, project);
+
+  assert.equal(plugin?.projectId, project.id);
+  assert.equal(plugin?.name, 'Cocos MCP - cocos-stale-binding');
+  assert.equal(project.mcpBindings.engine, plugin?.id);
+  assert.notEqual(project.mcpBindings.engine, 'mcp_stale_unity');
 });
 
 test('legacy unity project without an engine MCP binding is not mutated before agent context', () => {

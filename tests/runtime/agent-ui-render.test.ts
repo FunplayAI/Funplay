@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
-import type { AgentSkillRegistrySnapshot, ChatMessage, McpPlugin, Project, ProjectSession, PromptAttachment, RuntimeDoctorResult, SessionCheckpointPreview, WebSearchSettings } from '../../shared/types.ts';
+import type { ChatMessage, EnvironmentDiagnostics, McpPlugin, Project, ProjectSession, PromptAttachment, RuntimeDoctorResult, SessionCheckpointPreview, WebSearchSettings } from '../../shared/types.ts';
 import { ChatComposer } from '../../src/components/chat/ChatComposer.tsx';
 import { ChatTranscriptMessage, StreamingTranscriptMessage, getMessagePlainText } from '../../src/components/chat/ConversationMessage.tsx';
 import { AgentChatView } from '../../src/components/chat/AgentChatView.tsx';
+import { EngineStatusDialog } from '../../src/components/chat/agent/EngineStatusDialog.tsx';
 import { MessageList } from '../../src/components/chat/MessageList.tsx';
 import { buildCompletedMessageProcessTools, pairStreamingToolExecutions, summarizeToolResult } from '../../src/components/chat/tool-activity.tsx';
 import { buildTranscriptViewItems } from '../../src/components/chat/transcript/transcript-view-model.ts';
@@ -41,6 +42,7 @@ import {
   renderZh,
   secondaryProvider
 } from './agent-ui-render-helpers.tsx';
+import { buildProject } from './test-helpers.ts';
 
 test('titlebar shows update button before current run changes when an update is available', () => {
   const html = renderAppShell(createUpdateSnapshot('available'));
@@ -153,6 +155,11 @@ test('welcome and onboarding actions render through shared buttons', () => {
     onEnter: noop
   };
   const setupHtml = renderZh(createElement(OnboardingScreen, baseOnboardingProps));
+  const cocosSetupHtml = renderZh(createElement(OnboardingScreen, {
+    ...baseOnboardingProps,
+    platform: 'cocos',
+    dimension: '3d'
+  }));
   const environmentHtml = renderZh(createElement(OnboardingScreen, {
     ...baseOnboardingProps,
     view: 'environment',
@@ -198,6 +205,10 @@ test('welcome and onboarding actions render through shared buttons', () => {
   assert.match(environmentHtml, /fp-select-trigger/);
   assert.match(setupHtml, /fp-button[^"]*setup-mode-card selected/);
   assert.match(setupHtml, /fp-button[^"]*platform-card selected/);
+  assert.match(cocosSetupHtml, /支持 2D \/ 3D/);
+  assert.match(cocosSetupHtml, /fp-button[^"]*setup-mode-card selected[\s\S]*3D 项目/);
+  assert.equal(cocosSetupHtml.includes('disabled-card'), false);
+  assert.doesNotMatch(cocosSetupHtml, /当前引擎暂不支持 3D/);
   assert.match(setupHtml, /onboarding-path-field/);
   assert.match(environmentHtml, /fp-button[^"]*wizard-step active/);
   assert.equal(combinedHtml.includes('prototype-primary'), false);
@@ -2713,6 +2724,84 @@ test('MCP raw audit card renders recent diagnostic outcomes', () => {
   assert.match(html, /错误：Resource not found/);
 });
 
+test('engine status dialog uses Cocos labels for Cocos diagnostics', () => {
+  const project = buildProject('/Users/xyz/Downloads/arrow');
+  project.engine = {
+    platform: 'cocos',
+    setupMode: 'create',
+    projectPath: '/Users/xyz/Downloads/arrow',
+    dimension: '2d'
+  };
+  const diagnostics: EnvironmentDiagnostics = {
+    platform: 'cocos',
+    mode: 'create',
+    dimension: '2d',
+    checkedAt: new Date().toISOString(),
+    projectPath: '/Users/xyz/Downloads/arrow',
+    checks: [
+      {
+        id: 'cocos-dashboard',
+        title: 'Cocos Dashboard / Creator',
+        description: 'Detected',
+        status: 'passed',
+        detail: '已检测到 Cocos Creator。',
+        actions: []
+      },
+      {
+        id: 'engine-project',
+        title: 'Cocos 项目创建',
+        description: 'Detected',
+        status: 'passed',
+        detail: '已检测到有效 Cocos 项目：/Users/xyz/Downloads/arrow · 2D',
+        actions: []
+      },
+      {
+        id: 'engine-opened',
+        title: 'Cocos 项目打开状态',
+        description: 'Detected',
+        status: 'passed',
+        detail: '已检测到该项目当前就在 Cocos Creator 中打开。',
+        actions: []
+      },
+      {
+        id: 'bridge-installed',
+        title: 'Funplay Cocos MCP',
+        description: 'Detected',
+        status: 'passed',
+        detail: '已检测到项目中存在 funplay-cocos-mcp 扩展。',
+        actions: []
+      },
+      {
+        id: 'bridge-connected',
+        title: 'Cocos MCP 连通性',
+        description: 'Detected',
+        status: 'passed',
+        detail: '连接成功：Funplay Cocos MCP - arrow',
+        actions: []
+      }
+    ],
+    ready: true
+  };
+  const html = renderZh(createElement(EngineStatusDialog, {
+    project,
+    diagnostics,
+    loading: false,
+    actionId: null,
+    error: '',
+    actionMessage: '',
+    onClose: noop,
+    onRefresh: noop,
+    onRunAction: noop
+  }));
+
+  assert.match(html, /Cocos Dashboard/);
+  assert.match(html, /Cocos 项目/);
+  assert.match(html, /Cocos MCP/);
+  assert.doesNotMatch(html, /Unity Hub/);
+  assert.doesNotMatch(html, /Unity 项目/);
+  assert.doesNotMatch(html, /Unity MCP/);
+});
+
 test('MCP server list row renders compact details navigation and toggle', () => {
   const plugin: McpPlugin = {
     id: 'mcp_unity',
@@ -2763,6 +2852,18 @@ test('MCP management pages render shared action controls', () => {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+  const legacyUnityPlugin: McpPlugin = {
+    id: 'mcp_legacy_unity',
+    name: 'Unity MCP',
+    kind: 'engine',
+    transport: 'http',
+    baseUrl: 'http://127.0.0.1:8765/',
+    enabled: true,
+    isDefault: false,
+    notes: 'Funplay built-in Unity MCP bridge.',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
   const project = {
     id: 'project_mcp',
     name: 'MCP Project',
@@ -2784,8 +2885,8 @@ test('MCP management pages render shared action controls', () => {
   };
   const projectHtml = renderZh(createElement(McpManagementPage, {
     project,
-    plugins: [plugin],
-    projectBindings: [plugin.id],
+    plugins: [plugin, legacyUnityPlugin],
+    projectBindings: [plugin.id, legacyUnityPlugin.id],
     selectedPlugin: plugin,
     serverInfo: null,
     tools: [],
@@ -2860,6 +2961,7 @@ test('MCP management pages render shared action controls', () => {
   assert.match(projectHtml, /fp-button-primary/);
   assert.match(projectHtml, /fp-button-secondary/);
   assert.match(projectHtml, /fp-button[^"]*mcp-server-row-main/);
+  assert.match(projectHtml, /Unity MCP - MCP Project/);
   assert.match(projectHtml, /settings-row-detail-button/);
   assert.match(projectHtml, /详情/);
   assert.match(projectHtml, /fp-toggle-switch/);
@@ -3748,49 +3850,7 @@ test('empty chat state renders actionable task starters', () => {
   assert.doesNotMatch(html, /<button[^>]*class="agent-empty-suggestion/);
 });
 
-test('skills page renders filesystem registry precedence and conflicts', () => {
-  const registry: AgentSkillRegistrySnapshot = {
-    generatedAt: '2026-05-16T00:00:00.000Z',
-    sourcePrecedence: [
-      {
-        source: 'project',
-        sourceId: '/repo',
-        priority: 10,
-        skillsDir: '/repo/.claude/skills'
-      },
-      {
-        source: 'user',
-        sourceId: '/Users/test',
-        priority: 20,
-        skillsDir: '/Users/test/.claude/skills'
-      }
-    ],
-    skills: [
-      {
-        id: 'user:/Users/test:backend-plan',
-        name: 'backend-plan',
-        description: 'Plan backend changes.',
-        source: 'user',
-        sourceId: '/Users/test',
-        sourcePath: '.claude/skills/backend-plan/SKILL.md',
-        relativePath: '.claude/skills/backend-plan',
-        userInvocable: true,
-        modelInvocable: true,
-        trustLevel: 'trusted',
-        verificationStatus: 'trusted_source',
-        contentSha256: 'd'.repeat(64),
-        permissionPolicy: 'workspace_policy',
-        scriptPolicy: 'none'
-      }
-    ],
-    conflicts: [
-      {
-        name: 'backend-plan',
-        resolvedSkillId: 'user:/Users/test:backend-plan',
-        candidates: []
-      }
-    ]
-  };
+test('skills page hides filesystem registry UI', () => {
   const html = renderZh(createElement(SkillsPage, {
     project: null,
     draft: {
@@ -3803,13 +3863,9 @@ test('skills page renders filesystem registry precedence and conflicts', () => {
     },
     editingSkillId: '',
     catalog: null,
-    registry,
     isLoadingCatalog: false,
-    isLoadingRegistry: false,
     catalogError: '',
-    registryError: '',
     onRefreshCatalog: noopAsync,
-    onRefreshRegistry: noopAsync,
     onInstallCatalogSkill: async () => {},
     onChangeDraft: noop,
     onSaveSkill: noopAsync,
@@ -3819,11 +3875,15 @@ test('skills page renders filesystem registry precedence and conflicts', () => {
     onDeleteSkill: async () => {}
   }));
 
-  assert.match(html, /Claude Code 文件系统 Skills/);
-  assert.match(html, /backend-plan/);
-  assert.match(html, /trusted_source/);
-  assert.match(html, /project:10/);
-  assert.match(html, /覆盖冲突/);
+  assert.match(html, /项目 Skills/);
+  assert.match(html, /Funplay Skill 仓库/);
+  assert.match(html, /添加自定义 Skill/);
+  assert.doesNotMatch(html, /Claude Code 文件系统 Skills/);
+  assert.doesNotMatch(html, /文件系统 Skills/);
+  assert.doesNotMatch(html, /backend-plan/);
+  assert.doesNotMatch(html, /trusted_source/);
+  assert.doesNotMatch(html, /project:10/);
+  assert.doesNotMatch(html, /覆盖冲突/);
   assert.match(html, /fp-button/);
   assert.match(html, /fp-field/);
   assert.match(html, /fp-textarea/);

@@ -77,6 +77,11 @@ const environmentActionKindSchema = z.enum([
   'import_unity_project',
   'open_unity_project',
   'install_project_bridge',
+  'install_cocos_dashboard',
+  'open_cocos_dashboard',
+  'create_cocos_project',
+  'open_cocos_project',
+  'install_cocos_bridge',
   'verify_project_path'
 ]);
 

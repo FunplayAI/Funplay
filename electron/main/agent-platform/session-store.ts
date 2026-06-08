@@ -22,7 +22,9 @@ export function resolveAgentProjectContext(state: AppState, projectId: string, t
   const provider = resolveAgentProvider(state, current);
   const mcpPlugins = resolveProjectPlugins(state, current);
   const enginePlugin =
-    current.engine?.platform === 'unity' ? resolveProjectPluginByKind(state, current.mcpBindings, 'engine', current.id) : undefined;
+    current.engine?.platform === 'unity' || current.engine?.platform === 'cocos'
+      ? resolveProjectPluginByKind(state, current.mcpBindings, 'engine', current.id)
+      : undefined;
   const assetPlugin = resolveProjectPluginByKind(state, current.mcpBindings, 'asset', current.id);
   const qaPlugin = resolveProjectPluginByKind(state, current.mcpBindings, 'qa', current.id);
   const customPlugin = resolveProjectPluginByKind(state, current.mcpBindings, 'custom', current.id);

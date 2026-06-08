@@ -51,10 +51,22 @@ jobs:
         run: npm run agent:benchmark
 
   mac:
-    name: Build macOS release
+    name: Build macOS ${{ matrix.arch }} release
     needs: verify
     runs-on: macos-latest
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            dist_script: dist:mac:arm64
+            metadata: latest-mac-arm64.yml
+            artifact_name: funplay-macos-arm64
+          - arch: x64
+            dist_script: dist:mac:x64
+            metadata: latest-mac-x64.yml
+            artifact_name: funplay-macos-x64
     env:
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -112,14 +124,19 @@ jobs:
           fi
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path" || echo "::warning::Could not update key partition list; continuing because the signing identity was imported and the keychain is unlocked."
 
-      - name: Build split-architecture macOS artifacts
-        run: npm run dist:mac:split
+      - name: Build macOS ${{ matrix.arch }} artifacts
+        run: npm run ${{ matrix.dist_script }}
 
       - name: Verify packaged runtime dependencies
         run: npm run release:verify-runtime-deps
 
+      - name: Preserve macOS ${{ matrix.arch }} update metadata
+        run: |
+          set -euo pipefail
+          cp release/latest-mac.yml "release/${{ matrix.metadata }}"
+
       - name: Verify macOS update metadata
-        run: npm run release:verify-mac-updates
+        run: node scripts/merge-mac-update-metadata.mjs --verify "release/${{ matrix.metadata }}" --check-artifacts --single-arch
 
       - name: Restore Electron native ABI
         if: always()
@@ -128,16 +145,14 @@ jobs:
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: funplay-macos
+          name: ${{ matrix.artifact_name }}
           if-no-files-found: error
           path: |
             release/*.dmg
             release/*.dmg.blockmap
             release/*.zip
             release/*.zip.blockmap
-            release/latest-mac.yml
-            release/latest-mac-arm64.yml
-            release/latest-mac-x64.yml
+            release/${{ matrix.metadata }}
 
   windows:
     name: Build Windows release
@@ -191,10 +206,22 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install metadata tooling
+        run: npm ci --ignore-scripts
+
       - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: Prepare release artifacts
+        run: npm run release:prepare-mac-artifacts
 
       - name: Prepare release notes
         run: |
@@ -227,7 +254,7 @@ jobs:
       - name: Create or update release
         run: |
           set -euo pipefail
-          mapfile -d '' files < <(find artifacts -type f -print0 | sort -z)
+          mapfile -d '' files < <(find release -type f -print0 | sort -z)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No release artifacts found."
             exit 1

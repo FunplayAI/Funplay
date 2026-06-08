@@ -18,6 +18,14 @@ export const MCP_PLUGIN_PRESETS: McpPluginPreset[] = [
     description: 'GameBooom / FunseaAI Unity MCP 预设。'
   },
   {
+    id: 'funplay-cocos-mcp',
+    name: 'Funplay Cocos MCP',
+    kind: 'engine',
+    transport: 'http',
+    baseUrl: 'http://127.0.0.1:8765/',
+    description: 'FunplayAI Cocos Creator MCP 预设。先在 Cocos 项目中安装 funplay-cocos-mcp 扩展并打开 Funplay > MCP Server。'
+  },
+  {
     id: 'custom-stdio-mcp',
     name: 'Custom stdio MCP Server',
     kind: 'custom',

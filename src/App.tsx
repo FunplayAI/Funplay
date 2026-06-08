@@ -789,13 +789,9 @@ function App(): JSX.Element {
     editingSkillId,
     setEditingSkillId,
     skillCatalog,
-    skillRegistry,
     isLoadingSkillCatalog,
-    isLoadingSkillRegistry,
     skillCatalogError,
-    skillRegistryError,
     loadSkillCatalog,
-    loadSkillRegistry,
     handleSaveProjectSkill,
     handleInstallCatalogSkill,
     handleToggleProjectSkill,
@@ -920,7 +916,7 @@ function App(): JSX.Element {
       : project;
     const enginePluginId = nextProject.mcpBindings.engine;
     if (
-      input.engine?.platform === 'unity' &&
+      (input.engine?.platform === 'unity' || input.engine?.platform === 'cocos') &&
       enginePluginId &&
       !mcpPlugins.some((plugin) => plugin.id === enginePluginId)
     ) {
@@ -936,7 +932,7 @@ function App(): JSX.Element {
     }));
     setSelectedProjectId(nextProject.id);
     setRightInspectorCollapsed(true);
-    if (nextProject.engine?.platform === 'unity') {
+    if (nextProject.engine?.platform === 'unity' || nextProject.engine?.platform === 'cocos') {
       void retryRefreshProjectRuntimeState(nextProject.id);
     }
 
@@ -1776,11 +1772,8 @@ function App(): JSX.Element {
               skillDraft={skillDraft}
               editingSkillId={editingSkillId}
               skillCatalog={skillCatalog}
-              skillRegistry={skillRegistry}
               isLoadingSkillCatalog={isLoadingSkillCatalog}
-              isLoadingSkillRegistry={isLoadingSkillRegistry}
               skillCatalogError={skillCatalogError}
-              skillRegistryError={skillRegistryError}
               providers={providers.filter((provider) => provider.enabled)}
               activeProvider={selectedProvider}
               defaultProviderId={selectedDefaultProvider?.id}
@@ -1807,7 +1800,6 @@ function App(): JSX.Element {
               onReconnectMcpPlugin={() => void handleReconnectMcpPlugin(projectMcpSelectedPlugin)}
               onStopMcpPlugin={() => void handleStopMcpPlugin(projectMcpSelectedPlugin)}
               onRefreshSkillCatalog={() => loadSkillCatalog(true)}
-              onRefreshSkillRegistry={() => loadSkillRegistry()}
               onInstallCatalogSkill={handleInstallCatalogSkill}
               onChangeSkillDraft={setSkillDraft}
               onSaveProjectSkill={handleSaveProjectSkill}

@@ -14,6 +14,9 @@ const BRIDGE_LINKED_ACTION_IDS = new Set<EnvironmentActionKind>([
   'import_unity_project',
   'open_unity_project',
   'install_project_bridge',
+  'create_cocos_project',
+  'open_cocos_project',
+  'install_cocos_bridge',
   'verify_project_path'
 ]);
 
@@ -64,6 +67,10 @@ export function bindTaskProjectPath(taskId: string, projectPath: string | undefi
     return;
   }
   taskProjectPaths.set(taskId, normalizedProjectPath);
+}
+
+export function getEnvironmentTaskProjectPath(taskId: string): string | undefined {
+  return taskProjectPaths.get(taskId);
 }
 
 export function updateTask(

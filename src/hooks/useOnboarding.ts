@@ -81,12 +81,6 @@ export function useOnboarding(params: UseOnboardingParams) {
   }, [onboardingMode, onboardingPlatform, onboardingProjectPath, onboardingEnginePluginId, onboardingDimension]);
 
   useEffect(() => {
-    if (onboardingPlatform === 'cocos') {
-      setOnboardingDimension('2d');
-    }
-  }, [onboardingPlatform]);
-
-  useEffect(() => {
     if (appMode !== 'onboarding' || onboardingPlatform !== 'unity' || onboardingMode !== 'create') {
       return;
     }
@@ -224,7 +218,11 @@ export function useOnboarding(params: UseOnboardingParams) {
               `A Unity ${input.dimension === '2d' ? '2D' : '3D'} game prototype co-created by AI and the engine controller`
             )
           : input.platform === 'cocos'
-            ? localize(language, '由 AI 规划并接入 Cocos Creator 的 2D 游戏原型', 'A 2D game prototype planned by AI and connected to Cocos Creator')
+            ? localize(
+                language,
+                `由 AI 规划并接入 Cocos Creator 的 ${input.dimension === '2d' ? '2D' : '3D'} 游戏原型`,
+                `A Cocos Creator ${input.dimension === '2d' ? '2D' : '3D'} game prototype planned by AI and connected to Cocos Creator`
+              )
             : localize(language, '由 AI 制作的轻量游戏原型', 'A lightweight game prototype created by AI'),
       engine: {
         platform: input.platform,
@@ -257,7 +255,7 @@ export function useOnboarding(params: UseOnboardingParams) {
         enginePluginId: input.enginePluginId || undefined,
         unityEditorVersion: input.unityEditorVersion || undefined
       });
-      const nextEnginePluginId = diagnostics.enginePluginId ?? input.enginePluginId ?? onboardingEnginePluginId;
+      const nextEnginePluginId = diagnostics.enginePluginId ?? (input.platform === 'unity' ? input.enginePluginId ?? onboardingEnginePluginId : '');
       acceptedDiagnosticsSignatureRef.current = buildDiagnosticsInputSignature({
         mode: input.mode,
         platform: input.platform,
@@ -317,7 +315,7 @@ export function useOnboarding(params: UseOnboardingParams) {
       dimension: onboardingDimension,
       projectName: onboardingProjectName,
       projectPath: onboardingProjectPath,
-      enginePluginId: onboardingEnginePluginId || undefined,
+      enginePluginId: onboardingPlatform === 'unity' ? onboardingEnginePluginId || undefined : undefined,
       unityEditorVersion: onboardingUnityEditorVersion || undefined
     });
   }
@@ -369,7 +367,7 @@ export function useOnboarding(params: UseOnboardingParams) {
         dimension: onboardingDimension,
         projectName: onboardingProjectName,
         projectPath: onboardingProjectPath,
-        enginePluginId: onboardingEnginePluginId || undefined,
+        enginePluginId: onboardingPlatform === 'unity' ? onboardingEnginePluginId || undefined : undefined,
         unityEditorVersion: onboardingUnityEditorVersion || undefined
       });
       setEnvironmentActionMessage(result.message);

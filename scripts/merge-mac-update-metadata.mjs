@@ -214,7 +214,8 @@ function parseArgs(args) {
     return {
       mode: 'verify',
       inputPath: args[1],
-      checkArtifacts: args.includes('--check-artifacts')
+      checkArtifacts: args.includes('--check-artifacts'),
+      requireSplit: !args.includes('--single-arch')
     };
   }
 
@@ -241,7 +242,10 @@ async function main(args) {
     if (!parsed.inputPath) {
       fail('--verify requires a metadata path.');
     }
-    await verifyMacUpdateMetadataFile(parsed.inputPath, { checkArtifacts: parsed.checkArtifacts });
+    await verifyMacUpdateMetadataFile(parsed.inputPath, {
+      checkArtifacts: parsed.checkArtifacts,
+      requireSplit: parsed.requireSplit
+    });
     console.log(`Verified mac update metadata: ${parsed.inputPath}`);
     return;
   }

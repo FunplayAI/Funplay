@@ -1,7 +1,12 @@
 import './test-helpers.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractSessionMessagePreview, formatQueuedPromptWithAttachments, resolveOnboardingProjectName } from '../../src/lib/app-helpers.ts';
+import {
+  extractSessionMessagePreview,
+  formatQueuedPromptWithAttachments,
+  getPlatformCards,
+  resolveOnboardingProjectName
+} from '../../src/lib/app-helpers.ts';
 import type { ChatMessage, PromptAttachment } from '../../shared/types.ts';
 
 test('session message preview strips internal token usage projection', () => {
@@ -57,4 +62,16 @@ test('created projects still prefer the explicit form name', () => {
     projectName: 'New Game',
     fallback: 'Untitled Project'
   }), 'New Game');
+});
+
+test('platform cards advertise engine 2D and 3D support', () => {
+  const zhUnity = getPlatformCards('zh-CN').find((card) => card.id === 'unity');
+  const zhCocos = getPlatformCards('zh-CN').find((card) => card.id === 'cocos');
+  const enUnity = getPlatformCards('en-US').find((card) => card.id === 'unity');
+  const enCocos = getPlatformCards('en-US').find((card) => card.id === 'cocos');
+
+  assert.equal(zhUnity?.description, '支持 2D / 3D');
+  assert.equal(zhCocos?.description, '支持 2D / 3D');
+  assert.equal(enUnity?.description, 'Supports 2D / 3D');
+  assert.equal(enCocos?.description, 'Supports 2D / 3D');
 });
