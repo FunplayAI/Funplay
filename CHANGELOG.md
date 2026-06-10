@@ -6,6 +6,21 @@ This project follows a pre-1.0 release flow. Minor versions may include breaking
 
 ## Unreleased
 
+## 0.3.9 - 2026-06-10
+
+### Changed
+
+- Improved assistant reply streaming with smoother text pacing and a hybrid Markdown preview while responses are still rendering.
+- Refined native agent tool-execution status copy so internal implementation wording is no longer shown in the user-facing transcript.
+- Upgraded Markdown file previews to use the shared React Markdown/GFM renderer with better table, quote, list, and code styling.
+
+### Fixed
+
+- Fixed completed assistant replies being duplicated when provider step snapshots repeated previously recorded text.
+- Fixed chat text selection being cleared by idle runtime refreshes, auto-scroll, or stable completed-message re-renders.
+- Fixed Cocos project launch checks so already-open projects are detected more reliably and are not opened a second time.
+- Fixed Cocos engine actions to skip opening another Cocos Creator instance when the current project is already connected through MCP.
+
 ## 0.3.8 - 2026-06-08
 
 ### Changed

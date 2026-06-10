@@ -156,7 +156,9 @@ export function summarizeAgentRunControllerSnapshot(snapshot: AgentRunController
   };
 }
 
-function resolveControllerContinuation(input: AgentRunControllerProviderStepInput): AgentRunControllerContinuation | undefined {
+function resolveControllerContinuation(
+  input: AgentRunControllerProviderStepInput
+): AgentRunControllerContinuation | undefined {
   if (input.forceContinuation) {
     return input.forceContinuation;
   }
@@ -171,12 +173,10 @@ function resolveControllerContinuation(input: AgentRunControllerProviderStepInpu
     const incompleteCount = continuation?.incompleteTodo?.incompleteCount ?? 0;
     if (
       incompleteCount > 0 &&
-      (
-        !assistantMessage.trim() ||
+      (!assistantMessage.trim() ||
         Boolean(continuation?.incompleteTodo?.hasInProgress) ||
         looksLikeUnfinishedAgentWriteReply(assistantMessage) ||
-        looksLikeAgentTodoContinuationReply(assistantMessage)
-      )
+        looksLikeAgentTodoContinuationReply(assistantMessage))
     ) {
       return {
         reason: 'incomplete_todo',
@@ -236,6 +236,31 @@ function createPartBase(options: {
   };
 }
 
+function assistantTextPrefixCandidates(parts: AgentCoreMessagePart[]): string[] {
+  const texts = parts
+    .filter((part): part is Extract<AgentCoreMessagePart, { kind: 'assistant_text' }> => part.kind === 'assistant_text')
+    .map((part) => part.text)
+    .filter((text) => text.trim().length > 0);
+  if (texts.length === 0) {
+    return [];
+  }
+  return [...new Set([texts.join(''), texts.join('\n\n')])].sort((left, right) => right.length - left.length);
+}
+
+function stripPreviouslyRecordedAssistantTextSnapshot(text: string, parts: AgentCoreMessagePart[]): string | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  for (const prefix of assistantTextPrefixCandidates(parts)) {
+    if (prefix && trimmed.startsWith(prefix)) {
+      const suffix = trimmed.slice(prefix.length).trimStart();
+      return suffix.trim() ? suffix : undefined;
+    }
+  }
+  return text;
+}
+
 export function createAgentRunController(options: AgentRunControllerOptions = {}) {
   const createdAt = options.createdAt ?? (() => new Date().toISOString());
   const machine = createAgentCoreStateMachine(options.initialState);
@@ -257,7 +282,10 @@ export function createAgentRunController(options: AgentRunControllerOptions = {}
     nextSequence = Math.max(nextSequence, part.sequence + 1);
   }
 
-  function markToolCallStatus(toolUseId: string, status: Extract<AgentCoreMessagePart, { kind: 'tool_call' }>['status']): void {
+  function markToolCallStatus(
+    toolUseId: string,
+    status: Extract<AgentCoreMessagePart, { kind: 'tool_call' }>['status']
+  ): void {
     const index = parts.findIndex((part) => part.kind === 'tool_call' && part.toolUseId === toolUseId);
     if (index >= 0) {
       const part = parts[index];
@@ -355,7 +383,10 @@ export function createAgentRunController(options: AgentRunControllerOptions = {}
         usage: input.providerStep.usage
       });
     }
-    if (input.providerStep.text) {
+    const providerStepText = input.providerStep.text
+      ? stripPreviouslyRecordedAssistantTextSnapshot(input.providerStep.text, parts)
+      : undefined;
+    if (providerStepText) {
       pushPart({
         ...createPartBase({
           id: `provider_step:${providerStepCount}:text`,
@@ -366,7 +397,7 @@ export function createAgentRunController(options: AgentRunControllerOptions = {}
           turnId: options.turnId
         }),
         kind: 'assistant_text',
-        text: input.providerStep.text,
+        text: providerStepText,
         final: !continuation && input.providerStep.toolCalls.length === 0 && input.providerStep.finishReason === 'stop'
       });
     }
@@ -552,7 +583,11 @@ export function createAgentRunController(options: AgentRunControllerOptions = {}
 
   function recordPermissionDenied(input: AgentRunControllerPermissionDeniedInput): AgentRunControllerSnapshot {
     if (machine.getSnapshot().state === 'awaiting_permission') {
-      machine.transition('executing_tools', 'Permission denied; record a structured tool error for provider replay.', now());
+      machine.transition(
+        'executing_tools',
+        'Permission denied; record a structured tool error for provider replay.',
+        now()
+      );
     }
     return recordToolResult({
       toolUseId: input.toolUseId,
@@ -567,7 +602,11 @@ export function createAgentRunController(options: AgentRunControllerOptions = {}
 
   function recordPermissionApproved(input: AgentRunControllerPermissionApprovedInput): AgentRunControllerSnapshot {
     if (machine.getSnapshot().state === 'awaiting_permission') {
-      machine.transition('executing_tools', 'Permission approved; record a structured permission result for provider replay.', now());
+      machine.transition(
+        'executing_tools',
+        'Permission approved; record a structured permission result for provider replay.',
+        now()
+      );
     }
     return recordToolResult({
       toolUseId: input.toolUseId,
@@ -578,9 +617,7 @@ export function createAgentRunController(options: AgentRunControllerOptions = {}
   }
 
   function findPendingToolName(toolUseId: string): string | undefined {
-    const toolPart = [...parts]
-      .reverse()
-      .find((part) => part.kind === 'tool_call' && part.toolUseId === toolUseId);
+    const toolPart = [...parts].reverse().find((part) => part.kind === 'tool_call' && part.toolUseId === toolUseId);
     return toolPart?.kind === 'tool_call' ? toolPart.name : undefined;
   }
 
@@ -622,7 +659,9 @@ export function createAgentRunController(options: AgentRunControllerOptions = {}
     return getSnapshot();
   }
 
-  function requestContextCompression(reason = 'Context budget requires compression before the next provider input.'): AgentRunControllerSnapshot {
+  function requestContextCompression(
+    reason = 'Context budget requires compression before the next provider input.'
+  ): AgentRunControllerSnapshot {
     const currentState = machine.getSnapshot().state;
     if (canTransitionAgentCoreState(currentState, 'compacting_context')) {
       machine.transition('compacting_context', reason, now());

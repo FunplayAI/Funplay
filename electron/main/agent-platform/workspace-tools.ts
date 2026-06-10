@@ -31,7 +31,12 @@ import type {
 } from '../../../shared/types';
 import { executeUnityTool } from '../game-tool-layer';
 import type { McpClientRequestHandler } from '../mcp-connection-manager';
-import { cancelNotificationTask, listNotificationTasks, scheduleNotificationTask, sendAppNotification } from '../notification-service';
+import {
+  cancelNotificationTask,
+  listNotificationTasks,
+  scheduleNotificationTask,
+  sendAppNotification
+} from '../notification-service';
 import {
   listProjectFilesForProject,
   applyProjectTextPatchForProject,
@@ -45,7 +50,11 @@ import {
 } from '../project-file-service';
 import { listUnityResources, listUnityTools, readUnityResource } from '../unity-mcp-client';
 import { diagnoseEnvironment, getProjectRuntimeState, runEnvironmentAction } from '../environment-service';
-import { generateAssetForProject, importGeneratedAsset, listAssetGenerationProviders } from '../asset-generation-service';
+import {
+  generateAssetForProject,
+  importGeneratedAsset,
+  listAssetGenerationProviders
+} from '../asset-generation-service';
 import { inspectGameProject } from './game-project-inspector';
 import { inferMcpToolReadOnly, resolveMcpToolPolicy } from './mcp-policy';
 import {
@@ -85,7 +94,12 @@ import {
   performWebSearch
 } from './media-tools';
 import { performMemoryGet, performMemoryRecent, performMemoryRemember, performMemorySearch } from './memory-tools';
-import { buildAgentSkillRegistry, findAgentSkillPackage, listAgentSkillSupportingFiles, readAgentSkillSupportingFile } from './skill-registry';
+import {
+  buildAgentSkillRegistry,
+  findAgentSkillPackage,
+  listAgentSkillSupportingFiles,
+  readAgentSkillSupportingFile
+} from './skill-registry';
 import { createUnsupportedEngineResult, getEngineAdapter, type EngineAdapterCapability } from './engine-adapters';
 import { diagnoseCocosEnvironment, installCocosBridge, openCocosDashboard, openCocosProject } from './cocos-adapter';
 import {
@@ -168,7 +182,8 @@ function stripXmlToText(value: string, maxChars: number): string {
 }
 
 function extractReadableBinaryText(bytes: Buffer, maxChars: number): string {
-  const text = bytes.toString('latin1')
+  const text = bytes
+    .toString('latin1')
     .replace(/[^\x09\x0a\x0d\x20-\x7e\u00a0-\u00ff]+/g, ' ')
     .replace(/\s{2,}/g, '\n');
   return normalizeExtractedText(text, maxChars);
@@ -207,18 +222,26 @@ function parsePageSelection(pages?: string): PageSelection | undefined {
   if (!trimmed) {
     return undefined;
   }
-  const ranges = trimmed.split(',').map((part) => part.trim()).filter(Boolean).map((part) => {
-    const match = part.match(/^(\d+)(?:-(\d+))?$/);
-    if (!match) {
-      throw new Error(`Invalid pages parameter: "${pages}". Use formats like "1-5", "3", or "10-20". Pages are 1-indexed.`);
-    }
-    const start = Number.parseInt(match[1], 10);
-    const end = match[2] ? Number.parseInt(match[2], 10) : start;
-    if (start < 1 || end < start) {
-      throw new Error(`Invalid pages parameter: "${pages}". Use formats like "1-5", "3", or "10-20". Pages are 1-indexed.`);
-    }
-    return { start, end };
-  });
+  const ranges = trimmed
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const match = part.match(/^(\d+)(?:-(\d+))?$/);
+      if (!match) {
+        throw new Error(
+          `Invalid pages parameter: "${pages}". Use formats like "1-5", "3", or "10-20". Pages are 1-indexed.`
+        );
+      }
+      const start = Number.parseInt(match[1], 10);
+      const end = match[2] ? Number.parseInt(match[2], 10) : start;
+      if (start < 1 || end < start) {
+        throw new Error(
+          `Invalid pages parameter: "${pages}". Use formats like "1-5", "3", or "10-20". Pages are 1-indexed.`
+        );
+      }
+      return { start, end };
+    });
   return {
     label: trimmed,
     ranges
@@ -245,15 +268,17 @@ function selectIndexedPages(pages: string[], selection: PageSelection | undefine
   );
 }
 
-function extractPdfText(bytes: Buffer, selection: PageSelection | undefined, maxChars: number): {
+function extractPdfText(
+  bytes: Buffer,
+  selection: PageSelection | undefined,
+  maxChars: number
+): {
   text: string;
   pageCount?: number;
   extraction: string;
 } {
   const source = bytes.toString('latin1');
-  const pageSegments = source
-    .split(/(?=\/Type\s*\/Page\b)/g)
-    .filter((segment) => /\/Type\s*\/Page\b/.test(segment));
+  const pageSegments = source.split(/(?=\/Type\s*\/Page\b)/g).filter((segment) => /\/Type\s*\/Page\b/.test(segment));
   if (pageSegments.length > 0) {
     const pageTexts = pageSegments.map((segment) => extractPdfLiteralText(segment, maxChars)).filter(Boolean);
     if (pageTexts.join('\n').length >= 60) {
@@ -295,8 +320,13 @@ async function extractOfficeDocumentText(
   if (extension === '.pptx') {
     const entries = (await listZipEntries(absolutePath))
       .filter((entry) => /^ppt\/slides\/slide\d+\.xml$/i.test(entry))
-      .sort((left, right) => Number(left.match(/slide(\d+)\.xml$/i)?.[1] ?? 0) - Number(right.match(/slide(\d+)\.xml$/i)?.[1] ?? 0));
-    const slideTexts = await Promise.all(entries.map(async (entry) => stripXmlToText(await readZipEntryText(absolutePath, entry) ?? '', maxChars)));
+      .sort(
+        (left, right) =>
+          Number(left.match(/slide(\d+)\.xml$/i)?.[1] ?? 0) - Number(right.match(/slide(\d+)\.xml$/i)?.[1] ?? 0)
+      );
+    const slideTexts = await Promise.all(
+      entries.map(async (entry) => stripXmlToText((await readZipEntryText(absolutePath, entry)) ?? '', maxChars))
+    );
     return {
       text: selectIndexedPages(slideTexts, selection, maxChars),
       pageCount: slideTexts.length,
@@ -307,14 +337,27 @@ async function extractOfficeDocumentText(
   if (extension === '.xlsx') {
     const entries = (await listZipEntries(absolutePath))
       .filter((entry) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(entry))
-      .sort((left, right) => Number(left.match(/sheet(\d+)\.xml$/i)?.[1] ?? 0) - Number(right.match(/sheet(\d+)\.xml$/i)?.[1] ?? 0));
-    const sharedStrings = stripXmlToText(await readZipEntryText(absolutePath, 'xl/sharedStrings.xml') ?? '', maxChars);
-    const sheetTexts = await Promise.all(entries.map(async (entry, index) => {
-      const sheetText = stripXmlToText(await readZipEntryText(absolutePath, entry) ?? '', maxChars);
-      return [`Sheet ${index + 1}`, sheetText].filter(Boolean).join('\n');
-    }));
+      .sort(
+        (left, right) =>
+          Number(left.match(/sheet(\d+)\.xml$/i)?.[1] ?? 0) - Number(right.match(/sheet(\d+)\.xml$/i)?.[1] ?? 0)
+      );
+    const sharedStrings = stripXmlToText(
+      (await readZipEntryText(absolutePath, 'xl/sharedStrings.xml')) ?? '',
+      maxChars
+    );
+    const sheetTexts = await Promise.all(
+      entries.map(async (entry, index) => {
+        const sheetText = stripXmlToText((await readZipEntryText(absolutePath, entry)) ?? '', maxChars);
+        return [`Sheet ${index + 1}`, sheetText].filter(Boolean).join('\n');
+      })
+    );
     return {
-      text: normalizeExtractedText([sharedStrings ? `Shared strings:\n${sharedStrings}` : '', selectIndexedPages(sheetTexts, selection, maxChars)].filter(Boolean).join('\n\n'), maxChars),
+      text: normalizeExtractedText(
+        [sharedStrings ? `Shared strings:\n${sharedStrings}` : '', selectIndexedPages(sheetTexts, selection, maxChars)]
+          .filter(Boolean)
+          .join('\n\n'),
+        maxChars
+      ),
       pageCount: sheetTexts.length,
       extraction: 'xlsx-sheets'
     };
@@ -381,9 +424,10 @@ async function extractLocalDocumentText(
 
   const textPages = body.split('\f');
   return {
-    text: textPages.length > 1
-      ? selectIndexedPages(textPages, selection, maxChars)
-      : normalizeExtractedText(body, maxChars),
+    text:
+      textPages.length > 1
+        ? selectIndexedPages(textPages, selection, maxChars)
+        : normalizeExtractedText(body, maxChars),
     pageCount: textPages.length > 1 ? textPages.length : undefined,
     extraction: textPages.length > 1 ? 'text-pages' : 'plain-text',
     pages: selection?.label
@@ -407,7 +451,10 @@ function truncateCommandOutput(value: string): {
   };
 }
 
-function truncateStructuredOutput(value: string, maxLength = 16_000): {
+function truncateStructuredOutput(
+  value: string,
+  maxLength = 16_000
+): {
   output: string;
   truncated: boolean;
 } {
@@ -454,13 +501,15 @@ function parseBrowserScreenshotSummary(summary: string): {
       url
     },
     artifacts: screenshotPath
-      ? [{
-          type: 'browser_screenshot',
-          path: screenshotPath,
-          title: 'Browser screenshot',
-          mimeType: 'image/png',
-          size: Number.isFinite(size) && size > 0 ? size : undefined
-        }]
+      ? [
+          {
+            type: 'browser_screenshot',
+            path: screenshotPath,
+            title: 'Browser screenshot',
+            mimeType: 'image/png',
+            size: Number.isFinite(size) && size > 0 ? size : undefined
+          }
+        ]
       : undefined
   };
 }
@@ -513,14 +562,19 @@ async function createWorkspaceDirectory(project: Project, path: string): Promise
   return {
     ok: true,
     summary: `已创建目录 ${relativePath}`,
-    changedFiles: [{
-      path: relativePath,
-      operation: 'directory_created'
-    }]
+    changedFiles: [
+      {
+        path: relativePath,
+        operation: 'directory_created'
+      }
+    ]
   };
 }
 
-function resolveCommandCwd(project: Project, cwd?: string): {
+function resolveCommandCwd(
+  project: Project,
+  cwd?: string
+): {
   rootPath: string;
   cwdPath: string;
   relativeCwd: string;
@@ -639,19 +693,20 @@ function stopCommandProcess(child: ChildProcess, signal: NodeJS.Signals): void {
     try {
       process.kill(-child.pid, signal);
       return;
-    } catch {
-    }
+    } catch {}
   }
   try {
     child.kill(signal);
-  } catch {
-  }
+  } catch {}
 }
 
-function formatReadFileSummary(file: ProjectFileContent, options: {
-  offset?: number;
-  limit?: number;
-}): string {
+function formatReadFileSummary(
+  file: ProjectFileContent,
+  options: {
+    offset?: number;
+    limit?: number;
+  }
+): string {
   if (typeof options.offset !== 'number' && typeof options.limit !== 'number') {
     return [
       `[${file.path}]${file.truncated ? ' (truncated)' : ''}`,
@@ -664,9 +719,7 @@ function formatReadFileSummary(file: ProjectFileContent, options: {
   const limit = Math.max(1, Math.min(Math.floor(options.limit ?? 200), MAX_READ_RANGE_LINES));
   const end = Math.min(offset + limit, lines.length);
   const selectedLines = offset < lines.length ? lines.slice(offset, end) : [];
-  const body = selectedLines
-    .map((line, index) => `${offset + index + 1}\t${line}`)
-    .join('\n');
+  const body = selectedLines.map((line, index) => `${offset + index + 1}\t${line}`).join('\n');
 
   return [
     `[${file.path}] lines ${offset + 1}-${end} of ${lines.length}${file.truncated ? ' (source truncated)' : ''}`,
@@ -701,7 +754,10 @@ function createEditMetrics(input: WorkspaceToolActionResult['edit']): WorkspaceT
   return input;
 }
 
-function classifyEditFailure(action: WorkspaceToolAction, errorMessage: string): NonNullable<WorkspaceToolActionResult['edit']>['failureKind'] | undefined {
+function classifyEditFailure(
+  action: WorkspaceToolAction,
+  errorMessage: string
+): NonNullable<WorkspaceToolActionResult['edit']>['failureKind'] | undefined {
   if (action.type === 'preview_patch' || action.type === 'patch_file') {
     return 'invalid_patch';
   }
@@ -716,7 +772,10 @@ function classifyEditFailure(action: WorkspaceToolAction, errorMessage: string):
   return undefined;
 }
 
-function createFailedEditMetrics(action: WorkspaceToolAction, errorMessage: string): WorkspaceToolActionResult['edit'] | undefined {
+function createFailedEditMetrics(
+  action: WorkspaceToolAction,
+  errorMessage: string
+): WorkspaceToolActionResult['edit'] | undefined {
   if (action.type === 'edit_file') {
     return createEditMetrics({
       strategy: 'search_replace',
@@ -773,20 +832,25 @@ function summarizeMcpResult(result: UnityMcpCallResult): string {
 }
 
 function summarizeAssetGenerationProviders(state: AppState, kind?: string): string {
-  const providers = listAssetGenerationProviders(state)
-    .filter((provider) => !kind || (provider.supportedKinds as readonly string[]).includes(kind));
+  const providers = listAssetGenerationProviders(state).filter(
+    (provider) => !kind || (provider.supportedKinds as readonly string[]).includes(kind)
+  );
   return providers.length
-    ? providers.map((provider, index) =>
-        [
-          `${index + 1}. ${provider.name} [${provider.adapter}]`,
-          `ID: ${provider.id}`,
-          `Enabled: ${provider.enabled ? 'yes' : 'no'}`,
-          provider.modelLabel ? `Model: ${provider.modelLabel}` : '',
-          provider.endpointLabel ? `Endpoint: ${provider.endpointLabel}` : '',
-          `Kinds: ${provider.supportedKinds.join(', ')}`,
-          provider.notes ? `Notes: ${provider.notes}` : ''
-        ].filter(Boolean).join('\n')
-      ).join('\n\n')
+    ? providers
+        .map((provider, index) =>
+          [
+            `${index + 1}. ${provider.name} [${provider.adapter}]`,
+            `ID: ${provider.id}`,
+            `Enabled: ${provider.enabled ? 'yes' : 'no'}`,
+            provider.modelLabel ? `Model: ${provider.modelLabel}` : '',
+            provider.endpointLabel ? `Endpoint: ${provider.endpointLabel}` : '',
+            `Kinds: ${provider.supportedKinds.join(', ')}`,
+            provider.notes ? `Notes: ${provider.notes}` : ''
+          ]
+            .filter(Boolean)
+            .join('\n')
+        )
+        .join('\n\n')
     : 'No asset generation providers match the requested kind.';
 }
 
@@ -880,9 +944,7 @@ function formatStatusBadge(status: EnvironmentDiagnostics['checks'][number]['sta
 
 function formatEnvironmentDiagnostics(diagnostics: EnvironmentDiagnostics): string {
   const checks = diagnostics.checks.map((check, index) => {
-    const actions = check.actions.length
-      ? `\n  Actions: ${check.actions.map((action) => action.id).join(', ')}`
-      : '';
+    const actions = check.actions.length ? `\n  Actions: ${check.actions.map((action) => action.id).join(', ')}` : '';
     return `${index + 1}. [${formatStatusBadge(check.status)}] ${check.title}\n  ${check.detail}${actions}`;
   });
   return [
@@ -910,13 +972,17 @@ function formatRuntimeState(runtimeState: ProjectRuntimeState, platform: Platfor
     `Project open: ${runtimeState.projectOpen ? 'yes' : 'no'}`,
     `Bridge installed: ${runtimeState.bridgeInstalled ? 'yes' : 'no'}`,
     runtimeState.detectedDimension ? `Detected dimension: ${runtimeState.detectedDimension}` : '',
-    runtimeState.mcpSettings ? `MCP settings: ${runtimeState.mcpSettings.url} (${runtimeState.mcpSettings.toolExportProfile})` : '',
+    runtimeState.mcpSettings
+      ? `MCP settings: ${runtimeState.mcpSettings.url} (${runtimeState.mcpSettings.toolExportProfile})`
+      : '',
     bridgeHealth ? `MCP health: ${bridgeHealth.status} - ${bridgeHealth.message}` : 'MCP health: not checked',
     runtimeState.availableResourceUris?.length ? `MCP resources: ${runtimeState.availableResourceUris.join(', ')}` : '',
     runtimeState.activeSceneSummary ? `Active scene:\n${runtimeState.activeSceneSummary}` : '',
     runtimeState.currentSelectionSummary ? `Selection:\n${runtimeState.currentSelectionSummary}` : '',
     runtimeState.recentConsoleSummary ? `Recent console:\n${runtimeState.recentConsoleSummary}` : ''
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function summarizeEnvironmentAction(result: EnvironmentActionResult, diagnostics?: EnvironmentDiagnostics): string {
@@ -926,15 +992,19 @@ function summarizeEnvironmentAction(result: EnvironmentActionResult, diagnostics
     `Message: ${result.message}`,
     result.taskId ? `Task id: ${result.taskId}` : '',
     diagnostics ? ['', 'Post-action diagnostics:', formatEnvironmentDiagnostics(diagnostics)].join('\n') : ''
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function sanitizeArtifactSegment(value: string): string {
-  return value
-    .trim()
-    .replace(/[^a-zA-Z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48) || 'command';
+  return (
+    value
+      .trim()
+      .replace(/[^a-zA-Z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || 'command'
+  );
 }
 
 async function writeCommandOutputArtifact(input: {
@@ -957,7 +1027,9 @@ async function writeCommandOutputArtifact(input: {
       input.timedOut ? 'Timed out: yes' : 'Timed out: no',
       '',
       input.combined
-    ].filter(Boolean).join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
     const artifactDir = join(tmpdir(), COMMAND_OUTPUT_ARTIFACT_DIR, sanitizeArtifactSegment(input.project.id));
     await mkdir(artifactDir, { recursive: true });
     const artifactPath = join(
@@ -1005,15 +1077,18 @@ async function writeTerminalOutputArtifact(input: {
 
 async function executeEngineControlAction(
   project: Project,
-  action: Extract<WorkspaceToolAction, {
-    type:
-      | 'diagnose_engine_status'
-      | 'refresh_engine_runtime_state'
-      | 'open_engine_hub'
-      | 'open_engine_project'
-      | 'install_engine_bridge'
-      | 'run_engine_environment_action';
-  }>,
+  action: Extract<
+    WorkspaceToolAction,
+    {
+      type:
+        | 'diagnose_engine_status'
+        | 'refresh_engine_runtime_state'
+        | 'open_engine_hub'
+        | 'open_engine_project'
+        | 'install_engine_bridge'
+        | 'run_engine_environment_action';
+    }
+  >,
   options: AgentToolExecutionOptions
 ): Promise<WorkspaceToolActionResult> {
   const state = options.appState ?? createDetachedEngineToolState(project);
@@ -1032,7 +1107,9 @@ async function executeEngineControlAction(
               ? 'installBridge'
               : action.actionId === 'open_unity_hub' || action.actionId === 'select_unity_hub'
                 ? 'openHub'
-                : action.actionId === 'open_unity_project' || action.actionId === 'import_unity_project' || action.actionId === 'create_unity_project'
+                : action.actionId === 'open_unity_project' ||
+                    action.actionId === 'import_unity_project' ||
+                    action.actionId === 'create_unity_project'
                   ? 'openProject'
                   : action.actionId === 'install_project_bridge'
                     ? 'installBridge'
@@ -1044,6 +1121,11 @@ async function executeEngineControlAction(
       projectPath: resolveEngineProjectPath(project, 'projectPath' in action ? action.projectPath : undefined)
     });
   }
+  const persistState = async () => {
+    if (options.appState && options.persistAppState) {
+      await options.persistAppState(options.appState);
+    }
+  };
   if (platform === 'cocos') {
     const projectPath = resolveEngineProjectPath(project, 'projectPath' in action ? action.projectPath : undefined);
     if (capability === 'diagnose' || capability === 'refresh') {
@@ -1056,6 +1138,21 @@ async function executeEngineControlAction(
       return openCocosDashboard();
     }
     if (capability === 'openProject') {
+      const runtimeState = await getProjectRuntimeState(state, {
+        platform,
+        projectPath
+      });
+      await persistState();
+      if (runtimeState.projectOpen) {
+        return {
+          ok: true,
+          summary: [
+            formatRuntimeState(runtimeState, platform, projectPath),
+            '',
+            'Cocos project is already open or connected through MCP; skipped launching another Cocos Creator instance.'
+          ].join('\n')
+        };
+      }
       return openCocosProject({
         projectPath
       });
@@ -1071,11 +1168,6 @@ async function executeEngineControlAction(
       projectPath
     });
   }
-  const persistState = async () => {
-    if (options.appState && options.persistAppState) {
-      await options.persistAppState(options.appState);
-    }
-  };
 
   if (action.type === 'refresh_engine_runtime_state') {
     const projectPath = resolveEngineProjectPath(project, action.projectPath);
@@ -1162,23 +1254,20 @@ async function runWorkspaceCommand(
           ...started.terminal,
           command: terminalCommand
         },
-        artifacts: [{
-          type: 'terminal',
-          title: terminalCommand
-        }]
+        artifacts: [
+          {
+            type: 'terminal',
+            title: terminalCommand
+          }
+        ]
       };
     }
-    const message = 'run_command 不执行 shell 后台控制符 &。需要启动 dev server、HTTP server、watch 或长期运行任务时，请改用 terminal_start，然后用 terminal_read 查看输出。';
+    const message =
+      'run_command 不执行 shell 后台控制符 &。需要启动 dev server、HTTP server、watch 或长期运行任务时，请改用 terminal_start，然后用 terminal_read 查看输出。';
     return {
       ok: false,
       isError: true,
-      summary: [
-        `命令：${command}`,
-        `工作目录：${relativeCwd}`,
-        '状态：已拒绝执行后台命令',
-        '',
-        message
-      ].join('\n'),
+      summary: [`命令：${command}`, `工作目录：${relativeCwd}`, '状态：已拒绝执行后台命令', '', message].join('\n'),
       command: {
         command,
         cwd: relativeCwd,
@@ -1257,27 +1346,28 @@ async function runWorkspaceCommand(
       options.abortSignal?.removeEventListener('abort', abort);
       const stdout = Buffer.concat(stdoutChunks).toString('utf8');
       const stderr = Buffer.concat(stderrChunks).toString('utf8');
-      const combined = [
-        stdout ? `stdout:\n${stdout.trimEnd()}` : '',
-        stderr ? `stderr:\n${stderr.trimEnd()}` : ''
-      ].filter(Boolean).join('\n\n') || '(no output)';
+      const combined =
+        [stdout ? `stdout:\n${stdout.trimEnd()}` : '', stderr ? `stderr:\n${stderr.trimEnd()}` : '']
+          .filter(Boolean)
+          .join('\n\n') || '(no output)';
       const truncated = truncateCommandOutput(combined);
       const structuredStdout = truncateStructuredOutput(stdout);
       const structuredStderr = truncateStructuredOutput(stderr);
       const ok = code === 0 && !timedOut && !signal;
-      const fullOutputArtifact = truncated.truncated || structuredStdout.truncated || structuredStderr.truncated
-        ? await writeCommandOutputArtifact({
-            project,
-            command,
-            cwd: relativeCwd,
-            exitCode: code,
-            signal,
-            timedOut,
-            stdout,
-            stderr,
-            combined
-          })
-        : undefined;
+      const fullOutputArtifact =
+        truncated.truncated || structuredStdout.truncated || structuredStderr.truncated
+          ? await writeCommandOutputArtifact({
+              project,
+              command,
+              cwd: relativeCwd,
+              exitCode: code,
+              signal,
+              timedOut,
+              stdout,
+              stderr,
+              combined
+            })
+          : undefined;
 
       finish({
         ok,
@@ -1291,7 +1381,9 @@ async function runWorkspaceCommand(
           truncated.truncated ? '输出：已截断' : '',
           '',
           truncated.output
-        ].filter((line) => line !== '').join('\n'),
+        ]
+          .filter((line) => line !== '')
+          .join('\n'),
         command: {
           command,
           cwd: relativeCwd,
@@ -1302,11 +1394,13 @@ async function runWorkspaceCommand(
           stderr: structuredStderr.output,
           outputTruncated: truncated.truncated || structuredStdout.truncated || structuredStderr.truncated
         },
-        artifacts: [fullOutputArtifact ?? {
-          type: 'command_output' as const,
-          title: command,
-          size: stdout.length + stderr.length
-        }]
+        artifacts: [
+          fullOutputArtifact ?? {
+            type: 'command_output' as const,
+            title: command,
+            size: stdout.length + stderr.length
+          }
+        ]
       });
     });
   });
@@ -1316,15 +1410,23 @@ function isConnectableMcpPlugin(plugin: McpPlugin): boolean {
   return plugin.transport === 'stdio' ? Boolean(plugin.command?.trim()) : Boolean(plugin.baseUrl?.trim());
 }
 
-function resolvePluginForAction(plugins: McpPlugin[], action: Extract<WorkspaceToolAction, {
-  type: 'list_mcp_tools' | 'list_mcp_resources' | 'read_mcp_resource' | 'call_mcp_tool';
-}>): McpPlugin | undefined {
+function resolvePluginForAction(
+  plugins: McpPlugin[],
+  action: Extract<
+    WorkspaceToolAction,
+    {
+      type: 'list_mcp_tools' | 'list_mcp_resources' | 'read_mcp_resource' | 'call_mcp_tool';
+    }
+  >
+): McpPlugin | undefined {
   if (action.pluginId) {
     return plugins.find((plugin) => plugin.id === action.pluginId && plugin.enabled && isConnectableMcpPlugin(plugin));
   }
 
   if (action.pluginKind) {
-    return plugins.find((plugin) => plugin.kind === action.pluginKind && plugin.enabled && isConnectableMcpPlugin(plugin));
+    return plugins.find(
+      (plugin) => plugin.kind === action.pluginKind && plugin.enabled && isConnectableMcpPlugin(plugin)
+    );
   }
 
   return plugins.find((plugin) => plugin.enabled && isConnectableMcpPlugin(plugin));
@@ -1356,17 +1458,21 @@ function serializeMcpArgs(args: Record<string, unknown>): string {
 }
 
 function createMcpAbortSignal(abortSignal?: AbortSignal): AbortSignal {
-  return abortSignal ? AbortSignal.any([abortSignal, AbortSignal.timeout(MCP_TOOL_TIMEOUT_MS)]) : AbortSignal.timeout(MCP_TOOL_TIMEOUT_MS);
+  return abortSignal
+    ? AbortSignal.any([abortSignal, AbortSignal.timeout(MCP_TOOL_TIMEOUT_MS)])
+    : AbortSignal.timeout(MCP_TOOL_TIMEOUT_MS);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
-function firstElicitationProperty(schema: Record<string, unknown> | undefined): {
-  name: string;
-  schema: Record<string, unknown>;
-} | undefined {
+function firstElicitationProperty(schema: Record<string, unknown> | undefined):
+  | {
+      name: string;
+      schema: Record<string, unknown>;
+    }
+  | undefined {
   const properties = asRecord(schema?.properties);
   if (!properties) {
     return undefined;
@@ -1406,7 +1512,8 @@ function createMcpElicitationHandler(options: AgentToolExecutionOptions): McpCli
     const propertyDescription = typeof property?.schema.description === 'string' ? property.schema.description : '';
     const response = await requestUserInput({
       title: 'MCP 需要你的输入',
-      question: typeof request.params.message === 'string' ? request.params.message : 'MCP server requested user input.',
+      question:
+        typeof request.params.message === 'string' ? request.params.message : 'MCP server requested user input.',
       detail: [schemaTitle, schemaDescription, propertyDescription].filter(Boolean).join('\n'),
       options: optionsForUser,
       allowFreeText: optionsForUser.length === 0,
@@ -1435,7 +1542,10 @@ function createMcpElicitationHandler(options: AgentToolExecutionOptions): McpCli
 }
 
 function createMcpMetadata(input: {
-  action: Extract<WorkspaceToolAction, { type: 'list_mcp_tools' | 'list_mcp_resources' | 'read_mcp_resource' | 'call_mcp_tool' }>;
+  action: Extract<
+    WorkspaceToolAction,
+    { type: 'list_mcp_tools' | 'list_mcp_resources' | 'read_mcp_resource' | 'call_mcp_tool' }
+  >;
   plugin?: McpPlugin;
   argsSize?: number;
   contentPartCount?: number;
@@ -1446,27 +1556,38 @@ function createMcpMetadata(input: {
     pluginId: input.plugin?.id ?? input.action.pluginId,
     pluginKind: input.plugin?.kind ?? input.action.pluginKind,
     operation:
-      input.action.type === 'list_mcp_tools' ? 'list_tools' :
-      input.action.type === 'list_mcp_resources' ? 'list_resources' :
-      input.action.type === 'read_mcp_resource' ? 'read_resource' :
-      'call_tool',
+      input.action.type === 'list_mcp_tools'
+        ? 'list_tools'
+        : input.action.type === 'list_mcp_resources'
+          ? 'list_resources'
+          : input.action.type === 'read_mcp_resource'
+            ? 'read_resource'
+            : 'call_tool',
     target:
-      input.action.type === 'list_mcp_tools' ? 'tools' :
-      input.action.type === 'list_mcp_resources' ? 'resources' :
-      input.action.type === 'read_mcp_resource' ? input.action.uri :
-      input.action.toolName,
+      input.action.type === 'list_mcp_tools'
+        ? 'tools'
+        : input.action.type === 'list_mcp_resources'
+          ? 'resources'
+          : input.action.type === 'read_mcp_resource'
+            ? input.action.uri
+            : input.action.toolName,
     timeoutMs: MCP_TOOL_TIMEOUT_MS,
     schemaGuard: input.schemaGuard
   };
-  if (input.action.type === 'call_mcp_tool' && input.action.exposedToolName) metadata.exposedName = input.action.exposedToolName;
-  if (input.action.type === 'call_mcp_tool' && input.action.mcpPolicySummary) metadata.policySummary = input.action.mcpPolicySummary;
+  if (input.action.type === 'call_mcp_tool' && input.action.exposedToolName)
+    metadata.exposedName = input.action.exposedToolName;
+  if (input.action.type === 'call_mcp_tool' && input.action.mcpPolicySummary)
+    metadata.policySummary = input.action.mcpPolicySummary;
   if (typeof input.argsSize === 'number') metadata.argsSize = input.argsSize;
   if (typeof input.contentPartCount === 'number') metadata.contentPartCount = input.contentPartCount;
   if (input.failureKind) metadata.failureKind = input.failureKind;
   return metadata;
 }
 
-function createFailedMcpMetadata(action: WorkspaceToolAction, errorMessage: string): WorkspaceToolActionResult['mcp'] | undefined {
+function createFailedMcpMetadata(
+  action: WorkspaceToolAction,
+  errorMessage: string
+): WorkspaceToolActionResult['mcp'] | undefined {
   if (
     action.type !== 'list_mcp_tools' &&
     action.type !== 'list_mcp_resources' &&
@@ -1475,13 +1596,17 @@ function createFailedMcpMetadata(action: WorkspaceToolAction, errorMessage: stri
   ) {
     return undefined;
   }
-  const failureKind =
-    /没有找到/.test(errorMessage) ? 'missing_plugin' :
-    /uri/.test(errorMessage) ? 'invalid_uri' :
-    /toolName/.test(errorMessage) ? 'invalid_tool_name' :
-    /args/.test(errorMessage) ? 'args_too_large' :
-    /timeout|aborted|超时/i.test(errorMessage) ? 'timeout' :
-    'unknown';
+  const failureKind = /没有找到/.test(errorMessage)
+    ? 'missing_plugin'
+    : /uri/.test(errorMessage)
+      ? 'invalid_uri'
+      : /toolName/.test(errorMessage)
+        ? 'invalid_tool_name'
+        : /args/.test(errorMessage)
+          ? 'args_too_large'
+          : /timeout|aborted|超时/i.test(errorMessage)
+            ? 'timeout'
+            : 'unknown';
   return createMcpMetadata({
     action,
     schemaGuard: 'failed',
@@ -1501,7 +1626,9 @@ function summarizeMcpTools(plugin: McpPlugin, tools: UnityMcpTool[]): string {
       return `- ${tool.name}${tool.description ? `：${tool.description}` : ''}${schema}`;
     }),
     tools.length > 60 ? `...其余 ${tools.length - 60} 个已省略。` : ''
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function summarizeMcpResources(plugin: McpPlugin, resources: UnityMcpResource[]): string {
@@ -1511,11 +1638,16 @@ function summarizeMcpResources(plugin: McpPlugin, resources: UnityMcpResource[])
 
   return [
     `${plugin.name} 暴露 ${resources.length} 个 MCP resources：`,
-    ...resources.slice(0, 80).map((resource) =>
-      `- ${resource.uri}${resource.name ? ` (${resource.name})` : ''}${resource.description ? `：${resource.description}` : ''}`
-    ),
+    ...resources
+      .slice(0, 80)
+      .map(
+        (resource) =>
+          `- ${resource.uri}${resource.name ? ` (${resource.name})` : ''}${resource.description ? `：${resource.description}` : ''}`
+      ),
     resources.length > 80 ? `...其余 ${resources.length - 80} 个已省略。` : ''
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 export function isWriteLikeToolAction(action: WorkspaceToolAction): boolean {
@@ -1579,7 +1711,7 @@ export async function executeAgentToolAction(
     return {
       ok: false,
       isError: true,
-      summary: `${action.type} 只能在 Native 真实 tool-calling 主链中执行。`
+      summary: `${action.type} 只能在内置工具执行链路中执行。`
     };
   }
 
@@ -1627,9 +1759,12 @@ export async function executeAgentToolAction(
       return {
         ok: true,
         summary: tasks.length
-          ? tasks.map((task, index) =>
-              `${index + 1}. [${task.id}] ${task.name}\nType: ${task.scheduleType} (${task.scheduleValue})\nStatus: ${task.status} | Next: ${task.nextRun ?? '-'} | Durable: ${task.durable ? 'yes' : 'no'}`
-            ).join('\n\n')
+          ? tasks
+              .map(
+                (task, index) =>
+                  `${index + 1}. [${task.id}] ${task.name}\nType: ${task.scheduleType} (${task.scheduleValue})\nStatus: ${task.status} | Next: ${task.nextRun ?? '-'} | Durable: ${task.durable ? 'yes' : 'no'}`
+              )
+              .join('\n\n')
           : 'No scheduled tasks found.'
       };
     }
@@ -1664,22 +1799,28 @@ export async function executeAgentToolAction(
         durationSeconds: action.durationSeconds,
         transparentBackground: action.transparentBackground
       };
-      const updated = await generateAssetForProject(options.appState, project.id, {
-        title: action.title,
-        kind: action.kind,
-        prompt: action.prompt,
-        negativePrompt: action.negativePrompt,
-        providerId: action.providerId,
-        outputSpec,
-        count: action.count,
-        createdBy: 'agent',
-        targetEngine: project.engine?.platform
-      }, {
-        onProjectUpdate: () => persistAssetGenerationState(options)
-      });
+      const updated = await generateAssetForProject(
+        options.appState,
+        project.id,
+        {
+          title: action.title,
+          kind: action.kind,
+          prompt: action.prompt,
+          negativePrompt: action.negativePrompt,
+          providerId: action.providerId,
+          outputSpec,
+          count: action.count,
+          createdBy: 'agent',
+          targetEngine: project.engine?.platform
+        },
+        {
+          onProjectUpdate: () => persistAssetGenerationState(options)
+        }
+      );
       await persistAssetGenerationState(options);
-      const job = [...(updated.assetGenerationJobs ?? [])]
-        .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0];
+      const job = [...(updated.assetGenerationJobs ?? [])].sort(
+        (left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)
+      )[0];
       const outputs = job?.outputs ?? [];
       return {
         ok: job?.status === 'completed',
@@ -1718,7 +1859,9 @@ export async function executeAgentToolAction(
           ? [
               `Imported generated asset job: ${job.id}`,
               `Status: ${job.status}`,
-              ...job.outputs.map((output) => `- ${output.path}${output.importedAt ? ` importedAt=${output.importedAt}` : ''}`)
+              ...job.outputs.map(
+                (output) => `- ${output.path}${output.importedAt ? ` importedAt=${output.importedAt}` : ''}`
+              )
             ].join('\n')
           : `Asset generation job not found: ${action.jobId}`,
         changedFiles: job?.outputs.map((output) => ({
@@ -1745,25 +1888,30 @@ export async function executeAgentToolAction(
         projectPath: project.engine?.projectPath
       });
       const query = action.query?.trim().toLowerCase();
-      const skills = registry.index.filter((skill) =>
-        !query ||
-        skill.name.toLowerCase().includes(query) ||
-        skill.description?.toLowerCase().includes(query)
+      const skills = registry.index.filter(
+        (skill) =>
+          !query || skill.name.toLowerCase().includes(query) || skill.description?.toLowerCase().includes(query)
       );
       return {
         ok: true,
         summary: skills.length
-          ? skills.map((skill, index) =>
-              [
-                `${index + 1}. ${skill.name} [${skill.source}]`,
-                skill.description ? `Description: ${skill.description}` : '',
-                `Invocable: user=${skill.userInvocable ? 'yes' : 'no'} model=${skill.modelInvocable ? 'yes' : 'no'}`,
-                `Trust: ${skill.trustLevel}; verification=${skill.verificationStatus}; permission=${skill.permissionPolicy}`,
-                skill.declaredScripts?.length ? `Declared scripts: ${skill.declaredScripts.length}; scriptPolicy=${skill.scriptPolicy}` : '',
-                skill.allowedTools?.length ? `Allowed tools: ${skill.allowedTools.join(', ')}` : '',
-                `Skill id: ${skill.id}`
-              ].filter(Boolean).join('\n')
-            ).join('\n\n')
+          ? skills
+              .map((skill, index) =>
+                [
+                  `${index + 1}. ${skill.name} [${skill.source}]`,
+                  skill.description ? `Description: ${skill.description}` : '',
+                  `Invocable: user=${skill.userInvocable ? 'yes' : 'no'} model=${skill.modelInvocable ? 'yes' : 'no'}`,
+                  `Trust: ${skill.trustLevel}; verification=${skill.verificationStatus}; permission=${skill.permissionPolicy}`,
+                  skill.declaredScripts?.length
+                    ? `Declared scripts: ${skill.declaredScripts.length}; scriptPolicy=${skill.scriptPolicy}`
+                    : '',
+                  skill.allowedTools?.length ? `Allowed tools: ${skill.allowedTools.join(', ')}` : '',
+                  `Skill id: ${skill.id}`
+                ]
+                  .filter(Boolean)
+                  .join('\n')
+              )
+              .join('\n\n')
           : 'No Agent Skills found.'
       };
     }
@@ -1792,13 +1940,18 @@ export async function executeAgentToolAction(
           `Permission policy: ${skill.permissionPolicy}`,
           `Script policy: ${skill.scriptPolicy}`,
           skill.declaredScripts?.length
-            ? ['Declared scripts:', ...skill.declaredScripts.map((script) => `- ${script.name} [${script.risk}]: ${script.command}`)].join('\n')
+            ? [
+                'Declared scripts:',
+                ...skill.declaredScripts.map((script) => `- ${script.name} [${script.risk}]: ${script.command}`)
+              ].join('\n')
             : '',
           skill.allowedTools?.length ? `Allowed tools: ${skill.allowedTools.join(', ')}` : '',
           skill.dependencies?.length ? `Dependencies: ${skill.dependencies.join(', ')}` : '',
           '',
           truncate(skill.instruction, MAX_SKILL_INSTRUCTION_CHARS)
-        ].filter(Boolean).join('\n')
+        ]
+          .filter(Boolean)
+          .join('\n')
       };
     }
 
@@ -1861,10 +2014,11 @@ export async function executeAgentToolAction(
       const files = await listProjectFilesForProject(project);
       return {
         ok: true,
-        summary: files
-          .slice(0, MAX_TREE_ITEMS)
-          .map((file) => `- ${file.type === 'directory' ? `${file.path}/` : file.path}`)
-          .join('\n') || '当前项目目录为空。'
+        summary:
+          files
+            .slice(0, MAX_TREE_ITEMS)
+            .map((file) => `- ${file.type === 'directory' ? `${file.path}/` : file.path}`)
+            .join('\n') || '当前项目目录为空。'
       };
     }
 
@@ -2103,10 +2257,12 @@ export async function executeAgentToolAction(
           ...started.terminal,
           command: action.command ?? started.terminal.command
         },
-        artifacts: [{
-          type: 'terminal',
-          title: action.name ?? action.command ?? started.sessionId
-        }]
+        artifacts: [
+          {
+            type: 'terminal',
+            title: action.name ?? action.command ?? started.sessionId
+          }
+        ]
       };
     }
 
@@ -2122,13 +2278,14 @@ export async function executeAgentToolAction(
         ...liveTerminal
       };
       const outputWasTruncated = /^output=tail\(/m.test(summary);
-      const terminalOutputArtifact = outputWasTruncated || (terminal.totalOutputChars ?? 0) > MAX_COMMAND_OUTPUT_CHARS
-        ? await writeTerminalOutputArtifact({
-            project,
-            sessionId: action.sessionId,
-            title: terminal.command ?? terminal.name ?? action.sessionId
-          })
-        : undefined;
+      const terminalOutputArtifact =
+        outputWasTruncated || (terminal.totalOutputChars ?? 0) > MAX_COMMAND_OUTPUT_CHARS
+          ? await writeTerminalOutputArtifact({
+              project,
+              sessionId: action.sessionId,
+              title: terminal.command ?? terminal.name ?? action.sessionId
+            })
+          : undefined;
       return {
         ok: true,
         summary,
@@ -2264,7 +2421,8 @@ export async function executeAgentToolAction(
         summary,
         browser: {
           sessionId: action.sessionId,
-          consoleMessageCount: summary === 'No browser console messages.' ? 0 : summary.split('\n').filter(Boolean).length
+          consoleMessageCount:
+            summary === 'No browser console messages.' ? 0 : summary.split('\n').filter(Boolean).length
         }
       };
     }
@@ -2293,20 +2451,20 @@ export async function executeAgentToolAction(
       const result = await previewFileCheckpointChanges(project, options.checkpointSnapshotId);
       return {
         ok: true,
-        summary: result.changedFiles.length > 0
-          ? [
-              `Checkpoint: ${result.snapshotId}`,
-              `Changed files: ${result.changedFiles.length}`,
-              result.skippedFiles.length ? `Skipped files: ${result.skippedFiles.join(', ')}` : '',
-              '',
-              ...result.changedFiles.map((file, index) =>
-                [
-                  `## ${index + 1}. ${file.path} (${file.status})`,
-                  file.diffPreview
-                ].join('\n')
-              )
-            ].filter((line) => line !== '').join('\n')
-          : `Checkpoint: ${result.snapshotId}\nNo file changes recorded.`
+        summary:
+          result.changedFiles.length > 0
+            ? [
+                `Checkpoint: ${result.snapshotId}`,
+                `Changed files: ${result.changedFiles.length}`,
+                result.skippedFiles.length ? `Skipped files: ${result.skippedFiles.join(', ')}` : '',
+                '',
+                ...result.changedFiles.map((file, index) =>
+                  [`## ${index + 1}. ${file.path} (${file.status})`, file.diffPreview].join('\n')
+                )
+              ]
+                .filter((line) => line !== '')
+                .join('\n')
+            : `Checkpoint: ${result.snapshotId}\nNo file changes recorded.`
       };
     }
 
@@ -2321,7 +2479,9 @@ export async function executeAgentToolAction(
           `Restored checkpoint: ${options.checkpointSnapshotId}`,
           `Restored files: ${result.restoredFiles.length ? result.restoredFiles.join(', ') : 'none'}`,
           result.skippedFiles.length ? `Skipped files: ${result.skippedFiles.join(', ')}` : ''
-        ].filter((line) => line !== '').join('\n'),
+        ]
+          .filter((line) => line !== '')
+          .join('\n'),
         changedFiles: result.restoredFiles.map((path) => ({
           path,
           operation: 'restored'
@@ -2341,24 +2501,20 @@ export async function executeAgentToolAction(
         project,
         filePath: action.path
       });
-      const result = await replaceProjectTextInFileForProject(
-        project,
-        action.path,
-        action.oldText,
-        action.newText,
-        {
-          replaceAll: action.replaceAll
-        }
-      );
+      const result = await replaceProjectTextInFileForProject(project, action.path, action.oldText, action.newText, {
+        replaceAll: action.replaceAll
+      });
       return {
         ok: true,
         summary: `已编辑 ${result.path}，替换 ${result.replacementCount} 处 (${result.size} bytes)`,
-        changedFiles: [{
-          path: result.path,
-          operation: 'modified',
-          size: result.size,
-          replacementCount: result.replacementCount
-        }],
+        changedFiles: [
+          {
+            path: result.path,
+            operation: 'modified',
+            size: result.size,
+            replacementCount: result.replacementCount
+          }
+        ],
         edit: createEditMetrics({
           strategy: 'search_replace',
           patchFirst: false,
@@ -2383,12 +2539,14 @@ export async function executeAgentToolAction(
           `总替换 ${result.replacementCount} 处 (${result.size} bytes)。`,
           ...result.edits.map((edit) => `- edit ${edit.index + 1}: 替换 ${edit.replacementCount} 处`)
         ].join('\n'),
-        changedFiles: [{
-          path: result.path,
-          operation: 'modified',
-          size: result.size,
-          replacementCount: result.replacementCount
-        }],
+        changedFiles: [
+          {
+            path: result.path,
+            operation: 'modified',
+            size: result.size,
+            replacementCount: result.replacementCount
+          }
+        ],
         edit: createEditMetrics({
           strategy: 'multi_edit',
           patchFirst: false,
@@ -2415,14 +2573,16 @@ export async function executeAgentToolAction(
           '',
           result.diffPreview
         ].join('\n'),
-        changedFiles: [{
-          path: result.path,
-          operation: 'patched',
-          size: result.size,
-          hunkCount: result.hunkCount,
-          addedLines: result.addedLines,
-          removedLines: result.removedLines
-        }],
+        changedFiles: [
+          {
+            path: result.path,
+            operation: 'patched',
+            size: result.size,
+            hunkCount: result.hunkCount,
+            addedLines: result.addedLines,
+            removedLines: result.removedLines
+          }
+        ],
         edit: createEditMetrics({
           strategy: 'unified_patch',
           patchFirst: true,
@@ -2446,12 +2606,14 @@ export async function executeAgentToolAction(
         ? `已写入 ${result.path} (${result.size} bytes)`
         : `写入失败 ${action.path}: ${writeErrorMessage}`,
       changedFiles: result
-        ? [{
-            path: result.path,
-            operation: result.success ? 'created' : 'failed',
-            size: result.size,
-            error: result.error
-          }]
+        ? [
+            {
+              path: result.path,
+              operation: result.success ? 'created' : 'failed',
+              size: result.size,
+              error: result.error
+            }
+          ]
         : undefined,
       edit: result?.success
         ? createEditMetrics({
@@ -2481,6 +2643,9 @@ export async function executeAgentToolAction(
   }
 }
 
-export async function executeWorkspaceToolAction(project: Project, action: WorkspaceToolAction): Promise<WorkspaceToolActionResult> {
+export async function executeWorkspaceToolAction(
+  project: Project,
+  action: WorkspaceToolAction
+): Promise<WorkspaceToolActionResult> {
   return executeAgentToolAction(project, action);
 }

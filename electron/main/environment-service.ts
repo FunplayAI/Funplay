@@ -63,10 +63,16 @@ import {
   inspectCocosProject,
   installCocosBridge,
   isCocosBridgeInstalled,
+  isCocosProjectCurrentlyOpen,
   openCocosDashboard,
   openCocosProject
 } from './agent-platform/cocos-adapter';
-import { getMcpConnectionSnapshot, initializeMcpConnection, postMcpJsonRpcForConfig, type McpConnectionConfig } from './mcp-connection-manager';
+import {
+  getMcpConnectionSnapshot,
+  initializeMcpConnection,
+  postMcpJsonRpcForConfig,
+  type McpConnectionConfig
+} from './mcp-connection-manager';
 
 const execFileAsync = promisify(execFile);
 const shell = electron.shell;
@@ -102,8 +108,12 @@ function getStandardUnityHubCandidates(): string[] {
   ];
 }
 
-function getUnityHubCandidates(settings?: Pick<UnitySettings, 'unityHubPath'>): Array<{ path: string; source: UnityHubInstallSource }> {
-  const candidates: Array<{ path: string; source: UnityHubInstallSource }> = getStandardUnityHubCandidates().map((path) => ({ path, source: 'standard' }));
+function getUnityHubCandidates(
+  settings?: Pick<UnitySettings, 'unityHubPath'>
+): Array<{ path: string; source: UnityHubInstallSource }> {
+  const candidates: Array<{ path: string; source: UnityHubInstallSource }> = getStandardUnityHubCandidates().map(
+    (path) => ({ path, source: 'standard' })
+  );
   const customPath = settings?.unityHubPath ? normalizeLocalPath(settings.unityHubPath) : '';
   if (customPath) {
     candidates.push({ path: customPath, source: 'custom' });
@@ -142,12 +152,16 @@ export function isLikelyUnityHubPath(localPath: string): boolean {
   if (['unity hub.app', 'unity hub.exe', 'unityhub', 'unityhub.appimage', 'unity hub.appimage'].includes(name)) {
     return true;
   }
-  return existsSync(join(normalized, 'Contents', 'MacOS', 'Unity Hub')) ||
+  return (
+    existsSync(join(normalized, 'Contents', 'MacOS', 'Unity Hub')) ||
     existsSync(join(normalized, 'Unity Hub.exe')) ||
-    existsSync(join(normalized, 'unityhub'));
+    existsSync(join(normalized, 'unityhub'))
+  );
 }
 
-function findUnityHubInstall(settings?: Pick<UnitySettings, 'unityHubPath'>): { path: string; source: UnityHubInstallSource } | null {
+function findUnityHubInstall(
+  settings?: Pick<UnitySettings, 'unityHubPath'>
+): { path: string; source: UnityHubInstallSource } | null {
   return getUnityHubCandidates(settings).find((candidate) => isLikelyUnityHubPath(candidate.path)) ?? null;
 }
 
@@ -200,7 +214,11 @@ function funplayMcpSettingsPath(projectPath: string): string {
   return join(normalizeProjectPath(projectPath), 'UserSettings', 'FunplayMcpSettings.json');
 }
 
-export function resolveTargetProjectPath(input: { mode: ProjectSetupMode; projectPath: string; projectName?: string }): string {
+export function resolveTargetProjectPath(input: {
+  mode: ProjectSetupMode;
+  projectPath: string;
+  projectName?: string;
+}): string {
   const normalizedBase = normalizeProjectPath(input.projectPath);
   if (input.mode === 'create') {
     const name = (input.projectName ?? '').trim();
@@ -216,18 +234,6 @@ function isUnityProjectCurrentlyOpen(projectPath: string): boolean {
     return output
       .split('\n')
       .some((line) => line.includes('/Unity') && line.includes('-projectPath') && line.includes(normalized));
-  } catch {
-    return false;
-  }
-}
-
-function isCocosProjectCurrentlyOpen(projectPath: string): boolean {
-  const normalized = normalizeProjectPath(projectPath);
-  try {
-    const output = execFileSync('ps', ['-ax', '-o', 'command='], { encoding: 'utf8' });
-    return output
-      .split('\n')
-      .some((line) => /CocosCreator/i.test(line) && line.includes('--project') && line.includes(normalized));
   } catch {
     return false;
   }
@@ -250,8 +256,10 @@ function resolveCocosMcpPlugin(state: AppState, enginePluginId?: string): McpPlu
   if (isCocosEngineMcpPlugin(requestedPlugin)) {
     return requestedPlugin;
   }
-  return state.mcpPlugins.find((item) => item.enabled && isCocosEngineMcpPlugin(item)) ??
-    state.mcpPlugins.find(isCocosEngineMcpPlugin);
+  return (
+    state.mcpPlugins.find((item) => item.enabled && isCocosEngineMcpPlugin(item)) ??
+    state.mcpPlugins.find(isCocosEngineMcpPlugin)
+  );
 }
 
 function buildCocosMcpConnectionConfig(state: AppState, enginePluginId?: string): McpConnectionConfig {
@@ -288,9 +296,7 @@ function parseCocosMcpPort(baseUrl: string): number {
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
 function extractCocosProjectPathFromText(text: string): string | undefined {
@@ -357,12 +363,22 @@ function extractCocosProjectPath(value: unknown, depth = 0): string | undefined 
   return undefined;
 }
 
-async function readCocosMcpProjectPath(config: McpConnectionConfig, abortSignal: AbortSignal): Promise<string | undefined> {
+async function readCocosMcpProjectPath(
+  config: McpConnectionConfig,
+  abortSignal: AbortSignal
+): Promise<string | undefined> {
   try {
-    const projectInfo = await postMcpJsonRpcForConfig<unknown>(config, 'tools/call', {
-      name: 'get_project_info',
-      arguments: {}
-    }, false, abortSignal, 1500);
+    const projectInfo = await postMcpJsonRpcForConfig<unknown>(
+      config,
+      'tools/call',
+      {
+        name: 'get_project_info',
+        arguments: {}
+      },
+      false,
+      abortSignal,
+      1500
+    );
     const projectPath = extractCocosProjectPath(projectInfo);
     if (projectPath) {
       return projectPath;
@@ -372,9 +388,16 @@ async function readCocosMcpProjectPath(config: McpConnectionConfig, abortSignal:
   }
 
   try {
-    const projectContext = await postMcpJsonRpcForConfig<unknown>(config, 'resources/read', {
-      uri: 'cocos://project/context'
-    }, false, abortSignal, 1500);
+    const projectContext = await postMcpJsonRpcForConfig<unknown>(
+      config,
+      'resources/read',
+      {
+        uri: 'cocos://project/context'
+      },
+      false,
+      abortSignal,
+      1500
+    );
     return extractCocosProjectPath(projectContext);
   } catch {
     return undefined;
@@ -407,7 +430,8 @@ function buildCocosBridgeHealth(
         status: 'offline',
         checkedAt: snapshot.lastCheckedAt ?? nowIso(),
         url: snapshot.baseUrl,
-        message: 'Cocos MCP 已响应，但还不能确认它连接的是当前项目。请在 Cocos Creator 中打开 Funplay > MCP Server，并确认 get_project_info / cocos://project/context 可读取当前项目路径。'
+        message:
+          'Cocos MCP 已响应，但还不能确认它连接的是当前项目。请在 Cocos Creator 中打开 Funplay > MCP Server，并确认 get_project_info / cocos://project/context 可读取当前项目路径。'
       };
     }
     if (!projectPathsMatch(input.detectedProjectPath, input.expectedProjectPath)) {
@@ -430,7 +454,11 @@ function buildCocosBridgeHealth(
   };
 }
 
-async function checkCocosMcpConnection(state: AppState, enginePluginId?: string, expectedProjectPath?: string): Promise<{
+async function checkCocosMcpConnection(
+  state: AppState,
+  enginePluginId?: string,
+  expectedProjectPath?: string
+): Promise<{
   snapshot: McpConnectionSnapshot;
   health: UnityHealthResult;
 }> {
@@ -559,7 +587,9 @@ function writeFunplayMcpSettingsFile(
   };
 }
 
-export function readFunplayMcpSettingsFile(projectPath: string): { enabled: boolean; port: number; toolExportProfile: string; url: string } | null {
+export function readFunplayMcpSettingsFile(
+  projectPath: string
+): { enabled: boolean; port: number; toolExportProfile: string; url: string } | null {
   const settingsPath = funplayMcpSettingsPath(projectPath);
   if (!existsSync(settingsPath)) {
     return null;
@@ -583,7 +613,10 @@ export function readFunplayMcpSettingsFile(projectPath: string): { enabled: bool
   }
 }
 
-export async function configureUnityMcpPort(projectPath: string, preferredPort: number): Promise<{ port: number; url: string } | null> {
+export async function configureUnityMcpPort(
+  projectPath: string,
+  preferredPort: number
+): Promise<{ port: number; url: string } | null> {
   const assignedPort = await allocatePreferredMcpPort(preferredPort);
   return writeFunplayMcpSettingsFile(projectPath, {
     enabled: true,
@@ -813,12 +846,15 @@ export async function getProjectRuntimeState(
   if (platform === 'cocos') {
     const cocosProject = inspectCocosProject(normalizedProjectPath);
     const bridgeInstalled = cocosProject.valid && isCocosBridgeInstalled(cocosProject.projectPath);
-    const bridgeProbe = bridgeInstalled ? await checkCocosMcpConnection(state, undefined, cocosProject.projectPath) : undefined;
+    const bridgeProbe = bridgeInstalled
+      ? await checkCocosMcpConnection(state, undefined, cocosProject.projectPath)
+      : undefined;
     const bridgeHealth = bridgeProbe?.health;
     const projectOpen = cocosProject.valid
       ? isCocosProjectCurrentlyOpen(cocosProject.projectPath) || bridgeHealth?.status === 'online'
       : false;
-    const mcpUrl = bridgeProbe?.snapshot.baseUrl ?? buildCocosMcpConnectionConfig(state).baseUrl ?? DEFAULT_COCOS_MCP_BASE_URL;
+    const mcpUrl =
+      bridgeProbe?.snapshot.baseUrl ?? buildCocosMcpConnectionConfig(state).baseUrl ?? DEFAULT_COCOS_MCP_BASE_URL;
     return {
       checkedAt,
       projectExists: cocosProject.exists,
@@ -873,7 +909,10 @@ export async function getProjectRuntimeState(
       availableResourceUris = resources.map((resource) => resource.uri).filter(Boolean);
       const readableResources = [
         ['unity://scene/active', (value: string) => void (activeSceneSummary = trimMultilineText(value, 10, 1400))],
-        ['unity://selection/current', (value: string) => void (currentSelectionSummary = trimMultilineText(value, 10, 1200))],
+        [
+          'unity://selection/current',
+          (value: string) => void (currentSelectionSummary = trimMultilineText(value, 10, 1200))
+        ],
         ['unity://errors/console', (value: string) => void (recentConsoleSummary = trimMultilineText(value, 10, 1400))],
         ['unity://mcp/interactions', (value: string) => void (recentBridgeLogs = trimMultilineText(value, 12, 1800))]
       ] as const;
@@ -928,11 +967,11 @@ export async function diagnoseEnvironment(
   const normalizedProjectPath = normalizeProjectPath(input.projectPath);
   const targetProjectPath = resolveTargetProjectPath(input);
   const detectedDimension = input.mode === 'import' ? detectUnityProjectDimension(input.projectPath) : input.dimension;
-  const availableUnityEditors = input.platform === 'unity' && input.mode === 'create' ? buildInstalledUnityEditorOptions(detectedDimension) : [];
+  const availableUnityEditors =
+    input.platform === 'unity' && input.mode === 'create' ? buildInstalledUnityEditorOptions(detectedDimension) : [];
   const selectedUnityEditorOption = input.unityEditorVersion
     ? availableUnityEditors.find((editor) => editor.version === input.unityEditorVersion)
-    : availableUnityEditors.find((editor) => editor.recommended)
-      ?? availableUnityEditors[0];
+    : (availableUnityEditors.find((editor) => editor.recommended) ?? availableUnityEditors[0]);
   const unityTemplateSelection =
     input.platform === 'unity' && input.mode === 'create'
       ? selectUnityEditorForTemplate(detectedDimension, input.unityEditorVersion)
@@ -975,7 +1014,9 @@ export async function diagnoseEnvironment(
     const hasProjectName = input.mode === 'import' ? true : !!input.projectName?.trim();
     const cocosProject = inspectCocosProject(targetProjectPath);
     const bridgeInstalled = cocosProject.valid && isCocosBridgeInstalled(cocosProject.projectPath);
-    const bridgeProbe = bridgeInstalled ? await checkCocosMcpConnection(state, cocosEnginePlugin?.id, cocosProject.projectPath) : null;
+    const bridgeProbe = bridgeInstalled
+      ? await checkCocosMcpConnection(state, cocosEnginePlugin?.id, cocosProject.projectPath)
+      : null;
     const bridgeHealth = bridgeProbe?.health;
     const bridgeConnected = bridgeHealth?.status === 'online';
     const projectAlreadyOpen = cocosProject.valid ? isCocosProjectCurrentlyOpen(cocosProject.projectPath) : false;
@@ -990,18 +1031,42 @@ export async function diagnoseEnvironment(
         ? [
             `已检测到 Cocos Creator：${creatorInstallation!.executablePath}`,
             creatorInstallation?.version ? `版本：${creatorInstallation.version}` : '',
-            dashboardInstalled ? `已检测到 Cocos Dashboard：${dashboardPath}` : '未检测到 Dashboard，但可以继续使用已安装 Creator。'
-          ].filter(Boolean).join('；')
+            dashboardInstalled
+              ? `已检测到 Cocos Dashboard：${dashboardPath}`
+              : '未检测到 Dashboard，但可以继续使用已安装 Creator。'
+          ]
+            .filter(Boolean)
+            .join('；')
         : dashboardInstalled
           ? `已检测到 Cocos Dashboard：${dashboardPath}。请先在 Dashboard 中安装 Cocos Creator 3.8+。`
           : '未检测到 Cocos Dashboard 或 Cocos Creator。请先安装 Cocos Dashboard / Creator。',
       actions: creatorInstalled
         ? dashboardInstalled
-          ? [{ id: 'open_cocos_dashboard', label: '打开 Dashboard', description: '打开 Dashboard 管理 Creator 版本和项目。' }]
+          ? [
+              {
+                id: 'open_cocos_dashboard',
+                label: '打开 Dashboard',
+                description: '打开 Dashboard 管理 Creator 版本和项目。'
+              }
+            ]
           : []
         : dashboardInstalled
-          ? [{ id: 'open_cocos_dashboard', label: '打开 Dashboard', description: '打开 Dashboard 安装 Cocos Creator。', primary: true }]
-          : [{ id: 'install_cocos_dashboard', label: '安装 Cocos', description: '打开 Cocos Creator 官方下载页。', primary: true }]
+          ? [
+              {
+                id: 'open_cocos_dashboard',
+                label: '打开 Dashboard',
+                description: '打开 Dashboard 安装 Cocos Creator。',
+                primary: true
+              }
+            ]
+          : [
+              {
+                id: 'install_cocos_dashboard',
+                label: '安装 Cocos',
+                description: '打开 Cocos Creator 官方下载页。',
+                primary: true
+              }
+            ]
     });
 
     checks.push({
@@ -1066,7 +1131,9 @@ export async function diagnoseEnvironment(
                     {
                       id: dashboardInstalled ? 'open_cocos_dashboard' : 'install_cocos_dashboard',
                       label: dashboardInstalled ? '打开 Dashboard' : '安装 Cocos',
-                      description: dashboardInstalled ? '打开 Dashboard 安装 Cocos Creator。' : '打开 Cocos Creator 官方下载页。',
+                      description: dashboardInstalled
+                        ? '打开 Dashboard 安装 Cocos Creator。'
+                        : '打开 Cocos Creator 官方下载页。',
                       primary: true
                     }
                   ]
@@ -1139,21 +1206,21 @@ export async function diagnoseEnvironment(
       detail: bridgeConnected
         ? bridgeHealth.message
         : bridgeInstalled
-          ? bridgeHealth?.message ?? `扩展已安装，但尚未连通 ${bridgeProbe?.snapshot.baseUrl ?? DEFAULT_COCOS_MCP_BASE_URL}。请在 Cocos Creator 中打开 Funplay > MCP Server 后重新检测。`
+          ? (bridgeHealth?.message ??
+            `扩展已安装，但尚未连通 ${bridgeProbe?.snapshot.baseUrl ?? DEFAULT_COCOS_MCP_BASE_URL}。请在 Cocos Creator 中打开 Funplay > MCP Server 后重新检测。`)
           : '等待先安装 funplay-cocos-mcp 扩展。',
-      actions:
-        bridgeConnected
-          ? []
-          : cocosProject.valid && !projectEffectivelyOpen
-            ? [
-                {
-                  id: 'open_cocos_project',
-                  label: '打开 Cocos 项目',
-                  description: '打开项目后，在 Cocos Creator 中启动 Funplay MCP Server。',
-                  primary: true
-                }
-              ]
-            : []
+      actions: bridgeConnected
+        ? []
+        : cocosProject.valid && !projectEffectivelyOpen
+          ? [
+              {
+                id: 'open_cocos_project',
+                label: '打开 Cocos 项目',
+                description: '打开项目后，在 Cocos Creator 中启动 Funplay MCP Server。',
+                primary: true
+              }
+            ]
+          : []
     });
 
     return {
@@ -1234,9 +1301,13 @@ export async function diagnoseEnvironment(
   const hasProjectName = input.mode === 'import' ? true : !!input.projectName?.trim();
   const validUnityProject = isValidUnityProject(targetProjectPath);
   const editor = findUnityEditorInstall();
-  const projectUnityVersion = input.mode === 'import' && validUnityProject ? readUnityProjectVersion(targetProjectPath)?.version : undefined;
-  const projectVersionEditor = projectUnityVersion ? selectUnityEditorForProject(targetProjectPath, projectUnityVersion).editor : undefined;
-  const compatibleImportEditorInstalled = input.mode === 'import' ? (projectUnityVersion ? !!projectVersionEditor : editor.installed) : false;
+  const projectUnityVersion =
+    input.mode === 'import' && validUnityProject ? readUnityProjectVersion(targetProjectPath)?.version : undefined;
+  const projectVersionEditor = projectUnityVersion
+    ? selectUnityEditorForProject(targetProjectPath, projectUnityVersion).editor
+    : undefined;
+  const compatibleImportEditorInstalled =
+    input.mode === 'import' ? (projectUnityVersion ? !!projectVersionEditor : editor.installed) : false;
   checks.push({
     id: 'unity-editor',
     title: 'Unity Editor',
@@ -1274,8 +1345,7 @@ export async function diagnoseEnvironment(
           : projectUnityVersion
             ? `项目保存版本：Unity ${projectUnityVersion}，但本机还没有检测到该版本。`
             : '还没有检测到可用的 Unity Editor 版本。',
-    actions:
-      (input.mode === 'create' ? compatibleEditorInstalled : compatibleImportEditorInstalled)
+    actions: (input.mode === 'create' ? compatibleEditorInstalled : compatibleImportEditorInstalled)
       ? []
       : [
           {
@@ -1298,7 +1368,9 @@ export async function diagnoseEnvironment(
     validUnityProject && bridgeInstalled
       ? readFunplayMcpSettingsFile(targetProjectPath)?.url || state.settings.baseUrl || 'http://127.0.0.1:8765/'
       : null;
-  const bridgeHealth = healthBaseUrl ? await checkUnityHealth(healthBaseUrl, { expectedProjectPath: targetProjectPath }) : undefined;
+  const bridgeHealth = healthBaseUrl
+    ? await checkUnityHealth(healthBaseUrl, { expectedProjectPath: targetProjectPath })
+    : undefined;
   const bridgeConnected = bridgeHealth?.status === 'online';
   if (bridgeConnected) {
     syncDiscoveredUnityMcpEndpoint(state, bridgeHealth.url);
@@ -1402,21 +1474,21 @@ export async function diagnoseEnvironment(
       ? '已检测到该项目当前就在 Unity Editor 中打开。'
       : bridgeConnected
         ? '已通过 Bridge / MCP 连通确认该 Unity 项目已经打开。'
-      : validUnityProject && projectUnityVersion && !projectVersionEditor
-        ? `该项目还没有打开；项目保存于 Unity ${projectUnityVersion}，但本机缺少精确匹配版本。请先安装该版本，避免 Unity 自动升级项目。`
-      : validUnityProject
-        ? '该项目还没有在 Unity 中打开。'
-        : '等待先准备好有效的 Unity 项目。',
+        : validUnityProject && projectUnityVersion && !projectVersionEditor
+          ? `该项目还没有打开；项目保存于 Unity ${projectUnityVersion}，但本机缺少精确匹配版本。请先安装该版本，避免 Unity 自动升级项目。`
+          : validUnityProject
+            ? '该项目还没有在 Unity 中打开。'
+            : '等待先准备好有效的 Unity 项目。',
     actions:
       validUnityProject && !projectEffectivelyOpen && (!projectUnityVersion || !!projectVersionEditor)
-        ? [
+        ? ([
             {
               id: 'open_unity_project',
               label: '打开 Unity 项目',
               description: '直接启动 Unity 打开该项目。',
               primary: true
             }
-          ] satisfies EnvironmentAction[]
+          ] satisfies EnvironmentAction[])
         : []
   });
 
@@ -1432,14 +1504,14 @@ export async function diagnoseEnvironment(
         : '等待先准备好有效的 Unity 项目。',
     actions:
       validUnityProject && !bridgeInstalled
-        ? [
+        ? ([
             {
               id: 'install_project_bridge',
               label: '自动安装 Bridge',
               description: '写入项目 manifest 并触发 Unity 导入 MCP Package。',
               primary: true
             }
-          ] satisfies EnvironmentAction[]
+          ] satisfies EnvironmentAction[])
         : []
   });
 
@@ -1449,37 +1521,35 @@ export async function diagnoseEnvironment(
       title: 'Bridge / MCP 连通性',
       description: 'Bridge 安装完成后，检测当前项目是否已和 Funplay 成功连通。',
       status: bridgeConnected ? 'passed' : 'warning',
-      detail:
-        bridgeConnected
-          ? `连接成功：${bridgeHealth.message}`
-          : projectEffectivelyOpen
-            ? '项目已打开，但还不能连通 Bridge / MCP。可能还在导入依赖或尚未启动 MCP Server。'
-            : '还不能连通当前项目。请先打开项目，等待 Bridge 安装完成并启动 MCP Server。',
-      actions:
-        bridgeConnected
-          ? []
-          : [
-              ...(projectEffectivelyOpen
-                ? []
-                : [
-                    {
-                      id: 'open_unity_project',
-                      label: '打开 Unity 项目',
-                      description: '直接启动 Unity 打开该项目。',
-                      primary: true
-                    }
-                  ]),
-              ...(bridgeInstalled
-                ? []
-                : [
-                    {
-                      id: 'install_project_bridge',
-                      label: '自动安装 Bridge',
-                      description: '自动写入项目依赖。',
-                      primary: true
-                    }
-                  ])
-            ] as EnvironmentAction[]
+      detail: bridgeConnected
+        ? `连接成功：${bridgeHealth.message}`
+        : projectEffectivelyOpen
+          ? '项目已打开，但还不能连通 Bridge / MCP。可能还在导入依赖或尚未启动 MCP Server。'
+          : '还不能连通当前项目。请先打开项目，等待 Bridge 安装完成并启动 MCP Server。',
+      actions: bridgeConnected
+        ? []
+        : ([
+            ...(projectEffectivelyOpen
+              ? []
+              : [
+                  {
+                    id: 'open_unity_project',
+                    label: '打开 Unity 项目',
+                    description: '直接启动 Unity 打开该项目。',
+                    primary: true
+                  }
+                ]),
+            ...(bridgeInstalled
+              ? []
+              : [
+                  {
+                    id: 'install_project_bridge',
+                    label: '自动安装 Bridge',
+                    description: '自动写入项目依赖。',
+                    primary: true
+                  }
+                ])
+          ] as EnvironmentAction[])
     });
   } else {
     checks.push({
@@ -1769,7 +1839,10 @@ export async function runEnvironmentAction(
       const task = await startInstallUnityEditorTask({
         mode: input.mode,
         dimension: input.dimension,
-        unityEditorVersion: input.mode === 'import' ? readProjectUnityEditorVersion(targetProjectPath) ?? input.unityEditorVersion : input.unityEditorVersion,
+        unityEditorVersion:
+          input.mode === 'import'
+            ? (readProjectUnityEditorVersion(targetProjectPath) ?? input.unityEditorVersion)
+            : input.unityEditorVersion,
         unityHubPath: state.settings.unityHubPath
       });
       return {
@@ -2009,7 +2082,11 @@ export async function runEnvironmentAction(
       return {
         actionId: input.actionId,
         status: valid ? 'completed' : 'failed',
-        message: valid ? '项目路径校验通过，是有效的 Unity 项目。' : exists ? '目标目录存在，但还不是有效的 Unity 项目。' : '目标项目路径不存在，请检查后重试。'
+        message: valid
+          ? '项目路径校验通过，是有效的 Unity 项目。'
+          : exists
+            ? '目标目录存在，但还不是有效的 Unity 项目。'
+            : '目标项目路径不存在，请检查后重试。'
       };
     }
     default:

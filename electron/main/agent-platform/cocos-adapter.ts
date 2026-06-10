@@ -1,7 +1,7 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import type { Project } from '../../../shared/types';
 import type { WorkspaceToolActionResult } from './workspace-tools-types';
 
@@ -34,16 +34,9 @@ export interface CocosTemplateProjectResult extends WorkspaceToolActionResult {
   templatePath?: string;
 }
 
-const COCOS_CREATOR_ENV_KEYS = [
-  'COCOS_CREATOR_EXECUTABLE',
-  'COCOS_CREATOR_PATH',
-  'COCOS_CREATOR'
-];
+const COCOS_CREATOR_ENV_KEYS = ['COCOS_CREATOR_EXECUTABLE', 'COCOS_CREATOR_PATH', 'COCOS_CREATOR'];
 
-const COCOS_DASHBOARD_ENV_KEYS = [
-  'COCOS_DASHBOARD_EXECUTABLE',
-  'COCOS_DASHBOARD_PATH'
-];
+const COCOS_DASHBOARD_ENV_KEYS = ['COCOS_DASHBOARD_EXECUTABLE', 'COCOS_DASHBOARD_PATH'];
 
 const FUNPLAY_COCOS_MCP_REPO = 'https://github.com/FunplayAI/funplay-cocos-mcp.git';
 const FUNPLAY_COCOS_MCP_EXTENSION_DIR = 'funplay-cocos-mcp';
@@ -64,6 +57,44 @@ function normalizePath(value: string | undefined): string | undefined {
   return resolve(resolveHomePath(value.trim()));
 }
 
+function normalizeProjectPathVariants(projectPath: string): string[] {
+  const trimmed = projectPath.trim();
+  if (!trimmed) {
+    return [];
+  }
+  const expanded = resolveHomePath(trimmed);
+  const resolved = resolve(expanded);
+  const variants = new Set([expanded, resolved]);
+  try {
+    if (existsSync(resolved)) {
+      variants.add(realpathSync(resolved));
+    }
+  } catch {
+    // Best-effort process detection; the resolved path is still useful.
+  }
+  return Array.from(variants)
+    .map((variant) => variant.replace(/[\\/]+$/g, ''))
+    .filter(Boolean);
+}
+
+export function isCocosProjectCurrentlyOpen(projectPath: string): boolean {
+  const variants = normalizeProjectPathVariants(projectPath);
+  if (!variants.length) {
+    return false;
+  }
+  try {
+    const output = execFileSync('ps', ['-ax', '-o', 'command='], { encoding: 'utf8' });
+    return output
+      .split('\n')
+      .some(
+        (line) =>
+          /CocosCreator/i.test(line) && line.includes('--project') && variants.some((variant) => line.includes(variant))
+      );
+  } catch {
+    return false;
+  }
+}
+
 function shellQuote(value: string): string {
   if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) {
     return value;
@@ -76,7 +107,13 @@ function versionFromPath(path: string): string | undefined {
 }
 
 function safeProjectPackageName(value: string): string {
-  return value.trim().replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'cocos-project';
+  return (
+    value
+      .trim()
+      .replace(/[^A-Za-z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || 'cocos-project'
+  );
 }
 
 function creatorBinaryFromCandidate(path: string): string {
@@ -86,11 +123,7 @@ function creatorBinaryFromCandidate(path: string): string {
   return path;
 }
 
-function pushInstallation(
-  installations: CocosCreatorInstallation[],
-  executablePath: string,
-  source: string
-): void {
+function pushInstallation(installations: CocosCreatorInstallation[], executablePath: string, source: string): void {
   const resolved = creatorBinaryFromCandidate(resolveHomePath(executablePath));
   if (!existsSync(resolved)) {
     return;
@@ -174,7 +207,9 @@ function getCocosTemplateRoot(installation: CocosCreatorInstallation): string | 
     join(dirname(executablePath), 'resources', 'templates'),
     join(dirname(dirname(executablePath)), 'resources', 'templates')
   ]);
-  return candidates.find((candidate) => existsSync(join(candidate, 'list.json')) || existsSync(join(candidate, 'empty')));
+  return candidates.find(
+    (candidate) => existsSync(join(candidate, 'list.json')) || existsSync(join(candidate, 'empty'))
+  );
 }
 
 export function getCocosTemplatePath(input: {
@@ -215,22 +250,20 @@ export function findCocosDashboardExecutable(env: NodeJS.ProcessEnv = process.en
       return candidate;
     }
   }
-  const candidates = process.platform === 'darwin'
-    ? [
-        '/Applications/CocosDashboard.app',
-        '/Applications/Cocos/CocosDashboard.app',
-        join(homedir(), 'Applications/CocosDashboard.app')
-      ].map(dashboardBinaryFromCandidate)
-    : process.platform === 'win32'
-      ? uniqueValues([
-          env.ProgramData ? join(env.ProgramData, 'cocos/CocosDashboard/CocosDashboard.exe') : '',
-          env.ProgramFiles ? join(env.ProgramFiles, 'CocosDashboard/CocosDashboard.exe') : '',
-          env.LOCALAPPDATA ? join(env.LOCALAPPDATA, 'CocosDashboard/CocosDashboard.exe') : ''
-        ])
-      : [
-          '/opt/CocosDashboard/CocosDashboard',
-          join(homedir(), 'CocosDashboard/CocosDashboard')
-        ];
+  const candidates =
+    process.platform === 'darwin'
+      ? [
+          '/Applications/CocosDashboard.app',
+          '/Applications/Cocos/CocosDashboard.app',
+          join(homedir(), 'Applications/CocosDashboard.app')
+        ].map(dashboardBinaryFromCandidate)
+      : process.platform === 'win32'
+        ? uniqueValues([
+            env.ProgramData ? join(env.ProgramData, 'cocos/CocosDashboard/CocosDashboard.exe') : '',
+            env.ProgramFiles ? join(env.ProgramFiles, 'CocosDashboard/CocosDashboard.exe') : '',
+            env.LOCALAPPDATA ? join(env.LOCALAPPDATA, 'CocosDashboard/CocosDashboard.exe') : ''
+          ])
+        : ['/opt/CocosDashboard/CocosDashboard', join(homedir(), 'CocosDashboard/CocosDashboard')];
   return candidates.find((candidate) => existsSync(candidate));
 }
 
@@ -381,9 +414,8 @@ export function createCocosCliBuildCommand(input: {
   if (!project.valid || !installation) {
     return undefined;
   }
-  const segment = (input.projectId ?? project.packageName ?? 'project')
-    .replace(/[^A-Za-z0-9_.-]+/g, '-')
-    .slice(0, 80) || 'project';
+  const segment =
+    (input.projectId ?? project.packageName ?? 'project').replace(/[^A-Za-z0-9_.-]+/g, '-').slice(0, 80) || 'project';
   const buildRoot = join(tmpdir(), 'funplay-cocos-build', segment);
   const buildPath = join(buildRoot, 'web-desktop');
   const logPath = join(buildRoot, 'cocos-build.log');
@@ -404,15 +436,14 @@ export function getCocosBridgePath(projectPath: string): string {
 
 export function isCocosBridgeInstalled(projectPath: string): boolean {
   const bridgePath = getCocosBridgePath(projectPath);
-  return existsSync(join(bridgePath, 'package.json')) &&
+  return (
+    existsSync(join(bridgePath, 'package.json')) &&
     existsSync(join(bridgePath, 'browser.js')) &&
-    existsSync(join(bridgePath, 'server.json'));
+    existsSync(join(bridgePath, 'server.json'))
+  );
 }
 
-export function diagnoseCocosEnvironment(input: {
-  project: Project;
-  projectPath: string;
-}): WorkspaceToolActionResult {
+export function diagnoseCocosEnvironment(input: { project: Project; projectPath: string }): WorkspaceToolActionResult {
   const installation = findCocosCreatorInstallation();
   const project = inspectCocosProject(input.projectPath);
   const buildCommand = createCocosCliBuildCommand({
@@ -426,9 +457,7 @@ export function diagnoseCocosEnvironment(input: {
       'Engine adapter: Cocos Creator Adapter',
       'Capability: diagnose',
       'Supported: yes',
-      installation
-        ? `Cocos Creator executable: ${installation.executablePath}`
-        : 'Cocos Creator executable: not found',
+      installation ? `Cocos Creator executable: ${installation.executablePath}` : 'Cocos Creator executable: not found',
       installation?.version ? `Detected Creator version: ${installation.version}` : '',
       installation?.source ? `Install source: ${installation.source}` : '',
       `Project path: ${project.projectPath}`,
@@ -442,7 +471,9 @@ export function diagnoseCocosEnvironment(input: {
       'Headless caveat: Cocos Creator 3.8 command-line builds still require a GUI/window server according to official docs.',
       buildCommand ? `Suggested verification command: ${buildCommand.command}` : '',
       'Bridge/MCP support: install_engine_bridge clones FunplayAI/funplay-cocos-mcp into extensions/funplay-cocos-mcp; then open Funplay > MCP Server in Cocos Creator.'
-    ].filter(Boolean).join('\n')
+    ]
+      .filter(Boolean)
+      .join('\n')
   };
 }
 
@@ -494,9 +525,7 @@ export function openCocosDashboard(): WorkspaceToolActionResult {
   };
 }
 
-export function openCocosProject(input: {
-  projectPath: string;
-}): WorkspaceToolActionResult {
+export function openCocosProject(input: { projectPath: string }): WorkspaceToolActionResult {
   const installation = findCocosCreatorInstallation();
   const project = inspectCocosProject(input.projectPath);
   if (!installation) {
@@ -523,7 +552,23 @@ export function openCocosProject(input: {
         `Project path: ${project.projectPath}`,
         `Cocos project valid: ${project.valid ? 'yes' : 'no'}`,
         project.missing.length ? `Missing project indicators: ${project.missing.join(', ')}` : ''
-      ].filter(Boolean).join('\n')
+      ]
+        .filter(Boolean)
+        .join('\n')
+    };
+  }
+  if (isCocosProjectCurrentlyOpen(project.projectPath)) {
+    return {
+      ok: true,
+      summary: [
+        'Engine platform: cocos',
+        'Engine adapter: Cocos Creator Adapter',
+        'Capability: openProject',
+        `Cocos Creator executable: ${installation.executablePath}`,
+        `Project path: ${project.projectPath}`,
+        'Project already open: yes',
+        'Skipped launch: Cocos Creator already has this project open.'
+      ].join('\n')
     };
   }
   const result = spawnDetached(installation.executablePath, ['--project', project.projectPath]);
@@ -540,9 +585,7 @@ export function openCocosProject(input: {
   };
 }
 
-export function installCocosBridge(input: {
-  projectPath: string;
-}): WorkspaceToolActionResult {
+export function installCocosBridge(input: { projectPath: string }): WorkspaceToolActionResult {
   const project = inspectCocosProject(input.projectPath);
   if (!project.valid) {
     return {
@@ -555,7 +598,9 @@ export function installCocosBridge(input: {
         `Project path: ${project.projectPath}`,
         `Cocos project valid: ${project.valid ? 'yes' : 'no'}`,
         project.missing.length ? `Missing project indicators: ${project.missing.join(', ')}` : ''
-      ].filter(Boolean).join('\n')
+      ]
+        .filter(Boolean)
+        .join('\n')
     };
   }
 
@@ -598,13 +643,7 @@ export function installCocosBridge(input: {
     };
   }
 
-  const cloned = spawnSync('git', [
-    'clone',
-    '--depth',
-    '1',
-    FUNPLAY_COCOS_MCP_REPO,
-    bridgePath
-  ], {
+  const cloned = spawnSync('git', ['clone', '--depth', '1', FUNPLAY_COCOS_MCP_REPO, bridgePath], {
     encoding: 'utf8',
     timeout: 120_000
   });
@@ -621,7 +660,9 @@ export function installCocosBridge(input: {
         cloned.stderr ? `stderr: ${cloned.stderr.slice(0, 2000)}` : '',
         cloned.stdout ? `stdout: ${cloned.stdout.slice(0, 1000)}` : '',
         'Next action: check git/network access or install the GitHub release zip manually into extensions/funplay-cocos-mcp.'
-      ].filter(Boolean).join('\n')
+      ]
+        .filter(Boolean)
+        .join('\n')
     };
   }
 

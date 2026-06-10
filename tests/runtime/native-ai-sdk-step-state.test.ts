@@ -17,10 +17,12 @@ test('AI SDK step state preserves tool transaction metadata for Run Controller',
     toolName: 'read_file',
     output: {
       summary: 'read README.md',
-      changedFiles: [{
-        path: 'README.md',
-        operation: 'modified'
-      }],
+      changedFiles: [
+        {
+          path: 'README.md',
+          operation: 'modified'
+        }
+      ],
       terminal: {
         sessionId: 'terminal_1',
         status: 'running'
@@ -48,4 +50,20 @@ test('AI SDK step state preserves tool transaction metadata for Run Controller',
   assert.equal(toolResult?.terminal?.sessionId, 'terminal_1');
   assert.equal(toolResult?.transaction?.toolName, 'read_file');
   assert.equal(toolResult?.transaction?.eventCount, 3);
+});
+
+test('AI SDK step state keeps text and thinking scoped to the current provider step', () => {
+  const stepState = new NativeAiSdkStepState();
+  stepState.beginStep();
+  assert.equal(stepState.recordTextDelta('先读取'), '先读取');
+  assert.equal(stepState.recordTextDelta('项目。'), '先读取项目。');
+  assert.equal(stepState.recordThinkingDelta('plan'), 'plan');
+
+  assert.equal(stepState.getStepText(), '先读取项目。');
+  assert.equal(stepState.getStepThinking(), 'plan');
+
+  stepState.beginStep();
+  assert.equal(stepState.getStepText(), '');
+  assert.equal(stepState.getStepThinking(), '');
+  assert.equal(stepState.recordTextDelta('已经完成。'), '已经完成。');
 });

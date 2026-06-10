@@ -1,11 +1,13 @@
-import type { AgentVerificationTrigger, AiProviderApiMode, GameAgentStep, ProjectSession } from '../../../../shared/types';
+import type {
+  AgentVerificationTrigger,
+  AiProviderApiMode,
+  GameAgentStep,
+  ProjectSession
+} from '../../../../shared/types';
 import { inferOpenAiCompatibleApiMode } from '../../../../shared/provider-catalog';
 import { makeId } from '../../../../shared/utils';
 import { runGenericAgentLoop } from '../agent-loop';
-import {
-  buildNativeRuntimePluginProbeSummary,
-  buildNativeRuntimeThinkingPrelude
-} from './prompt';
+import { buildNativeRuntimePluginProbeSummary, buildNativeRuntimeThinkingPrelude } from './prompt';
 import { runNativeReadOnlyToolLoop, runOpenAiCompatibleNativeToolLoop } from './tool-loop';
 import { getAgentToolDefinition } from '../tool-registry';
 import type { AgentToolSideEffectClassification } from '../tool-registry';
@@ -16,7 +18,11 @@ import { formatProjectContextIndexSummary } from '../context';
 import { collectPluginObservations } from '../../game-tool-layer';
 import { emitReplyAsDeltas, runNativeDirectChatReply } from './direct-reply';
 import type { GenericAgentRuntimeParams, GenericAgentRuntimeResult } from '../types';
-import { applyNativeContextPatchToProject, prepareNativeContextHandoff, prepareNativeContextHandoffWithModelSummary } from './context-handoff';
+import {
+  applyNativeContextPatchToProject,
+  prepareNativeContextHandoff,
+  prepareNativeContextHandoffWithModelSummary
+} from './context-handoff';
 import {
   classifyNativeRuntimeError,
   extractNativeRuntimeErrorDetail,
@@ -38,7 +44,12 @@ import {
 } from '../active-verification';
 import type { WorkspaceToolAction } from '../workspace-tools';
 
-function createStep(kind: GameAgentStep['kind'], title: string, detail: string, status: GameAgentStep['status']): GameAgentStep {
+function createStep(
+  kind: GameAgentStep['kind'],
+  title: string,
+  detail: string,
+  status: GameAgentStep['status']
+): GameAgentStep {
   return {
     id: makeId('step'),
     kind,
@@ -72,8 +83,10 @@ async function resolveWritePermission(
 }
 
 async function emitRealPluginObservations(params: GenericAgentRuntimeParams): Promise<void> {
-  const observablePlugins = params.plugins.filter((plugin) =>
-    plugin.enabled && (plugin.transport === 'stdio' ? Boolean(plugin.command?.trim()) : Boolean(plugin.baseUrl?.trim()))
+  const observablePlugins = params.plugins.filter(
+    (plugin) =>
+      plugin.enabled &&
+      (plugin.transport === 'stdio' ? Boolean(plugin.command?.trim()) : Boolean(plugin.baseUrl?.trim()))
   );
 
   for (const plugin of observablePlugins) {
@@ -93,8 +106,12 @@ async function emitRealPluginObservations(params: GenericAgentRuntimeParams): Pr
       const observation = await collectPluginObservations(plugin);
       const lines = [
         `${plugin.name} (${plugin.kind})`,
-        observation.report.resourceReads.length > 0 ? `读取资源：${observation.report.resourceReads.join(', ')}` : '读取资源：无',
-        observation.report.toolCalls.length > 0 ? `调用工具：${observation.report.toolCalls.join(', ')}` : '调用工具：无',
+        observation.report.resourceReads.length > 0
+          ? `读取资源：${observation.report.resourceReads.join(', ')}`
+          : '读取资源：无',
+        observation.report.toolCalls.length > 0
+          ? `调用工具：${observation.report.toolCalls.join(', ')}`
+          : '调用工具：无',
         observation.report.observations.length > 0 ? observation.report.observations.join('\n') : '无可用观测结果。'
       ].filter(Boolean);
 
@@ -136,21 +153,43 @@ function runtimeLocalize(params: Pick<GenericAgentRuntimeParams, 'uiLanguage'>, 
   return params.uiLanguage === 'en-US' ? en : zh;
 }
 
-function createFallbackReply(params: GenericAgentRuntimeParams, providerMissing: boolean, errorMessage?: string): string {
+function createFallbackReply(
+  params: GenericAgentRuntimeParams,
+  providerMissing: boolean,
+  errorMessage?: string
+): string {
   if (providerMissing) {
     return [
-      runtimeLocalize(params, '当前没有可用的 AI Provider，暂时无法生成模型回复。', 'No AI Provider is currently available, so Funplay cannot generate a model response yet.'),
+      runtimeLocalize(
+        params,
+        '当前没有可用的 AI Provider，暂时无法生成模型回复。',
+        'No AI Provider is currently available, so Funplay cannot generate a model response yet.'
+      ),
       '',
-      runtimeLocalize(params, '请到“应用设置 / AI Provider”配置并测试模型服务后重试。', 'Go to App Settings / AI Provider, configure and test a model service, then try again.')
+      runtimeLocalize(
+        params,
+        '请到“应用设置 / AI Provider”配置并测试模型服务后重试。',
+        'Go to App Settings / AI Provider, configure and test a model service, then try again.'
+      )
     ].join('\n');
   }
 
   return [
-    runtimeLocalize(params, '这次 AI Provider 返回了错误，未能生成回复。', 'The AI Provider returned an error and could not generate a response.'),
+    runtimeLocalize(
+      params,
+      '这次 AI Provider 返回了错误，未能生成回复。',
+      'The AI Provider returned an error and could not generate a response.'
+    ),
     errorMessage ? runtimeLocalize(params, `错误信息：${errorMessage}`, `Error: ${errorMessage}`) : '',
     '',
-    runtimeLocalize(params, '请检查 Provider 配置、模型名称或网络连通性后重试。', 'Check the Provider configuration, model name, or network connection, then try again.')
-  ].filter(Boolean).join('\n');
+    runtimeLocalize(
+      params,
+      '请检查 Provider 配置、模型名称或网络连通性后重试。',
+      'Check the Provider configuration, model name, or network connection, then try again.'
+    )
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function trimDetail(value: string, maxLength = 4000): string {
@@ -228,24 +267,21 @@ function extractProviderErrorDetail(error: unknown, provider?: GenericAgentRunti
   }
 
   const requestId = stringifyErrorField(
-    readErrorField(errorRecord ?? {}, ['requestId']) ??
-      readErrorField(causeRecord ?? {}, ['requestId'])
+    readErrorField(errorRecord ?? {}, ['requestId']) ?? readErrorField(causeRecord ?? {}, ['requestId'])
   );
   if (requestId) {
     lines.push(`Request ID: ${requestId}`);
   }
 
   const requestUrl = stringifyErrorField(
-    readErrorField(errorRecord ?? {}, ['requestUrl', 'url']) ??
-      readErrorField(causeRecord ?? {}, ['requestUrl', 'url'])
+    readErrorField(errorRecord ?? {}, ['requestUrl', 'url']) ?? readErrorField(causeRecord ?? {}, ['requestUrl', 'url'])
   );
   if (requestUrl) {
     lines.push(`Request URL: ${requestUrl}`);
   }
 
   const requestBody = stringifyErrorField(
-    readErrorField(errorRecord ?? {}, ['requestBody']) ??
-      readErrorField(causeRecord ?? {}, ['requestBody'])
+    readErrorField(errorRecord ?? {}, ['requestBody']) ?? readErrorField(causeRecord ?? {}, ['requestBody'])
   );
   if (requestBody !== undefined) {
     lines.push('Request Body:');
@@ -261,9 +297,7 @@ function extractProviderErrorDetail(error: unknown, provider?: GenericAgentRunti
     lines.push(responseBody);
   }
 
-  const causeMessage = stringifyErrorField(
-    readErrorField(causeRecord ?? {}, ['message', 'error', 'detail'])
-  );
+  const causeMessage = stringifyErrorField(readErrorField(causeRecord ?? {}, ['message', 'error', 'detail']));
   if (causeMessage && causeMessage !== message) {
     lines.push(`Cause: ${causeMessage}`);
   }
@@ -331,7 +365,7 @@ export function resolveNativeToolLoopStrategy(input: {
     return {
       useNativeToolLoop: false,
       reason: 'native_tool_calling_disabled',
-      summary: 'Native 真实 tool-calling 已被配置关闭；本轮将降级为普通模型回复。'
+      summary: '内置工具执行链路已关闭；本轮将降级为普通模型回复。'
     };
   }
 
@@ -340,14 +374,14 @@ export function resolveNativeToolLoopStrategy(input: {
     return {
       useNativeToolLoop: false,
       reason: 'openai_compatible_streaming_tool_calls_disabled',
-      summary: `OpenAI-compatible 流式 tool-calling${apiMode}已被显式关闭；本轮将降级为普通模型回复。`
+      summary: `当前服务商的流式工具执行${apiMode}已被显式关闭；本轮将降级为普通模型回复。`
     };
   }
 
   return {
     useNativeToolLoop: true,
     reason: 'native_tool_calling_selected',
-    summary: 'Agent 模式命中 Native 真实 tool-calling 主链；工具能力由权限模式控制。'
+    summary: '已启用内置工具执行链路；工具能力由权限模式控制。'
   };
 }
 
@@ -355,7 +389,9 @@ function isOpenAiCompatibleStreamingToolCallsDisabled(): boolean {
   return process.env.FUNPLAY_OPENAI_COMPAT_NATIVE_TOOLS === 'false';
 }
 
-function isOpenAiCompatibleNativeStreamingToolCallsEnabled(provider: GenericAgentRuntimeParams['provider']): boolean | undefined {
+function isOpenAiCompatibleNativeStreamingToolCallsEnabled(
+  provider: GenericAgentRuntimeParams['provider']
+): boolean | undefined {
   if (!provider || provider.protocol !== 'openai-compatible') {
     return undefined;
   }
@@ -365,9 +401,7 @@ function isOpenAiCompatibleNativeStreamingToolCallsEnabled(provider: GenericAgen
 
 function getNativeToolLoopStrategy(params: GenericAgentRuntimeParams): NativeToolLoopStrategy {
   const openAiCompatibleApiMode =
-    params.provider?.protocol === 'openai-compatible'
-      ? inferOpenAiCompatibleApiMode(params.provider)
-      : undefined;
+    params.provider?.protocol === 'openai-compatible' ? inferOpenAiCompatibleApiMode(params.provider) : undefined;
 
   return resolveNativeToolLoopStrategy({
     nativeToolCallingEnabled: isNativeReadOnlyToolLoopEnabled(),
@@ -380,15 +414,18 @@ function getNativeToolLoopStrategy(params: GenericAgentRuntimeParams): NativeToo
 
 function summarizeToolLoopResult(result: { stepCount?: number; finishReason?: string; toolCalls?: string[] }): string {
   return [
-    typeof result.stepCount === 'number' ? `步数：${result.stepCount}` : '',
-    result.finishReason ? `finishReason：${result.finishReason}` : '',
-    result.toolCalls && result.toolCalls.length > 0 ? `工具：${result.toolCalls.join(', ')}` : ''
+    typeof result.stepCount === 'number' ? `已完成 ${result.stepCount} 轮工具执行` : '',
+    result.toolCalls && result.toolCalls.length > 0 ? `调用工具：${result.toolCalls.join(', ')}` : ''
   ]
     .filter(Boolean)
     .join('；');
 }
 
-function shouldExposeNativeWriteTools(params: GenericAgentRuntimeParams, canApplyWorkspaceWrites: boolean, policy: AgentToolPolicyDecision): boolean {
+function shouldExposeNativeWriteTools(
+  params: GenericAgentRuntimeParams,
+  canApplyWorkspaceWrites: boolean,
+  policy: AgentToolPolicyDecision
+): boolean {
   const profileAllowsWrites =
     policy.executionProfile.allowedToolFamilies.includes('workspace_write') ||
     params.permission.allowWriteTools ||
@@ -401,7 +438,11 @@ function shouldExposeNativeWriteTools(params: GenericAgentRuntimeParams, canAppl
   );
 }
 
-function shouldExposeNativeWriteToolBucket(params: GenericAgentRuntimeParams, canApplyWorkspaceWrites: boolean, policy: AgentToolPolicyDecision): boolean {
+function shouldExposeNativeWriteToolBucket(
+  params: GenericAgentRuntimeParams,
+  canApplyWorkspaceWrites: boolean,
+  policy: AgentToolPolicyDecision
+): boolean {
   if (shouldExposeNativeWriteTools(params, canApplyWorkspaceWrites, policy)) {
     return true;
   }
@@ -419,11 +460,17 @@ function shouldExposeNativeWriteToolBucket(params: GenericAgentRuntimeParams, ca
 function shouldExposeNativeCommandTools(params: GenericAgentRuntimeParams, policy: AgentToolPolicyDecision): boolean {
   return (
     policy.executionProfile.allowedToolFamilies.includes('command') &&
-    (params.permission.mode === 'full-access' || params.permission.mode === 'ask' || params.permission.mode === 'read-only')
+    (params.permission.mode === 'full-access' ||
+      params.permission.mode === 'ask' ||
+      params.permission.mode === 'read-only')
   );
 }
 
-function shouldExposeNativeMcpTools(params: GenericAgentRuntimeParams, canApplyWorkspaceWrites: boolean, policy: AgentToolPolicyDecision): boolean {
+function shouldExposeNativeMcpTools(
+  params: GenericAgentRuntimeParams,
+  canApplyWorkspaceWrites: boolean,
+  policy: AgentToolPolicyDecision
+): boolean {
   if (!policy.executionProfile.allowedToolFamilies.includes('mcp')) {
     return false;
   }
@@ -432,7 +479,9 @@ function shouldExposeNativeMcpTools(params: GenericAgentRuntimeParams, canApplyW
   }
   return (
     policy.mcp.detected &&
-    (params.permission.mode === 'full-access' || params.permission.mode === 'ask' || params.permission.mode === 'read-only')
+    (params.permission.mode === 'full-access' ||
+      params.permission.mode === 'ask' ||
+      params.permission.mode === 'read-only')
   );
 }
 
@@ -455,8 +504,7 @@ function classifyToolSideEffectFromToolUse(
   name: string,
   input?: Record<string, unknown>
 ): AgentToolSideEffectClassification | undefined {
-  const registered = getAgentToolDefinition(name as WorkspaceToolAction['type'])
-    ?.classifySideEffect?.(input);
+  const registered = getAgentToolDefinition(name as WorkspaceToolAction['type'])?.classifySideEffect?.(input);
   if (registered) {
     return registered;
   }
@@ -470,7 +518,9 @@ function classifyToolSideEffectFromToolUse(
   return undefined;
 }
 
-function isExecutedToolSideEffect(classification: AgentToolSideEffectClassification | undefined): classification is AgentToolSideEffectClassification {
+function isExecutedToolSideEffect(
+  classification: AgentToolSideEffectClassification | undefined
+): classification is AgentToolSideEffectClassification {
   return Boolean(classification && classification.kind !== 'none' && classification.confidence !== 'none');
 }
 
@@ -496,7 +546,11 @@ function isReadOnlyMcpToolResult(
   if (!result.mcp) {
     return false;
   }
-  if (result.mcp.operation === 'list_tools' || result.mcp.operation === 'list_resources' || result.mcp.operation === 'read_resource') {
+  if (
+    result.mcp.operation === 'list_tools' ||
+    result.mcp.operation === 'list_resources' ||
+    result.mcp.operation === 'read_resource'
+  ) {
     return true;
   }
   return /\brisk=read\b/i.test(result.mcp.policySummary ?? '');
@@ -589,9 +643,7 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
     input?: Record<string, unknown>;
     status: 'pending' | 'running' | 'completed' | 'failed';
   }): void => {
-    const sideEffect = tool.status !== 'pending'
-      ? classifyToolSideEffectFromToolUse(tool.name, tool.input)
-      : undefined;
+    const sideEffect = tool.status !== 'pending' ? classifyToolSideEffectFromToolUse(tool.name, tool.input) : undefined;
     if (isExecutedToolSideEffect(sideEffect)) {
       pendingToolSideEffects.set(tool.toolUseId, {
         toolName: tool.name,
@@ -640,37 +692,35 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
   const emitStage = (stage: ConversationOperationStageEvent): void => {
     outputCollector.onStage(stage);
   };
-  const runLifecycleHooks = (trigger: Parameters<typeof runAgentLifecycleHooks>[1]) => runAgentLifecycleHooks(
-    runtimeParams.lifecycleHooks,
-    {
-      runId: runtimeParams.activeRunId,
-      projectId: runtimeParams.project.id,
-      sessionId: runtimeParams.context.activeSessionId,
-      ...trigger
-    },
-    {
-      project: runtimeParams.project,
-      permissionContext: {
-        permission: runtimeParams.permission,
-        requestPermission: runtimeParams.requestPermission
+  const runLifecycleHooks = (trigger: Parameters<typeof runAgentLifecycleHooks>[1]) =>
+    runAgentLifecycleHooks(
+      runtimeParams.lifecycleHooks,
+      {
+        runId: runtimeParams.activeRunId,
+        projectId: runtimeParams.project.id,
+        sessionId: runtimeParams.context.activeSessionId,
+        ...trigger
       },
-      cwd: runtimeParams.context.runtimeEnvironment?.workingDirectory ?? runtimeParams.context.projectPath,
-      checkpointSnapshotId: runtimeParams.checkpointSnapshotId,
-      abortSignal: runtimeParams.abortSignal,
-      emitHook: (hook) => emitRuntimeLifecycleHook(runtimeParams, hook),
-      emitStage
-    }
-  );
+      {
+        project: runtimeParams.project,
+        permissionContext: {
+          permission: runtimeParams.permission,
+          requestPermission: runtimeParams.requestPermission
+        },
+        cwd: runtimeParams.context.runtimeEnvironment?.workingDirectory ?? runtimeParams.context.projectPath,
+        checkpointSnapshotId: runtimeParams.checkpointSnapshotId,
+        abortSignal: runtimeParams.abortSignal,
+        emitHook: (hook) => emitRuntimeLifecycleHook(runtimeParams, hook),
+        emitStage
+      }
+    );
   const appendLifecycleHookContext = (contexts: string[]): void => {
     if (contexts.length === 0) {
       return;
     }
     runtimeParams = {
       ...runtimeParams,
-      lifecycleHookContext: [
-        ...(runtimeParams.lifecycleHookContext ?? []),
-        ...contexts
-      ]
+      lifecycleHookContext: [...(runtimeParams.lifecycleHookContext ?? []), ...contexts]
     };
   };
   const buildLifecycleHookBlockedResult = (
@@ -678,10 +728,9 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
     blockReason: string | undefined,
     stepsSoFar: GameAgentStep[]
   ): GenericAgentRuntimeResult => {
-    const blockedReply = [
-      '本轮请求已被生命周期 Hook 阻止。',
-      blockReason ? `原因：${blockReason}` : ''
-    ].filter(Boolean).join('\n');
+    const blockedReply = ['本轮请求已被生命周期 Hook 阻止。', blockReason ? `原因：${blockReason}` : '']
+      .filter(Boolean)
+      .join('\n');
     return {
       assistantMessage: blockedReply,
       assistantMetadata: outputCollector.buildMetadata(blockedReply, {
@@ -697,7 +746,12 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
       usedModel: params.provider?.model,
       steps: [
         ...stepsSoFar,
-        createStep('fallback', '生命周期 Hook 阻止请求', blockReason ?? `${eventName} hook blocked the turn.`, 'completed')
+        createStep(
+          'fallback',
+          '生命周期 Hook 阻止请求',
+          blockReason ?? `${eventName} hook blocked the turn.`,
+          'completed'
+        )
       ]
     };
   };
@@ -742,12 +796,14 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
     }
   });
   if (sessionStartHookResult.results.length > 0) {
-    steps.push(createStep(
-      'context',
-      '执行 SessionStart Hooks',
-      `已处理 ${sessionStartHookResult.results.length} 个生命周期 Hook。`,
-      sessionStartHookResult.blocked ? 'failed' : 'completed'
-    ));
+    steps.push(
+      createStep(
+        'context',
+        '执行 SessionStart Hooks',
+        `已处理 ${sessionStartHookResult.results.length} 个生命周期 Hook。`,
+        sessionStartHookResult.blocked ? 'failed' : 'completed'
+      )
+    );
   }
   appendLifecycleHookContext(sessionStartHookResult.appendedContext);
   if (sessionStartHookResult.blocked) {
@@ -759,12 +815,14 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
     prompt: params.message
   });
   if (promptHookResult.results.length > 0) {
-    steps.push(createStep(
-      'context',
-      '执行 UserPromptSubmit Hooks',
-      `已处理 ${promptHookResult.results.length} 个生命周期 Hook。`,
-      promptHookResult.blocked ? 'failed' : 'completed'
-    ));
+    steps.push(
+      createStep(
+        'context',
+        '执行 UserPromptSubmit Hooks',
+        `已处理 ${promptHookResult.results.length} 个生命周期 Hook。`,
+        promptHookResult.blocked ? 'failed' : 'completed'
+      )
+    );
   }
   appendLifecycleHookContext(promptHookResult.appendedContext);
   if (promptHookResult.blocked) {
@@ -802,14 +860,13 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
       severity: diagnostic.severity,
       suggestedAction: diagnostic.suggestedAction,
       recoveryActions: diagnostic.recoveryActions,
-      steps: [
-        ...steps,
-        createStep('fallback', '未配置 AI Provider', '本轮使用本地 fallback 回复。', 'completed')
-      ]
+      steps: [...steps, createStep('fallback', '未配置 AI Provider', '本轮使用本地 fallback 回复。', 'completed')]
     };
   }
 
-  steps.push(createStep('model', '选择 AI Provider', `${params.provider.name} / ${params.provider.model}`, 'completed'));
+  steps.push(
+    createStep('model', '选择 AI Provider', `${params.provider.name} / ${params.provider.model}`, 'completed')
+  );
   emitStage({
     stageId: 'stage:provider',
     title: '选择 AI Provider',
@@ -845,20 +902,30 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
         reason: 'context_budget',
         boundaryRowId: nativeContextHandoff.coverage.boundaryRowId,
         boundaryOrdinal: nativeContextHandoff.coverage.boundaryOrdinal,
-        coveredMessageCount: nativeContextHandoff.coverage.coveredMessageCount ?? nativeContextHandoff.coverage.messageCount
+        coveredMessageCount:
+          nativeContextHandoff.coverage.coveredMessageCount ?? nativeContextHandoff.coverage.messageCount
       }
     });
     if (preCompactHooks.results.length > 0) {
-      steps.push(createStep(
-        'memory',
-        '执行 PreCompact Hooks',
-        `已处理 ${preCompactHooks.results.length} 个生命周期 Hook。`,
-        preCompactHooks.blocked ? 'failed' : 'completed'
-      ));
+      steps.push(
+        createStep(
+          'memory',
+          '执行 PreCompact Hooks',
+          `已处理 ${preCompactHooks.results.length} 个生命周期 Hook。`,
+          preCompactHooks.blocked ? 'failed' : 'completed'
+        )
+      );
     }
     appendLifecycleHookContext(preCompactHooks.appendedContext);
     if (preCompactHooks.blocked) {
-      steps.push(createStep('memory', '跳过 Native runtime 上下文压缩', preCompactHooks.blockReason ?? 'PreCompact hook blocked context compression.', 'skipped'));
+      steps.push(
+        createStep(
+          'memory',
+          '跳过 Native runtime 上下文压缩',
+          preCompactHooks.blockReason ?? 'PreCompact hook blocked context compression.',
+          'skipped'
+        )
+      );
     } else {
       sessionRuntimePatch = {
         ...sessionRuntimePatch,
@@ -888,11 +955,14 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
           contextSummaryCoverage: nativeContextHandoff.coverage,
           boundaryRowId: nativeContextHandoff.coverage.boundaryRowId,
           boundaryOrdinal: nativeContextHandoff.coverage.boundaryOrdinal,
-          coveredMessageCount: nativeContextHandoff.coverage.coveredMessageCount ?? nativeContextHandoff.coverage.messageCount,
+          coveredMessageCount:
+            nativeContextHandoff.coverage.coveredMessageCount ?? nativeContextHandoff.coverage.messageCount,
           turnCount: nativeContextHandoff.coverage.turnCount
         }
       });
-      steps.push(createStep('memory', '压缩 Native runtime 上下文', '已生成摘要并更新 Native 上下文边界。', 'completed'));
+      steps.push(
+        createStep('memory', '压缩 Native runtime 上下文', '已生成摘要并更新 Native 上下文边界。', 'completed')
+      );
     }
   }
 
@@ -964,10 +1034,10 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
         params.permission.mode === 'read-only' && toolPolicy.requiresWorkspaceWritePermission
           ? 'Plan 模式检测到写入请求；Native 主链继续运行，但不会开放项目写入工具，实际工具权限在执行点处理。'
           : writePermission === 'not_needed'
-          ? '本轮策略未检测到 workspace 写入意图。'
-          : writePermission === 'allow_session'
-            ? '本轮复用了当前会话的写入授权。'
-            : '本轮允许执行写入工具。',
+            ? '本轮策略未检测到 workspace 写入意图。'
+            : writePermission === 'allow_session'
+              ? '本轮复用了当前会话的写入授权。'
+              : '本轮允许执行写入工具。',
       input: {
         toolPolicy: formatToolPolicyForStage(toolPolicy)
       }
@@ -1029,7 +1099,9 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
             const workspaceObservationSummary = [
               projectContextIndexSummary ? `Project context index:\n${projectContextIndexSummary}` : '',
               pluginProbeSummary.trim() ? `Plugin summary:\n${pluginProbeSummary}` : ''
-            ].filter(Boolean).join('\n\n');
+            ]
+              .filter(Boolean)
+              .join('\n\n');
             if (workspaceObservationSummary.trim()) {
               emitToolResult({
                 toolUseId: summaryToolUseId,
@@ -1131,10 +1203,18 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
             try {
               if (useNativeToolLoop) {
                 const exposeWriteTools = shouldExposeNativeWriteTools(params, canApplyWorkspaceWrites, toolPolicy);
-                const exposeWriteToolBucket = shouldExposeNativeWriteToolBucket(params, canApplyWorkspaceWrites, toolPolicy);
+                const exposeWriteToolBucket = shouldExposeNativeWriteToolBucket(
+                  params,
+                  canApplyWorkspaceWrites,
+                  toolPolicy
+                );
                 const exposeCommandTools = shouldExposeNativeCommandTools(params, toolPolicy);
                 const exposeMcpTools = shouldExposeNativeMcpTools(params, canApplyWorkspaceWrites, toolPolicy);
-                const allowedToolFamilies = resolveNativeAllowedToolFamilies(params, canApplyWorkspaceWrites, toolPolicy);
+                const allowedToolFamilies = resolveNativeAllowedToolFamilies(
+                  params,
+                  canApplyWorkspaceWrites,
+                  toolPolicy
+                );
                 usedNativeToolLoopForStep = true;
                 const commonToolLoopOptions = {
                   emitToolUse,
@@ -1161,7 +1241,7 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
                   title: '执行 Agent 工具循环',
                   target: 'stage:tool_loop',
                   status: 'completed',
-                  summary: toolLoopFinalSummary || 'Native 真实 tool loop 已完成。'
+                  summary: toolLoopFinalSummary || '工具执行已完成。'
                 });
               } else {
                 emitStage({
@@ -1221,7 +1301,11 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
       changedFiles: Array.from(activeVerificationChangedFiles),
       sideEffects: activeVerificationSideEffects
     };
-    let activeVerificationPlan = planActiveVerification(runtimeParams, activeVerificationTrigger, activeVerificationEvidence);
+    let activeVerificationPlan = planActiveVerification(
+      runtimeParams,
+      activeVerificationTrigger,
+      activeVerificationEvidence
+    );
     let activeVerificationResult: ActiveVerificationRunResult | undefined;
     let repairAttempted = false;
     let repairChangeSummary: ActiveVerificationChangeSummary | undefined;
@@ -1233,12 +1317,14 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
         emitToolUse,
         emitToolResult
       });
-      steps.push(createStep(
-        'planning',
-        '执行主动验证',
-        activeVerificationResult.summary,
-        activeVerificationResult.status === 'passed' ? 'completed' : 'failed'
-      ));
+      steps.push(
+        createStep(
+          'planning',
+          '执行主动验证',
+          activeVerificationResult.summary,
+          activeVerificationResult.status === 'passed' ? 'completed' : 'failed'
+        )
+      );
       if (activeVerificationResult.blocking && activeVerificationResult.status === 'failed') {
         const toolLoopStrategy = getNativeToolLoopStrategy(params);
         const canRepairWithNativeTools =
@@ -1247,11 +1333,12 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
           isNativeWriteToolLoopEnabled() &&
           shouldExposeNativeWriteTools(params, canApplyWorkspaceWrites, toolPolicy);
         if (canRepairWithNativeTools) {
-          const repairAllowedToolFamilies = resolveNativeAllowedToolFamilies(params, canApplyWorkspaceWrites, toolPolicy);
-          repairChangeSummary = await collectActiveVerificationChangeSummary(
-            runtimeParams,
-            activeVerificationEvidence
+          const repairAllowedToolFamilies = resolveNativeAllowedToolFamilies(
+            params,
+            canApplyWorkspaceWrites,
+            toolPolicy
           );
+          repairChangeSummary = await collectActiveVerificationChangeSummary(runtimeParams, activeVerificationEvidence);
           const repairFileEvidence = collectActiveVerificationRepairEvidence(
             runtimeParams,
             activeVerificationResult,
@@ -1319,8 +1406,11 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
                     emitThinking,
                     emitStage,
                     includeWriteTools: true,
-                    includeMcpToolCalls: isNativeMcpToolLoopEnabled() && shouldExposeNativeMcpTools(params, canApplyWorkspaceWrites, toolPolicy),
-                    includeCommandTools: isNativeCommandToolLoopEnabled() && shouldExposeNativeCommandTools(params, toolPolicy),
+                    includeMcpToolCalls:
+                      isNativeMcpToolLoopEnabled() &&
+                      shouldExposeNativeMcpTools(params, canApplyWorkspaceWrites, toolPolicy),
+                    includeCommandTools:
+                      isNativeCommandToolLoopEnabled() && shouldExposeNativeCommandTools(params, toolPolicy),
                     allowedToolFamilies: repairAllowedToolFamilies
                   })
                 : await runNativeReadOnlyToolLoop(repairRuntimeParams, {
@@ -1329,8 +1419,11 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
                     emitThinking,
                     emitStage,
                     includeWriteTools: true,
-                    includeMcpToolCalls: isNativeMcpToolLoopEnabled() && shouldExposeNativeMcpTools(params, canApplyWorkspaceWrites, toolPolicy),
-                    includeCommandTools: isNativeCommandToolLoopEnabled() && shouldExposeNativeCommandTools(params, toolPolicy),
+                    includeMcpToolCalls:
+                      isNativeMcpToolLoopEnabled() &&
+                      shouldExposeNativeMcpTools(params, canApplyWorkspaceWrites, toolPolicy),
+                    includeCommandTools:
+                      isNativeCommandToolLoopEnabled() && shouldExposeNativeCommandTools(params, toolPolicy),
                     allowedToolFamilies: repairAllowedToolFamilies
                   });
             if (repairToolLoopResult.agentCoreParts?.length) {
@@ -1340,7 +1433,8 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
               loopState.accumulated = repairToolLoopResult.assistantMessage.trim();
             }
             loopState.usedNativeToolLoop = true;
-            loopState.toolLoopFinalSummary = summarizeToolLoopResult(repairToolLoopResult) || '主动验证修复回合已完成。';
+            loopState.toolLoopFinalSummary =
+              summarizeToolLoopResult(repairToolLoopResult) || '主动验证修复回合已完成。';
             emitStage({
               stageId: 'stage:native_active_verification_repair',
               phase: 'verification_repair',
@@ -1355,9 +1449,11 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
             };
             const previousActiveVerificationPlan = activeVerificationPlan;
             const nextActiveVerificationPlan =
-              planActiveVerification(runtimeParams, activeVerificationTrigger, activeVerificationEvidence) ?? previousActiveVerificationPlan;
+              planActiveVerification(runtimeParams, activeVerificationTrigger, activeVerificationEvidence) ??
+              previousActiveVerificationPlan;
             const planChanged =
-              activeVerificationPlanSignature(previousActiveVerificationPlan) !== activeVerificationPlanSignature(nextActiveVerificationPlan);
+              activeVerificationPlanSignature(previousActiveVerificationPlan) !==
+              activeVerificationPlanSignature(nextActiveVerificationPlan);
             activeVerificationPlan = nextActiveVerificationPlan;
             emitStage({
               stageId: 'stage:native_active_verification_replan',
@@ -1385,12 +1481,14 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
               emitToolResult
             });
             activeVerificationResult = repairedVerificationResult;
-            steps.push(createStep(
-              'planning',
-              '执行主动验证修复',
-              repairedVerificationResult.summary,
-              repairedVerificationResult.status === 'passed' ? 'completed' : 'failed'
-            ));
+            steps.push(
+              createStep(
+                'planning',
+                '执行主动验证修复',
+                repairedVerificationResult.summary,
+                repairedVerificationResult.status === 'passed' ? 'completed' : 'failed'
+              )
+            );
             if (!repairedVerificationResult.blocking || repairedVerificationResult.status !== 'failed') {
               steps.push(createStep('planning', '主动验证修复通过', repairedVerificationResult.summary, 'completed'));
             }
@@ -1406,13 +1504,9 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
             });
           }
         }
-
       }
       if (activeVerificationResult.blocking && activeVerificationResult.status === 'failed') {
-        repairChangeSummary ??= await collectActiveVerificationChangeSummary(
-          runtimeParams,
-          activeVerificationEvidence
-        );
+        repairChangeSummary ??= await collectActiveVerificationChangeSummary(runtimeParams, activeVerificationEvidence);
         const rollbackAvailable = Boolean(runtimeParams.checkpointSnapshotId);
         emitStage({
           stageId: 'stage:native_active_verification_handoff',
@@ -1438,11 +1532,15 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
               : undefined
           }
         });
-        const verificationReply = formatActiveVerificationFailureReply(loopState.accumulated.trim(), activeVerificationResult, {
-          repairAttempted,
-          changeSummary: repairChangeSummary,
-          rollbackAvailable
-        });
+        const verificationReply = formatActiveVerificationFailureReply(
+          loopState.accumulated.trim(),
+          activeVerificationResult,
+          {
+            repairAttempted,
+            changeSummary: repairChangeSummary,
+            rollbackAvailable
+          }
+        );
         return {
           assistantMessage: verificationReply,
           assistantMetadata: outputCollector.buildMetadata(verificationReply, {
@@ -1457,10 +1555,7 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
           usedProviderId: params.provider.id,
           usedModel: params.provider.model,
           sessionRuntimePatch,
-          steps: [
-            ...steps,
-            createStep('fallback', '主动验证未通过', activeVerificationResult.summary, 'failed')
-          ]
+          steps: [...steps, createStep('fallback', '主动验证未通过', activeVerificationResult.summary, 'failed')]
         };
       }
     }
@@ -1474,12 +1569,14 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
       }
     });
     if (stopHookResult.results.length > 0) {
-      steps.push(createStep(
-        'context',
-        '执行 Stop Hooks',
-        `已处理 ${stopHookResult.results.length} 个生命周期 Hook。`,
-        stopHookResult.blocked ? 'failed' : 'completed'
-      ));
+      steps.push(
+        createStep(
+          'context',
+          '执行 Stop Hooks',
+          `已处理 ${stopHookResult.results.length} 个生命周期 Hook。`,
+          stopHookResult.blocked ? 'failed' : 'completed'
+        )
+      );
     }
 
     return {
@@ -1498,7 +1595,7 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
         ...steps,
         createStep(
           'planning',
-          loopState.usedNativeToolLoop ? 'Native 真实 Tool Loop' : '模型驱动多步工具循环',
+          loopState.usedNativeToolLoop ? '执行工具步骤' : '模型驱动多步工具循环',
           loopState.usedNativeToolLoop
             ? loopState.toolLoopFinalSummary || getNativeToolLoopStrategy(params).summary
             : loopState.toolLoopFinalSummary || '本轮未进入工具循环，已使用普通模型回复。',
@@ -1544,16 +1641,25 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
           }
         });
         if (preCompactHooks.results.length > 0) {
-          steps.push(createStep(
-            'memory',
-            '执行 PreCompact Hooks',
-            `已处理 ${preCompactHooks.results.length} 个生命周期 Hook。`,
-            preCompactHooks.blocked ? 'failed' : 'completed'
-          ));
+          steps.push(
+            createStep(
+              'memory',
+              '执行 PreCompact Hooks',
+              `已处理 ${preCompactHooks.results.length} 个生命周期 Hook。`,
+              preCompactHooks.blocked ? 'failed' : 'completed'
+            )
+          );
         }
         appendLifecycleHookContext(preCompactHooks.appendedContext);
         if (preCompactHooks.blocked) {
-          steps.push(createStep('memory', '跳过 Native runtime 上下文压缩', preCompactHooks.blockReason ?? 'PreCompact hook blocked forced context compression.', 'skipped'));
+          steps.push(
+            createStep(
+              'memory',
+              '跳过 Native runtime 上下文压缩',
+              preCompactHooks.blockReason ?? 'PreCompact hook blocked forced context compression.',
+              'skipped'
+            )
+          );
         } else {
           const patchedProject = applyNativeContextPatchToProject(
             params.project,
@@ -1597,7 +1703,12 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
             },
             steps: [
               ...steps,
-              createStep('memory', '压缩 Native runtime 上下文后重试', '模型报告上下文过长，已强制压缩历史并重试一次。', 'completed'),
+              createStep(
+                'memory',
+                '压缩 Native runtime 上下文后重试',
+                '模型报告上下文过长，已强制压缩历史并重试一次。',
+                'completed'
+              ),
               ...retryResult.steps
             ]
           };
@@ -1640,10 +1751,7 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
       suggestedAction: diagnostic.suggestedAction,
       recoveryActions: diagnostic.recoveryActions,
       sessionRuntimePatch,
-      steps: [
-        ...steps,
-        createStep('fallback', 'AI 回复失败，回退本地建议', fallbackDetail, 'failed')
-      ]
+      steps: [...steps, createStep('fallback', 'AI 回复失败，回退本地建议', fallbackDetail, 'failed')]
     };
   }
 }

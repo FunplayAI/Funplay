@@ -32,7 +32,7 @@ const APP_TARGET = 400;
 const BASELINES: Record<string, number> = {
   // App.tsx: MCP/Unity plugin domain extracted into hooks/useMcpManager.ts (U47 slice);
   // formatQueuedPromptWithAttachments moved to lib/app-helpers.ts.
-  'src/App.tsx': 1990,
+  'src/App.tsx': 1986,
   // ConversationMessage.tsx split into transcript/* modules by U47-3 — now 317 lines.
   // tool-activity.tsx split into tool/* modules by U47-4 — now 452 lines.
   // AgentChatView.tsx split into agent/* modules by U47-5 — now 371 lines.
@@ -74,11 +74,7 @@ test('no .tsx component grows beyond its size ratchet', () => {
       );
     }
   }
-  assert.equal(
-    violations.length,
-    0,
-    `Component size ratchet exceeded:\n${violations.join('\n')}`
-  );
+  assert.equal(violations.length, 0, `Component size ratchet exceeded:\n${violations.join('\n')}`);
 });
 
 test('oversized-file baselines stay in sync (no stale entries)', () => {
@@ -92,11 +88,7 @@ test('oversized-file baselines stay in sync (no stale entries)', () => {
       );
     }
   }
-  assert.equal(
-    stale.length,
-    0,
-    `Size baselines are stale — ratchet them down in this commit:\n${stale.join('\n')}`
-  );
+  assert.equal(stale.length, 0, `Size baselines are stale — ratchet them down in this commit:\n${stale.join('\n')}`);
 });
 
 test('App.tsx records its U47-1 decomposition target', () => {

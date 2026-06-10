@@ -7,7 +7,7 @@ import { useAppUpdateStatus } from './hooks/useAppUpdateStatus';
 import { useProviderManager } from './hooks/useProviderManager';
 import { useNotificationTasks } from './hooks/useNotificationTasks';
 import { useProjectMemory } from './hooks/useProjectMemory';
-import { useFileInspector } from './hooks/useFileInspector';
+import { useChatFileOpeners, useFileInspector } from './hooks/useFileInspector';
 import { useCheckpointManager } from './hooks/useCheckpointManager';
 import { useProjectSkills } from './hooks/useProjectSkills';
 import { useOnboarding } from './hooks/useOnboarding';
@@ -555,6 +555,7 @@ function App(): JSX.Element {
     selectedProjectView?.agentPolicy?.permissionMode ?? agentSettings.permissionMode;
   const selectedSessionPermissionMode = selectedSessionRuntime?.permissionMode ?? selectedProjectPermissionMode;
   const selectedSessionEffort = selectedSessionRuntime?.effort ?? 'auto';
+  const enabledProviders = useMemo(() => providers.filter((provider) => provider.enabled), [providers]);
   const selectedDefaultProvider =
     providers.find((provider) => provider.id === aiSettings.defaultProviderId && provider.enabled) ??
     providers.find((provider) => provider.enabled) ??
@@ -753,6 +754,12 @@ function App(): JSX.Element {
     setRightInspectorCollapsed,
     uiPreferences.language
   );
+  const { chatOpenablePaths, handleOpenChatFilePath } = useChatFileOpeners({
+    projectFiles,
+    virtualProjectFiles,
+    handleOpenProjectFile,
+    handleOpenVirtualFile
+  });
 
   const {
     restoreCheckpointPreview,
@@ -764,6 +771,7 @@ function App(): JSX.Element {
     restoredCheckpointState,
     isRestoringCheckpoint,
     handleRequestRestoreSessionCheckpoint,
+    handleRestoreSelectedSessionCheckpoint,
     handleConfirmRestoreSessionCheckpoint
   } = useCheckpointManager({
     selectedProjectView,
@@ -1604,12 +1612,9 @@ function App(): JSX.Element {
               <AgentChatView
                 project={selectedProjectView}
                 provider={selectedProvider}
-                providers={providers.filter((provider) => provider.enabled)}
+                providers={enabledProviders}
                 permissionMode={selectedSessionPermissionMode}
-                openablePaths={[
-                  ...projectFiles.filter((file) => file.type !== 'directory').map((file) => file.path),
-                  ...virtualProjectFiles.map((file) => file.path)
-                ]}
+                openablePaths={chatOpenablePaths}
                 defaultProviderId={selectedDefaultProvider?.id}
                 sessionProviderId={selectedSessionRuntime?.providerId}
                 sessionModel={selectedSessionRuntime?.model}
@@ -1734,17 +1739,8 @@ function App(): JSX.Element {
                 onRefreshProjectRuntimeState={() =>
                   selectedProjectView ? refreshProjectRuntimeStateById(selectedProjectView.id) : Promise.resolve(null)
                 }
-                onOpenFilePath={(path) => {
-                  const virtualFile = virtualProjectFiles.find((file) => file.path === path);
-                  if (virtualFile) {
-                    handleOpenVirtualFile(virtualFile.id);
-                    return;
-                  }
-                  void handleOpenProjectFile(path);
-                }}
-                onRestoreCheckpoint={(snapshotId) =>
-                  void handleRequestRestoreSessionCheckpoint(selectedSessionId, snapshotId)
-                }
+                onOpenFilePath={handleOpenChatFilePath}
+                onRestoreCheckpoint={handleRestoreSelectedSessionCheckpoint}
               />
             </AgentWorkbench>
           ) : null}
@@ -1774,7 +1770,7 @@ function App(): JSX.Element {
               skillCatalog={skillCatalog}
               isLoadingSkillCatalog={isLoadingSkillCatalog}
               skillCatalogError={skillCatalogError}
-              providers={providers.filter((provider) => provider.enabled)}
+              providers={enabledProviders}
               activeProvider={selectedProvider}
               defaultProviderId={selectedDefaultProvider?.id}
               activeSession={selectedActiveSession}

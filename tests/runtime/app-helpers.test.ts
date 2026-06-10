@@ -5,9 +5,10 @@ import {
   extractSessionMessagePreview,
   formatQueuedPromptWithAttachments,
   getPlatformCards,
+  mergeProjectRuntimeRefresh,
   resolveOnboardingProjectName
 } from '../../src/lib/app-helpers.ts';
-import type { ChatMessage, PromptAttachment } from '../../shared/types.ts';
+import type { ChatMessage, Project, PromptAttachment } from '../../shared/types.ts';
 
 test('session message preview strips internal token usage projection', () => {
   const message: ChatMessage = {
@@ -47,21 +48,27 @@ test('session message preview hides usage-only legacy content', () => {
 });
 
 test('imported projects prefer the folder name over stale create-form names', () => {
-  assert.equal(resolveOnboardingProjectName({
-    mode: 'import',
-    projectPath: '/Users/demo/Games/Bird',
-    projectName: 'Old Form Name',
-    fallback: 'Untitled Project'
-  }), 'Bird');
+  assert.equal(
+    resolveOnboardingProjectName({
+      mode: 'import',
+      projectPath: '/Users/demo/Games/Bird',
+      projectName: 'Old Form Name',
+      fallback: 'Untitled Project'
+    }),
+    'Bird'
+  );
 });
 
 test('created projects still prefer the explicit form name', () => {
-  assert.equal(resolveOnboardingProjectName({
-    mode: 'create',
-    projectPath: '/Users/demo/Games/Bird',
-    projectName: 'New Game',
-    fallback: 'Untitled Project'
-  }), 'New Game');
+  assert.equal(
+    resolveOnboardingProjectName({
+      mode: 'create',
+      projectPath: '/Users/demo/Games/Bird',
+      projectName: 'New Game',
+      fallback: 'Untitled Project'
+    }),
+    'New Game'
+  );
 });
 
 test('platform cards advertise engine 2D and 3D support', () => {
@@ -74,4 +81,62 @@ test('platform cards advertise engine 2D and 3D support', () => {
   assert.equal(zhCocos?.description, '支持 2D / 3D');
   assert.equal(enUnity?.description, 'Supports 2D / 3D');
   assert.equal(enCocos?.description, 'Supports 2D / 3D');
+});
+
+test('runtime refresh preserves chat references so text selection remains stable', () => {
+  const chat: ChatMessage[] = [
+    {
+      id: 'msg_1',
+      role: 'assistant',
+      content: '这段正文正在被用户选中。',
+      createdAt: '2026-06-10T00:00:00.000Z'
+    }
+  ];
+  const session = {
+    id: 'session_1',
+    title: 'Session',
+    chat,
+    createdAt: '2026-06-10T00:00:00.000Z',
+    updatedAt: '2026-06-10T00:00:00.000Z'
+  };
+  const current = {
+    id: 'project_1',
+    name: 'Runtime',
+    updatedAt: '2026-06-10T00:00:00.000Z',
+    sessions: [session],
+    activeSessionId: session.id,
+    chat,
+    engine: {
+      platform: 'cocos',
+      setupMode: 'import',
+      projectPath: '/tmp/game',
+      dimension: '2d'
+    }
+  } as unknown as Project;
+  const incoming = {
+    ...current,
+    updatedAt: '2026-06-10T00:00:05.000Z',
+    sessions: [
+      {
+        ...session,
+        chat: [...chat]
+      }
+    ],
+    chat: [...chat],
+    runtimeState: {
+      checkedAt: '2026-06-10T00:00:05.000Z',
+      projectExists: true,
+      unityProjectValid: true,
+      projectOpen: true,
+      bridgeInstalled: true
+    }
+  } as unknown as Project;
+
+  const merged = mergeProjectRuntimeRefresh(current, incoming);
+
+  assert.equal(merged.runtimeState, incoming.runtimeState);
+  assert.equal(merged.engine, incoming.engine);
+  assert.equal(merged.sessions, current.sessions);
+  assert.equal(merged.sessions[0]?.chat, chat);
+  assert.equal(merged.chat, chat);
 });

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import type { Project } from '../../shared/types';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Project, ProjectFileEntry } from '../../shared/types';
 import { localize, type UiLanguage } from '../i18n';
 import { isPreviewableFile } from '../components/layout/file-type-detection';
 import {
@@ -47,66 +47,80 @@ export function useFileInspector(
     selectedOverlayFilePathRef.current = nextPath;
   }, [selectedOverlayFile]);
 
-  async function handleOpenProjectFile(filePath: string): Promise<void> {
-    if (!selectedProject) {
-      return;
-    }
+  const selectedProjectId = selectedProject?.id;
 
-    setSelectedFileId(filePath);
-    try {
-      const file = await window.funplay.readProjectFile(selectedProject.id, filePath);
-      setSelectedOverlayFile(mapProjectFileContentToOverlay(file));
-      setRightInspectorCollapsed(false);
-    } catch (error) {
-      setSelectedOverlayFile({
-        id: filePath,
-        label: filePath.split('/').pop() || filePath,
-        path: filePath,
-        content: error instanceof Error ? error.message : localize(language, '读取文件失败。', 'Failed to read file.')
-      });
-      setRightInspectorCollapsed(false);
-    }
-  }
+  const handleOpenProjectFile = useCallback(
+    async (filePath: string): Promise<void> => {
+      if (!selectedProjectId) {
+        return;
+      }
 
-  async function handleSaveSelectedProjectFile(): Promise<void> {
-    if (!selectedProject || !selectedOverlayFile) {
+      setSelectedFileId(filePath);
+      try {
+        const file = await window.funplay.readProjectFile(selectedProjectId, filePath);
+        setSelectedOverlayFile(mapProjectFileContentToOverlay(file));
+        setRightInspectorCollapsed(false);
+      } catch (error) {
+        setSelectedOverlayFile({
+          id: filePath,
+          label: filePath.split('/').pop() || filePath,
+          path: filePath,
+          content: error instanceof Error ? error.message : localize(language, '读取文件失败。', 'Failed to read file.')
+        });
+        setRightInspectorCollapsed(false);
+      }
+    },
+    [language, selectedProjectId, setRightInspectorCollapsed]
+  );
+
+  const handleSaveSelectedProjectFile = useCallback(async (): Promise<void> => {
+    if (!selectedProjectId || !selectedOverlayFile) {
       return;
     }
 
     setIsSavingProjectFile(true);
     setFileInspectorSaveError('');
     try {
-      const file = await window.funplay.writeProjectFile(selectedProject.id, selectedOverlayFile.path, fileInspectorDraft);
+      const file = await window.funplay.writeProjectFile(
+        selectedProjectId,
+        selectedOverlayFile.path,
+        fileInspectorDraft
+      );
       const overlayFile = mapProjectFileContentToOverlay(file);
       setSelectedFileId(overlayFile.path);
       setSelectedOverlayFile(overlayFile);
       setFileInspectorDraft(overlayFile.content);
       setFileInspectorSavedAt(new Date().toISOString());
-      dispatchRefreshFileTree({ projectId: selectedProject.id, reason: 'manual' });
-      await refreshProjectFiles(selectedProject.id);
+      dispatchRefreshFileTree({ projectId: selectedProjectId, reason: 'manual' });
+      await refreshProjectFiles(selectedProjectId);
     } catch (error) {
-      setFileInspectorSaveError(error instanceof Error ? error.message : localize(language, '保存文件失败。', 'Failed to save file.'));
+      setFileInspectorSaveError(
+        error instanceof Error ? error.message : localize(language, '保存文件失败。', 'Failed to save file.')
+      );
     } finally {
       setIsSavingProjectFile(false);
     }
-  }
+  }, [fileInspectorDraft, language, refreshProjectFiles, selectedOverlayFile, selectedProjectId]);
 
-  function handleCloseFileInspector(): void {
+  const handleCloseFileInspector = useCallback((): void => {
     setSelectedFileId('');
     setSelectedOverlayFile(null);
     setRightInspectorCollapsed(true);
-  }
+  }, [setRightInspectorCollapsed]);
 
-  function handleOpenVirtualFile(fileId: string): void {
-    const target = virtualProjectFiles.find((file) => file.id === fileId);
-    if (!target) {
-      return;
-    }
+  const handleOpenVirtualFile = useCallback(
+    (fileId: string): void => {
+      const target = virtualProjectFiles.find((file) => file.id === fileId);
+      if (!target) {
+        return;
+      }
 
-    setSelectedFileId(fileId);
-    setSelectedOverlayFile(target);
-    setRightInspectorCollapsed(false);
-  }
+      setSelectedFileId(fileId);
+      setSelectedOverlayFile(target);
+      setRightInspectorCollapsed(false);
+    },
+    [setRightInspectorCollapsed, virtualProjectFiles]
+  );
 
   return {
     selectedFileId,
@@ -125,5 +139,58 @@ export function useFileInspector(
     handleCloseFileInspector,
     handleSaveSelectedProjectFile,
     handleOpenVirtualFile
+  };
+}
+
+export function useChatFileOpeners(input: {
+  projectFiles: ProjectFileEntry[];
+  virtualProjectFiles: ProjectFileItem[];
+  handleOpenProjectFile: (filePath: string) => Promise<void>;
+  handleOpenVirtualFile: (fileId: string) => void;
+}): {
+  chatOpenablePaths: string[];
+  handleOpenChatFilePath: (path: string) => void;
+} {
+  const projectOpenablePathKey = useMemo(
+    () =>
+      input.projectFiles
+        .filter((file) => file.type !== 'directory')
+        .map((file) => file.path)
+        .join('\0'),
+    [input.projectFiles]
+  );
+  const virtualOpenablePathKey = useMemo(
+    () => input.virtualProjectFiles.map((file) => file.path).join('\0'),
+    [input.virtualProjectFiles]
+  );
+  const chatOpenablePaths = useMemo(
+    () => [
+      ...projectOpenablePathKey.split('\0').filter(Boolean),
+      ...virtualOpenablePathKey.split('\0').filter(Boolean)
+    ],
+    [projectOpenablePathKey, virtualOpenablePathKey]
+  );
+  const virtualProjectFilesRef = useRef(input.virtualProjectFiles);
+  const handleOpenProjectFileRef = useRef(input.handleOpenProjectFile);
+  const handleOpenVirtualFileRef = useRef(input.handleOpenVirtualFile);
+
+  useEffect(() => {
+    virtualProjectFilesRef.current = input.virtualProjectFiles;
+    handleOpenProjectFileRef.current = input.handleOpenProjectFile;
+    handleOpenVirtualFileRef.current = input.handleOpenVirtualFile;
+  }, [input.handleOpenProjectFile, input.handleOpenVirtualFile, input.virtualProjectFiles]);
+
+  const handleOpenChatFilePath = useCallback((path: string): void => {
+    const virtualFile = virtualProjectFilesRef.current.find((file) => file.path === path);
+    if (virtualFile) {
+      handleOpenVirtualFileRef.current(virtualFile.id);
+      return;
+    }
+    void handleOpenProjectFileRef.current(path);
+  }, []);
+
+  return {
+    chatOpenablePaths,
+    handleOpenChatFilePath
   };
 }

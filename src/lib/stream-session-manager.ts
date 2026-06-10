@@ -136,8 +136,20 @@ const MAX_STREAM_ACTIVITY_ITEMS = 80;
 
 interface StreamTextSmoothingState {
   targetContent: string;
-  timer?: ReturnType<typeof setTimeout>;
+  timer?: StreamTextSmoothingHandle;
 }
+
+const STREAM_TEXT_SMOOTHING_FRAME_MS = 16;
+
+type StreamTextSmoothingHandle =
+  | { kind: 'timeout'; id: ReturnType<typeof setTimeout> }
+  | { kind: 'animationFrame'; id: number };
+
+type GraphemeSegmenter = {
+  segment(input: string): Iterable<{ segment: string }>;
+};
+
+let cachedGraphemeSegmenter: GraphemeSegmenter | null | undefined;
 
 function getStreams(): Map<string, StreamSessionState> {
   const globalState = globalThis as Record<string, unknown>;
@@ -203,7 +215,11 @@ function clearTextSmoothing(streamId: string): void {
   const states = getTextSmoothingStates();
   const state = states.get(streamId);
   if (state?.timer) {
-    clearTimeout(state.timer);
+    if (state.timer.kind === 'animationFrame' && typeof globalThis.cancelAnimationFrame === 'function') {
+      globalThis.cancelAnimationFrame(state.timer.id);
+    } else if (state.timer.kind === 'timeout') {
+      clearTimeout(state.timer.id);
+    }
   }
   states.delete(streamId);
 }
@@ -367,7 +383,9 @@ function withLiveAgentCoreParts(current: StreamSessionState): StreamSessionState
   };
 }
 
-function buildLiveToolActivityGroups(current: StreamSessionState): Array<{ offset: number; createdAt: string; toolUseIds: string[] }> {
+function buildLiveToolActivityGroups(
+  current: StreamSessionState
+): Array<{ offset: number; createdAt: string; toolUseIds: string[] }> {
   const groups = current.activityItems
     .filter((activity) => activity.type === 'tool' && activity.toolUseIds?.length)
     .map((activity) => ({
@@ -500,20 +518,75 @@ function isInlineLifecycleHookStage(stage: StreamStageState): boolean {
   }
   const hookStatus = typeof stage.input?.status === 'string' ? stage.input.status : undefined;
   const actionType = typeof stage.input?.actionType === 'string' ? stage.input.actionType : undefined;
-  return stage.status === 'failed' ||
+  return (
+    stage.status === 'failed' ||
     actionType === 'command' ||
     hookStatus === 'blocked' ||
     hookStatus === 'permission_denied' ||
     hookStatus === 'command_completed' ||
     hookStatus === 'command_failed' ||
-    hookStatus === 'requires_permission';
+    hookStatus === 'requires_permission'
+  );
 }
 
 function shouldRenderStageInline(stage: StreamStageState): boolean {
-  return stage.status === 'failed' ||
+  return (
+    stage.status === 'failed' ||
     stage.phase === 'context_compressed' ||
     stage.phase === 'tool_timeout' ||
-    isInlineLifecycleHookStage(stage);
+    isInlineLifecycleHookStage(stage)
+  );
+}
+
+function getGraphemeSegmenter(): GraphemeSegmenter | undefined {
+  if (cachedGraphemeSegmenter !== undefined) {
+    return cachedGraphemeSegmenter ?? undefined;
+  }
+  const Segmenter = (
+    Intl as unknown as {
+      Segmenter?: new (locale: string | undefined, options: { granularity: 'grapheme' }) => GraphemeSegmenter;
+    }
+  ).Segmenter;
+  cachedGraphemeSegmenter =
+    typeof Segmenter === 'function' ? new Segmenter(undefined, { granularity: 'grapheme' }) : null;
+  return cachedGraphemeSegmenter ?? undefined;
+}
+
+function* iterateGraphemes(input: string): Iterable<string> {
+  const segmenter = getGraphemeSegmenter();
+  if (!segmenter) {
+    yield* Array.from(input);
+    return;
+  }
+  for (const segment of segmenter.segment(input)) {
+    yield segment.segment;
+  }
+}
+
+function getSmoothedTextVisibleBudget(pendingLength: number): number {
+  if (pendingLength > 4000) return 3;
+  if (pendingLength > 1600) return 2;
+  return 1;
+}
+
+function isWhitespaceGrapheme(segment: string): boolean {
+  return /^\s+$/.test(segment);
+}
+
+function takeSmoothedTextSlice(pending: string): string {
+  const visibleBudget = getSmoothedTextVisibleBudget(pending.length);
+  let visibleCount = 0;
+  let slice = '';
+  for (const segment of iterateGraphemes(pending)) {
+    slice += segment;
+    if (!isWhitespaceGrapheme(segment)) {
+      visibleCount += 1;
+    }
+    if (visibleCount >= visibleBudget) {
+      break;
+    }
+  }
+  return slice || pending.slice(0, 1);
 }
 
 function getNextSmoothedContent(displayed: string, target: string): string {
@@ -521,30 +594,28 @@ function getNextSmoothedContent(displayed: string, target: string): string {
     return target;
   }
   const pending = target.slice(displayed.length);
-  if (pending.length <= 24) {
+  if (!pending) {
     return target;
   }
 
-  const chunkSize =
-    pending.length > 900 ? 96
-      : pending.length > 420 ? 72
-        : pending.length > 180 ? 48
-          : pending.length > 72 ? 28
-            : 14;
-  const rawChunk = pending.slice(0, chunkSize);
-  const boundary = Math.max(
-    rawChunk.lastIndexOf(' '),
-    rawChunk.lastIndexOf('\n'),
-    rawChunk.lastIndexOf('，'),
-    rawChunk.lastIndexOf('。'),
-    rawChunk.lastIndexOf('、'),
-    rawChunk.lastIndexOf(','),
-    rawChunk.lastIndexOf('.')
-  );
-  const nextChunk = boundary >= 8 && boundary < rawChunk.length - 1
-    ? pending.slice(0, boundary + 1)
-    : rawChunk;
-  return displayed + nextChunk;
+  return displayed + takeSmoothedTextSlice(pending);
+}
+
+function scheduleNextTextSmoothingTick(streamId: string, state: StreamTextSmoothingState): void {
+  if (state.timer) {
+    return;
+  }
+  if (typeof globalThis.requestAnimationFrame === 'function') {
+    state.timer = {
+      kind: 'animationFrame',
+      id: globalThis.requestAnimationFrame(() => scheduleTextSmoothing(streamId))
+    };
+    return;
+  }
+  state.timer = {
+    kind: 'timeout',
+    id: setTimeout(() => scheduleTextSmoothing(streamId), STREAM_TEXT_SMOOTHING_FRAME_MS)
+  };
 }
 
 function scheduleTextSmoothing(streamId: string): void {
@@ -555,6 +626,7 @@ function scheduleTextSmoothing(streamId: string): void {
     clearTextSmoothing(streamId);
     return;
   }
+  state.timer = undefined;
 
   if (current.content === state.targetContent) {
     clearTextSmoothing(streamId);
@@ -576,7 +648,7 @@ function scheduleTextSmoothing(streamId: string): void {
     return;
   }
 
-  state.timer = setTimeout(() => scheduleTextSmoothing(streamId), remaining > 500 ? 18 : 24);
+  scheduleNextTextSmoothingTick(streamId, state);
 }
 
 function applySmoothedDelta(event: Extract<PromptStreamEvent, { type: 'delta' }>, labels: StreamSessionLabels): void {
@@ -589,12 +661,15 @@ function applySmoothedDelta(event: Extract<PromptStreamEvent, { type: 'delta' }>
   const targetContent = event.content;
   if (!targetContent.startsWith(current.content) || targetContent.length <= current.content.length) {
     clearTextSmoothing(event.streamId);
-    streams.set(event.streamId, withLiveAgentCoreParts({
-      ...current,
-      content: targetContent,
-      phase: 'streaming',
-      statusMessage: labels.streaming
-    }));
+    streams.set(
+      event.streamId,
+      withLiveAgentCoreParts({
+        ...current,
+        content: targetContent,
+        phase: 'streaming',
+        statusMessage: labels.streaming
+      })
+    );
     emitChange();
     return;
   }
@@ -604,13 +679,20 @@ function applySmoothedDelta(event: Extract<PromptStreamEvent, { type: 'delta' }>
   state.targetContent = targetContent;
   states.set(event.streamId, state);
 
+  if (state.timer) {
+    return;
+  }
+
   const nextContent = getNextSmoothedContent(current.content, targetContent);
-  streams.set(event.streamId, withLiveAgentCoreParts({
-    ...current,
-    content: nextContent,
-    phase: 'streaming',
-    statusMessage: labels.streaming
-  }));
+  streams.set(
+    event.streamId,
+    withLiveAgentCoreParts({
+      ...current,
+      content: nextContent,
+      phase: 'streaming',
+      statusMessage: labels.streaming
+    })
+  );
   emitChange();
 
   if (nextContent === targetContent) {
@@ -619,7 +701,7 @@ function applySmoothedDelta(event: Extract<PromptStreamEvent, { type: 'delta' }>
   }
 
   if (!state.timer && nextContent !== targetContent) {
-    state.timer = setTimeout(() => scheduleTextSmoothing(event.streamId), 24);
+    scheduleNextTextSmoothingTick(event.streamId, state);
   }
 }
 
@@ -651,7 +733,9 @@ export function listStreamSessions(): StreamSessionState[] {
 }
 
 export function getStreamSessionForSession(projectId: string, sessionId: string): StreamSessionState | null {
-  return listStreamSessions().find((stream) => stream.projectId === projectId && stream.sessionId === sessionId) ?? null;
+  return (
+    listStreamSessions().find((stream) => stream.projectId === projectId && stream.sessionId === sessionId) ?? null
+  );
 }
 
 export function applyPromptStreamEventToManager(event: PromptStreamEvent, labels: StreamSessionLabels): void {
@@ -681,12 +765,15 @@ export function applyPromptStreamEventToManager(event: PromptStreamEvent, labels
     if (!flushed) {
       return;
     }
-    streams.set(event.streamId, withLiveAgentCoreParts({
-      ...flushed,
-      thinkingContent: event.content,
-      phase: 'thinking',
-      statusMessage: labels.reasoning
-    }));
+    streams.set(
+      event.streamId,
+      withLiveAgentCoreParts({
+        ...flushed,
+        thinkingContent: event.content,
+        phase: 'thinking',
+        statusMessage: labels.reasoning
+      })
+    );
     emitChange();
     return;
   }
@@ -718,11 +805,17 @@ export function applyPromptStreamEventToManager(event: PromptStreamEvent, labels
       existingIndex >= 0
         ? flushed.toolUses.map((tool, index) => (index === existingIndex ? mergedTool : tool))
         : [...flushed.toolUses, mergedTool];
-    const next = appendToolActivityItem(event.streamId, {
-      ...flushed,
-      toolUses,
-      statusMessage: mergedTool.activity ?? labels.toolRunning(event.name)
-    }, event.toolUseId, 'running', mergedTool.summary ?? mergedTool.activity);
+    const next = appendToolActivityItem(
+      event.streamId,
+      {
+        ...flushed,
+        toolUses,
+        statusMessage: mergedTool.activity ?? labels.toolRunning(event.name)
+      },
+      event.toolUseId,
+      'running',
+      mergedTool.summary ?? mergedTool.activity
+    );
     streams.set(event.streamId, withLiveAgentCoreParts(next));
     emitChange();
     return;
@@ -752,11 +845,16 @@ export function applyPromptStreamEventToManager(event: PromptStreamEvent, labels
       existingIndex >= 0
         ? flushed.toolResults.map((result, index) => (index === existingIndex ? nextResult : result))
         : [...flushed.toolResults, nextResult];
-    const next = appendToolActivityItem(event.streamId, {
-      ...flushed,
-      toolResults,
-      statusMessage: event.isError ? labels.toolFailed : labels.toolCompleted
-    }, event.toolUseId, event.isError ? 'failed' : 'completed');
+    const next = appendToolActivityItem(
+      event.streamId,
+      {
+        ...flushed,
+        toolResults,
+        statusMessage: event.isError ? labels.toolFailed : labels.toolCompleted
+      },
+      event.toolUseId,
+      event.isError ? 'failed' : 'completed'
+    );
     streams.set(event.streamId, withLiveAgentCoreParts(next));
     emitChange();
     return;
@@ -797,7 +895,12 @@ export function applyPromptStreamEventToManager(event: PromptStreamEvent, labels
     };
     const next = shouldRenderStageInline(nextStage)
       ? appendStreamActivityItem(event.streamId, nextBase, {
-          type: nextStage.phase === 'tool_timeout' ? 'timeout' : nextStage.phase === 'context_compressed' ? 'context' : 'stage',
+          type:
+            nextStage.phase === 'tool_timeout'
+              ? 'timeout'
+              : nextStage.phase === 'context_compressed'
+                ? 'context'
+                : 'stage',
           status: nextStage.status === 'failed' ? 'failed' : nextStage.status === 'completed' ? 'completed' : 'running',
           title: nextStage.title,
           summary: nextStage.summary,
@@ -815,15 +918,19 @@ export function applyPromptStreamEventToManager(event: PromptStreamEvent, labels
     if (!flushed) {
       return;
     }
-    const next = appendStreamActivityItem(event.streamId, {
-      ...flushed,
-      statusMessage: event.message
-    }, {
-      type: 'context',
-      status: 'completed',
-      title: 'context_compressed',
-      summary: event.message
-    });
+    const next = appendStreamActivityItem(
+      event.streamId,
+      {
+        ...flushed,
+        statusMessage: event.message
+      },
+      {
+        type: 'context',
+        status: 'completed',
+        title: 'context_compressed',
+        summary: event.message
+      }
+    );
     streams.set(event.streamId, next);
     emitChange();
     return;
@@ -834,15 +941,19 @@ export function applyPromptStreamEventToManager(event: PromptStreamEvent, labels
     if (!flushed) {
       return;
     }
-    const next = appendStreamActivityItem(event.streamId, {
-      ...flushed,
-      statusMessage: event.message
-    }, {
-      type: 'timeout',
-      status: 'failed',
-      title: event.toolName || 'tool_timeout',
-      summary: event.message
-    });
+    const next = appendStreamActivityItem(
+      event.streamId,
+      {
+        ...flushed,
+        statusMessage: event.message
+      },
+      {
+        type: 'timeout',
+        status: 'failed',
+        title: event.toolName || 'tool_timeout',
+        summary: event.message
+      }
+    );
     streams.set(event.streamId, next);
     emitChange();
     return;

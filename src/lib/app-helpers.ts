@@ -24,9 +24,7 @@ import { getDocumentLanguage, localize, type UiLanguage } from '../i18n';
 import type { ProjectFileItem } from '../components/layout/WorkspacePanels';
 import type { QueuedPromptItem } from '../components/chat/ChatComposer';
 import type { SessionListState } from '../components/layout/SessionManagementPanel';
-import {
-  type StreamSessionState
-} from '../lib/stream-session-manager';
+import { type StreamSessionState } from '../lib/stream-session-manager';
 import type {
   AssetLibraryCategoryId,
   AssetLibraryCategory,
@@ -43,10 +41,9 @@ function resolveSystemLanguagePreference(): LanguagePreference {
   if (typeof navigator === 'undefined') {
     return 'en-US';
   }
-  const languages = [
-    ...Array.from(navigator.languages ?? []),
-    navigator.language
-  ].filter((language): language is string => typeof language === 'string' && language.trim().length > 0);
+  const languages = [...Array.from(navigator.languages ?? []), navigator.language].filter(
+    (language): language is string => typeof language === 'string' && language.trim().length > 0
+  );
   for (const language of languages) {
     const normalized = language.toLowerCase();
     if (normalized.startsWith('zh')) {
@@ -65,10 +62,6 @@ function createDefaultUiPreferences(): UiPreferences {
     language: resolveSystemLanguagePreference(),
     developerMode: false
   };
-}
-
-export function countProjectMessages(project: Project): number {
-  return project.sessions.reduce((total, session) => total + session.chat.length, 0);
 }
 
 export function formatQueuedPromptWithAttachments(
@@ -90,15 +83,6 @@ export function formatQueuedPromptWithAttachments(
 }
 
 export function mergeProjectRuntimeRefresh(current: Project, incoming: Project): Project {
-  const currentUpdatedAt = new Date(current.updatedAt).getTime();
-  const incomingUpdatedAt = new Date(incoming.updatedAt).getTime();
-  const shouldPreserveConversation =
-    currentUpdatedAt > incomingUpdatedAt || countProjectMessages(current) > countProjectMessages(incoming);
-
-  if (!shouldPreserveConversation) {
-    return incoming;
-  }
-
   return {
     ...current,
     engine: incoming.engine,
@@ -156,12 +140,13 @@ export function dedupeAppNotifications(notifications: AppNotification[]): AppNot
   for (const notification of notifications) {
     byId.set(notification.id, notification);
   }
-  return [...byId.values()]
-    .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
-    .slice(-4);
+  return [...byId.values()].sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt)).slice(-4);
 }
 
-export function formatNotificationTaskStatus(status: ScheduledNotificationTask['status'], language: LanguagePreference): string {
+export function formatNotificationTaskStatus(
+  status: ScheduledNotificationTask['status'],
+  language: LanguagePreference
+): string {
   if (status === 'active') {
     return localize(language, '进行中', 'Active');
   }
@@ -181,7 +166,10 @@ export function formatMemoryKindLabel(kind: ProjectMemoryFileSummary['kind'], la
   return localize(language, '笔记', 'Note');
 }
 
-export function formatMemoryEntryKindLabel(kind: ProjectMemoryFileSummary['memoryKinds'][number], language: LanguagePreference): string {
+export function formatMemoryEntryKindLabel(
+  kind: ProjectMemoryFileSummary['memoryKinds'][number],
+  language: LanguagePreference
+): string {
   if (kind === 'user_preference') {
     return localize(language, '偏好', 'Preference');
   }
@@ -220,7 +208,10 @@ export function formatAppUpdateStatus(status: AppUpdateSnapshot['status'], langu
   }
 }
 
-export function formatAppUpdateFeedSource(source: AppUpdateSnapshot['feedSource'], language: LanguagePreference): string {
+export function formatAppUpdateFeedSource(
+  source: AppUpdateSnapshot['feedSource'],
+  language: LanguagePreference
+): string {
   if (source === 'github' || source === 'embedded') {
     return localize(language, 'GitHub Releases', 'GitHub Releases');
   }
@@ -232,13 +223,21 @@ export function resolveAppUpdateActionMessage(snapshot: AppUpdateSnapshot, langu
     return snapshot.error;
   }
   if (snapshot.status === 'available') {
-    return localize(language, `发现新版本 ${snapshot.updateInfo?.version ?? ''}。`, `Version ${snapshot.updateInfo?.version ?? ''} is available.`);
+    return localize(
+      language,
+      `发现新版本 ${snapshot.updateInfo?.version ?? ''}。`,
+      `Version ${snapshot.updateInfo?.version ?? ''} is available.`
+    );
   }
   if (snapshot.status === 'not_available') {
     return localize(language, '当前已经是最新版本。', 'You are already on the latest version.');
   }
   if (snapshot.status === 'downloaded') {
-    return localize(language, '更新已下载，重启后会安装。', 'The update has been downloaded and will install after restart.');
+    return localize(
+      language,
+      '更新已下载，重启后会安装。',
+      'The update has been downloaded and will install after restart.'
+    );
   }
   if (snapshot.status === 'installing') {
     return localize(language, '正在重启并安装更新。', 'Restarting to install the update.');
@@ -363,7 +362,18 @@ export function buildAgentRunTimeline(operationLog: AgentOperationRecord[]): Arr
   counts: Record<AgentOperationRecord['status'], number>;
   entries: AgentOperationRecord[];
 }> {
-  const phaseOrder = ['prepare', 'checkpoint', 'execute', 'diagnose', 'repair', 'verify', 'rollback', 'replan', 'commit', 'complete'];
+  const phaseOrder = [
+    'prepare',
+    'checkpoint',
+    'execute',
+    'diagnose',
+    'repair',
+    'verify',
+    'rollback',
+    'replan',
+    'commit',
+    'complete'
+  ];
   const grouped = operationLog.reduce<Map<string, AgentOperationRecord[]>>((accumulator, record) => {
     const phase = record.phase || 'operation';
     accumulator.set(phase, [...(accumulator.get(phase) ?? []), record]);
@@ -380,7 +390,9 @@ export function buildAgentRunTimeline(operationLog: AgentOperationRecord[]): Arr
   });
 
   return phases.map((phase) => {
-    const entries = [...(grouped.get(phase) ?? [])].sort((left, right) => (left.startedAt ?? '').localeCompare(right.startedAt ?? ''));
+    const entries = [...(grouped.get(phase) ?? [])].sort((left, right) =>
+      (left.startedAt ?? '').localeCompare(right.startedAt ?? '')
+    );
     const counts = entries.reduce<Record<AgentOperationRecord['status'], number>>(
       (accumulator, entry) => ({
         ...accumulator,
@@ -468,7 +480,8 @@ export function buildSessionListState(input: {
     };
   }
 
-  const latestMessage = latestAssistantMessage ?? [...input.session.chat].reverse().find((message) => message.role === 'user');
+  const latestMessage =
+    latestAssistantMessage ?? [...input.session.chat].reverse().find((message) => message.role === 'user');
   const latestSummary = latestMessage ? truncateInlineText(extractSessionMessagePreview(latestMessage), 64) : '';
   return {
     mode: 'idle',
@@ -485,7 +498,8 @@ export function buildProjectSwitcherItem(input: {
   activeSessionByProject: Record<string, string>;
 }) {
   const aggregate = buildProjectAgentAggregateState(input);
-  const activeSession = input.project.sessions.find((session) => session.id === aggregate.lastActiveSessionId) ?? input.project.sessions[0];
+  const activeSession =
+    input.project.sessions.find((session) => session.id === aggregate.lastActiveSessionId) ?? input.project.sessions[0];
 
   return {
     id: input.project.id,
@@ -516,10 +530,11 @@ export function buildProjectAgentAggregateState(input: {
     input.project.activeSessionId ||
     input.project.sessions[0]?.id ||
     '';
-  const activeStreams = input.activeStreams.filter((stream) =>
-    stream.projectId === input.project.id &&
-    sessionIds.has(stream.sessionId) &&
-    !['completed', 'cancelled', 'error'].includes(stream.phase)
+  const activeStreams = input.activeStreams.filter(
+    (stream) =>
+      stream.projectId === input.project.id &&
+      sessionIds.has(stream.sessionId) &&
+      !['completed', 'cancelled', 'error'].includes(stream.phase)
   );
   const queuedCount = input.project.sessions.reduce(
     (total, session) => total + (input.queuedPromptsBySession[session.id]?.length ?? 0),
@@ -623,35 +638,40 @@ export function buildAssetLibraryCategories(
 export function buildExistingAssetFileItems(files: ProjectFileEntry[]): AssetLibraryFileItem[] {
   const items: AssetLibraryFileItem[] = [];
 
-  files.filter((file) => file.type !== 'directory').forEach((file) => {
-    const category = classifyProjectAssetFile(file.path);
-    if (!category) {
-      return;
-    }
+  files
+    .filter((file) => file.type !== 'directory')
+    .forEach((file) => {
+      const category = classifyProjectAssetFile(file.path);
+      if (!category) {
+        return;
+      }
 
-    items.push({
-      id: `file:${file.path}`,
-      source: 'project-file',
-      openId: file.path,
-      name: file.name,
-      path: file.path,
-      description: summarizeProjectAssetFile(file),
-      meta: `${formatAssetFileCategory(category)} · ${formatFileSize(file.size)}`,
-      category,
-      statusKind: 'ready',
-      statusLabel: localize(getDocumentLanguage(), '项目内', 'In Project'),
-      previewable: isAssetFilePreviewable(file.path)
+      items.push({
+        id: `file:${file.path}`,
+        source: 'project-file',
+        openId: file.path,
+        name: file.name,
+        path: file.path,
+        description: summarizeProjectAssetFile(file),
+        meta: `${formatAssetFileCategory(category)} · ${formatFileSize(file.size)}`,
+        category,
+        statusKind: 'ready',
+        statusLabel: localize(getDocumentLanguage(), '项目内', 'In Project'),
+        previewable: isAssetFilePreviewable(file.path)
+      });
     });
-  });
 
-  return items.sort((left, right) => left.category.localeCompare(right.category) || left.path.localeCompare(right.path));
+  return items.sort(
+    (left, right) => left.category.localeCompare(right.category) || left.path.localeCompare(right.path)
+  );
 }
 
 export function classifyProjectAssetFile(path: string): AssetLibraryCategoryId | null {
   const extension = getPathExtension(path);
   const normalizedPath = path.toLowerCase();
 
-  if (['gif', 'mp4', 'mov', 'webm', 'anim', 'controller'].includes(extension) || normalizedPath.includes('animation')) return 'animation';
+  if (['gif', 'mp4', 'mov', 'webm', 'anim', 'controller'].includes(extension) || normalizedPath.includes('animation'))
+    return 'animation';
   if (['png', 'jpg', 'jpeg', 'bmp', 'webp', 'svg', 'tga', 'psd'].includes(extension)) return 'image';
   if (['wav', 'mp3', 'ogg', 'aiff'].includes(extension)) return 'audio';
   if (['fbx', 'blend', 'glb', 'gltf', 'obj'].includes(extension)) return 'model';
@@ -660,7 +680,26 @@ export function classifyProjectAssetFile(path: string): AssetLibraryCategoryId |
 
 export function isAssetFilePreviewable(path: string): boolean {
   const extension = getPathExtension(path);
-  return ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'wav', 'mp3', 'ogg', 'aiff', 'mp4', 'mov', 'webm', 'md', 'markdown', 'html', 'htm'].includes(extension);
+  return [
+    'png',
+    'jpg',
+    'jpeg',
+    'gif',
+    'bmp',
+    'webp',
+    'svg',
+    'wav',
+    'mp3',
+    'ogg',
+    'aiff',
+    'mp4',
+    'mov',
+    'webm',
+    'md',
+    'markdown',
+    'html',
+    'htm'
+  ].includes(extension);
 }
 
 export function summarizeProjectAssetFile(file: ProjectFileEntry): string {
@@ -731,7 +770,9 @@ export function formatAssetStatus(status: Project['assets'][number]['status']): 
   return localize(language, '已规划', 'Planned');
 }
 
-export function formatDiagnosticStatus(status: NonNullable<EnvironmentDiagnostics>['checks'][number]['status']): string {
+export function formatDiagnosticStatus(
+  status: NonNullable<EnvironmentDiagnostics>['checks'][number]['status']
+): string {
   const language = getDocumentLanguage();
   const labels: Record<NonNullable<EnvironmentDiagnostics>['checks'][number]['status'], string> = {
     passed: localize(language, '已通过', 'Passed'),
@@ -754,7 +795,9 @@ export function formatEnvironmentTaskStatus(status: EnvironmentTask['status']): 
   return labels[status];
 }
 
-export function mapTaskStatusToDiagnostic(status: EnvironmentTask['status']): 'passed' | 'warning' | 'failed' | 'pending' {
+export function mapTaskStatusToDiagnostic(
+  status: EnvironmentTask['status']
+): 'passed' | 'warning' | 'failed' | 'pending' {
   if (status === 'completed') return 'passed';
   if (status === 'failed') return 'failed';
   if (status === 'needs_user') return 'warning';
@@ -777,7 +820,9 @@ export function formatEnvironmentTaskStage(stage: EnvironmentTask['stage']): str
   return labels[stage];
 }
 
-export function formatActionStatus(status: NonNullable<Project['currentExecutionPlan']>['actions'][number]['status']): string {
+export function formatActionStatus(
+  status: NonNullable<Project['currentExecutionPlan']>['actions'][number]['status']
+): string {
   const language = getDocumentLanguage();
   const labels: Record<NonNullable<Project['currentExecutionPlan']>['actions'][number]['status'], string> = {
     planned: localize(language, '已规划', 'Planned'),
@@ -791,12 +836,14 @@ export function formatActionStatus(status: NonNullable<Project['currentExecution
 }
 
 export function slugifyAssetName(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48) || 'asset';
+  return (
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || 'asset'
+  );
 }
 
 export function formatPlatformLabel(platform: PlatformChoice): string {
@@ -825,9 +872,13 @@ export function formatProjectStatus(status: Project['status']): string {
   return labels[status];
 }
 
-export function buildRuntimeSummary(runtimeState?: Project['runtimeState'], platform: PlatformChoice = 'unity'): string {
+export function buildRuntimeSummary(
+  runtimeState?: Project['runtimeState'],
+  platform: PlatformChoice = 'unity'
+): string {
   const language = getDocumentLanguage();
-  const engineLabel = platform === 'cocos' ? 'Cocos Creator' : platform === 'unity' ? 'Unity' : formatPlatformLabel(platform);
+  const engineLabel =
+    platform === 'cocos' ? 'Cocos Creator' : platform === 'unity' ? 'Unity' : formatPlatformLabel(platform);
   const projectLabel = platform === 'cocos' ? 'Cocos' : platform === 'unity' ? 'Unity' : formatPlatformLabel(platform);
   if (!runtimeState) {
     return localize(language, '还没有读取到项目运行态。', 'Project runtime state has not been loaded yet.');
@@ -836,7 +887,11 @@ export function buildRuntimeSummary(runtimeState?: Project['runtimeState'], plat
     return localize(language, '项目目录不存在。', 'Project directory does not exist.');
   }
   if (!runtimeState.unityProjectValid) {
-    return localize(language, `当前路径还不是有效的 ${projectLabel} 项目。`, `The current path is not a valid ${projectLabel} project.`);
+    return localize(
+      language,
+      `当前路径还不是有效的 ${projectLabel} 项目。`,
+      `The current path is not a valid ${projectLabel} project.`
+    );
   }
   if (!runtimeState.bridgeInstalled) {
     return localize(language, 'Bridge 未安装。', 'Bridge is not installed.');
@@ -845,7 +900,11 @@ export function buildRuntimeSummary(runtimeState?: Project['runtimeState'], plat
     return localize(language, 'Bridge / MCP 已连通。', 'Bridge / MCP is connected.');
   }
   if (runtimeState.projectOpen) {
-    return localize(language, `${engineLabel} 已打开，等待 MCP 连通。`, `${engineLabel} is open and waiting for MCP connection.`);
+    return localize(
+      language,
+      `${engineLabel} 已打开，等待 MCP 连通。`,
+      `${engineLabel} is open and waiting for MCP connection.`
+    );
   }
   return localize(language, '项目未打开或 MCP 尚未启动。', 'The project is not open or MCP has not started yet.');
 }
@@ -871,9 +930,7 @@ export function resolveOnboardingProjectName(input: {
 }): string {
   const folderName = getFolderNameFromPath(input.projectPath);
   const formName = input.projectName.trim();
-  return input.mode === 'import'
-    ? folderName || formName || input.fallback
-    : formName || folderName || input.fallback;
+  return input.mode === 'import' ? folderName || formName || input.fallback : formName || folderName || input.fallback;
 }
 
 export function formatAbsoluteTime(date: string): string {
@@ -1007,7 +1064,10 @@ export function readUiPreferences(): UiPreferences {
     }
     const parsed = JSON.parse(raw) as Partial<UiPreferences>;
     return {
-      theme: parsed.theme === 'light' || parsed.theme === 'dark' || parsed.theme === 'system' ? parsed.theme : defaults.theme,
+      theme:
+        parsed.theme === 'light' || parsed.theme === 'dark' || parsed.theme === 'system'
+          ? parsed.theme
+          : defaults.theme,
       language: parsed.language === 'en-US' || parsed.language === 'zh-CN' ? parsed.language : defaults.language,
       developerMode: parsed.developerMode === true
     };
@@ -1030,7 +1090,9 @@ export function applyUiPreferences(value: UiPreferences): void {
   }
 
   const systemDark =
-    typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : false;
+    typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : false;
   const resolvedTheme = value.theme === 'system' ? (systemDark ? 'dark' : 'light') : value.theme;
   document.documentElement.dataset.theme = resolvedTheme;
   document.documentElement.dataset.themePreference = value.theme;
@@ -1073,7 +1135,11 @@ export function getPlatformCards(language: LanguagePreference): Array<{
   disabled?: boolean;
 }> {
   return [
-    { id: 'web', name: localize(language, '通用项目', 'Generic Project'), description: localize(language, '代码 / 文档 / Web', 'Code / Docs / Web') },
+    {
+      id: 'web',
+      name: localize(language, '通用项目', 'Generic Project'),
+      description: localize(language, '代码 / 文档 / Web', 'Code / Docs / Web')
+    },
     { id: 'unity', name: 'Unity', description: localize(language, '支持 2D / 3D', 'Supports 2D / 3D') },
     { id: 'cocos', name: 'Cocos', description: localize(language, '支持 2D / 3D', 'Supports 2D / 3D') },
     { id: 'godot', name: 'Godot', description: localize(language, '即将支持', 'Coming soon'), disabled: true },

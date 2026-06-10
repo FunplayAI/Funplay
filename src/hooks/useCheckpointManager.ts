@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Project, SessionCheckpointPreview } from '../../shared/types';
 import { type SessionCheckpointListItem } from '../components/layout/SessionManagementPanel';
 
@@ -66,7 +66,8 @@ export function useCheckpointManager({
 
     let cancelled = false;
     setSessionChangePanelLoading(true);
-    window.funplay.previewSessionCheckpoint(selectedProjectView.id, selectedSessionLatestCheckpointId)
+    window.funplay
+      .previewSessionCheckpoint(selectedProjectView.id, selectedSessionLatestCheckpointId)
       .then((preview) => {
         if (!cancelled) {
           setSessionChangePanelPreview(preview);
@@ -88,14 +89,26 @@ export function useCheckpointManager({
     };
   }, [selectedProjectView?.id, selectedProjectView?.updatedAt, selectedSessionLatestCheckpointId]);
 
-  async function handleRequestRestoreSessionCheckpoint(_sessionId: string, snapshotId: string): Promise<void> {
-    if (!selectedProjectView) {
-      return;
-    }
+  const selectedProjectId = selectedProjectView?.id;
 
-    const preview = await window.funplay.previewSessionCheckpoint(selectedProjectView.id, snapshotId);
-    setRestoreCheckpointPreview(preview);
-  }
+  const handleRequestRestoreSessionCheckpoint = useCallback(
+    async (_sessionId: string, snapshotId: string): Promise<void> => {
+      if (!selectedProjectId) {
+        return;
+      }
+
+      const preview = await window.funplay.previewSessionCheckpoint(selectedProjectId, snapshotId);
+      setRestoreCheckpointPreview(preview);
+    },
+    [selectedProjectId]
+  );
+
+  const handleRestoreSelectedSessionCheckpoint = useCallback(
+    (snapshotId: string): void => {
+      void handleRequestRestoreSessionCheckpoint(selectedSessionId, snapshotId);
+    },
+    [handleRequestRestoreSessionCheckpoint, selectedSessionId]
+  );
 
   async function handleConfirmRestoreSessionCheckpoint(): Promise<void> {
     if (!selectedProjectView || !restoreCheckpointPreview) {
@@ -142,6 +155,7 @@ export function useCheckpointManager({
     restoredCheckpointState,
     isRestoringCheckpoint,
     handleRequestRestoreSessionCheckpoint,
+    handleRestoreSelectedSessionCheckpoint,
     handleConfirmRestoreSessionCheckpoint
   };
 }

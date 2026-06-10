@@ -1,9 +1,6 @@
 import type { AiProvider } from '../../../../shared/types';
 import type { OpenAiCompatibleToolCall } from '../../openai-compatible-client';
-import {
-  normalizeProviderContextWindowTokens,
-  normalizeProviderMaxOutputTokens
-} from '../../provider-runtime-options';
+import { normalizeProviderContextWindowTokens, normalizeProviderMaxOutputTokens } from '../../provider-runtime-options';
 import type { NativeWorkspaceToolOutput } from './tool-executor';
 
 export const NATIVE_PARTIAL_WRITE_CONTINUATION_LIMIT = 2;
@@ -17,7 +14,9 @@ export const NATIVE_MAIN_TOOL_LOOP_DEFAULT_MAX_STEPS = 120;
 export const NATIVE_MAIN_TOOL_LOOP_MAX_STEPS = 200;
 export const NEVER_STOP_ON_STEP_COUNT = (): false => false;
 
-export function createInvalidMultiEditInputResult(toolCall: OpenAiCompatibleToolCall): NativeWorkspaceToolOutput | undefined {
+export function createInvalidMultiEditInputResult(
+  toolCall: OpenAiCompatibleToolCall
+): NativeWorkspaceToolOutput | undefined {
   if (toolCall.name !== 'multi_edit') {
     return undefined;
   }
@@ -29,7 +28,7 @@ export function createInvalidMultiEditInputResult(toolCall: OpenAiCompatibleTool
     ok: false,
     isError: true,
     summary: [
-      'multi_edit 参数无效：edits 至少需要 1 个编辑操作，未执行真实写入。',
+      'multi_edit 参数无效：edits 至少需要 1 个编辑操作，未执行写入。',
       '恢复方式：先用 read_file 读取目标片段，再用 edit_file/multi_edit 提供逐字匹配的 oldText；如果 oldText 不确定，改用 preview_patch/patch_file。'
     ].join('\n'),
     edit: {

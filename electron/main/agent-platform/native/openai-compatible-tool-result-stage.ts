@@ -3,21 +3,12 @@ import type { GenericAgentRuntimeParams } from '../types';
 import type { AgentCoreProviderStepResult, AiProviderApiMode } from '../../../../shared/types';
 import type { OpenAiCompatibleToolStepResult } from '../../openai-compatible-client';
 import type { ProviderRuntimeController } from '../provider-runtime-events';
-import {
-  createEditFailureRecoveryPrompt,
-  type NativeEditFailureRecovery
-} from './continuation-policy';
+import { createEditFailureRecoveryPrompt, type NativeEditFailureRecovery } from './continuation-policy';
 import { NATIVE_EDIT_FAILURE_CONTINUATION_LIMIT } from './tool-loop-options';
 import { isAbortLikeError } from './tool-loop-output';
 import { executeOpenAiCompatibleToolStage } from './openai-compatible-tool-stage';
-import type {
-  NativeProcessTextStepStream,
-  NativeProcessTextStream
-} from './tool-loop-process-stream';
-import type {
-  NativeRunControllerToolResult,
-  NativeToolLoopCallbacks
-} from './tool-loop-controller';
+import type { NativeProcessTextStepStream, NativeProcessTextStream } from './tool-loop-process-stream';
+import type { NativeRunControllerToolResult, NativeToolLoopCallbacks } from './tool-loop-controller';
 import {
   appendNativeToolLoopAssistantToolMessage,
   createNativeToolLoopRunResult,
@@ -58,18 +49,23 @@ export async function recordOpenAiCompatibleToolResultStage(input: {
   }).runController;
   if (controllerSnapshot.nextAction !== 'execute_tools') {
     input.processTextStream.discard(input.stepStream);
-    input.providerController.failRun(`Agent Run Controller 返回了无法在工具分支处理的动作：${controllerSnapshot.nextAction}。`);
+    input.providerController.failRun(
+      `Agent Run Controller 返回了无法在工具分支处理的动作：${controllerSnapshot.nextAction}。`
+    );
     input.callbacks?.emitStage?.({
       stageId: 'stage:native_tool_stream',
-      title: '执行兼容 Tool Loop',
+      title: '执行工具步骤',
       target: 'stage:native_tool_stream',
       status: 'completed',
       summary: [
-        `完成 ${input.stepIndex + 1} 步`,
-        input.state.finishReason ? `finishReason=${input.state.finishReason}` : '',
-        `tools=${input.stepResult.toolCalls.map((toolCall) => toolCall.name).join(', ')}`,
-        `controllerAction=${controllerSnapshot.nextAction}`
-      ].filter(Boolean).join('；')
+        `已完成 ${input.stepIndex + 1} 轮工具执行`,
+        input.stepResult.toolCalls.length > 0
+          ? `调用工具：${input.stepResult.toolCalls.map((toolCall) => toolCall.name).join(', ')}`
+          : '',
+        `下一步：${controllerSnapshot.nextAction}`
+      ]
+        .filter(Boolean)
+        .join('；')
     });
     input.emitCoreStateStage('failed', 'Agent Run Controller 返回了工具分支无法处理的动作。');
     return {
@@ -77,7 +73,9 @@ export async function recordOpenAiCompatibleToolResultStage(input: {
       result: createNativeToolLoopRunResult(input.state, controllerSnapshot.coreState, controllerSnapshot.parts)
     };
   }
-  input.providerController.toolExecutionStarted(`Provider 返回 ${input.stepResult.toolCalls.length} 个 tool call，进入工具执行。`);
+  input.providerController.toolExecutionStarted(
+    `Provider 返回 ${input.stepResult.toolCalls.length} 个 tool call，进入工具执行。`
+  );
 
   if (input.stepResult.toolCallRepair?.type === 'textual_tool_marker') {
     input.callbacks?.emitStage?.({
@@ -101,18 +99,23 @@ export async function recordOpenAiCompatibleToolResultStage(input: {
   const editFailureRecoveries: NativeEditFailureRecovery[] = [];
 
   try {
-    editFailureRecoveries.push(...(await executeOpenAiCompatibleToolStage({
-      toolCalls: input.stepResult.toolCalls,
-      stepIndex: input.stepIndex,
-      state: input.state,
-      callbacks: input.callbacks,
-      abortSignal: input.params.abortSignal,
-      toolPool: input.toolPool,
-      instructionTracker: input.instructionTracker,
-      recordRunControllerToolResult: (toolResult: NativeRunControllerToolResult) => input.providerController.recordToolResult({
-        toolResult
-      })
-    })).editFailureRecoveries);
+    editFailureRecoveries.push(
+      ...(
+        await executeOpenAiCompatibleToolStage({
+          toolCalls: input.stepResult.toolCalls,
+          stepIndex: input.stepIndex,
+          state: input.state,
+          callbacks: input.callbacks,
+          abortSignal: input.params.abortSignal,
+          toolPool: input.toolPool,
+          instructionTracker: input.instructionTracker,
+          recordRunControllerToolResult: (toolResult: NativeRunControllerToolResult) =>
+            input.providerController.recordToolResult({
+              toolResult
+            })
+        })
+      ).editFailureRecoveries
+    );
   } catch (error) {
     if (isAbortLikeError(error, input.params.abortSignal)) {
       input.providerController.interruptRun('工具执行被中断，已把未完成工具记录为结构化错误结果。');
@@ -159,10 +162,10 @@ export async function recordOpenAiCompatibleToolResultStage(input: {
 
   input.callbacks?.emitStage?.({
     stageId: 'stage:native_tool_stream',
-    title: '执行兼容 Tool Loop',
+    title: '执行工具步骤',
     target: 'stage:native_tool_stream',
     status: 'running',
-    summary: `兼容 tool loop 已完成 ${input.stepIndex + 1} 步。`,
+    summary: `已完成 ${input.stepIndex + 1} 轮工具执行。`,
     input: {
       step: input.stepIndex + 1,
       finishReason: input.state.finishReason,

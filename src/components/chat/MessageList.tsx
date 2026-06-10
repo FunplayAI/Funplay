@@ -1,6 +1,20 @@
-import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { useEffect, useMemo, useRef, useState, type JSX, type PointerEvent as ReactPointerEvent } from 'react';
 import { ArrowDown } from 'lucide-react';
-import type { AgentCoreMessagePart, AgentPermissionImpact, AgentToolArtifact, AgentToolBrowserResult, AgentToolChangedFile, AgentToolEditMetrics, AgentToolMcpResult, AgentUserInputOption, ChatMediaBlock, ChatMessage, ProjectSessionRuntimeId, PromptAttachment, RuntimeRecoveryAction } from '../../../shared/types';
+import type {
+  AgentCoreMessagePart,
+  AgentPermissionImpact,
+  AgentToolArtifact,
+  AgentToolBrowserResult,
+  AgentToolChangedFile,
+  AgentToolEditMetrics,
+  AgentToolMcpResult,
+  AgentUserInputOption,
+  ChatMediaBlock,
+  ChatMessage,
+  ProjectSessionRuntimeId,
+  PromptAttachment,
+  RuntimeRecoveryAction
+} from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import { Button, IconButton } from '../ui/index';
 import { ChatTranscriptMessage, StreamingTranscriptMessage, getMessagePlainText } from './ConversationMessage';
@@ -99,8 +113,14 @@ function buildStreamScrollKey(stream: ChatStreamState | null): string {
     stream.thinkingContent.length,
     stream.statusMessage,
     stream.toolUses.map((tool) => `${tool.toolUseId}:${tool.status}`).join(','),
-    stream.toolResults.map((result) => `${result.toolUseId}:${result.content.length}:${result.isError ? '1' : '0'}`).join(','),
-    stream.stages.map((stage) => `${stage.stageId}:${stage.status}:${stage.summary?.length ?? 0}:${stage.errorMessage?.length ?? 0}`).join(','),
+    stream.toolResults
+      .map((result) => `${result.toolUseId}:${result.content.length}:${result.isError ? '1' : '0'}`)
+      .join(','),
+    stream.stages
+      .map(
+        (stage) => `${stage.stageId}:${stage.status}:${stage.summary?.length ?? 0}:${stage.errorMessage?.length ?? 0}`
+      )
+      .join(','),
     stream.activityItems.map((item) => `${item.id}:${item.status}:${item.summary?.length ?? 0}`).join(','),
     (stream.agentCoreParts ?? []).map(buildAgentCorePartScrollKey).join(','),
     stream.pendingPermission?.requestId ?? '',
@@ -111,14 +131,19 @@ function buildStreamScrollKey(stream: ChatStreamState | null): string {
 function buildAgentCorePartScrollKey(part: AgentCoreMessagePart): string {
   if (part.kind === 'assistant_text') return `${part.id}:${part.kind}:${part.text.length}:${part.final ? '1' : '0'}`;
   if (part.kind === 'assistant_thinking') return `${part.id}:${part.kind}:${part.thinking.length}`;
-  if (part.kind === 'tool_call') return `${part.id}:${part.kind}:${part.status}:${part.summary?.length ?? 0}:${part.activity?.length ?? 0}`;
-  if (part.kind === 'tool_result') return `${part.id}:${part.kind}:${part.content.length}:${part.changedFiles?.length ?? 0}:${part.artifacts?.length ?? 0}`;
-  if (part.kind === 'tool_error') return `${part.id}:${part.kind}:${part.error.length}:${part.recoveryHint?.length ?? 0}`;
+  if (part.kind === 'tool_call')
+    return `${part.id}:${part.kind}:${part.status}:${part.summary?.length ?? 0}:${part.activity?.length ?? 0}`;
+  if (part.kind === 'tool_result')
+    return `${part.id}:${part.kind}:${part.content.length}:${part.changedFiles?.length ?? 0}:${part.artifacts?.length ?? 0}`;
+  if (part.kind === 'tool_error')
+    return `${part.id}:${part.kind}:${part.error.length}:${part.recoveryHint?.length ?? 0}`;
   if (part.kind === 'permission_request') return `${part.id}:${part.kind}:${part.requestId}`;
   if (part.kind === 'user_input_request') return `${part.id}:${part.kind}:${part.requestId}:${part.question.length}`;
-  if (part.kind === 'todo_update') return `${part.id}:${part.kind}:${part.items.map((item) => `${item.id}:${item.status}`).join(',')}`;
+  if (part.kind === 'todo_update')
+    return `${part.id}:${part.kind}:${part.items.map((item) => `${item.id}:${item.status}`).join(',')}`;
   if (part.kind === 'context_summary') return `${part.id}:${part.kind}:${part.summary.length}`;
-  if (part.kind === 'system_event') return `${part.id}:${part.kind}:${part.state ?? ''}:${part.title.length}:${part.summary?.length ?? 0}`;
+  if (part.kind === 'system_event')
+    return `${part.id}:${part.kind}:${part.state ?? ''}:${part.title.length}:${part.summary?.length ?? 0}`;
   return `${part.id}:${part.kind}`;
 }
 
@@ -148,6 +173,7 @@ export function MessageList(props: {
   const previousSessionIdRef = useRef(props.sessionId);
   const lastHighlightKeyRef = useRef('');
   const autoScrollAnimationFrameRef = useRef<number | null>(null);
+  const pointerSelectingTextRef = useRef(false);
   const stickToBottomRef = useRef(true);
   const normalizedSearchQueryRef = useRef('');
   const scrollTopBySessionRef = useRef<Record<string, number>>({});
@@ -161,12 +187,45 @@ export function MessageList(props: {
     if (!normalizedSearchQuery) {
       return props.messages;
     }
-    return props.messages.filter((message) => getMessagePlainText(message, false).toLowerCase().includes(normalizedSearchQuery));
+    return props.messages.filter((message) =>
+      getMessagePlainText(message, false).toLowerCase().includes(normalizedSearchQuery)
+    );
   }, [normalizedSearchQuery, props.messages]);
-  const shouldWindowMessages = !normalizedSearchQuery && !props.highlightMessageId && filteredMessages.length > visibleMessageLimit;
+  const shouldWindowMessages =
+    !normalizedSearchQuery && !props.highlightMessageId && filteredMessages.length > visibleMessageLimit;
   const visibleMessages = shouldWindowMessages ? filteredMessages.slice(-visibleMessageLimit) : filteredMessages;
   const hiddenMessageCount = Math.max(0, filteredMessages.length - visibleMessages.length);
   const streamScrollKey = buildStreamScrollKey(props.stream);
+
+  function hasActiveTextSelectionInScrollRegion(): boolean {
+    const node = scrollRegionRef.current;
+    const selection = window.getSelection();
+    if (!node || !selection || selection.isCollapsed || selection.rangeCount === 0) {
+      return false;
+    }
+    return Boolean(
+      (selection.anchorNode && node.contains(selection.anchorNode)) ||
+      (selection.focusNode && node.contains(selection.focusNode))
+    );
+  }
+
+  function shouldPreserveTextSelection(): boolean {
+    return pointerSelectingTextRef.current || hasActiveTextSelectionInScrollRegion();
+  }
+
+  function isInteractiveSelectionTarget(target: EventTarget | null): boolean {
+    return (
+      target instanceof HTMLElement &&
+      Boolean(target.closest('button,a,input,textarea,select,summary,[role="button"],[contenteditable="true"]'))
+    );
+  }
+
+  function beginTextSelectionGesture(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (event.button !== 0 || isInteractiveSelectionTarget(event.target)) {
+      return;
+    }
+    pointerSelectingTextRef.current = true;
+  }
 
   function scrollRegionToBottom(behavior: ScrollBehavior): void {
     if (!scrollRegionRef.current) {
@@ -183,7 +242,12 @@ export function MessageList(props: {
   }
 
   function scheduleBottomFollow(behavior: ScrollBehavior = 'auto'): void {
-    if (!scrollRegionRef.current || normalizedSearchQueryRef.current || !stickToBottomRef.current) {
+    if (
+      !scrollRegionRef.current ||
+      normalizedSearchQueryRef.current ||
+      !stickToBottomRef.current ||
+      shouldPreserveTextSelection()
+    ) {
       return;
     }
 
@@ -194,6 +258,9 @@ export function MessageList(props: {
     autoScrollAnimationFrameRef.current = window.requestAnimationFrame(() => {
       autoScrollAnimationFrameRef.current = null;
       if (!scrollRegionRef.current || normalizedSearchQueryRef.current || !stickToBottomRef.current) {
+        return;
+      }
+      if (shouldPreserveTextSelection()) {
         return;
       }
       scrollRegionToBottom(behavior);
@@ -255,6 +322,18 @@ export function MessageList(props: {
       if (autoScrollAnimationFrameRef.current !== null) {
         window.cancelAnimationFrame(autoScrollAnimationFrameRef.current);
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    const clearPointerSelectionGesture = (): void => {
+      pointerSelectingTextRef.current = false;
+    };
+    window.addEventListener('pointerup', clearPointerSelectionGesture);
+    window.addEventListener('pointercancel', clearPointerSelectionGesture);
+    return () => {
+      window.removeEventListener('pointerup', clearPointerSelectionGesture);
+      window.removeEventListener('pointercancel', clearPointerSelectionGesture);
     };
   }, []);
 
@@ -327,7 +406,9 @@ export function MessageList(props: {
         return;
       }
 
-      const target = scrollRegionRef.current.querySelector<HTMLElement>(`[data-message-id="${props.highlightMessageId}"]`);
+      const target = scrollRegionRef.current.querySelector<HTMLElement>(
+        `[data-message-id="${props.highlightMessageId}"]`
+      );
       if (!target) {
         return;
       }
@@ -369,7 +450,8 @@ export function MessageList(props: {
       if (!scrollRegionRef.current || !node) {
         return;
       }
-      const nextScrollTop = previousScrollTop + Math.max(0, scrollRegionRef.current.scrollHeight - previousScrollHeight);
+      const nextScrollTop =
+        previousScrollTop + Math.max(0, scrollRegionRef.current.scrollHeight - previousScrollHeight);
       scrollRegionRef.current.scrollTo({
         top: nextScrollTop,
         behavior: 'auto'
@@ -385,6 +467,7 @@ export function MessageList(props: {
     <div
       ref={scrollRegionRef}
       className="agent-scroll-region"
+      onPointerDownCapture={beginTextSelectionGesture}
       onScroll={updateStickiness}
     >
       <div ref={messageContentRef} className="agent-chat-column agent-message-column">
@@ -392,12 +475,27 @@ export function MessageList(props: {
           <div className="agent-empty-state minimal compact-style">
             <div className="agent-empty-copy">
               <strong>{localize(language, '开始一个新对话', 'Start a new conversation')}</strong>
-              <span>{localize(language, '选择一个常用起点，或直接在下方输入具体任务。', 'Pick a common starting point, or type a specific task below.')}</span>
+              <span>
+                {localize(
+                  language,
+                  '选择一个常用起点，或直接在下方输入具体任务。',
+                  'Pick a common starting point, or type a specific task below.'
+                )}
+              </span>
             </div>
             {props.emptyActions?.length ? (
-              <div className="agent-empty-suggestions" aria-label={localize(language, '常用任务起点', 'Common task starters')}>
+              <div
+                className="agent-empty-suggestions"
+                aria-label={localize(language, '常用任务起点', 'Common task starters')}
+              >
                 {props.emptyActions.map((action) => (
-                  <Button key={action.id} size="compact" variant="ghost" className="agent-empty-suggestion" onClick={() => props.onSelectEmptyAction?.(action.prompt)}>
+                  <Button
+                    key={action.id}
+                    size="compact"
+                    variant="ghost"
+                    className="agent-empty-suggestion"
+                    onClick={() => props.onSelectEmptyAction?.(action.prompt)}
+                  >
                     <strong>{action.label}</strong>
                     <span>{action.description}</span>
                   </Button>
@@ -420,10 +518,17 @@ export function MessageList(props: {
               </div>
             ) : null}
             {normalizedSearchQuery && filteredMessages.length === 0 ? (
-              <div className="agent-search-empty">{localize(language, '没有找到匹配消息。', 'No matching messages found.')}</div>
+              <div className="agent-search-empty">
+                {localize(language, '没有找到匹配消息。', 'No matching messages found.')}
+              </div>
             ) : null}
             {hiddenMessageCount > 0 ? (
-              <Button size="compact" variant="ghost" className="agent-hidden-history-button" onClick={loadEarlierMessages}>
+              <Button
+                size="compact"
+                variant="ghost"
+                className="agent-hidden-history-button"
+                onClick={loadEarlierMessages}
+              >
                 {localize(
                   language,
                   `已隐藏 ${hiddenMessageCount} 条更早消息，点击加载`,

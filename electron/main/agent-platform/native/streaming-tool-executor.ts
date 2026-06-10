@@ -8,28 +8,17 @@ import {
   type ProjectInstructionGuardResult
 } from '../project-instruction-tracker';
 import { createToolExecutorTransactionSummary } from '../tool-executor';
-import {
-  collectEditFailureRecovery,
-  type NativeEditFailureRecovery
-} from './continuation-policy';
-import {
-  createInvalidMultiEditInputResult
-} from './tool-loop-options';
+import { collectEditFailureRecovery, type NativeEditFailureRecovery } from './continuation-policy';
+import { createInvalidMultiEditInputResult } from './tool-loop-options';
 import {
   formatFailedToolResult,
   formatInterruptedToolResult,
   isAbortLikeError,
   truncateToolArgumentPreview
 } from './tool-loop-output';
-import {
-  type NativeRunControllerToolResult,
-  type NativeToolLoopCallbacks
-} from './tool-loop-controller';
+import { type NativeRunControllerToolResult, type NativeToolLoopCallbacks } from './tool-loop-controller';
 import { observeNativeToolLoopToolResult } from './tool-loop-observer';
-import type {
-  NativeOpenAiToolInvocation,
-  NativeToolLoopState
-} from './tool-loop-state';
+import type { NativeOpenAiToolInvocation, NativeToolLoopState } from './tool-loop-state';
 import {
   executeNativeWorkspaceToolTransaction,
   recordNativeWorkspaceToolTransactionResult,
@@ -37,7 +26,11 @@ import {
   type NativeWorkspaceToolResultSource,
   type NativeWorkspaceToolValidationResult
 } from './tool-executor';
-import { describeNativeRuntimeToolUse, resolveNativeRuntimeToolName, type NativeRuntimeToolDefinition } from './tool-adapter';
+import {
+  describeNativeRuntimeToolUse,
+  resolveNativeRuntimeToolName,
+  type NativeRuntimeToolDefinition
+} from './tool-adapter';
 import {
   createProviderRuntimeEventObserver,
   createProviderRuntimeToolCallbackHandlers,
@@ -96,7 +89,9 @@ function createMalformedToolResult(toolCall: OpenAiCompatibleToolCall): NativeWo
       `工具调用参数 JSON 无法解析，未执行 ${toolCall.name}。`,
       `错误：${toolCall.argumentsParseError}`,
       toolCall.rawArguments ? `原始参数：${truncateToolArgumentPreview(toolCall.rawArguments)}` : ''
-    ].filter(Boolean).join('\n')
+    ]
+      .filter(Boolean)
+      .join('\n')
   };
 }
 
@@ -133,7 +128,8 @@ function guardWriteBeforeLocalInstructions(input: {
     instructions,
     paths,
     failureKind: 'project_instructions_required',
-    recoveryHint: 'Read the newly injected local project instructions, then retry the write only if it still satisfies those rules.',
+    recoveryHint:
+      'Read the newly injected local project instructions, then retry the write only if it still satisfies those rules.',
     summary: createProjectInstructionGuardSummary({
       toolName: input.toolName,
       paths
@@ -183,15 +179,16 @@ function createPrecomputedToolResult(input: {
         artifacts: cachedToolResult.artifacts,
         searchText: cachedToolResult.searchText
       }
-    : malformedToolResult ?? invalidToolInputResult ?? projectInstructionGuardResult;
-  const validation: NativeWorkspaceToolValidationResult | undefined = malformedToolResult || invalidToolInputResult || projectInstructionGuardResult
-    ? {
-        status: 'failed',
-        summary: precomputedToolResult?.summary,
-        failureKind: precomputedToolResult?.failureKind ?? precomputedToolResult?.edit?.failureKind,
-        recoveryHint: precomputedToolResult?.recoveryHint ?? precomputedToolResult?.edit?.recoveryHint
-      }
-    : undefined;
+    : (malformedToolResult ?? invalidToolInputResult ?? projectInstructionGuardResult);
+  const validation: NativeWorkspaceToolValidationResult | undefined =
+    malformedToolResult || invalidToolInputResult || projectInstructionGuardResult
+      ? {
+          status: 'failed',
+          summary: precomputedToolResult?.summary,
+          failureKind: precomputedToolResult?.failureKind ?? precomputedToolResult?.edit?.failureKind,
+          recoveryHint: precomputedToolResult?.recoveryHint ?? precomputedToolResult?.edit?.recoveryHint
+        }
+      : undefined;
 
   return {
     cachedToolResult,
@@ -281,12 +278,7 @@ function formatToolResultContentForModel(summary: string, toolResult: NativeWork
   if (metadata.length === 0) {
     return summary;
   }
-  return [
-    summary,
-    '',
-    '[Tool failure recovery]',
-    ...metadata
-  ].join('\n');
+  return [summary, '', '[Tool failure recovery]', ...metadata].join('\n');
 }
 
 function normalizeNativeToolInvocation(input: {
@@ -398,7 +390,9 @@ async function executeInvocation(input: {
         ok: false,
         isError: true,
         failureKind: abortLike ? 'interrupted' : 'tool_execution_failed',
-        recoveryHint: abortLike ? 'Resume from the last completed tool boundary.' : 'Inspect the tool input and retry with corrected arguments or a safer alternative.',
+        recoveryHint: abortLike
+          ? 'Resume from the last completed tool boundary.'
+          : 'Inspect the tool input and retry with corrected arguments or a safer alternative.',
         summary: abortLike ? formatInterruptedToolResult(error) : formatFailedToolResult(error)
       }
     });
@@ -471,19 +465,19 @@ function recordExecutionSideEffects(input: {
     changedFiles: toolResult.changedFiles,
     command: toolResult.command,
     terminal: toolResult.terminal,
-      browser: toolResult.browser,
-      edit: toolResult.edit,
-      mcp: toolResult.mcp,
-      artifacts: toolResult.artifacts,
-      searchText: toolResult.searchText
-    });
+    browser: toolResult.browser,
+    edit: toolResult.edit,
+    mcp: toolResult.mcp,
+    artifacts: toolResult.artifacts,
+    searchText: toolResult.searchText
+  });
   if (precompute.malformedToolResult) {
     input.callbacks?.emitStage?.({
       stageId: `stage:native_malformed_tool_arguments:${toolUseId}`,
       title: '拒绝畸形工具参数',
       target: toolCall.name,
       status: 'completed',
-      summary: `检测到 ${toolCall.name} 的工具参数不是有效 JSON，已作为工具错误回放给模型，未执行真实工具。`
+      summary: `检测到 ${toolCall.name} 的工具参数不是有效 JSON，已作为工具错误回放给模型，未执行工具。`
     });
   } else if (precompute.invalidToolInputResult) {
     input.callbacks?.emitStage?.({
@@ -491,7 +485,7 @@ function recordExecutionSideEffects(input: {
       title: '拒绝无效工具参数',
       target: toolCall.name,
       status: 'completed',
-      summary: `检测到 ${toolCall.name} 的工具参数不满足执行条件，已作为工具错误回放给模型，未执行真实工具。`
+      summary: `检测到 ${toolCall.name} 的工具参数不满足执行条件，已作为工具错误回放给模型，未执行工具。`
     });
   }
 }
@@ -522,7 +516,9 @@ function emitMissingToolResults(input: {
       summary,
       isError: true,
       failureKind: abortLike ? 'interrupted' : 'tool_execution_failed',
-      recoveryHint: abortLike ? 'Resume from the last completed tool boundary.' : 'Inspect the tool input and retry with corrected arguments or a safer alternative.'
+      recoveryHint: abortLike
+        ? 'Resume from the last completed tool boundary.'
+        : 'Inspect the tool input and retry with corrected arguments or a safer alternative.'
     });
     recordNativeWorkspaceToolTransactionResult({
       toolUseId: invocation.toolUseId,
@@ -562,7 +558,9 @@ function emitMissingToolResults(input: {
         ok: false,
         isError: true,
         failureKind: abortLike ? 'interrupted' : 'tool_execution_failed',
-        recoveryHint: abortLike ? 'Resume from the last completed tool boundary.' : 'Inspect the tool input and retry with corrected arguments or a safer alternative.',
+        recoveryHint: abortLike
+          ? 'Resume from the last completed tool boundary.'
+          : 'Inspect the tool input and retry with corrected arguments or a safer alternative.',
         summary
       }
     });
@@ -580,10 +578,12 @@ export async function executeNativeStreamingToolPlan(input: {
 }): Promise<{
   editFailureRecoveries: NativeEditFailureRecovery[];
 }> {
-  const invocations = input.invocations.map((invocation) => normalizeNativeToolInvocation({
-    invocation,
-    definitions: input.toolPool.definitions
-  }));
+  const invocations = input.invocations.map((invocation) =>
+    normalizeNativeToolInvocation({
+      invocation,
+      definitions: input.toolPool.definitions
+    })
+  );
   const recorder = createNativeStreamingToolRecorder({
     state: input.state,
     recordRunControllerToolResult: input.recordRunControllerToolResult
@@ -607,23 +607,28 @@ export async function executeNativeStreamingToolPlan(input: {
           recordToolUseStart: recorder.recordToolUseStart
         });
       }
-      const executions = batch.mode === 'concurrent_safe'
-        ? await Promise.all(batch.invocations.map((invocation) =>
-            executeInvocation({
-              invocation,
-              abortSignal: input.abortSignal,
-              state: input.state,
-              toolPool: input.toolPool,
-              instructionTracker: input.instructionTracker
-            })
-          ))
-        : [await executeInvocation({
-            invocation: batch.invocations[0],
-            abortSignal: input.abortSignal,
-            state: input.state,
-            toolPool: input.toolPool,
-            instructionTracker: input.instructionTracker
-          })];
+      const executions =
+        batch.mode === 'concurrent_safe'
+          ? await Promise.all(
+              batch.invocations.map((invocation) =>
+                executeInvocation({
+                  invocation,
+                  abortSignal: input.abortSignal,
+                  state: input.state,
+                  toolPool: input.toolPool,
+                  instructionTracker: input.instructionTracker
+                })
+              )
+            )
+          : [
+              await executeInvocation({
+                invocation: batch.invocations[0],
+                abortSignal: input.abortSignal,
+                state: input.state,
+                toolPool: input.toolPool,
+                instructionTracker: input.instructionTracker
+              })
+            ];
 
       let abortLikeExecution: NativeStreamingToolExecution | undefined;
       for (const execution of executions) {

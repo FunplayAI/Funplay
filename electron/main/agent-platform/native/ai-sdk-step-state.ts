@@ -33,13 +33,18 @@ export interface NativeAiSdkTrackedToolResult {
 
 export class NativeAiSdkStepState {
   private readonly toolCallIds = new Map<string, string>();
-  private readonly toolCallInputs = new Map<string, {
-    toolName: string;
-    input?: Record<string, unknown>;
-  }>();
+  private readonly toolCallInputs = new Map<
+    string,
+    {
+      toolName: string;
+      input?: Record<string, unknown>;
+    }
+  >();
   private readonly completedToolCallIds = new Set<string>();
   private readonly stepToolCallInputs = new Map<string, NativeAiSdkTrackedToolCall>();
   private readonly stepToolResults = new Map<string, Omit<NativeAiSdkTrackedToolResult, 'rawToolCallId'>>();
+  private stepText = '';
+  private stepThinking = '';
 
   get hasToolCalls(): boolean {
     return this.toolCallIds.size > 0;
@@ -51,13 +56,29 @@ export class NativeAiSdkStepState {
     this.completedToolCallIds.clear();
     this.stepToolCallInputs.clear();
     this.stepToolResults.clear();
+    this.stepText = '';
+    this.stepThinking = '';
   }
 
-  recordToolCall(input: {
-    toolCallId: string;
-    toolName: string;
-    rawInput: unknown;
-  }): NativeAiSdkTrackedToolCall {
+  recordTextDelta(delta: string): string {
+    this.stepText += delta;
+    return this.stepText;
+  }
+
+  recordThinkingDelta(delta: string): string {
+    this.stepThinking += delta;
+    return this.stepThinking;
+  }
+
+  getStepText(): string {
+    return this.stepText;
+  }
+
+  getStepThinking(): string {
+    return this.stepThinking;
+  }
+
+  recordToolCall(input: { toolCallId: string; toolName: string; rawInput: unknown }): NativeAiSdkTrackedToolCall {
     const rawToolCallId = input.toolCallId || makeId('tool_call');
     const toolUseId = input.toolCallId || makeId('tool');
     const normalizedInput = normalizeToolInput(input.rawInput);
@@ -122,10 +143,7 @@ export class NativeAiSdkStepState {
     return tracked;
   }
 
-  recordToolResultTransaction(input: {
-    toolCallId: string;
-    transaction: AgentToolTransactionSummary;
-  }): void {
+  recordToolResultTransaction(input: { toolCallId: string; transaction: AgentToolTransactionSummary }): void {
     const rawToolCallId = input.toolCallId || makeId('tool_call');
     const current = this.stepToolResults.get(rawToolCallId);
     if (!current) {

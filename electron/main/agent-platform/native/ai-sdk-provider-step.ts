@@ -1,8 +1,6 @@
 import { streamText, type LanguageModel, type ModelMessage } from 'ai';
 import type { AgentCoreProviderStepResult } from '../../../../shared/types';
-import {
-  aiSdkStepToAgentCoreProviderStepResult
-} from '../provider-step-adapter';
+import { aiSdkStepToAgentCoreProviderStepResult } from '../provider-step-adapter';
 import { ProjectInstructionTracker } from '../project-instruction-tracker';
 import type { GenericAgentRuntimeParams } from '../types';
 import { normalizeAiSdkUsage } from '../usage';
@@ -21,10 +19,7 @@ import {
   waitForNativeProviderStepRetry
 } from './provider-step';
 import { createNativeRuntimeSystemPrompt } from './prompt';
-import {
-  createProviderRuntimeEventAdapter,
-  type ProviderRuntimeController
-} from '../provider-runtime-events';
+import { createProviderRuntimeEventAdapter, type ProviderRuntimeController } from '../provider-runtime-events';
 import { createNativeAiSdkToolEventAdapter } from './ai-sdk-tool-event-adapter';
 import type { NativeToolLoopCallbacks } from './tool-loop-controller';
 import type { NativeToolPool } from './tool-pool';
@@ -52,12 +47,15 @@ export interface NativeAiSdkProviderStepResult {
   providerStep: AgentCoreProviderStepResult;
 }
 
-function collectAiSdkEditFailureRecoveries(toolResults: ReturnType<NativeAiSdkStepState['drainStepToolResults']>): NativeEditFailureRecovery[] {
+function collectAiSdkEditFailureRecoveries(
+  toolResults: ReturnType<NativeAiSdkStepState['drainStepToolResults']>
+): NativeEditFailureRecovery[] {
   return toolResults
-    .filter((toolResult) =>
-      Boolean(toolResult.isError) &&
-      Boolean(toolResult.edit?.failureKind) &&
-      ['write_file', 'edit_file', 'multi_edit', 'patch_file'].includes(toolResult.toolName ?? '')
+    .filter(
+      (toolResult) =>
+        Boolean(toolResult.isError) &&
+        Boolean(toolResult.edit?.failureKind) &&
+        ['write_file', 'edit_file', 'multi_edit', 'patch_file'].includes(toolResult.toolName ?? '')
     )
     .map((toolResult) => ({
       toolName: toolResult.toolName ?? 'unknown_tool',
@@ -120,7 +118,11 @@ export async function runNativeAiSdkProviderStep(input: {
   let result: ReturnType<typeof streamText> | undefined;
   let sawProviderOutput = false;
   for (let attempt = 0; attempt <= NATIVE_PROVIDER_STEP_MAX_RETRIES; attempt += 1) {
-    emitRuntimeStatus(input.params, 'thinking', attempt === 0 ? '正在思考中...' : `Provider 正在重试第 ${attempt} 次...`);
+    emitRuntimeStatus(
+      input.params,
+      'thinking',
+      attempt === 0 ? '正在思考中...' : `Provider 正在重试第 ${attempt} 次...`
+    );
     input.stepState.beginStep();
     const stepAbort = createNativeProviderStepAbort(input.params.abortSignal, provider);
     try {
@@ -151,6 +153,7 @@ export async function runNativeAiSdkProviderStep(input: {
           case 'text-delta':
             sawProviderOutput = true;
             input.loopState.assistantMessage += event.text;
+            input.stepState.recordTextDelta(event.text);
             input.loopState.streamedText = true;
             providerEventObserver.observe({
               type: 'text_delta',
@@ -161,6 +164,7 @@ export async function runNativeAiSdkProviderStep(input: {
           case 'reasoning-delta': {
             sawProviderOutput = true;
             input.loopState.thinking += event.text;
+            input.stepState.recordThinkingDelta(event.text);
             providerEventObserver.observe({
               type: 'thinking_delta',
               delta: event.text,
@@ -189,13 +193,17 @@ export async function runNativeAiSdkProviderStep(input: {
           case 'finish-step': {
             sawProviderOutput = true;
             input.loopState.stepCount += 1;
-            emitRuntimeStatus(input.params, 'thinking', `Native tool loop 已完成 ${input.loopState.stepCount} 步。`);
+            emitRuntimeStatus(
+              input.params,
+              'thinking',
+              `已完成 ${input.loopState.stepCount} 轮工具执行，正在整理结果…`
+            );
             input.callbacks?.emitStage?.({
               stageId: 'stage:native_tool_stream',
-              title: '执行真实 Tool Loop',
+              title: '执行工具步骤',
               target: 'stage:native_tool_stream',
               status: 'running',
-              summary: `真实 tool loop 已完成 ${input.loopState.stepCount} 步。`,
+              summary: `已完成 ${input.loopState.stepCount} 轮工具执行。`,
               input: {
                 step: input.loopState.stepCount,
                 toolsUsed: [...input.loopState.toolCalls]
@@ -205,10 +213,13 @@ export async function runNativeAiSdkProviderStep(input: {
               provider: provider.id,
               model: provider.model
             });
+            const providerStepText = input.stepState.getStepText();
+            const providerStepThinking = input.stepState.getStepThinking();
             const providerStepToolCalls = input.stepState.buildProviderToolCalls();
-            const providerStep = aiSdkStepToAgentCoreProviderStepResult({
-                text: input.loopState.assistantMessage,
-                thinking: input.loopState.thinking,
+            const providerStep = aiSdkStepToAgentCoreProviderStepResult(
+              {
+                text: providerStepText,
+                thinking: providerStepThinking,
                 finishReason: event.finishReason,
                 usage: event.usage,
                 toolCalls: providerStepToolCalls.map((toolCall) => ({
@@ -216,10 +227,12 @@ export async function runNativeAiSdkProviderStep(input: {
                   toolName: toolCall.toolName,
                   input: toolCall.input
                 }))
-              }, {
+              },
+              {
                 providerId: provider.id,
                 model: provider.model
-              });
+              }
+            );
             if (providerStepToolCalls.length > 0) {
               providerEventObserver.observe({
                 type: 'provider_step_recorded',
@@ -238,7 +251,6 @@ export async function runNativeAiSdkProviderStep(input: {
                 reason: `AI SDK provider step ${input.loopState.stepCount} 工具结果已进入上下文。`
               });
             }
-            input.stepState.beginStep();
             if (stepUsage) {
               emitRuntimeUsage(input.params, stepUsage);
             }
@@ -246,8 +258,11 @@ export async function runNativeAiSdkProviderStep(input: {
               type: 'provider_step_done',
               finishReason: event.finishReason,
               toolCallCount: providerStepToolCalls.length,
-              text: input.loopState.assistantMessage
+              text: providerStepText
             });
+            if (providerStepToolCalls.length > 0) {
+              input.stepState.beginStep();
+            }
             break;
           }
           default:
@@ -256,17 +271,15 @@ export async function runNativeAiSdkProviderStep(input: {
       }
       break;
     } catch (error) {
-      const normalizedError = normalizeNativeProviderStepError(
-        error,
-        stepAbort,
-        'Native AI SDK provider step'
-      );
-      if (shouldRetryNativeProviderStep({
-        error: normalizedError,
-        attempt,
-        sawProviderOutput,
-        abortSignal: input.params.abortSignal
-      })) {
+      const normalizedError = normalizeNativeProviderStepError(error, stepAbort, 'Native AI SDK provider step');
+      if (
+        shouldRetryNativeProviderStep({
+          error: normalizedError,
+          attempt,
+          sawProviderOutput,
+          abortSignal: input.params.abortSignal
+        })
+      ) {
         const retryDelayMs = getNativeProviderStepRetryDelayMs(attempt);
         const retryNumber = attempt + 1;
         const reason = `AI SDK provider step 失败，准备重试 ${retryNumber}/${NATIVE_PROVIDER_STEP_MAX_RETRIES}。`;
@@ -278,7 +291,11 @@ export async function runNativeAiSdkProviderStep(input: {
           retryDelayMs,
           error: describeNativeProviderStepError(normalizedError)
         });
-        emitRuntimeStatus(input.params, 'thinking', `Provider 请求不稳定，${Math.round(retryDelayMs / 1000)}s 后重试 ${retryNumber}/${NATIVE_PROVIDER_STEP_MAX_RETRIES}...`);
+        emitRuntimeStatus(
+          input.params,
+          'thinking',
+          `Provider 请求不稳定，${Math.round(retryDelayMs / 1000)}s 后重试 ${retryNumber}/${NATIVE_PROVIDER_STEP_MAX_RETRIES}...`
+        );
         await waitForNativeProviderStepRetry(retryDelayMs, input.params.abortSignal);
         continue;
       }
@@ -292,7 +309,7 @@ export async function runNativeAiSdkProviderStep(input: {
       }
       input.callbacks?.emitStage?.({
         stageId: 'stage:native_tool_stream',
-        title: '执行真实 Tool Loop',
+        title: '执行工具步骤',
         target: 'stage:native_tool_stream',
         status: 'failed',
         summary: describeNativeProviderStepError(normalizedError),
@@ -311,16 +328,19 @@ export async function runNativeAiSdkProviderStep(input: {
   const usage = await Promise.resolve(result.usage).catch(() => undefined);
   const response = await Promise.resolve(result.response).catch(() => undefined);
   const finalCandidate = normalizeModelReplyText(input.loopState.assistantMessage);
-  const providerStep = aiSdkStepToAgentCoreProviderStepResult({
-      text: finalCandidate,
-      thinking: input.loopState.thinking,
+  const providerStep = aiSdkStepToAgentCoreProviderStepResult(
+    {
+      text: input.stepState.getStepText(),
+      thinking: input.stepState.getStepThinking(),
       finishReason,
       usage,
       toolCalls: input.stepState.buildCurrentToolCalls()
-    }, {
+    },
+    {
       providerId: provider.id,
       model: provider.model
-    });
+    }
+  );
 
   return {
     finishReason,

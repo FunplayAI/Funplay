@@ -1,13 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
-import type { ChatMessage, EnvironmentDiagnostics, McpPlugin, Project, ProjectSession, PromptAttachment, RuntimeDoctorResult, SessionCheckpointPreview, WebSearchSettings } from '../../shared/types.ts';
+import type {
+  ChatMessage,
+  EnvironmentDiagnostics,
+  McpPlugin,
+  Project,
+  ProjectSession,
+  PromptAttachment,
+  RuntimeDoctorResult,
+  SessionCheckpointPreview,
+  WebSearchSettings
+} from '../../shared/types.ts';
 import { ChatComposer } from '../../src/components/chat/ChatComposer.tsx';
-import { ChatTranscriptMessage, StreamingTranscriptMessage, getMessagePlainText } from '../../src/components/chat/ConversationMessage.tsx';
+import {
+  ChatTranscriptMessage,
+  StreamingTranscriptMessage,
+  getMessagePlainText
+} from '../../src/components/chat/ConversationMessage.tsx';
 import { AgentChatView } from '../../src/components/chat/AgentChatView.tsx';
 import { EngineStatusDialog } from '../../src/components/chat/agent/EngineStatusDialog.tsx';
 import { MessageList } from '../../src/components/chat/MessageList.tsx';
-import { buildCompletedMessageProcessTools, pairStreamingToolExecutions, summarizeToolResult } from '../../src/components/chat/tool-activity.tsx';
+import {
+  buildCompletedMessageProcessTools,
+  pairStreamingToolExecutions,
+  summarizeToolResult
+} from '../../src/components/chat/tool-activity.tsx';
 import { buildTranscriptViewItems } from '../../src/components/chat/transcript/transcript-view-model.ts';
 import { AgentWorkbench } from '../../src/components/layout/AgentWorkbench.tsx';
 import { FileInspectorPanel, SidebarPanel } from '../../src/components/layout/WorkspacePanels.tsx';
@@ -27,7 +45,14 @@ import { ProjectSettingsPage } from '../../src/components/pages/ProjectSettingsP
 import { ProjectAgentRunsSettings } from '../../src/components/pages/project-settings/ProjectAgentRunsSettings.tsx';
 import { ProjectAgentSettings } from '../../src/components/pages/project-settings/ProjectAgentSettings.tsx';
 import { ProjectTokenUsageSettings } from '../../src/components/pages/project-settings/ProjectTokenUsageSettings.tsx';
-import { McpManagementPage, McpRawAuditCard, McpRawDiagnosticsCard, McpToolSnapshotCard, PluginListCard, ServerListRow } from '../../src/components/pages/McpManagementPage.tsx';
+import {
+  McpManagementPage,
+  McpRawAuditCard,
+  McpRawDiagnosticsCard,
+  McpToolSnapshotCard,
+  PluginListCard,
+  ServerListRow
+} from '../../src/components/pages/McpManagementPage.tsx';
 import { McpRegistrySettingsPage } from '../../src/components/pages/McpRegistrySettingsPage.tsx';
 import { ProviderEditor } from '../../src/components/modals/ProviderEditor.tsx';
 import { McpPluginModal } from '../../src/components/settings-modals.tsx';
@@ -116,13 +141,15 @@ test('welcome and onboarding actions render through shared buttons', () => {
     contextSummary: {},
     blueprint: {}
   } as unknown as Project;
-  const welcomeHtml = renderZh(createElement(WelcomeScreen, {
-    projects: [project],
-    mcpPlugins: [],
-    onCreate: noop,
-    onOpen: noop,
-    onOpenExisting: noop
-  }));
+  const welcomeHtml = renderZh(
+    createElement(WelcomeScreen, {
+      projects: [project],
+      mcpPlugins: [],
+      onCreate: noop,
+      onOpen: noop,
+      onOpenExisting: noop
+    })
+  );
   const baseOnboardingProps: Parameters<typeof OnboardingScreen>[0] = {
     step: 1,
     view: 'setup',
@@ -155,42 +182,52 @@ test('welcome and onboarding actions render through shared buttons', () => {
     onEnter: noop
   };
   const setupHtml = renderZh(createElement(OnboardingScreen, baseOnboardingProps));
-  const cocosSetupHtml = renderZh(createElement(OnboardingScreen, {
-    ...baseOnboardingProps,
-    platform: 'cocos',
-    dimension: '3d'
-  }));
-  const environmentHtml = renderZh(createElement(OnboardingScreen, {
-    ...baseOnboardingProps,
-    view: 'environment',
-    platform: 'unity',
-    dimension: '2d',
-    diagnostics: {
+  const cocosSetupHtml = renderZh(
+    createElement(OnboardingScreen, {
+      ...baseOnboardingProps,
+      platform: 'cocos',
+      dimension: '3d'
+    })
+  );
+  const environmentHtml = renderZh(
+    createElement(OnboardingScreen, {
+      ...baseOnboardingProps,
+      view: 'environment',
       platform: 'unity',
-      mode: 'create',
       dimension: '2d',
-      checkedAt: new Date().toISOString(),
-      projectPath: '/tmp/bird',
-      checks: [{
-        id: 'engine-project',
-        title: 'Unity Project',
-        description: 'Create project',
-        status: 'pending',
-        detail: 'Waiting',
-        actions: [{
-          id: 'open_unity_project',
-          label: 'Open Unity',
-          description: 'Open project',
-          primary: true
-        }]
-      }],
-      ready: false
-    }
-  }));
-  const completeHtml = renderZh(createElement(OnboardingScreen, {
-    ...baseOnboardingProps,
-    step: 3
-  }));
+      diagnostics: {
+        platform: 'unity',
+        mode: 'create',
+        dimension: '2d',
+        checkedAt: new Date().toISOString(),
+        projectPath: '/tmp/bird',
+        checks: [
+          {
+            id: 'engine-project',
+            title: 'Unity Project',
+            description: 'Create project',
+            status: 'pending',
+            detail: 'Waiting',
+            actions: [
+              {
+                id: 'open_unity_project',
+                label: 'Open Unity',
+                description: 'Open project',
+                primary: true
+              }
+            ]
+          }
+        ],
+        ready: false
+      }
+    })
+  );
+  const completeHtml = renderZh(
+    createElement(OnboardingScreen, {
+      ...baseOnboardingProps,
+      step: 3
+    })
+  );
   const combinedHtml = [welcomeHtml, setupHtml, environmentHtml, completeHtml].join('\n');
 
   assert.match(welcomeHtml, /新建项目/);
@@ -278,24 +315,27 @@ test('chat composer shows engine connection indicator only when an engine projec
 });
 
 test('failed write-like tool summaries keep the real error instead of saying updated', () => {
-  const summary = summarizeToolResult({
-    id: 'tool_edit_failed',
-    name: 'edit_file',
-    status: 'failed',
-    input: {
-      path: 'js/crafting.js'
-    },
-    result: {
-      content: '没有在 js/crafting.js 中找到 oldText。',
-      isError: true,
-      edit: {
-        strategy: 'search_replace',
-        patchFirst: false,
-        preflight: 'failed',
-        failureKind: 'unknown'
+  const summary = summarizeToolResult(
+    {
+      id: 'tool_edit_failed',
+      name: 'edit_file',
+      status: 'failed',
+      input: {
+        path: 'js/crafting.js'
+      },
+      result: {
+        content: '没有在 js/crafting.js 中找到 oldText。',
+        isError: true,
+        edit: {
+          strategy: 'search_replace',
+          patchFirst: false,
+          preflight: 'failed',
+          failureKind: 'unknown'
+        }
       }
-    }
-  }, 'zh-CN');
+    },
+    'zh-CN'
+  );
 
   assert.match(summary.preview, /没有在 js\/crafting\.js 中找到 oldText/);
   assert.doesNotMatch(summary.preview, /已更新/);
@@ -334,13 +374,15 @@ test('assistant structured tool-only message does not render pseudo tool text as
     }
   };
 
-  const html = renderZh(createElement(ChatTranscriptMessage, {
-    message,
-    openablePaths: [],
-    searchQuery: '',
-    developerMode: false,
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(ChatTranscriptMessage, {
+      message,
+      openablePaths: [],
+      searchQuery: '',
+      developerMode: false,
+      onOpenPath: noop
+    })
+  );
 
   assert.equal(html.includes('[Previous tool call]'), false);
   assert.equal(html.includes('input={'), false);
@@ -367,13 +409,15 @@ test('assistant Agent Core parts do not fall back to pseudo tool message content
     }
   };
 
-  const html = renderZh(createElement(ChatTranscriptMessage, {
-    message,
-    openablePaths: [],
-    searchQuery: '',
-    developerMode: false,
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(ChatTranscriptMessage, {
+      message,
+      openablePaths: [],
+      searchQuery: '',
+      developerMode: false,
+      onOpenPath: noop
+    })
+  );
 
   assert.match(html, /文件已经写入完成/);
   assert.equal(html.includes('[Tool]'), false);
@@ -593,7 +637,10 @@ test('transcript view model keeps tool steps interleaved with assistant narrativ
     }
   ]);
 
-  assert.deepEqual(items.map((item) => item.kind), ['tool_group', 'assistant_text', 'tool_group']);
+  assert.deepEqual(
+    items.map((item) => item.kind),
+    ['tool_group', 'assistant_text', 'tool_group']
+  );
   const first = items[0];
   const third = items[2];
   if (first?.kind !== 'tool_group' || third?.kind !== 'tool_group') {
@@ -611,25 +658,29 @@ test('user transcript renders attachments above a compact right-side bubble', ()
     content: '帮我参考这张图调整 UI。',
     createdAt: new Date().toISOString(),
     metadata: {
-      promptAttachments: [{
-        id: 'attachment_image',
-        name: 'image.png',
-        path: '/tmp/image.png',
-        kind: 'image',
-        mimeType: 'image/png',
-        size: 128,
-        previewDataUrl: 'data:image/png;base64,ZmFrZQ=='
-      }]
+      promptAttachments: [
+        {
+          id: 'attachment_image',
+          name: 'image.png',
+          path: '/tmp/image.png',
+          kind: 'image',
+          mimeType: 'image/png',
+          size: 128,
+          previewDataUrl: 'data:image/png;base64,ZmFrZQ=='
+        }
+      ]
     }
   };
 
-  const html = renderZh(createElement(ChatTranscriptMessage, {
-    message,
-    openablePaths: [],
-    searchQuery: '',
-    developerMode: false,
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(ChatTranscriptMessage, {
+      message,
+      openablePaths: [],
+      searchQuery: '',
+      developerMode: false,
+      onOpenPath: noop
+    })
+  );
 
   assert.match(html, /chat-transcript-row user/);
   assert.match(html, /chat-transcript-bubble user/);
@@ -691,13 +742,15 @@ test('assistant pseudo tool-only raw content is not rendered or searchable as fi
     createdAt: new Date().toISOString()
   };
 
-  const html = renderZh(createElement(ChatTranscriptMessage, {
-    message,
-    openablePaths: [],
-    searchQuery: '',
-    developerMode: false,
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(ChatTranscriptMessage, {
+      message,
+      openablePaths: [],
+      searchQuery: '',
+      developerMode: false,
+      onOpenPath: noop
+    })
+  );
 
   assert.equal(html.includes('[Previous tool call]'), false);
   assert.equal(html.includes('inspect_workspace_context'), false);
@@ -724,25 +777,29 @@ test('completed assistant transcript keeps token usage in developer mode only', 
     }
   };
 
-  const html = renderZh(createElement(ChatTranscriptMessage, {
-    message,
-    openablePaths: [],
-    searchQuery: '',
-    developerMode: false,
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(ChatTranscriptMessage, {
+      message,
+      openablePaths: [],
+      searchQuery: '',
+      developerMode: false,
+      onOpenPath: noop
+    })
+  );
 
   assert.match(html, /已处理 2s/);
   assert.doesNotMatch(html, /Token 1\.6k/);
   assert.doesNotMatch(html, /输入 1\.2k/);
 
-  const developerHtml = renderZh(createElement(ChatTranscriptMessage, {
-    message,
-    openablePaths: [],
-    searchQuery: '',
-    developerMode: true,
-    onOpenPath: noop
-  }));
+  const developerHtml = renderZh(
+    createElement(ChatTranscriptMessage, {
+      message,
+      openablePaths: [],
+      searchQuery: '',
+      developerMode: true,
+      onOpenPath: noop
+    })
+  );
 
   assert.match(developerHtml, /Token 1\.6k/);
   assert.match(developerHtml, /输入 1\.2k/);
@@ -771,13 +828,15 @@ test('completed assistant transcript ignores legacy operation log in ordinary ch
     }
   };
 
-  const html = renderZh(createElement(ChatTranscriptMessage, {
-    message,
-    openablePaths: [],
-    searchQuery: '',
-    developerMode: false,
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(ChatTranscriptMessage, {
+      message,
+      openablePaths: [],
+      searchQuery: '',
+      developerMode: false,
+      onOpenPath: noop
+    })
+  );
 
   assert.match(html, /最终答复只显示正文/);
   assert.doesNotMatch(html, /Legacy tool/);
@@ -785,73 +844,81 @@ test('completed assistant transcript ignores legacy operation log in ordinary ch
 });
 
 test('streaming transcript shows unified thinking status and structured tool activity', () => {
-  const html = renderZh(createElement(StreamingTranscriptMessage, {
-    prompt: '读取 notes.md',
-    startedAt: new Date(Date.now() - 74000).toISOString(),
-    content: '',
-    thinkingContent: '',
-    toolUses: [
-      {
-        toolUseId: 'tool_read',
-        name: 'read_file',
-        input: {
-          path: 'notes.md'
-        },
-        status: 'completed'
-      }
-    ],
-    toolResults: [
-      {
-        toolUseId: 'tool_read',
-        content: 'mimo-live-tool-fixture-748219',
-        changedFiles: [{
-          path: 'src/app.ts',
-          operation: 'patched',
-          hunkCount: 2
-        }],
-        edit: {
-          strategy: 'unified_patch',
-          patchFirst: true,
-          preflight: 'passed',
-          hunkCount: 2
-        },
-        browser: {
-          sessionId: 'browser_fixture',
-          title: 'Fixture Page',
-          consoleMessageCount: 0
-        },
-        mcp: {
-          pluginId: 'plugin_unity',
-          operation: 'call_tool',
-          target: 'unity.echo',
-          exposedName: 'mcp__unity__unity_echo',
-          policySummary: 'MCP policy inferred: permission=ask, risk=write',
-          timeoutMs: 30000,
-          schemaGuard: 'passed'
-        },
-        artifacts: [{
-          type: 'browser_screenshot',
-          path: '/tmp/funplay-browser.png',
-          title: 'Browser screenshot'
-        }]
-      }
-    ],
-    stages: [],
-    activityItems: [{
-      id: 'activity_tool_read',
-      type: 'tool',
-      offset: 0,
-      status: 'completed',
-      title: 'tool_completed',
-      summary: 'read_file completed',
-      toolUseIds: ['tool_read'],
-      createdAt: new Date().toISOString()
-    }],
-    statusMessage: '正在思考中...',
-    developerMode: false,
-    openablePaths: [],
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(StreamingTranscriptMessage, {
+      prompt: '读取 notes.md',
+      startedAt: new Date(Date.now() - 74000).toISOString(),
+      content: '',
+      thinkingContent: '',
+      toolUses: [
+        {
+          toolUseId: 'tool_read',
+          name: 'read_file',
+          input: {
+            path: 'notes.md'
+          },
+          status: 'completed'
+        }
+      ],
+      toolResults: [
+        {
+          toolUseId: 'tool_read',
+          content: 'mimo-live-tool-fixture-748219',
+          changedFiles: [
+            {
+              path: 'src/app.ts',
+              operation: 'patched',
+              hunkCount: 2
+            }
+          ],
+          edit: {
+            strategy: 'unified_patch',
+            patchFirst: true,
+            preflight: 'passed',
+            hunkCount: 2
+          },
+          browser: {
+            sessionId: 'browser_fixture',
+            title: 'Fixture Page',
+            consoleMessageCount: 0
+          },
+          mcp: {
+            pluginId: 'plugin_unity',
+            operation: 'call_tool',
+            target: 'unity.echo',
+            exposedName: 'mcp__unity__unity_echo',
+            policySummary: 'MCP policy inferred: permission=ask, risk=write',
+            timeoutMs: 30000,
+            schemaGuard: 'passed'
+          },
+          artifacts: [
+            {
+              type: 'browser_screenshot',
+              path: '/tmp/funplay-browser.png',
+              title: 'Browser screenshot'
+            }
+          ]
+        }
+      ],
+      stages: [],
+      activityItems: [
+        {
+          id: 'activity_tool_read',
+          type: 'tool',
+          offset: 0,
+          status: 'completed',
+          title: 'tool_completed',
+          summary: 'read_file completed',
+          toolUseIds: ['tool_read'],
+          createdAt: new Date().toISOString()
+        }
+      ],
+      statusMessage: '正在思考中...',
+      developerMode: false,
+      openablePaths: [],
+      onOpenPath: noop
+    })
+  );
 
   assert.match(html, /chat-transcript-elapsed/);
   assert.match(html, /1m/);
@@ -901,74 +968,78 @@ test('agent chat view forwards stream start time to the live transcript timer', 
     blueprint: {}
   } as unknown as Project;
 
-  const html = renderZh(createElement(AgentChatView, {
-    project,
-    provider,
-    providers: [provider],
-    permissionMode: 'full-access',
-    openablePaths: [],
-    sessionEffort: 'auto',
-    composerDraft: '',
-    composerAttachments: [],
-    activePromptStream: {
-      streamId: 'stream_live_timer',
-      projectId: project.id,
-      sessionId: session.id,
-      prompt: '让游戏精品一点',
-      attachments: [{
-        id: 'attachment_icon',
-        name: 'icon.png',
-        path: '/tmp/icon.png',
-        kind: 'image',
-        size: 128,
-        mimeType: 'image/png'
-      }],
-      content: '',
-      thinkingContent: '',
-      toolUses: [],
-      toolResults: [],
-      stages: [],
-      activityItems: [],
-      agentCoreParts: [],
-      phase: 'streaming',
-      statusMessage: '正在实时生成回复...',
-      startedAt: new Date(Date.now() - 74000).toISOString()
-    },
-    developerMode: false,
-    composerError: '',
-    queuedPrompts: [],
-    isSending: true,
-    onComposerChange: noop,
-    onPickAttachments: noop,
-    onImportAttachments: noop,
-    onRemoveAttachment: noop,
-    onSubmit: noop,
-    onQueuePrompt: noop,
-    onRemoveQueuedPrompt: noop,
-    onCancelStream: noop,
-    onRespondPermission: noop,
-    onRespondUserInput: noop,
-    onUpdateSessionRuntime: noop,
-    onUpdatePermissionMode: noop,
-    onOpenAppSettings: noop,
-    onOpenProjectAgentSettings: noop,
-    onDiagnoseEnvironment: async () => ({
-      platform: 'web',
-      mode: 'import',
-      dimension: 'unknown',
-      checkedAt: new Date().toISOString(),
-      checks: [],
-      ready: true
-    }),
-    onRunEnvironmentAction: async () => ({
-      action: 'refresh_engine_runtime_state',
-      status: 'completed',
-      message: 'ok'
-    }),
-    onRefreshProjectRuntimeState: async () => project,
-    onOpenFilePath: noop,
-    onRestoreCheckpoint: noop
-  }));
+  const html = renderZh(
+    createElement(AgentChatView, {
+      project,
+      provider,
+      providers: [provider],
+      permissionMode: 'full-access',
+      openablePaths: [],
+      sessionEffort: 'auto',
+      composerDraft: '',
+      composerAttachments: [],
+      activePromptStream: {
+        streamId: 'stream_live_timer',
+        projectId: project.id,
+        sessionId: session.id,
+        prompt: '让游戏精品一点',
+        attachments: [
+          {
+            id: 'attachment_icon',
+            name: 'icon.png',
+            path: '/tmp/icon.png',
+            kind: 'image',
+            size: 128,
+            mimeType: 'image/png'
+          }
+        ],
+        content: '',
+        thinkingContent: '',
+        toolUses: [],
+        toolResults: [],
+        stages: [],
+        activityItems: [],
+        agentCoreParts: [],
+        phase: 'streaming',
+        statusMessage: '正在实时生成回复...',
+        startedAt: new Date(Date.now() - 74000).toISOString()
+      },
+      developerMode: false,
+      composerError: '',
+      queuedPrompts: [],
+      isSending: true,
+      onComposerChange: noop,
+      onPickAttachments: noop,
+      onImportAttachments: noop,
+      onRemoveAttachment: noop,
+      onSubmit: noop,
+      onQueuePrompt: noop,
+      onRemoveQueuedPrompt: noop,
+      onCancelStream: noop,
+      onRespondPermission: noop,
+      onRespondUserInput: noop,
+      onUpdateSessionRuntime: noop,
+      onUpdatePermissionMode: noop,
+      onOpenAppSettings: noop,
+      onOpenProjectAgentSettings: noop,
+      onDiagnoseEnvironment: async () => ({
+        platform: 'web',
+        mode: 'import',
+        dimension: 'unknown',
+        checkedAt: new Date().toISOString(),
+        checks: [],
+        ready: true
+      }),
+      onRunEnvironmentAction: async () => ({
+        action: 'refresh_engine_runtime_state',
+        status: 'completed',
+        message: 'ok'
+      }),
+      onRefreshProjectRuntimeState: async () => project,
+      onOpenFilePath: noop,
+      onRestoreCheckpoint: noop
+    })
+  );
 
   assert.match(html, /正在处理/);
   assert.match(html, /正在实时生成回复/);
@@ -990,13 +1061,15 @@ test('completed transcript inline controls render through shared buttons', () =>
     ].join('\n'),
     createdAt: new Date().toISOString()
   };
-  const html = renderZh(createElement(ChatTranscriptMessage, {
-    message,
-    openablePaths: ['src/App.tsx'],
-    searchQuery: '',
-    developerMode: false,
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(ChatTranscriptMessage, {
+      message,
+      openablePaths: ['src/App.tsx'],
+      searchQuery: '',
+      developerMode: false,
+      onOpenPath: noop
+    })
+  );
 
   assert.match(html, /fp-button[^"]*chat-inline-path/);
   assert.match(html, /fp-button[^"]*chat-inline-link/);
@@ -1013,24 +1086,18 @@ test('plain text fenced blocks render without a labeled code chrome', () => {
   const message: ChatMessage = {
     id: 'msg_plain_text_fence',
     role: 'assistant',
-    content: [
-      '已修改文件',
-      '',
-      '```text',
-      'index.html',
-      'style.css',
-      'game.js',
-      '```'
-    ].join('\n'),
+    content: ['已修改文件', '', '```text', 'index.html', 'style.css', 'game.js', '```'].join('\n'),
     createdAt: new Date().toISOString()
   };
-  const html = renderZh(createElement(ChatTranscriptMessage, {
-    message,
-    openablePaths: [],
-    searchQuery: '',
-    developerMode: false,
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(ChatTranscriptMessage, {
+      message,
+      openablePaths: [],
+      searchQuery: '',
+      developerMode: false,
+      onOpenPath: noop
+    })
+  );
 
   assert.match(html, /chat-plain-text-block/);
   assert.match(html, /index\.html/);
@@ -1058,13 +1125,15 @@ test('unlabeled prose fences render as plain text instead of code cards', () => 
     ].join('\n'),
     createdAt: new Date().toISOString()
   };
-  const html = renderZh(createElement(ChatTranscriptMessage, {
-    message,
-    openablePaths: [],
-    searchQuery: '',
-    developerMode: false,
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(ChatTranscriptMessage, {
+      message,
+      openablePaths: [],
+      searchQuery: '',
+      developerMode: false,
+      onOpenPath: noop
+    })
+  );
 
   assert.match(html, /chat-plain-text-block/);
   assert.match(html, /差的提示/);
@@ -1090,13 +1159,15 @@ test('unlabeled source fences still render as code cards', () => {
     ].join('\n'),
     createdAt: new Date().toISOString()
   };
-  const html = renderZh(createElement(ChatTranscriptMessage, {
-    message,
-    openablePaths: [],
-    searchQuery: '',
-    developerMode: false,
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(ChatTranscriptMessage, {
+      message,
+      openablePaths: [],
+      searchQuery: '',
+      developerMode: false,
+      onOpenPath: noop
+    })
+  );
 
   assert.match(html, /chat-code-card/);
   assert.match(html, /chat-code-language/);
@@ -1107,24 +1178,20 @@ test('standalone markdown thematic breaks render as visible separators', () => {
   const message: ChatMessage = {
     id: 'msg_markdown_dividers',
     role: 'assistant',
-    content: [
-      '项目目标',
-      '是否适合后续做成移动端游戏',
-      '---',
-      '2. 市场定位',
-      '目标市场',
-      '---',
-      '3. 核心卖点'
-    ].join('\n'),
+    content: ['项目目标', '是否适合后续做成移动端游戏', '---', '2. 市场定位', '目标市场', '---', '3. 核心卖点'].join(
+      '\n'
+    ),
     createdAt: new Date().toISOString()
   };
-  const html = renderZh(createElement(ChatTranscriptMessage, {
-    message,
-    openablePaths: [],
-    searchQuery: '',
-    developerMode: false,
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(ChatTranscriptMessage, {
+      message,
+      openablePaths: [],
+      searchQuery: '',
+      developerMode: false,
+      onOpenPath: noop
+    })
+  );
 
   assert.equal((html.match(/chat-rich-divider/g) ?? []).length, 2);
   assert.match(html, /<hr[^>]*class="chat-rich-divider"/);
@@ -1152,13 +1219,15 @@ test('chat markdown renders GFM lists tables and file paths through the unified 
     ].join('\n'),
     createdAt: new Date().toISOString()
   };
-  const html = renderZh(createElement(ChatTranscriptMessage, {
-    message,
-    openablePaths: ['src/game/levels.json'],
-    searchQuery: '',
-    developerMode: false,
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(ChatTranscriptMessage, {
+      message,
+      openablePaths: ['src/game/levels.json'],
+      searchQuery: '',
+      developerMode: false,
+      onOpenPath: noop
+    })
+  );
 
   assert.match(html, /chat-rich-list-block ordered/);
   assert.match(html, /chat-rich-list-block unordered/);
@@ -1168,47 +1237,49 @@ test('chat markdown renders GFM lists tables and file paths through the unified 
 });
 
 test('composer live status renders running animation and task checklist above input', () => {
-  const html = renderZh(createElement(ChatComposer, {
-    draft: '',
-    attachments: [] as PromptAttachment[],
-    contextUsage,
-    error: '',
-    queuedPrompts: [],
-    isSending: true,
-    isExecutingPlan: false,
-    statusMessage: '正在思考中...',
-    runtimeTaskSummary: {
-      total: 10,
-      completed: 9,
-      inProgress: 1,
-      pending: 0,
-      cancelled: 0,
-      items: Array.from({ length: 10 }, (_, index) => ({
-        id: `${index + 1}`,
-        content: index === 9 ? '最终验收' : `任务 ${index + 1}`,
-        status: index === 9 ? 'in_progress' as const : 'completed' as const,
-        priority: index < 5 ? 'high' as const : 'medium' as const
-      }))
-    },
-    permissionLabel: 'Build',
-    activeProviderLabel: 'Xiaomi MiMo',
-    providers: [provider],
-    defaultProviderId: provider.id,
-    activeProviderId: provider.id,
-    permissionMode: 'full-access',
-    onDraftChange: noop,
-    onPickAttachments: noop,
-    onRemoveAttachment: noop,
-    onSubmit: noop,
-    onCancelStream: noop,
-    onRespondPermission: noop,
-    onRespondUserInput: noop,
-    onUpdateSessionRuntime: noop,
-    onUpdatePermissionMode: noop,
-    onRemoveQueuedPrompt: noop,
-    onOpenAppSettings: noop,
-    onOpenProjectAgentSettings: noop
-  }));
+  const html = renderZh(
+    createElement(ChatComposer, {
+      draft: '',
+      attachments: [] as PromptAttachment[],
+      contextUsage,
+      error: '',
+      queuedPrompts: [],
+      isSending: true,
+      isExecutingPlan: false,
+      statusMessage: '正在思考中...',
+      runtimeTaskSummary: {
+        total: 10,
+        completed: 9,
+        inProgress: 1,
+        pending: 0,
+        cancelled: 0,
+        items: Array.from({ length: 10 }, (_, index) => ({
+          id: `${index + 1}`,
+          content: index === 9 ? '最终验收' : `任务 ${index + 1}`,
+          status: index === 9 ? ('in_progress' as const) : ('completed' as const),
+          priority: index < 5 ? ('high' as const) : ('medium' as const)
+        }))
+      },
+      permissionLabel: 'Build',
+      activeProviderLabel: 'Xiaomi MiMo',
+      providers: [provider],
+      defaultProviderId: provider.id,
+      activeProviderId: provider.id,
+      permissionMode: 'full-access',
+      onDraftChange: noop,
+      onPickAttachments: noop,
+      onRemoveAttachment: noop,
+      onSubmit: noop,
+      onCancelStream: noop,
+      onRespondPermission: noop,
+      onRespondUserInput: noop,
+      onUpdateSessionRuntime: noop,
+      onUpdatePermissionMode: noop,
+      onRemoveQueuedPrompt: noop,
+      onOpenAppSettings: noop,
+      onOpenProjectAgentSettings: noop
+    })
+  );
 
   assert.match(html, /agent-live-status/);
   assert.match(html, /agent-live-spinner/);
@@ -1222,59 +1293,61 @@ test('composer live status renders running animation and task checklist above in
 });
 
 test('composer compacts task checklist while waiting for user input', () => {
-  const html = renderZh(createElement(ChatComposer, {
-    draft: '',
-    attachments: [] as PromptAttachment[],
-    contextUsage,
-    error: '',
-    queuedPrompts: [],
-    isSending: true,
-    isExecutingPlan: false,
-    statusMessage: '等待用户回答…',
-    runtimeTaskSummary: {
-      total: 8,
-      completed: 1,
-      inProgress: 0,
-      pending: 7,
-      cancelled: 0,
-      items: Array.from({ length: 8 }, (_, index) => ({
-        id: `${index + 1}`,
-        content: `任务 ${index + 1}`,
-        status: index === 0 ? 'completed' as const : 'pending' as const,
-        priority: index < 2 ? 'high' as const : 'medium' as const
-      }))
-    },
-    pendingUserInput: {
-      requestId: 'ask_scope',
-      title: '确认游戏核心玩法范围',
-      question: '你最想先实现哪些核心玩法？',
-      options: [
-        { id: 'platformer', label: '基础平台跳跃 + 方块破坏', description: '先做可移动角色和可破坏方块世界' },
-        { id: 'combat', label: '战斗探索优先', description: '优先实现角色攻击、敌人 AI 和战斗系统' },
-        { id: 'building', label: '建造系统优先', description: '优先实现方块放置、建筑和物品系统' },
-        { id: 'prototype', label: '完整最小原型', description: '包含移动、挖掘、建造、简单敌人和物品栏' }
-      ],
-      allowFreeText: true
-    },
-    permissionLabel: 'Build',
-    activeProviderLabel: 'Xiaomi MiMo',
-    providers: [provider],
-    defaultProviderId: provider.id,
-    activeProviderId: provider.id,
-    permissionMode: 'full-access',
-    onDraftChange: noop,
-    onPickAttachments: noop,
-    onRemoveAttachment: noop,
-    onSubmit: noop,
-    onCancelStream: noop,
-    onRespondPermission: noop,
-    onRespondUserInput: noop,
-    onUpdateSessionRuntime: noop,
-    onUpdatePermissionMode: noop,
-    onRemoveQueuedPrompt: noop,
-    onOpenAppSettings: noop,
-    onOpenProjectAgentSettings: noop
-  }));
+  const html = renderZh(
+    createElement(ChatComposer, {
+      draft: '',
+      attachments: [] as PromptAttachment[],
+      contextUsage,
+      error: '',
+      queuedPrompts: [],
+      isSending: true,
+      isExecutingPlan: false,
+      statusMessage: '等待用户回答…',
+      runtimeTaskSummary: {
+        total: 8,
+        completed: 1,
+        inProgress: 0,
+        pending: 7,
+        cancelled: 0,
+        items: Array.from({ length: 8 }, (_, index) => ({
+          id: `${index + 1}`,
+          content: `任务 ${index + 1}`,
+          status: index === 0 ? ('completed' as const) : ('pending' as const),
+          priority: index < 2 ? ('high' as const) : ('medium' as const)
+        }))
+      },
+      pendingUserInput: {
+        requestId: 'ask_scope',
+        title: '确认游戏核心玩法范围',
+        question: '你最想先实现哪些核心玩法？',
+        options: [
+          { id: 'platformer', label: '基础平台跳跃 + 方块破坏', description: '先做可移动角色和可破坏方块世界' },
+          { id: 'combat', label: '战斗探索优先', description: '优先实现角色攻击、敌人 AI 和战斗系统' },
+          { id: 'building', label: '建造系统优先', description: '优先实现方块放置、建筑和物品系统' },
+          { id: 'prototype', label: '完整最小原型', description: '包含移动、挖掘、建造、简单敌人和物品栏' }
+        ],
+        allowFreeText: true
+      },
+      permissionLabel: 'Build',
+      activeProviderLabel: 'Xiaomi MiMo',
+      providers: [provider],
+      defaultProviderId: provider.id,
+      activeProviderId: provider.id,
+      permissionMode: 'full-access',
+      onDraftChange: noop,
+      onPickAttachments: noop,
+      onRemoveAttachment: noop,
+      onSubmit: noop,
+      onCancelStream: noop,
+      onRespondPermission: noop,
+      onRespondUserInput: noop,
+      onUpdateSessionRuntime: noop,
+      onUpdatePermissionMode: noop,
+      onRemoveQueuedPrompt: noop,
+      onOpenAppSettings: noop,
+      onOpenProjectAgentSettings: noop
+    })
+  );
 
   assert.match(html, /agent-composer-status-stack awaiting-user-input/);
   assert.match(html, /agent-live-status compact/);
@@ -1294,18 +1367,20 @@ test('composer compacts task checklist while waiting for user input', () => {
 });
 
 test('notification toast dismiss uses shared icon button', () => {
-  const html = renderZh(createElement(NotificationToastStack, {
-    notifications: [
-      {
-        id: 'notification_1',
-        title: '任务已完成',
-        body: 'Agent 已完成本轮任务。',
-        priority: 'normal',
-        createdAt: new Date().toISOString()
-      }
-    ],
-    onDismiss: noop
-  }));
+  const html = renderZh(
+    createElement(NotificationToastStack, {
+      notifications: [
+        {
+          id: 'notification_1',
+          title: '任务已完成',
+          body: 'Agent 已完成本轮任务。',
+          priority: 'normal',
+          createdAt: new Date().toISOString()
+        }
+      ],
+      onDismiss: noop
+    })
+  );
 
   assert.match(html, /notification-toast-stack/);
   assert.match(html, /fp-icon-button notification-toast-dismiss/);
@@ -1316,71 +1391,75 @@ test('streaming transcript interleaves assistant text and tool activity by offse
   const first = '我先看一下项目结构。\n\n';
   const second = '已经确认入口文件。\n\n';
   const third = '下一步修复样式。';
-  const html = renderZh(createElement(StreamingTranscriptMessage, {
-    prompt: '修复页面样式',
-    content: `${first}${second}${third}`,
-    thinkingContent: '',
-    toolUses: [
-      {
-        toolUseId: 'tool_read_notes',
-        name: 'read_file',
-        input: {
-          path: 'notes.md'
+  const html = renderZh(
+    createElement(StreamingTranscriptMessage, {
+      prompt: '修复页面样式',
+      content: `${first}${second}${third}`,
+      thinkingContent: '',
+      toolUses: [
+        {
+          toolUseId: 'tool_read_notes',
+          name: 'read_file',
+          input: {
+            path: 'notes.md'
+          },
+          status: 'completed'
         },
-        status: 'completed'
-      },
-      {
-        toolUseId: 'tool_patch_app',
-        name: 'edit_file',
-        input: {
-          path: 'src/app.ts'
+        {
+          toolUseId: 'tool_patch_app',
+          name: 'edit_file',
+          input: {
+            path: 'src/app.ts'
+          },
+          status: 'completed'
+        }
+      ],
+      toolResults: [
+        {
+          toolUseId: 'tool_read_notes',
+          content: 'notes fixture content'
         },
-        status: 'completed'
-      }
-    ],
-    toolResults: [
-      {
-        toolUseId: 'tool_read_notes',
-        content: 'notes fixture content'
-      },
-      {
-        toolUseId: 'tool_patch_app',
-        content: 'patched src/app.ts',
-        changedFiles: [{
-          path: 'src/app.ts',
-          operation: 'patched',
-          hunkCount: 1
-        }]
-      }
-    ],
-    stages: [],
-    activityItems: [
-      {
-        id: 'tool:tool_read_notes',
-        type: 'tool',
-        offset: first.length,
-        status: 'completed',
-        title: 'tool_completed',
-        summary: 'read_file',
-        toolUseIds: ['tool_read_notes'],
-        createdAt: '2026-05-11T00:00:00.000Z'
-      },
-      {
-        id: 'tool:tool_patch_app',
-        type: 'tool',
-        offset: `${first}${second}`.length,
-        status: 'completed',
-        title: 'tool_completed',
-        summary: 'edit_file',
-        toolUseIds: ['tool_patch_app'],
-        createdAt: '2026-05-11T00:00:01.000Z'
-      }
-    ],
-    statusMessage: '正在思考中...',
-    developerMode: false,
-    openablePaths: ['notes.md', 'src/app.ts'],
-    onOpenPath: noop
-  }));
+        {
+          toolUseId: 'tool_patch_app',
+          content: 'patched src/app.ts',
+          changedFiles: [
+            {
+              path: 'src/app.ts',
+              operation: 'patched',
+              hunkCount: 1
+            }
+          ]
+        }
+      ],
+      stages: [],
+      activityItems: [
+        {
+          id: 'tool:tool_read_notes',
+          type: 'tool',
+          offset: first.length,
+          status: 'completed',
+          title: 'tool_completed',
+          summary: 'read_file',
+          toolUseIds: ['tool_read_notes'],
+          createdAt: '2026-05-11T00:00:00.000Z'
+        },
+        {
+          id: 'tool:tool_patch_app',
+          type: 'tool',
+          offset: `${first}${second}`.length,
+          status: 'completed',
+          title: 'tool_completed',
+          summary: 'edit_file',
+          toolUseIds: ['tool_patch_app'],
+          createdAt: '2026-05-11T00:00:01.000Z'
+        }
+      ],
+      statusMessage: '正在思考中...',
+      developerMode: false,
+      openablePaths: ['notes.md', 'src/app.ts'],
+      onOpenPath: noop
+    })
+  );
 
   const firstIndex = html.indexOf('我先看一下项目结构');
   const readIndex = html.indexOf('notes.md');
@@ -1397,78 +1476,139 @@ test('streaming transcript interleaves assistant text and tool activity by offse
   assert.equal(html.includes('Previous tool call'), false);
 });
 
+test('streaming transcript renders stable markdown and keeps the live tail lightweight', () => {
+  const processHtml = renderZh(
+    createElement(StreamingTranscriptMessage, {
+      prompt: '解释方案',
+      content: '**第一段**\n\n- 继续输出',
+      thinkingContent: '',
+      toolUses: [],
+      toolResults: [],
+      stages: [],
+      activityItems: [],
+      statusMessage: '正在生成...',
+      developerMode: false,
+      openablePaths: [],
+      onOpenPath: noop
+    })
+  );
+  const agentCoreHtml = renderZh(
+    createElement(StreamingTranscriptMessage, {
+      prompt: '解释方案',
+      content: '**不应显示这一段**',
+      thinkingContent: '',
+      toolUses: [],
+      toolResults: [],
+      stages: [],
+      activityItems: [],
+      agentCoreParts: [
+        {
+          id: 'live_text',
+          kind: 'assistant_text',
+          createdAt: '2026-05-16T00:00:00.000Z',
+          sequence: 0,
+          text: '**第二段**\n\n- 继续输出'
+        }
+      ],
+      statusMessage: '正在生成...',
+      developerMode: false,
+      openablePaths: [],
+      onOpenPath: noop
+    })
+  );
+
+  assert.match(processHtml, /chat-streaming-text-line/);
+  assert.match(agentCoreHtml, /chat-streaming-text-line/);
+  assert.match(processHtml, /chat-streaming-markdown-prefix/);
+  assert.match(agentCoreHtml, /chat-streaming-markdown-prefix/);
+  assert.match(processHtml, /<strong>第一段<\/strong>/);
+  assert.match(agentCoreHtml, /<strong>第二段<\/strong>/);
+  assert.match(processHtml, />- 继续输出<\/div>/);
+  assert.match(agentCoreHtml, />- 继续输出<\/div>/);
+  assert.equal(agentCoreHtml.includes('不应显示这一段'), false);
+});
+
 test('streaming tool entries preserve transaction summaries for live tool cards', () => {
-  const tools = pairStreamingToolExecutions([{
-    toolUseId: 'tool_read_notes',
-    name: 'read_file',
-    input: {
-      path: 'notes.md'
-    },
-    status: 'completed'
-  }], [{
-    toolUseId: 'tool_read_notes',
-    content: 'notes fixture content',
-    transaction: {
-      id: 'tool_txn:tool_read_notes',
-      toolUseId: 'tool_read_notes',
-      toolName: 'read_file',
-      toolClass: 'workspace',
-      phase: 'completed',
-      status: 'completed',
-      eventCount: 3,
-      startedAt: '2026-05-11T00:00:00.000Z',
-      updatedAt: '2026-05-11T00:00:01.000Z'
-    }
-  }]);
+  const tools = pairStreamingToolExecutions(
+    [
+      {
+        toolUseId: 'tool_read_notes',
+        name: 'read_file',
+        input: {
+          path: 'notes.md'
+        },
+        status: 'completed'
+      }
+    ],
+    [
+      {
+        toolUseId: 'tool_read_notes',
+        content: 'notes fixture content',
+        transaction: {
+          id: 'tool_txn:tool_read_notes',
+          toolUseId: 'tool_read_notes',
+          toolName: 'read_file',
+          toolClass: 'workspace',
+          phase: 'completed',
+          status: 'completed',
+          eventCount: 3,
+          startedAt: '2026-05-11T00:00:00.000Z',
+          updatedAt: '2026-05-11T00:00:01.000Z'
+        }
+      }
+    ]
+  );
 
   assert.equal(tools[0]?.result?.transaction?.toolName, 'read_file');
   assert.equal(tools[0]?.result?.transaction?.status, 'completed');
 });
 
 test('streaming transcript can render directly from Agent Core parts', () => {
-  const html = renderZh(createElement(StreamingTranscriptMessage, {
-    prompt: '继续实现',
-    content: '[Tool] write_file {"path":"index.html"}',
-    thinkingContent: '',
-    toolUses: [],
-    toolResults: [],
-    stages: [],
-    activityItems: [],
-    agentCoreParts: [
-      {
-        id: 'stream_text',
-        kind: 'assistant_text',
-        createdAt: '2026-05-16T00:00:00.000Z',
-        sequence: 0,
-        text: '我会先写入口文件。'
-      },
-      {
-        id: 'stream_tool_call',
-        kind: 'tool_call',
-        createdAt: '2026-05-16T00:00:01.000Z',
-        sequence: 1,
-        toolUseId: 'tool_write',
-        name: 'write_file',
-        input: {
-          path: 'index.html'
+  const html = renderZh(
+    createElement(StreamingTranscriptMessage, {
+      prompt: '继续实现',
+      content: '[Tool] write_file {"path":"index.html"}',
+      thinkingContent: '',
+      toolUses: [],
+      toolResults: [],
+      stages: [],
+      activityItems: [],
+      agentCoreParts: [
+        {
+          id: 'stream_text',
+          kind: 'assistant_text',
+          createdAt: '2026-05-16T00:00:00.000Z',
+          sequence: 0,
+          text: '我会先写入口文件。'
         },
-        status: 'completed'
-      },
-      {
-        id: 'stream_tool_result',
-        kind: 'tool_result',
-        createdAt: '2026-05-16T00:00:02.000Z',
-        sequence: 2,
-        toolUseId: 'tool_write',
-        toolName: 'write_file',
-        content: '已写入 index.html。'
-      }
-    ],
-    statusMessage: '正在思考中...',
-    developerMode: false,
-    openablePaths: [],
-    onOpenPath: noop
-  }));
+        {
+          id: 'stream_tool_call',
+          kind: 'tool_call',
+          createdAt: '2026-05-16T00:00:01.000Z',
+          sequence: 1,
+          toolUseId: 'tool_write',
+          name: 'write_file',
+          input: {
+            path: 'index.html'
+          },
+          status: 'completed'
+        },
+        {
+          id: 'stream_tool_result',
+          kind: 'tool_result',
+          createdAt: '2026-05-16T00:00:02.000Z',
+          sequence: 2,
+          toolUseId: 'tool_write',
+          toolName: 'write_file',
+          content: '已写入 index.html。'
+        }
+      ],
+      statusMessage: '正在思考中...',
+      developerMode: false,
+      openablePaths: [],
+      onOpenPath: noop
+    })
+  );
 
   assert.match(html, /我会先写入口文件/);
   assert.match(html, /index\.html/);
@@ -1478,49 +1618,51 @@ test('streaming transcript can render directly from Agent Core parts', () => {
 });
 
 test('agent core tool process collapses before final answer text', () => {
-  const html = renderZh(createElement(StreamingTranscriptMessage, {
-    prompt: '修复测试',
-    content: '',
-    thinkingContent: '',
-    toolUses: [],
-    toolResults: [],
-    stages: [],
-    activityItems: [],
-    agentCoreParts: [
-      {
-        id: 'stream_tool_call_failed',
-        kind: 'tool_call',
-        createdAt: '2026-05-16T00:00:01.000Z',
-        sequence: 0,
-        toolUseId: 'tool_test',
-        name: 'run_command',
-        input: {
-          command: 'npm test'
+  const html = renderZh(
+    createElement(StreamingTranscriptMessage, {
+      prompt: '修复测试',
+      content: '',
+      thinkingContent: '',
+      toolUses: [],
+      toolResults: [],
+      stages: [],
+      activityItems: [],
+      agentCoreParts: [
+        {
+          id: 'stream_tool_call_failed',
+          kind: 'tool_call',
+          createdAt: '2026-05-16T00:00:01.000Z',
+          sequence: 0,
+          toolUseId: 'tool_test',
+          name: 'run_command',
+          input: {
+            command: 'npm test'
+          },
+          status: 'failed'
         },
-        status: 'failed'
-      },
-      {
-        id: 'stream_tool_error',
-        kind: 'tool_error',
-        createdAt: '2026-05-16T00:00:02.000Z',
-        sequence: 1,
-        toolUseId: 'tool_test',
-        toolName: 'run_command',
-        error: '测试失败。'
-      },
-      {
-        id: 'stream_final_text',
-        kind: 'assistant_text',
-        createdAt: '2026-05-16T00:00:03.000Z',
-        sequence: 2,
-        text: '结论：需要先修复断言。'
-      }
-    ],
-    statusMessage: '正在思考中...',
-    developerMode: false,
-    openablePaths: [],
-    onOpenPath: noop
-  }));
+        {
+          id: 'stream_tool_error',
+          kind: 'tool_error',
+          createdAt: '2026-05-16T00:00:02.000Z',
+          sequence: 1,
+          toolUseId: 'tool_test',
+          toolName: 'run_command',
+          error: '测试失败。'
+        },
+        {
+          id: 'stream_final_text',
+          kind: 'assistant_text',
+          createdAt: '2026-05-16T00:00:03.000Z',
+          sequence: 2,
+          text: '结论：需要先修复断言。'
+        }
+      ],
+      statusMessage: '正在思考中...',
+      developerMode: false,
+      openablePaths: [],
+      onOpenPath: noop
+    })
+  );
 
   const toolIndex = html.indexOf('chat-tool-step failed collapsed');
   const finalTextIndex = html.indexOf('结论：需要先修复断言');
@@ -1534,106 +1676,108 @@ test('agent core tool process collapses before final answer text', () => {
 test('streaming transcript merges multiple tools at the same text boundary', () => {
   const first = '我先快速摸一下项目结构。\n\n';
   const second = '现在开始改渲染。';
-  const html = renderZh(createElement(StreamingTranscriptMessage, {
-    prompt: '优化工具过程显示',
-    content: `${first}${second}`,
-    thinkingContent: '',
-    toolUses: [
-      {
-        toolUseId: 'tool_read_a',
-        name: 'read_file',
-        input: {
-          path: 'src/A.tsx'
+  const html = renderZh(
+    createElement(StreamingTranscriptMessage, {
+      prompt: '优化工具过程显示',
+      content: `${first}${second}`,
+      thinkingContent: '',
+      toolUses: [
+        {
+          toolUseId: 'tool_read_a',
+          name: 'read_file',
+          input: {
+            path: 'src/A.tsx'
+          },
+          status: 'completed'
         },
-        status: 'completed'
-      },
-      {
-        toolUseId: 'tool_read_b',
-        name: 'read_file',
-        input: {
-          path: 'src/B.tsx'
+        {
+          toolUseId: 'tool_read_b',
+          name: 'read_file',
+          input: {
+            path: 'src/B.tsx'
+          },
+          status: 'completed'
         },
-        status: 'completed'
-      },
-      {
-        toolUseId: 'tool_search',
-        name: 'search_project_content',
-        input: {
-          query: 'ToolActivityGroup'
+        {
+          toolUseId: 'tool_search',
+          name: 'search_project_content',
+          input: {
+            query: 'ToolActivityGroup'
+          },
+          status: 'completed'
         },
-        status: 'completed'
-      },
-      {
-        toolUseId: 'tool_test',
-        name: 'run_command',
-        input: {
-          command: 'npm test'
+        {
+          toolUseId: 'tool_test',
+          name: 'run_command',
+          input: {
+            command: 'npm test'
+          },
+          status: 'completed'
+        }
+      ],
+      toolResults: [
+        {
+          toolUseId: 'tool_read_a',
+          content: 'A content'
         },
-        status: 'completed'
-      }
-    ],
-    toolResults: [
-      {
-        toolUseId: 'tool_read_a',
-        content: 'A content'
-      },
-      {
-        toolUseId: 'tool_read_b',
-        content: 'B content'
-      },
-      {
-        toolUseId: 'tool_search',
-        content: 'Search results'
-      },
-      {
-        toolUseId: 'tool_test',
-        content: 'Tests passed'
-      }
-    ],
-    stages: [],
-    activityItems: [
-      {
-        id: 'tool:tool_read_a',
-        type: 'tool',
-        offset: first.length,
-        status: 'completed',
-        title: 'tool_completed',
-        toolUseIds: ['tool_read_a'],
-        createdAt: '2026-05-11T00:00:00.000Z'
-      },
-      {
-        id: 'tool:tool_read_b',
-        type: 'tool',
-        offset: first.length,
-        status: 'completed',
-        title: 'tool_completed',
-        toolUseIds: ['tool_read_b'],
-        createdAt: '2026-05-11T00:00:01.000Z'
-      },
-      {
-        id: 'tool:tool_search',
-        type: 'tool',
-        offset: first.length,
-        status: 'completed',
-        title: 'tool_completed',
-        toolUseIds: ['tool_search'],
-        createdAt: '2026-05-11T00:00:02.000Z'
-      },
-      {
-        id: 'tool:tool_test',
-        type: 'tool',
-        offset: first.length,
-        status: 'completed',
-        title: 'tool_completed',
-        toolUseIds: ['tool_test'],
-        createdAt: '2026-05-11T00:00:03.000Z'
-      }
-    ],
-    statusMessage: '正在思考中...',
-    developerMode: false,
-    openablePaths: ['src/A.tsx', 'src/B.tsx'],
-    onOpenPath: noop
-  }));
+        {
+          toolUseId: 'tool_read_b',
+          content: 'B content'
+        },
+        {
+          toolUseId: 'tool_search',
+          content: 'Search results'
+        },
+        {
+          toolUseId: 'tool_test',
+          content: 'Tests passed'
+        }
+      ],
+      stages: [],
+      activityItems: [
+        {
+          id: 'tool:tool_read_a',
+          type: 'tool',
+          offset: first.length,
+          status: 'completed',
+          title: 'tool_completed',
+          toolUseIds: ['tool_read_a'],
+          createdAt: '2026-05-11T00:00:00.000Z'
+        },
+        {
+          id: 'tool:tool_read_b',
+          type: 'tool',
+          offset: first.length,
+          status: 'completed',
+          title: 'tool_completed',
+          toolUseIds: ['tool_read_b'],
+          createdAt: '2026-05-11T00:00:01.000Z'
+        },
+        {
+          id: 'tool:tool_search',
+          type: 'tool',
+          offset: first.length,
+          status: 'completed',
+          title: 'tool_completed',
+          toolUseIds: ['tool_search'],
+          createdAt: '2026-05-11T00:00:02.000Z'
+        },
+        {
+          id: 'tool:tool_test',
+          type: 'tool',
+          offset: first.length,
+          status: 'completed',
+          title: 'tool_completed',
+          toolUseIds: ['tool_test'],
+          createdAt: '2026-05-11T00:00:03.000Z'
+        }
+      ],
+      statusMessage: '正在思考中...',
+      developerMode: false,
+      openablePaths: ['src/A.tsx', 'src/B.tsx'],
+      onOpenPath: noop
+    })
+  );
 
   const firstIndex = html.indexOf('我先快速摸一下项目结构');
   const summaryIndex = html.indexOf('探索 2 个文件');
@@ -1653,44 +1797,46 @@ test('streaming transcript merges multiple tools at the same text boundary', () 
 });
 
 test('streaming process timeline collapses tool details before final text', () => {
-  const html = renderZh(createElement(StreamingTranscriptMessage, {
-    prompt: '检查失败原因',
-    content: '结论：测试失败来自快照不匹配。',
-    thinkingContent: '',
-    toolUses: [
-      {
-        toolUseId: 'tool_test_failed',
-        name: 'run_command',
-        input: {
-          command: 'npm test'
-        },
-        status: 'failed'
-      }
-    ],
-    toolResults: [
-      {
-        toolUseId: 'tool_test_failed',
-        content: 'Snapshot failed',
-        isError: true
-      }
-    ],
-    stages: [],
-    activityItems: [
-      {
-        id: 'tool:tool_test_failed',
-        type: 'tool',
-        offset: 0,
-        status: 'failed',
-        title: 'tool_failed',
-        toolUseIds: ['tool_test_failed'],
-        createdAt: '2026-05-11T00:00:00.000Z'
-      }
-    ],
-    statusMessage: '正在思考中...',
-    developerMode: false,
-    openablePaths: [],
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(StreamingTranscriptMessage, {
+      prompt: '检查失败原因',
+      content: '结论：测试失败来自快照不匹配。',
+      thinkingContent: '',
+      toolUses: [
+        {
+          toolUseId: 'tool_test_failed',
+          name: 'run_command',
+          input: {
+            command: 'npm test'
+          },
+          status: 'failed'
+        }
+      ],
+      toolResults: [
+        {
+          toolUseId: 'tool_test_failed',
+          content: 'Snapshot failed',
+          isError: true
+        }
+      ],
+      stages: [],
+      activityItems: [
+        {
+          id: 'tool:tool_test_failed',
+          type: 'tool',
+          offset: 0,
+          status: 'failed',
+          title: 'tool_failed',
+          toolUseIds: ['tool_test_failed'],
+          createdAt: '2026-05-11T00:00:00.000Z'
+        }
+      ],
+      statusMessage: '正在思考中...',
+      developerMode: false,
+      openablePaths: [],
+      onOpenPath: noop
+    })
+  );
 
   const toolIndex = html.indexOf('chat-tool-activity failed collapsed');
   const finalTextIndex = html.indexOf('结论：测试失败来自快照不匹配');
@@ -1703,57 +1849,60 @@ test('streaming process timeline collapses tool details before final text', () =
 
 test('streaming transcript renders todo tool as task list activity', () => {
   const intro = '我先拆一下任务。\n\n';
-  const html = renderZh(createElement(StreamingTranscriptMessage, {
-    prompt: '实现一个复杂后端系统',
-    content: `${intro}开始按清单执行。`,
-    thinkingContent: '',
-    toolUses: [
-      {
-        toolUseId: 'tool_todo',
-        name: 'update_todo_list',
-        input: {
-          todos: [
-            {
-              id: 'api',
-              content: '实现 API 层',
-              status: 'in_progress',
-              priority: 'high'
-            },
-            {
-              id: 'test',
-              content: '补充测试',
-              status: 'pending',
-              priority: 'medium'
-            }
-          ]
-        },
-        status: 'completed'
-      }
-    ],
-    toolResults: [
-      {
-        toolUseId: 'tool_todo',
-        content: '任务清单已更新（2 项）：\n- [in_progress] api (high): 实现 API 层\n- [pending] test (medium): 补充测试'
-      }
-    ],
-    stages: [],
-    activityItems: [
-      {
-        id: 'tool:tool_todo',
-        type: 'tool',
-        offset: intro.length,
-        status: 'completed',
-        title: 'tool_completed',
-        summary: 'update_todo_list',
-        toolUseIds: ['tool_todo'],
-        createdAt: '2026-05-11T00:00:04.000Z'
-      }
-    ],
-    statusMessage: '正在思考中...',
-    developerMode: false,
-    openablePaths: [],
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(StreamingTranscriptMessage, {
+      prompt: '实现一个复杂后端系统',
+      content: `${intro}开始按清单执行。`,
+      thinkingContent: '',
+      toolUses: [
+        {
+          toolUseId: 'tool_todo',
+          name: 'update_todo_list',
+          input: {
+            todos: [
+              {
+                id: 'api',
+                content: '实现 API 层',
+                status: 'in_progress',
+                priority: 'high'
+              },
+              {
+                id: 'test',
+                content: '补充测试',
+                status: 'pending',
+                priority: 'medium'
+              }
+            ]
+          },
+          status: 'completed'
+        }
+      ],
+      toolResults: [
+        {
+          toolUseId: 'tool_todo',
+          content:
+            '任务清单已更新（2 项）：\n- [in_progress] api (high): 实现 API 层\n- [pending] test (medium): 补充测试'
+        }
+      ],
+      stages: [],
+      activityItems: [
+        {
+          id: 'tool:tool_todo',
+          type: 'tool',
+          offset: intro.length,
+          status: 'completed',
+          title: 'tool_completed',
+          summary: 'update_todo_list',
+          toolUseIds: ['tool_todo'],
+          createdAt: '2026-05-11T00:00:04.000Z'
+        }
+      ],
+      statusMessage: '正在思考中...',
+      developerMode: false,
+      openablePaths: [],
+      onOpenPath: noop
+    })
+  );
 
   assert.match(html, /更新 1 次任务清单/);
   assert.match(html, /任务清单/);
@@ -1862,13 +2011,15 @@ test('completed assistant transcript can replay persisted process text with inli
       ]
     }
   };
-  const html = renderZh(createElement(ChatTranscriptMessage, {
-    message,
-    openablePaths: ['config.json'],
-    searchQuery: '',
-    developerMode: false,
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(ChatTranscriptMessage, {
+      message,
+      openablePaths: ['config.json'],
+      searchQuery: '',
+      developerMode: false,
+      onOpenPath: noop
+    })
+  );
 
   const firstIndex = html.indexOf('先读取配置');
   const summaryIndex = html.indexOf('已探索 1 个文件，编辑 1 个文件');
@@ -1962,13 +2113,15 @@ test('completed assistant transcript renders ordered Agent Core parts', () => {
       ]
     }
   };
-  const html = renderZh(createElement(ChatTranscriptMessage, {
-    message,
-    openablePaths: ['config.json'],
-    searchQuery: '',
-    developerMode: false,
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(ChatTranscriptMessage, {
+      message,
+      openablePaths: ['config.json'],
+      searchQuery: '',
+      developerMode: false,
+      onOpenPath: noop
+    })
+  );
 
   const skillIndex = html.indexOf('已激活 Skill');
   const firstIndex = html.indexOf('先读取配置');
@@ -1985,160 +2138,168 @@ test('completed assistant transcript renders ordered Agent Core parts', () => {
 });
 
 test('long task stream renders partial reply, tool states, approvals, user input, and recovery hints', () => {
-  const html = renderZh(createElement(MessageList, {
-    sessionId: 'session_long_task',
-    messages: [],
-    stream: {
-      prompt: '实现一个包含认证、任务队列和测试的后端系统',
-      content: '已完成基础目录与数据库层，正在接入队列 worker，并准备运行验证。',
-      thinkingContent: '',
-      toolUses: [
-        {
-          toolUseId: 'tool_write_server',
-          name: 'write_file',
-          input: {
-            path: 'src/server.ts'
-          },
-          status: 'completed'
-        },
-        {
-          toolUseId: 'tool_test',
-          name: 'run_command',
-          input: {
-            command: 'npm test',
-            cwd: '/workspace/backend'
-          },
-          status: 'running'
-        },
-        {
-          toolUseId: 'tool_patch_queue',
-          name: 'patch_file',
-          input: {
-            path: 'src/queue.ts'
-          },
-          status: 'failed'
-        }
-      ],
-      toolResults: [
-        {
-          toolUseId: 'tool_write_server',
-          content: 'Wrote src/server.ts',
-          changedFiles: [{
-            path: 'src/server.ts',
-            operation: 'created'
-          }],
-          edit: {
-            strategy: 'write_file',
-            patchFirst: false,
-            preflight: 'passed'
-          }
-        },
-        {
-          toolUseId: 'tool_patch_queue',
-          content: 'Patch failed because the expected queue factory was not found.',
-          isError: true,
-          changedFiles: [{
-            path: 'src/queue.ts',
-            operation: 'patched',
-            hunkCount: 1
-          }],
-          edit: {
-            strategy: 'unified_patch',
-            patchFirst: true,
-            preflight: 'failed',
-            hunkCount: 1,
-            failureKind: 'context_mismatch',
-            recoveryHint: '重新读取文件后再应用更小补丁'
-          }
-        }
-      ],
-      stages: [
-        {
-          stageId: 'stage_write',
-          title: '写入后端模块',
-          target: 'src/server.ts',
-          status: 'completed',
-          summary: '已创建 HTTP server 与 health route',
-          runtimeId: 'native',
-          providerId: 'provider_mimo',
-          model: 'mimo-v2.5-pro'
-        },
-        {
-          stageId: 'stage_verify',
-          title: '验证测试',
-          target: 'npm test',
-          status: 'failed',
-          summary: '测试命令发现队列导出缺失',
-          errorMessage: 'QueueFactory is not exported',
-          errorCode: 'TEST_FAILED',
-          suggestedAction: '读取 src/queue.ts 后修复导出',
-          recoveryActions: [{
-            label: '重新运行测试',
-            command: 'npm test'
-          }]
-        }
-      ],
-      activityItems: [
-        {
-          id: 'activity_write',
-          type: 'tool',
-          offset: 0,
-          status: 'completed',
-          title: 'tool_completed',
-          summary: 'write_file completed',
-          toolUseIds: ['tool_write_server'],
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: 'activity_patch_failed',
-          type: 'tool',
-          offset: 0,
-          status: 'failed',
-          title: 'tool_failed',
-          summary: 'patch_file failed',
-          toolUseIds: ['tool_patch_queue'],
-          createdAt: new Date().toISOString()
-        }
-      ],
-      pendingPermission: {
-        requestId: 'perm_test',
-        title: '允许 Agent 执行命令：npm test？',
-        detail: '该命令会在项目目录中运行测试。',
-        risk: 'medium',
-        impact: {
-          toolName: 'run_command',
-          toolTitle: 'Run Command',
-          commands: ['npm test'],
-          cwd: '/workspace/backend',
-          permissionPolicy: 'ask',
-          reason: '验证后端系统'
-        }
-      },
-      pendingUserInput: {
-        requestId: 'ask_env',
-        title: '需要确认部署环境',
-        question: '这个后端默认使用 SQLite 还是 Postgres？',
-        options: [
+  const html = renderZh(
+    createElement(MessageList, {
+      sessionId: 'session_long_task',
+      messages: [],
+      stream: {
+        prompt: '实现一个包含认证、任务队列和测试的后端系统',
+        content: '已完成基础目录与数据库层，正在接入队列 worker，并准备运行验证。',
+        thinkingContent: '',
+        toolUses: [
           {
-            id: 'sqlite',
-            label: 'SQLite',
-            description: '本地优先'
+            toolUseId: 'tool_write_server',
+            name: 'write_file',
+            input: {
+              path: 'src/server.ts'
+            },
+            status: 'completed'
           },
           {
-            id: 'postgres',
-            label: 'Postgres',
-            description: '生产优先'
+            toolUseId: 'tool_test',
+            name: 'run_command',
+            input: {
+              command: 'npm test',
+              cwd: '/workspace/backend'
+            },
+            status: 'running'
+          },
+          {
+            toolUseId: 'tool_patch_queue',
+            name: 'patch_file',
+            input: {
+              path: 'src/queue.ts'
+            },
+            status: 'failed'
           }
         ],
-        allowFreeText: true
+        toolResults: [
+          {
+            toolUseId: 'tool_write_server',
+            content: 'Wrote src/server.ts',
+            changedFiles: [
+              {
+                path: 'src/server.ts',
+                operation: 'created'
+              }
+            ],
+            edit: {
+              strategy: 'write_file',
+              patchFirst: false,
+              preflight: 'passed'
+            }
+          },
+          {
+            toolUseId: 'tool_patch_queue',
+            content: 'Patch failed because the expected queue factory was not found.',
+            isError: true,
+            changedFiles: [
+              {
+                path: 'src/queue.ts',
+                operation: 'patched',
+                hunkCount: 1
+              }
+            ],
+            edit: {
+              strategy: 'unified_patch',
+              patchFirst: true,
+              preflight: 'failed',
+              hunkCount: 1,
+              failureKind: 'context_mismatch',
+              recoveryHint: '重新读取文件后再应用更小补丁'
+            }
+          }
+        ],
+        stages: [
+          {
+            stageId: 'stage_write',
+            title: '写入后端模块',
+            target: 'src/server.ts',
+            status: 'completed',
+            summary: '已创建 HTTP server 与 health route',
+            runtimeId: 'native',
+            providerId: 'provider_mimo',
+            model: 'mimo-v2.5-pro'
+          },
+          {
+            stageId: 'stage_verify',
+            title: '验证测试',
+            target: 'npm test',
+            status: 'failed',
+            summary: '测试命令发现队列导出缺失',
+            errorMessage: 'QueueFactory is not exported',
+            errorCode: 'TEST_FAILED',
+            suggestedAction: '读取 src/queue.ts 后修复导出',
+            recoveryActions: [
+              {
+                label: '重新运行测试',
+                command: 'npm test'
+              }
+            ]
+          }
+        ],
+        activityItems: [
+          {
+            id: 'activity_write',
+            type: 'tool',
+            offset: 0,
+            status: 'completed',
+            title: 'tool_completed',
+            summary: 'write_file completed',
+            toolUseIds: ['tool_write_server'],
+            createdAt: new Date().toISOString()
+          },
+          {
+            id: 'activity_patch_failed',
+            type: 'tool',
+            offset: 0,
+            status: 'failed',
+            title: 'tool_failed',
+            summary: 'patch_file failed',
+            toolUseIds: ['tool_patch_queue'],
+            createdAt: new Date().toISOString()
+          }
+        ],
+        pendingPermission: {
+          requestId: 'perm_test',
+          title: '允许 Agent 执行命令：npm test？',
+          detail: '该命令会在项目目录中运行测试。',
+          risk: 'medium',
+          impact: {
+            toolName: 'run_command',
+            toolTitle: 'Run Command',
+            commands: ['npm test'],
+            cwd: '/workspace/backend',
+            permissionPolicy: 'ask',
+            reason: '验证后端系统'
+          }
+        },
+        pendingUserInput: {
+          requestId: 'ask_env',
+          title: '需要确认部署环境',
+          question: '这个后端默认使用 SQLite 还是 Postgres？',
+          options: [
+            {
+              id: 'sqlite',
+              label: 'SQLite',
+              description: '本地优先'
+            },
+            {
+              id: 'postgres',
+              label: 'Postgres',
+              description: '生产优先'
+            }
+          ],
+          allowFreeText: true
+        },
+        statusMessage: '正在思考中...'
       },
-      statusMessage: '正在思考中...'
-    },
-    searchQuery: '',
-    openablePaths: ['src/server.ts', 'src/queue.ts'],
-    onOpenPath: noop,
-    developerMode: true
-  }));
+      searchQuery: '',
+      openablePaths: ['src/server.ts', 'src/queue.ts'],
+      onOpenPath: noop,
+      developerMode: true
+    })
+  );
 
   assert.match(html, /实现一个包含认证、任务队列和测试的后端系统/);
   assert.match(html, /已完成基础目录与数据库层/);
@@ -2160,93 +2321,97 @@ test('long task stream renders partial reply, tool states, approvals, user input
 });
 
 test('permission prompts render structured impact without exposing large inputs', () => {
-  const composerHtml = renderZh(createElement(ChatComposer, {
-    draft: '',
-    attachments: [] as PromptAttachment[],
-    contextUsage,
-    error: '',
-    queuedPrompts: [],
-    isSending: true,
-    isExecutingPlan: false,
-    statusMessage: '等待权限确认…',
-    pendingPermission: {
-      requestId: 'perm_write',
-      title: '允许 Agent 执行工具：Write File？',
-      detail: '允许后，本轮才会执行该写入型或高风险工具。',
-      risk: 'medium',
-      impact: {
-        toolName: 'write_file',
-        toolTitle: 'Write File',
-        permissionPolicy: 'ask',
-        checkpointPolicy: 'before_write',
-        mcp: {
-          pluginId: 'plugin_unity',
-          pluginName: 'Unity Bridge',
-          toolName: 'unity.modify_scene',
-          policySource: 'tool',
-          permission: 'ask',
-          risk: 'write'
-        },
-        paths: ['src/app.ts'],
-        reason: '保存实现',
-        inputSummary: ['path: src/app.ts']
-      }
-    },
-    permissionLabel: 'Build',
-    activeProviderLabel: 'Xiaomi MiMo',
-    providers: [provider],
-    defaultProviderId: provider.id,
-    activeProviderId: provider.id,
-    permissionMode: 'full-access',
-    onDraftChange: noop,
-    onPickAttachments: noop,
-    onRemoveAttachment: noop,
-    onSubmit: noop,
-    onCancelStream: noop,
-    onRespondPermission: noop,
-    onRespondUserInput: noop,
-    onUpdateSessionRuntime: noop,
-    onUpdatePermissionMode: noop,
-    onRemoveQueuedPrompt: noop,
-    onOpenAppSettings: noop,
-    onOpenProjectAgentSettings: noop
-  }));
+  const composerHtml = renderZh(
+    createElement(ChatComposer, {
+      draft: '',
+      attachments: [] as PromptAttachment[],
+      contextUsage,
+      error: '',
+      queuedPrompts: [],
+      isSending: true,
+      isExecutingPlan: false,
+      statusMessage: '等待权限确认…',
+      pendingPermission: {
+        requestId: 'perm_write',
+        title: '允许 Agent 执行工具：Write File？',
+        detail: '允许后，本轮才会执行该写入型或高风险工具。',
+        risk: 'medium',
+        impact: {
+          toolName: 'write_file',
+          toolTitle: 'Write File',
+          permissionPolicy: 'ask',
+          checkpointPolicy: 'before_write',
+          mcp: {
+            pluginId: 'plugin_unity',
+            pluginName: 'Unity Bridge',
+            toolName: 'unity.modify_scene',
+            policySource: 'tool',
+            permission: 'ask',
+            risk: 'write'
+          },
+          paths: ['src/app.ts'],
+          reason: '保存实现',
+          inputSummary: ['path: src/app.ts']
+        }
+      },
+      permissionLabel: 'Build',
+      activeProviderLabel: 'Xiaomi MiMo',
+      providers: [provider],
+      defaultProviderId: provider.id,
+      activeProviderId: provider.id,
+      permissionMode: 'full-access',
+      onDraftChange: noop,
+      onPickAttachments: noop,
+      onRemoveAttachment: noop,
+      onSubmit: noop,
+      onCancelStream: noop,
+      onRespondPermission: noop,
+      onRespondUserInput: noop,
+      onUpdateSessionRuntime: noop,
+      onUpdatePermissionMode: noop,
+      onRemoveQueuedPrompt: noop,
+      onOpenAppSettings: noop,
+      onOpenProjectAgentSettings: noop
+    })
+  );
 
-  const transcriptHtml = renderZh(createElement(StreamingTranscriptMessage, {
-    prompt: '写入 src/app.ts',
-    content: '',
-    thinkingContent: '',
-    toolUses: [],
-    toolResults: [],
-    stages: [],
-    activityItems: [],
-    pendingPermission: {
-      requestId: 'perm_write',
-      title: '允许 Agent 执行工具：Write File？',
-      detail: '允许后，本轮才会执行该写入型或高风险工具。',
-      risk: 'medium',
-      impact: {
-        toolName: 'write_file',
-        toolTitle: 'Write File',
-        permissionPolicy: 'ask',
-        checkpointPolicy: 'before_write',
-        mcp: {
-          pluginId: 'plugin_unity',
-          pluginName: 'Unity Bridge',
-          toolName: 'unity.modify_scene',
-          policySource: 'tool',
-          permission: 'ask',
-          risk: 'write'
-        },
-        paths: ['src/app.ts'],
-        reason: '保存实现'
-      }
-    },
-    statusMessage: '等待权限确认…',
-    developerMode: false,
-    openablePaths: [],
-    onOpenPath: noop
-  }));
+  const transcriptHtml = renderZh(
+    createElement(StreamingTranscriptMessage, {
+      prompt: '写入 src/app.ts',
+      content: '',
+      thinkingContent: '',
+      toolUses: [],
+      toolResults: [],
+      stages: [],
+      activityItems: [],
+      pendingPermission: {
+        requestId: 'perm_write',
+        title: '允许 Agent 执行工具：Write File？',
+        detail: '允许后，本轮才会执行该写入型或高风险工具。',
+        risk: 'medium',
+        impact: {
+          toolName: 'write_file',
+          toolTitle: 'Write File',
+          permissionPolicy: 'ask',
+          checkpointPolicy: 'before_write',
+          mcp: {
+            pluginId: 'plugin_unity',
+            pluginName: 'Unity Bridge',
+            toolName: 'unity.modify_scene',
+            policySource: 'tool',
+            permission: 'ask',
+            risk: 'write'
+          },
+          paths: ['src/app.ts'],
+          reason: '保存实现'
+        }
+      },
+      statusMessage: '等待权限确认…',
+      developerMode: false,
+      openablePaths: [],
+      onOpenPath: noop
+    })
+  );
 
   assert.match(composerHtml, /路径：src\/app\.ts/);
   assert.match(composerHtml, /MCP：Unity Bridge \/ unity\.modify_scene/);
@@ -2260,34 +2425,36 @@ test('permission prompts render structured impact without exposing large inputs'
 });
 
 test('project usage settings focus on token and provider summaries', () => {
-  const html = renderZh(createElement(ProjectTokenUsageSettings, {
-    project: null,
-    usage: {
-      trackedRunCount: 3,
-      usageRunCount: 2,
-      turns: 4,
-      inputTokens: 100,
-      outputTokens: 50,
-      cacheCreationTokens: 0,
-      cacheReadTokens: 10,
-      totalTokens: 160,
-      statusCounts: {
-        running: 0,
-        completed: 2,
-        failed: 1,
-        interrupted: 0
-      },
-      verificationRunCount: 2,
-      verificationCheckCount: 5,
-      verificationPassedCount: 4,
-      verificationFailedCount: 1,
-      browserVerificationCount: 1,
-      runtimeEventCount: 12,
-      failedToolResultCount: 1,
-      toolRetryCount: 1,
-      providerModelGroups: []
-    }
-  }));
+  const html = renderZh(
+    createElement(ProjectTokenUsageSettings, {
+      project: null,
+      usage: {
+        trackedRunCount: 3,
+        usageRunCount: 2,
+        turns: 4,
+        inputTokens: 100,
+        outputTokens: 50,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 10,
+        totalTokens: 160,
+        statusCounts: {
+          running: 0,
+          completed: 2,
+          failed: 1,
+          interrupted: 0
+        },
+        verificationRunCount: 2,
+        verificationCheckCount: 5,
+        verificationPassedCount: 4,
+        verificationFailedCount: 1,
+        browserVerificationCount: 1,
+        runtimeEventCount: 12,
+        failedToolResultCount: 1,
+        toolRetryCount: 1,
+        providerModelGroups: []
+      }
+    })
+  );
 
   assert.match(html, /项目 Token 概览/);
   assert.match(html, /Token 构成/);
@@ -2299,41 +2466,45 @@ test('project usage settings focus on token and provider summaries', () => {
 });
 
 test('project Agent runs settings render recovery and verification summaries', () => {
-  const html = renderZh(createElement(ProjectAgentRunsSettings, {
-    project: null,
-    runs: {
-      trackedRunCount: 3,
-      runningRunCount: 0,
-      completedRunCount: 2,
-      failedRunCount: 1,
-      interruptedRunCount: 0,
-      resumableRunCount: 1,
-      latestUpdatedAt: new Date().toISOString(),
-      verificationRunCount: 2,
-      verificationCheckCount: 5,
-      verificationPassedCount: 4,
-      verificationFailedCount: 1,
-      browserVerificationCount: 1,
-      runtimeEventCount: 12,
-      failedToolResultCount: 1,
-      toolRetryCount: 1,
-      recentRuns: [{
-        id: 'run_failed',
-        kind: 'conversation',
-        status: 'failed',
-        startedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        canResume: true,
-        sessionTitle: '主会话',
-        inputPreview: '实现后端系统',
-        resumeStrategy: 'resume_after_last_completed_tool',
-        totalTokens: 160,
+  const html = renderZh(
+    createElement(ProjectAgentRunsSettings, {
+      project: null,
+      runs: {
+        trackedRunCount: 3,
+        runningRunCount: 0,
+        completedRunCount: 2,
+        failedRunCount: 1,
+        interruptedRunCount: 0,
+        resumableRunCount: 1,
+        latestUpdatedAt: new Date().toISOString(),
+        verificationRunCount: 2,
         verificationCheckCount: 5,
-        failedToolResultCount: 1
-      }]
-    },
-    onResumeRun: noop
-  }));
+        verificationPassedCount: 4,
+        verificationFailedCount: 1,
+        browserVerificationCount: 1,
+        runtimeEventCount: 12,
+        failedToolResultCount: 1,
+        toolRetryCount: 1,
+        recentRuns: [
+          {
+            id: 'run_failed',
+            kind: 'conversation',
+            status: 'failed',
+            startedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            canResume: true,
+            sessionTitle: '主会话',
+            inputPreview: '实现后端系统',
+            resumeStrategy: 'resume_after_last_completed_tool',
+            totalTokens: 160,
+            verificationCheckCount: 5,
+            failedToolResultCount: 1
+          }
+        ]
+      },
+      onResumeRun: noop
+    })
+  );
 
   assert.match(html, /Agent 运行概览/);
   assert.match(html, /验证与质量/);
@@ -2379,20 +2550,22 @@ test('project Agent settings render direct session and policy controls', () => {
     blueprint: {}
   } as unknown as Project;
 
-  const html = renderZh(createElement(ProjectAgentSettings, {
-    project,
-    providers: [provider, secondaryProvider],
-    activeProvider: provider,
-    defaultProviderId: provider.id,
-    activeSession,
-    sessionProviderId: provider.id,
-    sessionModel: 'mimo-v2.5-pro',
-    sessionRuntimeId: 'native',
-    sessionEffort: 'high',
-    globalRuntimeStrategy: 'native',
-    onUpdatePermissionMode: noopAsync,
-    onUpdateSessionRuntime: noopAsync
-  }));
+  const html = renderZh(
+    createElement(ProjectAgentSettings, {
+      project,
+      providers: [provider, secondaryProvider],
+      activeProvider: provider,
+      defaultProviderId: provider.id,
+      activeSession,
+      sessionProviderId: provider.id,
+      sessionModel: 'mimo-v2.5-pro',
+      sessionRuntimeId: 'native',
+      sessionEffort: 'high',
+      globalRuntimeStrategy: 'native',
+      onUpdatePermissionMode: noopAsync,
+      onUpdateSessionRuntime: noopAsync
+    })
+  );
 
   assert.doesNotMatch(html, /设置作用域/);
   assert.match(html, /当前会话运行/);
@@ -2420,18 +2593,20 @@ test('project Agent settings render direct session and policy controls', () => {
 });
 
 test('provider settings render provider rows with separate details navigation', () => {
-  const html = renderZh(createElement(ProviderSettingsPage, {
-    providers: [provider, secondaryProvider],
-    providerTests: {},
-    selectedProjectId: 'project_scope',
-    onAddProvider: noop,
-    onEditProvider: noop,
-    onDeleteProvider: noop,
-    onTestProvider: noop,
-    onSetDefaultProvider: noop,
-    onToggleProvider: noop,
-    embedded: true
-  }));
+  const html = renderZh(
+    createElement(ProviderSettingsPage, {
+      providers: [provider, secondaryProvider],
+      providerTests: {},
+      selectedProjectId: 'project_scope',
+      onAddProvider: noop,
+      onEditProvider: noop,
+      onDeleteProvider: noop,
+      onTestProvider: noop,
+      onSetDefaultProvider: noop,
+      onToggleProvider: noop,
+      embedded: true
+    })
+  );
 
   assert.match(html, /AI Provider/);
   assert.match(html, /Xiaomi MiMo/);
@@ -2456,36 +2631,41 @@ test('provider settings render provider rows with separate details navigation', 
 });
 
 test('asset provider settings share the config list and details navigation contract', () => {
-  const html = renderZh(createElement(AssetProviderSettingsPage, {
-    providers: [{
-      id: 'asset_provider_openai',
-      name: 'OpenAI Images',
-      adapter: 'openai-image' as const,
-      enabled: true,
-      baseUrl: 'https://api.openai.com/v1',
-      apiKey: '',
-      hasStoredApiKey: true,
-      model: 'gpt-image-2',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }, {
-      id: 'asset_provider_comfy',
-      name: 'ComfyUI',
-      adapter: 'comfyui' as const,
-      enabled: false,
-      baseUrl: 'http://127.0.0.1:8188',
-      apiKey: '',
-      model: '',
-      workflowPath: 'workflow.json',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }],
-    onAddProvider: noop,
-    onEditProvider: noop,
-    onDeleteProvider: noop,
-    onToggleProvider: noop,
-    embedded: true
-  }));
+  const html = renderZh(
+    createElement(AssetProviderSettingsPage, {
+      providers: [
+        {
+          id: 'asset_provider_openai',
+          name: 'OpenAI Images',
+          adapter: 'openai-image' as const,
+          enabled: true,
+          baseUrl: 'https://api.openai.com/v1',
+          apiKey: '',
+          hasStoredApiKey: true,
+          model: 'gpt-image-2',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: 'asset_provider_comfy',
+          name: 'ComfyUI',
+          adapter: 'comfyui' as const,
+          enabled: false,
+          baseUrl: 'http://127.0.0.1:8188',
+          apiKey: '',
+          model: '',
+          workflowPath: 'workflow.json',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ],
+      onAddProvider: noop,
+      onEditProvider: noop,
+      onDeleteProvider: noop,
+      onToggleProvider: noop,
+      embedded: true
+    })
+  );
 
   assert.match(html, /素材 Provider/);
   assert.match(html, /添加素材 Provider/);
@@ -2511,10 +2691,12 @@ test('web search settings render through the shared UI component system', () => 
     browserFallbackEnabled: true,
     telemetryEnabled: true
   };
-  const html = renderZh(createElement(WebSearchSettingsPage, {
-    settings,
-    onUpdateSettings: noopAsync
-  }));
+  const html = renderZh(
+    createElement(WebSearchSettingsPage, {
+      settings,
+      onUpdateSettings: noopAsync
+    })
+  );
 
   assert.match(html, /Web Search/);
   assert.match(html, /默认 Provider/);
@@ -2529,12 +2711,14 @@ test('web search settings render through the shared UI component system', () => 
 });
 
 test('provider editor prioritizes presets and hides protocol fields under advanced settings', () => {
-  const html = renderZh(createElement(ProviderEditor, {
-    provider: null,
-    onCancel: noop,
-    onCreate: noopAsync,
-    onUpdate: async () => {}
-  }));
+  const html = renderZh(
+    createElement(ProviderEditor, {
+      provider: null,
+      onCancel: noop,
+      onCreate: noopAsync,
+      onUpdate: async () => {}
+    })
+  );
 
   assert.match(html, /服务商预设/);
   assert.match(html, /核心配置/);
@@ -2593,12 +2777,14 @@ test('MCP plugin modal exposes persisted tool permission policy controls', () =>
     updatedAt: new Date().toISOString()
   };
 
-  const html = renderZh(createElement(McpPluginModal, {
-    plugin,
-    onClose: noop,
-    onCreate: noopAsync,
-    onUpdate: async () => {}
-  }));
+  const html = renderZh(
+    createElement(McpPluginModal, {
+      plugin,
+      onClose: noop,
+      onCreate: noopAsync,
+      onUpdate: async () => {}
+    })
+  );
 
   assert.match(html, /工具权限策略/);
   assert.match(html, /默认权限/);
@@ -2619,31 +2805,33 @@ test('MCP plugin modal exposes persisted tool permission policy controls', () =>
 });
 
 test('MCP tool snapshot card warns about changed and removed mappings', () => {
-  const html = renderZh(createElement(McpToolSnapshotCard, {
-    snapshots: [
-      {
-        pluginId: 'plugin_unity',
-        pluginName: 'Unity Bridge',
-        originalName: 'unity.echo',
-        exposedName: 'mcp__unity_bridge__unity_echo',
-        schemaHash: 'a'.repeat(64),
-        schemaJson: '{}',
-        policySummary: 'MCP policy inferred: permission=ask, risk=write',
-        changeKind: 'changed',
-        discoveredAt: new Date().toISOString()
-      },
-      {
-        pluginId: 'plugin_unity',
-        pluginName: 'Unity Bridge',
-        originalName: 'unity.old_tool',
-        exposedName: '',
-        schemaHash: 'b'.repeat(64),
-        schemaJson: '{}',
-        changeKind: 'removed',
-        discoveredAt: new Date().toISOString()
-      }
-    ]
-  }));
+  const html = renderZh(
+    createElement(McpToolSnapshotCard, {
+      snapshots: [
+        {
+          pluginId: 'plugin_unity',
+          pluginName: 'Unity Bridge',
+          originalName: 'unity.echo',
+          exposedName: 'mcp__unity_bridge__unity_echo',
+          schemaHash: 'a'.repeat(64),
+          schemaJson: '{}',
+          policySummary: 'MCP policy inferred: permission=ask, risk=write',
+          changeKind: 'changed',
+          discoveredAt: new Date().toISOString()
+        },
+        {
+          pluginId: 'plugin_unity',
+          pluginName: 'Unity Bridge',
+          originalName: 'unity.old_tool',
+          exposedName: '',
+          schemaHash: 'b'.repeat(64),
+          schemaJson: '{}',
+          changeKind: 'removed',
+          discoveredAt: new Date().toISOString()
+        }
+      ]
+    })
+  );
 
   assert.match(html, /工具映射审计/);
   assert.match(html, /有 2 个工具发生变化或被移除/);
@@ -2665,18 +2853,20 @@ test('MCP raw diagnostics card exposes only diagnostic methods', () => {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
-  const html = renderZh(createElement(McpRawDiagnosticsCard, {
-    plugin,
-    onSendRawRequest: async () => ({
-      method: 'tools/list',
-      pluginId: plugin.id,
-      durationMs: 1,
-      paramsSize: 2,
-      responseSize: 2,
-      truncated: false,
-      result: {}
+  const html = renderZh(
+    createElement(McpRawDiagnosticsCard, {
+      plugin,
+      onSendRawRequest: async () => ({
+        method: 'tools/list',
+        pluginId: plugin.id,
+        durationMs: 1,
+        paramsSize: 2,
+        responseSize: 2,
+        truncated: false,
+        result: {}
+      })
     })
-  }));
+  );
 
   assert.match(html, /Raw 诊断/);
   assert.match(html, /tools\/list/);
@@ -2690,32 +2880,34 @@ test('MCP raw diagnostics card exposes only diagnostic methods', () => {
 });
 
 test('MCP raw audit card renders recent diagnostic outcomes', () => {
-  const html = renderZh(createElement(McpRawAuditCard, {
-    audits: [
-      {
-        id: 'audit_ok',
-        pluginId: 'mcp_raw',
-        pluginName: 'Raw MCP',
-        method: 'tools/list',
-        status: 'success',
-        durationMs: 12,
-        paramsSize: 2,
-        responseSize: 44,
-        createdAt: '2026-05-15T01:00:00.000Z'
-      },
-      {
-        id: 'audit_failed',
-        pluginId: 'mcp_raw',
-        pluginName: 'Raw MCP',
-        method: 'resources/read',
-        status: 'failed',
-        durationMs: 4,
-        paramsSize: 32,
-        error: 'Resource not found',
-        createdAt: '2026-05-15T01:01:00.000Z'
-      }
-    ]
-  }));
+  const html = renderZh(
+    createElement(McpRawAuditCard, {
+      audits: [
+        {
+          id: 'audit_ok',
+          pluginId: 'mcp_raw',
+          pluginName: 'Raw MCP',
+          method: 'tools/list',
+          status: 'success',
+          durationMs: 12,
+          paramsSize: 2,
+          responseSize: 44,
+          createdAt: '2026-05-15T01:00:00.000Z'
+        },
+        {
+          id: 'audit_failed',
+          pluginId: 'mcp_raw',
+          pluginName: 'Raw MCP',
+          method: 'resources/read',
+          status: 'failed',
+          durationMs: 4,
+          paramsSize: 32,
+          error: 'Resource not found',
+          createdAt: '2026-05-15T01:01:00.000Z'
+        }
+      ]
+    })
+  );
 
   assert.match(html, /Raw 操作审计/);
   assert.match(html, /已记录 2 次诊断请求，失败 1 次/);
@@ -2782,17 +2974,19 @@ test('engine status dialog uses Cocos labels for Cocos diagnostics', () => {
     ],
     ready: true
   };
-  const html = renderZh(createElement(EngineStatusDialog, {
-    project,
-    diagnostics,
-    loading: false,
-    actionId: null,
-    error: '',
-    actionMessage: '',
-    onClose: noop,
-    onRefresh: noop,
-    onRunAction: noop
-  }));
+  const html = renderZh(
+    createElement(EngineStatusDialog, {
+      project,
+      diagnostics,
+      loading: false,
+      actionId: null,
+      error: '',
+      actionMessage: '',
+      onClose: noop,
+      onRefresh: noop,
+      onRunAction: noop
+    })
+  );
 
   assert.match(html, /Cocos Dashboard/);
   assert.match(html, /Cocos 项目/);
@@ -2819,13 +3013,15 @@ test('MCP server list row renders compact details navigation and toggle', () => 
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
-  const html = renderZh(createElement(ServerListRow, {
-    plugin,
-    selected: true,
-    checked: true,
-    onSelect: noop,
-    onToggle: noop
-  }));
+  const html = renderZh(
+    createElement(ServerListRow, {
+      plugin,
+      selected: true,
+      checked: true,
+      onSelect: noop,
+      onToggle: noop
+    })
+  );
 
   assert.match(html, /Unity MCP/);
   assert.match(html, /mcp-server-row-main/);
@@ -2883,78 +3079,84 @@ test('MCP management pages render shared action controls', () => {
     status: 'online' as const,
     initializeCount: 1
   };
-  const projectHtml = renderZh(createElement(McpManagementPage, {
-    project,
-    plugins: [plugin, legacyUnityPlugin],
-    projectBindings: [plugin.id, legacyUnityPlugin.id],
-    selectedPlugin: plugin,
-    serverInfo: null,
-    tools: [],
-    toolSnapshots: [],
-    rawAudits: [],
-    resources: [],
-    prompts: [],
-    resourceTemplates: [],
-    connectionStatus,
-    connectionStatuses: { [plugin.id]: connectionStatus },
-    pluginError: '',
-    isRefreshing: false,
-    onRefresh: noop,
-    onReconnect: noop,
-    onStop: noop,
-    onOpenRegistry: noop,
-    onSelectProjectMcpPlugin: noop,
-    onToggleProjectMcpPlugin: noop,
-    onAddProjectMcpPlugin: noop,
-    onEditProjectMcpPlugin: noop,
-    onDeleteProjectMcpPlugin: noop,
-    onSendRawMcpRequest: async () => ({
-      method: 'tools/list',
-      pluginId: plugin.id,
-      durationMs: 1,
-      paramsSize: 2,
-      responseSize: 2,
-      truncated: false,
-      result: {}
+  const projectHtml = renderZh(
+    createElement(McpManagementPage, {
+      project,
+      plugins: [plugin, legacyUnityPlugin],
+      projectBindings: [plugin.id, legacyUnityPlugin.id],
+      selectedPlugin: plugin,
+      serverInfo: null,
+      tools: [],
+      toolSnapshots: [],
+      rawAudits: [],
+      resources: [],
+      prompts: [],
+      resourceTemplates: [],
+      connectionStatus,
+      connectionStatuses: { [plugin.id]: connectionStatus },
+      pluginError: '',
+      isRefreshing: false,
+      onRefresh: noop,
+      onReconnect: noop,
+      onStop: noop,
+      onOpenRegistry: noop,
+      onSelectProjectMcpPlugin: noop,
+      onToggleProjectMcpPlugin: noop,
+      onAddProjectMcpPlugin: noop,
+      onEditProjectMcpPlugin: noop,
+      onDeleteProjectMcpPlugin: noop,
+      onSendRawMcpRequest: async () => ({
+        method: 'tools/list',
+        pluginId: plugin.id,
+        durationMs: 1,
+        paramsSize: 2,
+        responseSize: 2,
+        truncated: false,
+        result: {}
+      })
     })
-  }));
-  const registryHtml = renderZh(createElement(McpRegistrySettingsPage, {
-    plugins: [plugin],
-    selectedPlugin: plugin,
-    serverInfo: null,
-    tools: [],
-    toolSnapshots: [],
-    rawAudits: [],
-    resources: [],
-    prompts: [],
-    resourceTemplates: [],
-    connectionStatus,
-    connectionStatuses: { [plugin.id]: connectionStatus },
-    pluginError: '',
-    isRefreshing: false,
-    onSelectPlugin: noop,
-    onRefresh: noop,
-    onReconnect: noop,
-    onStop: noop,
-    onTogglePlugin: noop,
-    onAddPlugin: noop,
-    onEditPlugin: noop,
-    onDeletePlugin: noop,
-    onSendRawMcpRequest: async () => ({
-      method: 'tools/list',
-      pluginId: plugin.id,
-      durationMs: 1,
-      paramsSize: 2,
-      responseSize: 2,
-      truncated: false,
-      result: {}
+  );
+  const registryHtml = renderZh(
+    createElement(McpRegistrySettingsPage, {
+      plugins: [plugin],
+      selectedPlugin: plugin,
+      serverInfo: null,
+      tools: [],
+      toolSnapshots: [],
+      rawAudits: [],
+      resources: [],
+      prompts: [],
+      resourceTemplates: [],
+      connectionStatus,
+      connectionStatuses: { [plugin.id]: connectionStatus },
+      pluginError: '',
+      isRefreshing: false,
+      onSelectPlugin: noop,
+      onRefresh: noop,
+      onReconnect: noop,
+      onStop: noop,
+      onTogglePlugin: noop,
+      onAddPlugin: noop,
+      onEditPlugin: noop,
+      onDeletePlugin: noop,
+      onSendRawMcpRequest: async () => ({
+        method: 'tools/list',
+        pluginId: plugin.id,
+        durationMs: 1,
+        paramsSize: 2,
+        responseSize: 2,
+        truncated: false,
+        result: {}
+      })
     })
-  }));
-  const pluginCardHtml = renderZh(createElement(PluginListCard, {
-    plugin,
-    selected: true,
-    onClick: noop
-  }));
+  );
+  const pluginCardHtml = renderZh(
+    createElement(PluginListCard, {
+      plugin,
+      selected: true,
+      onClick: noop
+    })
+  );
 
   assert.match(projectHtml, /Global Settings|全局设置/);
   assert.match(projectHtml, /Add project server|添加项目 Server/);
@@ -2989,45 +3191,49 @@ test('runtime doctor renders direct provider repair guidance', () => {
     providerId: provider.id,
     runtimeId: 'native',
     repairs: [],
-    probes: [{
-      id: 'native-openai-compatible',
-      title: 'Native OpenAI Compatible',
-      severity: 'error',
-      durationMs: 42,
-      findings: [
-        {
-          severity: 'error',
-          code: 'provider_auth_missing',
-          summary: 'Provider 缺少 API key/token。',
-          suggestedAction: '保存 API key。'
-        },
-        {
-          severity: 'error',
-          code: 'native_provider_api_mode_unsupported',
-          summary: 'Provider 当前 API mode 与服务商能力不匹配。',
-          suggestedAction: '切换 Chat Completions。'
-        },
-        {
-          severity: 'warn',
-          code: 'network_provider_unreachable',
-          summary: 'Provider endpoint 网络探针失败。',
-          suggestedAction: '检查网络。'
-        }
-      ]
-    }]
+    probes: [
+      {
+        id: 'native-openai-compatible',
+        title: 'Native OpenAI Compatible',
+        severity: 'error',
+        durationMs: 42,
+        findings: [
+          {
+            severity: 'error',
+            code: 'provider_auth_missing',
+            summary: 'Provider 缺少 API key/token。',
+            suggestedAction: '保存 API key。'
+          },
+          {
+            severity: 'error',
+            code: 'native_provider_api_mode_unsupported',
+            summary: 'Provider 当前 API mode 与服务商能力不匹配。',
+            suggestedAction: '切换 Chat Completions。'
+          },
+          {
+            severity: 'warn',
+            code: 'network_provider_unreachable',
+            summary: 'Provider endpoint 网络探针失败。',
+            suggestedAction: '检查网络。'
+          }
+        ]
+      }
+    ]
   };
-  const html = renderZh(createElement(RuntimeDoctorDialog, {
-    provider,
-    result,
-    loading: false,
-    error: '',
-    exportedJson: '{"provider":"Xiaomi MiMo"}',
-    onRunDry: noop,
-    onRunLive: noop,
-    onRepair: noop,
-    onExport: noop,
-    onClose: noop
-  }));
+  const html = renderZh(
+    createElement(RuntimeDoctorDialog, {
+      provider,
+      result,
+      loading: false,
+      error: '',
+      exportedJson: '{"provider":"Xiaomi MiMo"}',
+      onRunDry: noop,
+      onRunLive: noop,
+      onRepair: noop,
+      onExport: noop,
+      onClose: noop
+    })
+  );
 
   assert.match(html, /建议修复顺序/);
   assert.match(html, /runtime-doctor-status-board/);
@@ -3060,10 +3266,12 @@ test('agent workbench renders chat without redundant project status header', () 
     contextSummary: {},
     blueprint: {}
   } as unknown as Project;
-  const html = renderZh(createElement(AgentWorkbench, {
-    project,
-    children: createElement('div', null, 'chat')
-  }));
+  const html = renderZh(
+    createElement(AgentWorkbench, {
+      project,
+      children: createElement('div', null, 'chat')
+    })
+  );
 
   assert.match(html, /chat/);
   assert.doesNotMatch(html, /项目状态/);
@@ -3071,26 +3279,28 @@ test('agent workbench renders chat without redundant project status header', () 
 });
 
 test('workspace sidebar navigation marks the active section semantically', () => {
-  const html = renderZh(createElement(SidebarPanel, {
-    files: [],
-    selectedFileId: '',
-    sessions: [],
-    activeSessionId: undefined,
-    streamingSessionId: undefined,
-    sessionStates: {},
-    navItems: [
-      { id: 'settings', label: '项目设置', icon: '⚙' },
-      { id: 'assets', label: '素材库', icon: '▧' }
-    ],
-    activeNavId: 'assets',
-    width: 300,
-    onOpenFile: noop,
-    onCreateSession: noop,
-    onSelectSession: noop,
-    onRenameSession: noop,
-    onDeleteSession: noop,
-    onSelectNav: noop
-  }));
+  const html = renderZh(
+    createElement(SidebarPanel, {
+      files: [],
+      selectedFileId: '',
+      sessions: [],
+      activeSessionId: undefined,
+      streamingSessionId: undefined,
+      sessionStates: {},
+      navItems: [
+        { id: 'settings', label: '项目设置', icon: '⚙' },
+        { id: 'assets', label: '素材库', icon: '▧' }
+      ],
+      activeNavId: 'assets',
+      width: 300,
+      onOpenFile: noop,
+      onCreateSession: noop,
+      onSelectSession: noop,
+      onRenameSession: noop,
+      onDeleteSession: noop,
+      onSelectNav: noop
+    })
+  );
 
   assert.match(html, /aria-label="项目导航"/);
   assert.match(html, /aria-current="page"[^>]*class="[^"]*workspace-sidebar-nav-item active/);
@@ -3109,27 +3319,29 @@ test('workspace sidebar does not show session selection outside the agent sectio
       chat: []
     }
   ];
-  const html = renderZh(createElement(SidebarPanel, {
-    files: [],
-    selectedFileId: '',
-    sessions,
-    activeSessionId: 'session_main',
-    streamingSessionId: undefined,
-    sessionStates: {},
-    navItems: [
-      { id: 'agent', label: 'Agent', icon: '✦' },
-      { id: 'settings', label: '项目设置', icon: '⚙' },
-      { id: 'assets', label: '素材库', icon: '▧' }
-    ],
-    activeNavId: 'settings',
-    width: 300,
-    onOpenFile: noop,
-    onCreateSession: noop,
-    onSelectSession: noop,
-    onRenameSession: noop,
-    onDeleteSession: noop,
-    onSelectNav: noop
-  }));
+  const html = renderZh(
+    createElement(SidebarPanel, {
+      files: [],
+      selectedFileId: '',
+      sessions,
+      activeSessionId: 'session_main',
+      streamingSessionId: undefined,
+      sessionStates: {},
+      navItems: [
+        { id: 'agent', label: 'Agent', icon: '✦' },
+        { id: 'settings', label: '项目设置', icon: '⚙' },
+        { id: 'assets', label: '素材库', icon: '▧' }
+      ],
+      activeNavId: 'settings',
+      width: 300,
+      onOpenFile: noop,
+      onCreateSession: noop,
+      onSelectSession: noop,
+      onRenameSession: noop,
+      onDeleteSession: noop,
+      onSelectNav: noop
+    })
+  );
 
   assert.match(html, /主会话/);
   assert.match(html, /workspace-sidebar-nav-item active/);
@@ -3156,23 +3368,25 @@ test('session management panel renders shared toolbar and row action controls', 
       chat: []
     }
   ];
-  const html = renderZh(createElement(SessionManagementPanel, {
-    sessions,
-    activeSessionId: 'session_main',
-    streamingSessionId: 'session_main',
-    sessionStates: {
-      session_plan: {
-        mode: 'queued',
-        summary: '等待工具结果',
-        hint: '2 queued',
-        queuedCount: 2
-      }
-    },
-    onCreateSession: noop,
-    onSelectSession: noop,
-    onRenameSession: noop,
-    onDeleteSession: noop
-  }));
+  const html = renderZh(
+    createElement(SessionManagementPanel, {
+      sessions,
+      activeSessionId: 'session_main',
+      streamingSessionId: 'session_main',
+      sessionStates: {
+        session_plan: {
+          mode: 'queued',
+          summary: '等待工具结果',
+          hint: '2 queued',
+          queuedCount: 2
+        }
+      },
+      onCreateSession: noop,
+      onSelectSession: noop,
+      onRenameSession: noop,
+      onDeleteSession: noop
+    })
+  );
 
   assert.match(html, /会话管理/);
   assert.match(html, /主会话/);
@@ -3199,104 +3413,110 @@ test('workspace file tree renders empty folders and inspector handoff state', ()
     contextSummary: {},
     blueprint: {}
   } as unknown as Project;
-  const sidebarHtml = renderZh(createElement(SidebarPanel, {
-    files: [
-      {
-        id: 'dir_assets',
-        name: 'assets',
-        path: 'assets',
-        type: 'directory',
-        size: 0,
-        modifiedAt: new Date().toISOString()
-      },
-      {
-        id: 'dir_images',
-        name: 'images',
-        path: 'assets/images',
-        type: 'directory',
-        size: 0,
-        modifiedAt: new Date().toISOString()
-      },
-      {
-        id: 'dir_audio',
-        name: 'audio',
-        path: 'assets/audio',
-        type: 'directory',
-        size: 0,
-        modifiedAt: new Date().toISOString()
-      },
-      {
-        id: 'file_index',
-        name: 'index.html',
+  const sidebarHtml = renderZh(
+    createElement(SidebarPanel, {
+      files: [
+        {
+          id: 'dir_assets',
+          name: 'assets',
+          path: 'assets',
+          type: 'directory',
+          size: 0,
+          modifiedAt: new Date().toISOString()
+        },
+        {
+          id: 'dir_images',
+          name: 'images',
+          path: 'assets/images',
+          type: 'directory',
+          size: 0,
+          modifiedAt: new Date().toISOString()
+        },
+        {
+          id: 'dir_audio',
+          name: 'audio',
+          path: 'assets/audio',
+          type: 'directory',
+          size: 0,
+          modifiedAt: new Date().toISOString()
+        },
+        {
+          id: 'file_index',
+          name: 'index.html',
+          path: 'index.html',
+          type: 'file',
+          size: 512,
+          modifiedAt: new Date().toISOString()
+        }
+      ],
+      selectedFileId: 'index.html',
+      sessions: [],
+      activeSessionId: undefined,
+      streamingSessionId: undefined,
+      sessionStates: {},
+      navItems: [],
+      activeNavId: 'agent',
+      width: 300,
+      onOpenFile: noop,
+      onCreateSession: noop,
+      onSelectSession: noop,
+      onRenameSession: noop,
+      onDeleteSession: noop,
+      onSelectNav: noop
+    })
+  );
+  const inspectorHtml = renderZh(
+    createElement(FileInspectorPanel, {
+      file: {
+        id: 'index.html',
+        label: 'index.html',
         path: 'index.html',
-        type: 'file',
-        size: 512,
-        modifiedAt: new Date().toISOString()
-      }
-    ],
-    selectedFileId: 'index.html',
-    sessions: [],
-    activeSessionId: undefined,
-    streamingSessionId: undefined,
-    sessionStates: {},
-    navItems: [],
-    activeNavId: 'agent',
-    width: 300,
-    onOpenFile: noop,
-    onCreateSession: noop,
-    onSelectSession: noop,
-    onRenameSession: noop,
-    onDeleteSession: noop,
-    onSelectNav: noop
-  }));
-  const inspectorHtml = renderZh(createElement(FileInspectorPanel, {
-    file: {
-      id: 'index.html',
-      label: 'index.html',
-      path: 'index.html',
-      content: '<!doctype html><canvas id="game"></canvas>',
-      isBinary: false,
-      mimeType: 'text/html',
-      size: 512
-    },
-    project,
-    draft: '<!doctype html><canvas id="game"></canvas>',
-    mode: 'preview',
-    width: 420,
-    isDirty: false,
-    isSaving: false,
-    saveError: '',
-    savedAt: '',
-    onDraftChange: noop,
-    onModeChange: noop,
-    onClose: noop,
-    onSave: noop,
-    onReset: noop
-  }));
-  const editorHtml = renderZh(createElement(FileInspectorPanel, {
-    file: {
-      id: 'index.html',
-      label: 'index.html',
-      path: 'index.html',
-      content: '<!doctype html><canvas id="game"></canvas>',
-      isBinary: false,
-      mimeType: 'text/html',
-      size: 512
-    },
-    project,
-    draft: '<!doctype html><canvas id="game"></canvas>',
-    mode: 'edit',
-    width: 420,
-    isDirty: false,
-    isSaving: false,
-    saveError: '',
-    savedAt: '',
-    onDraftChange: noop,
-    onModeChange: noop,
-    onClose: noop,
-    onSave: noop,
-    onReset: noop
-  }));
+        content: '<!doctype html><canvas id="game"></canvas>',
+        isBinary: false,
+        mimeType: 'text/html',
+        size: 512
+      },
+      project,
+      draft: '<!doctype html><canvas id="game"></canvas>',
+      mode: 'preview',
+      width: 420,
+      isDirty: false,
+      isSaving: false,
+      saveError: '',
+      savedAt: '',
+      onDraftChange: noop,
+      onModeChange: noop,
+      onClose: noop,
+      onSave: noop,
+      onReset: noop
+    })
+  );
+  const editorHtml = renderZh(
+    createElement(FileInspectorPanel, {
+      file: {
+        id: 'index.html',
+        label: 'index.html',
+        path: 'index.html',
+        content: '<!doctype html><canvas id="game"></canvas>',
+        isBinary: false,
+        mimeType: 'text/html',
+        size: 512
+      },
+      project,
+      draft: '<!doctype html><canvas id="game"></canvas>',
+      mode: 'edit',
+      width: 420,
+      isDirty: false,
+      isSaving: false,
+      saveError: '',
+      savedAt: '',
+      onDraftChange: noop,
+      onModeChange: noop,
+      onClose: noop,
+      onSave: noop,
+      onReset: noop
+    })
+  );
 
   assert.match(sidebarHtml, /assets/);
   assert.match(sidebarHtml, /images/);
@@ -3329,23 +3549,27 @@ test('session changes panel uses the file code preview surface for diffs', () =>
     checkpointMessageCount: 2,
     addedMessages: 2,
     removedMessages: 0,
-    fileChanges: [{
-      path: 'src/game.js',
-      status: 'modified',
-      diffPreview: [
-        'diff --git a/src/game.js b/src/game.js',
-        '@@ -1,2 +1,2 @@',
-        '-const hp = 10;',
-        '+const hp = 12;'
-      ].join('\n')
-    }]
+    fileChanges: [
+      {
+        path: 'src/game.js',
+        status: 'modified',
+        diffPreview: [
+          'diff --git a/src/game.js b/src/game.js',
+          '@@ -1,2 +1,2 @@',
+          '-const hp = 10;',
+          '+const hp = 12;'
+        ].join('\n')
+      }
+    ]
   };
-  const html = renderZh(createElement(SessionChangesPanel, {
-    preview,
-    isLoading: false,
-    onRestore: noop,
-    onClose: noop
-  }));
+  const html = renderZh(
+    createElement(SessionChangesPanel, {
+      preview,
+      isLoading: false,
+      onRestore: noop,
+      onClose: noop
+    })
+  );
 
   assert.match(html, /session-change-diff-preview file-editor-shell/);
   assert.match(html, /file-editor-gutter/);
@@ -3376,14 +3600,16 @@ test('delete project modal uses shared checkbox field', () => {
     contextSummary: {},
     blueprint: {}
   } as unknown as Project;
-  const html = renderZh(createElement(DeleteProjectModal, {
-    project,
-    deleteSourceFiles: true,
-    isDeleting: false,
-    onChangeDeleteSourceFiles: noop,
-    onClose: noop,
-    onConfirm: noop
-  }));
+  const html = renderZh(
+    createElement(DeleteProjectModal, {
+      project,
+      deleteSourceFiles: true,
+      isDeleting: false,
+      onChangeDeleteSourceFiles: noop,
+      onClose: noop,
+      onConfirm: noop
+    })
+  );
 
   assert.match(html, /删除项目/);
   assert.match(html, /fp-checkbox-field delete-project-checkbox/);
@@ -3405,30 +3631,32 @@ test('HTML inspector warns when a project entry requires a dev server', () => {
     contextSummary: {},
     blueprint: {}
   } as unknown as Project;
-  const html = renderZh(createElement(FileInspectorPanel, {
-    file: {
-      id: 'index.html',
-      label: 'index.html',
-      path: 'index.html',
-      content: '<!doctype html><script type="module" src="/src/main.ts"></script>',
-      isBinary: false,
-      mimeType: 'text/html',
-      size: 128
-    },
-    project,
-    draft: '<!doctype html><script type="module" src="/src/main.ts"></script>',
-    mode: 'preview',
-    width: 420,
-    isDirty: false,
-    isSaving: false,
-    saveError: '',
-    savedAt: '',
-    onDraftChange: noop,
-    onModeChange: noop,
-    onClose: noop,
-    onSave: noop,
-    onReset: noop
-  }));
+  const html = renderZh(
+    createElement(FileInspectorPanel, {
+      file: {
+        id: 'index.html',
+        label: 'index.html',
+        path: 'index.html',
+        content: '<!doctype html><script type="module" src="/src/main.ts"></script>',
+        isBinary: false,
+        mimeType: 'text/html',
+        size: 128
+      },
+      project,
+      draft: '<!doctype html><script type="module" src="/src/main.ts"></script>',
+      mode: 'preview',
+      width: 420,
+      isDirty: false,
+      isSaving: false,
+      saveError: '',
+      savedAt: '',
+      onDraftChange: noop,
+      onModeChange: noop,
+      onClose: noop,
+      onSave: noop,
+      onReset: noop
+    })
+  );
 
   assert.match(html, /TypeScript\/Vite 入口/);
   assert.match(html, /启动预览/);
@@ -3451,43 +3679,97 @@ test('Markdown file preview renders standalone thematic breaks as horizontal rul
     contextSummary: {},
     blueprint: {}
   } as unknown as Project;
-  const draft = [
-    '# 核心玩法一句话',
-    '',
-    '玩家通过画线规划飞行路线。',
-    '',
-    '---',
-    '',
-    '## 2. 市场定位'
-  ].join('\n');
-  const html = renderZh(createElement(FileInspectorPanel, {
-    file: {
-      id: 'Bird_Nest_Rescue_策划案.md',
-      label: 'Bird_Nest_Rescue_策划案.md',
-      path: 'Bird_Nest_Rescue_策划案.md',
-      content: draft,
-      isBinary: false,
-      mimeType: 'text/markdown',
-      size: draft.length
-    },
-    project,
-    draft,
-    mode: 'preview',
-    width: 420,
-    isDirty: false,
-    isSaving: false,
-    saveError: '',
-    savedAt: '',
-    onDraftChange: noop,
-    onModeChange: noop,
-    onClose: noop,
-    onSave: noop,
-    onReset: noop
-  }));
+  const draft = ['# 核心玩法一句话', '', '玩家通过画线规划飞行路线。', '', '---', '', '## 2. 市场定位'].join('\n');
+  const html = renderZh(
+    createElement(FileInspectorPanel, {
+      file: {
+        id: 'Bird_Nest_Rescue_策划案.md',
+        label: 'Bird_Nest_Rescue_策划案.md',
+        path: 'Bird_Nest_Rescue_策划案.md',
+        content: draft,
+        isBinary: false,
+        mimeType: 'text/markdown',
+        size: draft.length
+      },
+      project,
+      draft,
+      mode: 'preview',
+      width: 420,
+      isDirty: false,
+      isSaving: false,
+      saveError: '',
+      savedAt: '',
+      onDraftChange: noop,
+      onModeChange: noop,
+      onClose: noop,
+      onSave: noop,
+      onReset: noop
+    })
+  );
 
   assert.match(html, /markdown-preview/);
   assert.match(html, /<hr\s*\/?>/);
   assert.doesNotMatch(html, />---<\/p>/);
+});
+
+test('Markdown file preview renders GFM tables and blockquotes', () => {
+  const project = {
+    id: 'project_markdown_gfm_preview',
+    name: 'Sweeper',
+    sessions: [],
+    mcpBindings: {},
+    chat: [],
+    activity: [],
+    assets: [],
+    tasks: [],
+    memory: {},
+    contextSummary: {},
+    blueprint: {}
+  } as unknown as Project;
+  const draft = [
+    '# 工作区根目录',
+    '',
+    '> `node_modules/` 已经随搬移进入 `minesweeper/node_modules/`，根目录不再有依赖。',
+    '',
+    '## 常用入口',
+    '',
+    '| 想做什么 | 怎么操作 |',
+    '| --- | --- |',
+    '| 跑协作扫雷 | `cd minesweeper && npm start` |',
+    '| 玩 Animal Pop | 打开 `animal-pop/index.html` |'
+  ].join('\n');
+  const html = renderZh(
+    createElement(FileInspectorPanel, {
+      file: {
+        id: 'README.md',
+        label: 'README.md',
+        path: 'README.md',
+        content: draft,
+        isBinary: false,
+        mimeType: 'text/markdown',
+        size: draft.length
+      },
+      project,
+      draft,
+      mode: 'preview',
+      width: 420,
+      isDirty: false,
+      isSaving: false,
+      saveError: '',
+      savedAt: '',
+      onDraftChange: noop,
+      onModeChange: noop,
+      onClose: noop,
+      onSave: noop,
+      onReset: noop
+    })
+  );
+
+  assert.match(html, /markdown-preview-table-wrap/);
+  assert.match(html, /<table>/);
+  assert.match(html, /<blockquote>/);
+  assert.doesNotMatch(html, /\| 想做什么 \| 怎么操作 \|/);
+  assert.doesNotMatch(html, /&gt; <code>node_modules\/<\/code>/);
 });
 
 test('project settings shell marks selected settings category and renders only the active page', () => {
@@ -3505,74 +3787,76 @@ test('project settings shell marks selected settings category and renders only t
     blueprint: {}
   } as unknown as Project;
 
-  const html = renderZh(createElement(ProjectSettingsPage, {
-    tab: 'engine',
-    onTabChange: noop,
-    project,
-    plugins: [],
-    selectedPlugin: null,
-    serverInfo: null,
-    tools: [],
-    toolSnapshots: [],
-    rawAudits: [],
-    resources: [],
-    prompts: [],
-    resourceTemplates: [],
-    connectionStatus: null,
-    connectionStatuses: {},
-    pluginError: '',
-    isRefreshing: false,
-    globalRuntimeStrategy: 'native',
-    projectBindings: [],
-    skillDraft: {
-      name: '',
-      description: '',
-      trigger: '',
-      instruction: '',
-      enabled: true
-    },
-    editingSkillId: '',
-    skillCatalog: null,
-    isLoadingSkillCatalog: false,
-    skillCatalogError: '',
-    providers: [provider],
-    activeProvider: provider,
-    defaultProviderId: provider.id,
-    activeSession: null,
-    sessionProviderId: undefined,
-    sessionModel: undefined,
-    sessionRuntimeId: 'native',
-    sessionEffort: 'medium',
-    runtimeStatuses: [],
-    onUpdateProjectPermissionMode: noopAsync,
-    onUpdateSessionRuntime: noopAsync,
-    onRefreshSkillCatalog: noopAsync,
-    onInstallCatalogSkill: noopAsync,
-    onChangeSkillDraft: noop,
-    onSaveProjectSkill: noopAsync,
-    onEditProjectSkill: noop,
-    onCancelProjectSkillEdit: noop,
-    onToggleProjectSkill: noopAsync,
-    onDeleteProjectSkill: noopAsync,
-    onRefreshPluginMeta: noop,
-    onOpenMcpRegistry: noop,
-    onSelectProjectMcpPlugin: noop,
-    onToggleProjectMcpPlugin: noop,
-    onAddProjectMcpPlugin: noop,
-    onEditProjectMcpPlugin: noop,
-    onDeleteProjectMcpPlugin: noop,
-    onSendRawMcpRequest: async () => ({
-      method: 'tools/list',
-      durationMs: 1,
-      paramsSize: 2,
-      responseSize: 2,
-      truncated: false,
-      result: {}
-    }),
-    onReconnectMcpPlugin: noop,
-    onStopMcpPlugin: noop,
-    onResumeAgentRun: noop
-  }));
+  const html = renderZh(
+    createElement(ProjectSettingsPage, {
+      tab: 'engine',
+      onTabChange: noop,
+      project,
+      plugins: [],
+      selectedPlugin: null,
+      serverInfo: null,
+      tools: [],
+      toolSnapshots: [],
+      rawAudits: [],
+      resources: [],
+      prompts: [],
+      resourceTemplates: [],
+      connectionStatus: null,
+      connectionStatuses: {},
+      pluginError: '',
+      isRefreshing: false,
+      globalRuntimeStrategy: 'native',
+      projectBindings: [],
+      skillDraft: {
+        name: '',
+        description: '',
+        trigger: '',
+        instruction: '',
+        enabled: true
+      },
+      editingSkillId: '',
+      skillCatalog: null,
+      isLoadingSkillCatalog: false,
+      skillCatalogError: '',
+      providers: [provider],
+      activeProvider: provider,
+      defaultProviderId: provider.id,
+      activeSession: null,
+      sessionProviderId: undefined,
+      sessionModel: undefined,
+      sessionRuntimeId: 'native',
+      sessionEffort: 'medium',
+      runtimeStatuses: [],
+      onUpdateProjectPermissionMode: noopAsync,
+      onUpdateSessionRuntime: noopAsync,
+      onRefreshSkillCatalog: noopAsync,
+      onInstallCatalogSkill: noopAsync,
+      onChangeSkillDraft: noop,
+      onSaveProjectSkill: noopAsync,
+      onEditProjectSkill: noop,
+      onCancelProjectSkillEdit: noop,
+      onToggleProjectSkill: noopAsync,
+      onDeleteProjectSkill: noopAsync,
+      onRefreshPluginMeta: noop,
+      onOpenMcpRegistry: noop,
+      onSelectProjectMcpPlugin: noop,
+      onToggleProjectMcpPlugin: noop,
+      onAddProjectMcpPlugin: noop,
+      onEditProjectMcpPlugin: noop,
+      onDeleteProjectMcpPlugin: noop,
+      onSendRawMcpRequest: async () => ({
+        method: 'tools/list',
+        durationMs: 1,
+        paramsSize: 2,
+        responseSize: 2,
+        truncated: false,
+        result: {}
+      }),
+      onReconnectMcpPlugin: noop,
+      onStopMcpPlugin: noop,
+      onResumeAgentRun: noop
+    })
+  );
 
   assert.match(html, /项目设置分类/);
   assert.match(html, /fp-button[^"]*project-settings-nav-item active/);
@@ -3596,89 +3880,91 @@ test('app settings modal is a semantic dialog and opens directly to provider set
     autoDownload: false
   };
 
-  const html = renderZh(createElement(AppSettingsModal, {
-    initialTab: 'provider',
-    theme: 'light',
-    language: 'zh-CN',
-    developerMode: false,
-    runtimeStrategy: 'native',
-    aiSettings: {
-      defaultProviderId: provider.id,
-      fallbackToLocalPlanner: false,
-      webSearch: {
-        provider: 'auto',
-        cacheTtlMs: 300000,
-        browserFallbackEnabled: true,
-        telemetryEnabled: true
-      }
-    },
-    providers: [provider],
-    providerTests: {},
-    mcpPlugins: [],
-    selectedMcpPlugin: null,
-    serverInfo: null,
-    tools: [],
-    toolSnapshots: [],
-    rawAudits: [],
-    resources: [],
-    prompts: [],
-    resourceTemplates: [],
-    connectionStatus: null,
-    connectionStatuses: {},
-    pluginError: '',
-    isRefreshingPlugin: false,
-    memoryFiles: [],
-    selectedMemoryPath: '',
-    selectedMemoryFile: null,
-    memoryDraft: '',
-    isLoadingMemory: false,
-    isSavingMemory: false,
-    memoryError: '',
-    notificationTasks: [],
-    isLoadingNotificationTasks: false,
-    notificationTaskError: '',
-    appUpdateStatus: null,
-    selectedProjectId: 'project_settings_shell',
-    onChangeTheme: noop,
-    onChangeLanguage: noop,
-    onChangeDeveloperMode: noop,
-    onChangeRuntimeStrategy: noop,
-    onUpdateWebSearchSettings: noopAsync,
-    onCreateProvider: noopAsync,
-    onUpdateProvider: noopAsync,
-    onDeleteProvider: noop,
-    onTestProvider: noop,
-    onSetDefaultProvider: noop,
-    onSelectMcpPlugin: noop,
-    onRefreshMcpPluginMeta: noop,
-    onToggleMcpPlugin: noop,
-    onAddMcpPlugin: noop,
-    onEditMcpPlugin: noop,
-    onDeleteMcpPlugin: noop,
-    onSendRawMcpRequest: async () => ({
-      method: 'tools/list',
-      durationMs: 1,
-      paramsSize: 2,
-      responseSize: 2,
-      truncated: false,
-      result: {}
-    }),
-    onReconnectMcpPlugin: noop,
-    onStopMcpPlugin: noop,
-    onImportClaudeSession: noopAsync,
-    onRefreshMemoryFiles: noopAsync,
-    onSelectMemoryFile: noopAsync,
-    onChangeMemoryDraft: noop,
-    onSaveMemoryFile: noopAsync,
-    onClearMemory: noopAsync,
-    onRefreshNotificationTasks: noopAsync,
-    onCancelNotificationTask: noopAsync,
-    onRefreshAppUpdateStatus: async () => appUpdateSnapshot,
-    onCheckForUpdates: async () => appUpdateSnapshot,
-    onDownloadUpdate: async () => appUpdateSnapshot,
-    onInstallUpdate: async () => appUpdateSnapshot,
-    onClose: noop
-  }));
+  const html = renderZh(
+    createElement(AppSettingsModal, {
+      initialTab: 'provider',
+      theme: 'light',
+      language: 'zh-CN',
+      developerMode: false,
+      runtimeStrategy: 'native',
+      aiSettings: {
+        defaultProviderId: provider.id,
+        fallbackToLocalPlanner: false,
+        webSearch: {
+          provider: 'auto',
+          cacheTtlMs: 300000,
+          browserFallbackEnabled: true,
+          telemetryEnabled: true
+        }
+      },
+      providers: [provider],
+      providerTests: {},
+      mcpPlugins: [],
+      selectedMcpPlugin: null,
+      serverInfo: null,
+      tools: [],
+      toolSnapshots: [],
+      rawAudits: [],
+      resources: [],
+      prompts: [],
+      resourceTemplates: [],
+      connectionStatus: null,
+      connectionStatuses: {},
+      pluginError: '',
+      isRefreshingPlugin: false,
+      memoryFiles: [],
+      selectedMemoryPath: '',
+      selectedMemoryFile: null,
+      memoryDraft: '',
+      isLoadingMemory: false,
+      isSavingMemory: false,
+      memoryError: '',
+      notificationTasks: [],
+      isLoadingNotificationTasks: false,
+      notificationTaskError: '',
+      appUpdateStatus: null,
+      selectedProjectId: 'project_settings_shell',
+      onChangeTheme: noop,
+      onChangeLanguage: noop,
+      onChangeDeveloperMode: noop,
+      onChangeRuntimeStrategy: noop,
+      onUpdateWebSearchSettings: noopAsync,
+      onCreateProvider: noopAsync,
+      onUpdateProvider: noopAsync,
+      onDeleteProvider: noop,
+      onTestProvider: noop,
+      onSetDefaultProvider: noop,
+      onSelectMcpPlugin: noop,
+      onRefreshMcpPluginMeta: noop,
+      onToggleMcpPlugin: noop,
+      onAddMcpPlugin: noop,
+      onEditMcpPlugin: noop,
+      onDeleteMcpPlugin: noop,
+      onSendRawMcpRequest: async () => ({
+        method: 'tools/list',
+        durationMs: 1,
+        paramsSize: 2,
+        responseSize: 2,
+        truncated: false,
+        result: {}
+      }),
+      onReconnectMcpPlugin: noop,
+      onStopMcpPlugin: noop,
+      onImportClaudeSession: noopAsync,
+      onRefreshMemoryFiles: noopAsync,
+      onSelectMemoryFile: noopAsync,
+      onChangeMemoryDraft: noop,
+      onSaveMemoryFile: noopAsync,
+      onClearMemory: noopAsync,
+      onRefreshNotificationTasks: noopAsync,
+      onCancelNotificationTask: noopAsync,
+      onRefreshAppUpdateStatus: async () => appUpdateSnapshot,
+      onCheckForUpdates: async () => appUpdateSnapshot,
+      onDownloadUpdate: async () => appUpdateSnapshot,
+      onInstallUpdate: async () => appUpdateSnapshot,
+      onClose: noop
+    })
+  );
 
   assert.match(html, /data-modal-state="open"/);
   assert.match(html, /role="dialog"/);
@@ -3717,89 +4003,91 @@ test('app settings memory center renders shared search and editor controls', () 
     updatedAt: new Date().toISOString(),
     content: '# Memory\nUI route migration notes'
   };
-  const html = renderZh(createElement(AppSettingsModal, {
-    initialTab: 'memory',
-    theme: 'light',
-    language: 'zh-CN',
-    developerMode: false,
-    runtimeStrategy: 'native',
-    aiSettings: {
-      defaultProviderId: provider.id,
-      fallbackToLocalPlanner: false,
-      webSearch: {
-        provider: 'auto',
-        cacheTtlMs: 300000,
-        browserFallbackEnabled: true,
-        telemetryEnabled: true
-      }
-    },
-    providers: [provider],
-    providerTests: {},
-    mcpPlugins: [],
-    selectedMcpPlugin: null,
-    serverInfo: null,
-    tools: [],
-    toolSnapshots: [],
-    rawAudits: [],
-    resources: [],
-    prompts: [],
-    resourceTemplates: [],
-    connectionStatus: null,
-    connectionStatuses: {},
-    pluginError: '',
-    isRefreshingPlugin: false,
-    memoryFiles: [memoryFile],
-    selectedMemoryPath: memoryFile.path,
-    selectedMemoryFile: memoryFile,
-    memoryDraft: memoryFile.content,
-    isLoadingMemory: false,
-    isSavingMemory: false,
-    memoryError: '',
-    notificationTasks: [],
-    isLoadingNotificationTasks: false,
-    notificationTaskError: '',
-    appUpdateStatus: null,
-    selectedProjectId: 'project_memory',
-    onChangeTheme: noop,
-    onChangeLanguage: noop,
-    onChangeDeveloperMode: noop,
-    onChangeRuntimeStrategy: noop,
-    onUpdateWebSearchSettings: noopAsync,
-    onCreateProvider: noopAsync,
-    onUpdateProvider: noopAsync,
-    onDeleteProvider: noop,
-    onTestProvider: noop,
-    onSetDefaultProvider: noop,
-    onSelectMcpPlugin: noop,
-    onRefreshMcpPluginMeta: noop,
-    onToggleMcpPlugin: noop,
-    onAddMcpPlugin: noop,
-    onEditMcpPlugin: noop,
-    onDeleteMcpPlugin: noop,
-    onSendRawMcpRequest: async () => ({
-      method: 'tools/list',
-      durationMs: 1,
-      paramsSize: 2,
-      responseSize: 2,
-      truncated: false,
-      result: {}
-    }),
-    onReconnectMcpPlugin: noop,
-    onStopMcpPlugin: noop,
-    onImportClaudeSession: noopAsync,
-    onRefreshMemoryFiles: noopAsync,
-    onSelectMemoryFile: noopAsync,
-    onChangeMemoryDraft: noop,
-    onSaveMemoryFile: noopAsync,
-    onClearMemory: noopAsync,
-    onRefreshNotificationTasks: noopAsync,
-    onCancelNotificationTask: noopAsync,
-    onRefreshAppUpdateStatus: async () => appUpdateSnapshot,
-    onCheckForUpdates: async () => appUpdateSnapshot,
-    onDownloadUpdate: async () => appUpdateSnapshot,
-    onInstallUpdate: async () => appUpdateSnapshot,
-    onClose: noop
-  }));
+  const html = renderZh(
+    createElement(AppSettingsModal, {
+      initialTab: 'memory',
+      theme: 'light',
+      language: 'zh-CN',
+      developerMode: false,
+      runtimeStrategy: 'native',
+      aiSettings: {
+        defaultProviderId: provider.id,
+        fallbackToLocalPlanner: false,
+        webSearch: {
+          provider: 'auto',
+          cacheTtlMs: 300000,
+          browserFallbackEnabled: true,
+          telemetryEnabled: true
+        }
+      },
+      providers: [provider],
+      providerTests: {},
+      mcpPlugins: [],
+      selectedMcpPlugin: null,
+      serverInfo: null,
+      tools: [],
+      toolSnapshots: [],
+      rawAudits: [],
+      resources: [],
+      prompts: [],
+      resourceTemplates: [],
+      connectionStatus: null,
+      connectionStatuses: {},
+      pluginError: '',
+      isRefreshingPlugin: false,
+      memoryFiles: [memoryFile],
+      selectedMemoryPath: memoryFile.path,
+      selectedMemoryFile: memoryFile,
+      memoryDraft: memoryFile.content,
+      isLoadingMemory: false,
+      isSavingMemory: false,
+      memoryError: '',
+      notificationTasks: [],
+      isLoadingNotificationTasks: false,
+      notificationTaskError: '',
+      appUpdateStatus: null,
+      selectedProjectId: 'project_memory',
+      onChangeTheme: noop,
+      onChangeLanguage: noop,
+      onChangeDeveloperMode: noop,
+      onChangeRuntimeStrategy: noop,
+      onUpdateWebSearchSettings: noopAsync,
+      onCreateProvider: noopAsync,
+      onUpdateProvider: noopAsync,
+      onDeleteProvider: noop,
+      onTestProvider: noop,
+      onSetDefaultProvider: noop,
+      onSelectMcpPlugin: noop,
+      onRefreshMcpPluginMeta: noop,
+      onToggleMcpPlugin: noop,
+      onAddMcpPlugin: noop,
+      onEditMcpPlugin: noop,
+      onDeleteMcpPlugin: noop,
+      onSendRawMcpRequest: async () => ({
+        method: 'tools/list',
+        durationMs: 1,
+        paramsSize: 2,
+        responseSize: 2,
+        truncated: false,
+        result: {}
+      }),
+      onReconnectMcpPlugin: noop,
+      onStopMcpPlugin: noop,
+      onImportClaudeSession: noopAsync,
+      onRefreshMemoryFiles: noopAsync,
+      onSelectMemoryFile: noopAsync,
+      onChangeMemoryDraft: noop,
+      onSaveMemoryFile: noopAsync,
+      onClearMemory: noopAsync,
+      onRefreshNotificationTasks: noopAsync,
+      onCancelNotificationTask: noopAsync,
+      onRefreshAppUpdateStatus: async () => appUpdateSnapshot,
+      onCheckForUpdates: async () => appUpdateSnapshot,
+      onDownloadUpdate: async () => appUpdateSnapshot,
+      onInstallUpdate: async () => appUpdateSnapshot,
+      onClose: noop
+    })
+  );
 
   assert.match(html, /Memory/);
   assert.match(html, /搜索 Memory/);
@@ -3816,30 +4104,32 @@ test('app settings memory center renders shared search and editor controls', () 
 });
 
 test('empty chat state renders actionable task starters', () => {
-  const html = renderZh(createElement(MessageList, {
-    sessionId: 'session_empty',
-    messages: [],
-    stream: null,
-    emptyActions: [
-      {
-        id: 'continue-work',
-        label: '继续完成项目',
-        description: '检查当前状态并继续实现。',
-        prompt: '检查当前项目状态，继续完成未完成的实现。'
-      },
-      {
-        id: 'verify-run',
-        label: '运行验证',
-        description: '找出可用启动和测试命令。',
-        prompt: '检查这个项目可以如何运行和验证。'
-      }
-    ],
-    onSelectEmptyAction: noop,
-    searchQuery: '',
-    openablePaths: [],
-    onOpenPath: noop,
-    developerMode: false
-  }));
+  const html = renderZh(
+    createElement(MessageList, {
+      sessionId: 'session_empty',
+      messages: [],
+      stream: null,
+      emptyActions: [
+        {
+          id: 'continue-work',
+          label: '继续完成项目',
+          description: '检查当前状态并继续实现。',
+          prompt: '检查当前项目状态，继续完成未完成的实现。'
+        },
+        {
+          id: 'verify-run',
+          label: '运行验证',
+          description: '找出可用启动和测试命令。',
+          prompt: '检查这个项目可以如何运行和验证。'
+        }
+      ],
+      onSelectEmptyAction: noop,
+      searchQuery: '',
+      openablePaths: [],
+      onOpenPath: noop,
+      developerMode: false
+    })
+  );
 
   assert.match(html, /开始一个新对话/);
   assert.match(html, /常用任务起点/);
@@ -3851,29 +4141,31 @@ test('empty chat state renders actionable task starters', () => {
 });
 
 test('skills page hides filesystem registry UI', () => {
-  const html = renderZh(createElement(SkillsPage, {
-    project: null,
-    draft: {
-      id: '',
-      name: '',
-      description: '',
-      trigger: '',
-      instruction: '',
-      enabled: true
-    },
-    editingSkillId: '',
-    catalog: null,
-    isLoadingCatalog: false,
-    catalogError: '',
-    onRefreshCatalog: noopAsync,
-    onInstallCatalogSkill: async () => {},
-    onChangeDraft: noop,
-    onSaveSkill: noopAsync,
-    onEditSkill: noop,
-    onCancelEdit: noop,
-    onToggleSkill: async () => {},
-    onDeleteSkill: async () => {}
-  }));
+  const html = renderZh(
+    createElement(SkillsPage, {
+      project: null,
+      draft: {
+        id: '',
+        name: '',
+        description: '',
+        trigger: '',
+        instruction: '',
+        enabled: true
+      },
+      editingSkillId: '',
+      catalog: null,
+      isLoadingCatalog: false,
+      catalogError: '',
+      onRefreshCatalog: noopAsync,
+      onInstallCatalogSkill: async () => {},
+      onChangeDraft: noop,
+      onSaveSkill: noopAsync,
+      onEditSkill: noop,
+      onCancelEdit: noop,
+      onToggleSkill: async () => {},
+      onDeleteSkill: async () => {}
+    })
+  );
 
   assert.match(html, /项目 Skills/);
   assert.match(html, /Funplay Skill 仓库/);
@@ -3903,24 +4195,28 @@ test('message list windows old history by default but keeps search complete', ()
     createdAt: new Date(2026, 4, 12, 10, index).toISOString()
   }));
 
-  const defaultHtml = renderZh(createElement(MessageList, {
-    sessionId: 'session_windowed',
-    messages,
-    stream: null,
-    searchQuery: '',
-    openablePaths: [],
-    onOpenPath: noop,
-    developerMode: false
-  }));
-  const searchHtml = renderZh(createElement(MessageList, {
-    sessionId: 'session_windowed',
-    messages,
-    stream: null,
-    searchQuery: 'old hidden marker',
-    openablePaths: [],
-    onOpenPath: noop,
-    developerMode: false
-  }));
+  const defaultHtml = renderZh(
+    createElement(MessageList, {
+      sessionId: 'session_windowed',
+      messages,
+      stream: null,
+      searchQuery: '',
+      openablePaths: [],
+      onOpenPath: noop,
+      developerMode: false
+    })
+  );
+  const searchHtml = renderZh(
+    createElement(MessageList, {
+      sessionId: 'session_windowed',
+      messages,
+      stream: null,
+      searchQuery: 'old hidden marker',
+      openablePaths: [],
+      onOpenPath: noop,
+      developerMode: false
+    })
+  );
 
   assert.match(defaultHtml, /已隐藏 5 条更早消息/);
   assert.match(defaultHtml, /fp-button[^"]*agent-hidden-history-button/);
@@ -3956,13 +4252,15 @@ test('historical orphan tool results render a compact summary until expanded', (
       ]
     }
   };
-  const html = renderZh(createElement(ChatTranscriptMessage, {
-    message,
-    openablePaths: [],
-    searchQuery: '',
-    developerMode: false,
-    onOpenPath: noop
-  }));
+  const html = renderZh(
+    createElement(ChatTranscriptMessage, {
+      message,
+      openablePaths: [],
+      searchQuery: '',
+      developerMode: false,
+      onOpenPath: noop
+    })
+  );
 
   assert.match(html, /tool summary line/);
   assert.match(html, /已处理 1 个工具/);
@@ -3984,45 +4282,47 @@ test('assets page empty state stays focused without a duplicate discovery side p
     contextSummary: {},
     blueprint: {}
   } as unknown as Project;
-  const html = renderZh(createElement(AssetsPage, {
-    project,
-    projectFiles: [
-      {
-        id: 'dir_assets',
-        name: 'assets',
-        path: 'assets',
-        type: 'directory',
-        size: 0,
-        modifiedAt: new Date().toISOString()
-      },
-      {
-        id: 'dir_images',
-        name: 'images',
-        path: 'assets/images',
-        type: 'directory',
-        size: 0,
-        modifiedAt: new Date().toISOString()
-      },
-      {
-        id: 'dir_audio',
-        name: 'audio',
-        path: 'assets/audio',
-        type: 'directory',
-        size: 0,
-        modifiedAt: new Date().toISOString()
-      },
-      {
-        id: 'file_memory',
-        name: 'memory.md',
-        path: 'memory.md',
-        type: 'file',
-        size: 128,
-        modifiedAt: new Date().toISOString()
-      }
-    ],
-    onOpenAsset: noop,
-    onOpenProjectFile: noop
-  }));
+  const html = renderZh(
+    createElement(AssetsPage, {
+      project,
+      projectFiles: [
+        {
+          id: 'dir_assets',
+          name: 'assets',
+          path: 'assets',
+          type: 'directory',
+          size: 0,
+          modifiedAt: new Date().toISOString()
+        },
+        {
+          id: 'dir_images',
+          name: 'images',
+          path: 'assets/images',
+          type: 'directory',
+          size: 0,
+          modifiedAt: new Date().toISOString()
+        },
+        {
+          id: 'dir_audio',
+          name: 'audio',
+          path: 'assets/audio',
+          type: 'directory',
+          size: 0,
+          modifiedAt: new Date().toISOString()
+        },
+        {
+          id: 'file_memory',
+          name: 'memory.md',
+          path: 'memory.md',
+          type: 'file',
+          size: 128,
+          modifiedAt: new Date().toISOString()
+        }
+      ],
+      onOpenAsset: noop,
+      onOpenProjectFile: noop
+    })
+  );
 
   assert.match(html, /暂无素材/);
   assert.match(html, /0 个当前素材 · 0 个素材总计 · 0 个项目文件可识别/);
@@ -4050,21 +4350,23 @@ test('assets page renders asset cards through shared buttons', () => {
     contextSummary: {},
     blueprint: {}
   } as unknown as Project;
-  const html = renderZh(createElement(AssetsPage, {
-    project,
-    projectFiles: [
-      {
-        id: 'file_player',
-        name: 'player.png',
-        path: 'assets/images/player.png',
-        type: 'file',
-        size: 2048,
-        modifiedAt: new Date().toISOString()
-      }
-    ],
-    onOpenAsset: noop,
-    onOpenProjectFile: noop
-  }));
+  const html = renderZh(
+    createElement(AssetsPage, {
+      project,
+      projectFiles: [
+        {
+          id: 'file_player',
+          name: 'player.png',
+          path: 'assets/images/player.png',
+          type: 'file',
+          size: 2048,
+          modifiedAt: new Date().toISOString()
+        }
+      ],
+      onOpenAsset: noop,
+      onOpenProjectFile: noop
+    })
+  );
 
   assert.match(html, /player\.png/);
   assert.match(html, /asset-library-detail/);
@@ -4086,31 +4388,33 @@ test('assets page can be controlled by the parent active tab state', () => {
     contextSummary: {},
     blueprint: {}
   } as unknown as Project;
-  const html = renderZh(createElement(AssetsPage, {
-    project,
-    projectFiles: [
-      {
-        id: 'file_player',
-        name: 'player.png',
-        path: 'assets/images/player.png',
-        type: 'file',
-        size: 2048,
-        modifiedAt: new Date().toISOString()
-      },
-      {
-        id: 'file_bgm',
-        name: 'bgm.mp3',
-        path: 'assets/audio/bgm.mp3',
-        type: 'file',
-        size: 4096,
-        modifiedAt: new Date().toISOString()
-      }
-    ],
-    activeViewId: 'audio',
-    onActiveViewChange: noop,
-    onOpenAsset: noop,
-    onOpenProjectFile: noop
-  }));
+  const html = renderZh(
+    createElement(AssetsPage, {
+      project,
+      projectFiles: [
+        {
+          id: 'file_player',
+          name: 'player.png',
+          path: 'assets/images/player.png',
+          type: 'file',
+          size: 2048,
+          modifiedAt: new Date().toISOString()
+        },
+        {
+          id: 'file_bgm',
+          name: 'bgm.mp3',
+          path: 'assets/audio/bgm.mp3',
+          type: 'file',
+          size: 4096,
+          modifiedAt: new Date().toISOString()
+        }
+      ],
+      activeViewId: 'audio',
+      onActiveViewChange: noop,
+      onOpenAsset: noop,
+      onOpenProjectFile: noop
+    })
+  );
 
   assert.match(html, /<h2>音频<\/h2>/);
   assert.match(html, /bgm\.mp3/);
@@ -4130,50 +4434,56 @@ test('asset library grid excludes generation jobs from the project asset view', 
     memory: {},
     contextSummary: {},
     blueprint: {},
-    assetGenerationJobs: [{
-      id: 'job_splash',
-      projectId: 'project_assets_jobs',
-      title: 'Generated Splash',
-      kind: 'image_2d',
-      prompt: 'a splash screen',
-      providerId: 'asset_provider_openai',
-      providerName: 'OpenAI Images',
-      providerAdapter: 'openai-image',
-      references: [],
-      outputSpec: {},
-      status: 'completed',
-      progress: 1,
-      createdBy: 'user',
-      outputs: [{
-        id: 'output_splash',
-        name: 'splash.png',
-        kind: 'image_2d',
-        path: 'assets/generated/images/splash.png',
-        mimeType: 'image/png',
-        format: 'png',
-        size: 1024
-      }],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString()
-    }]
-  } as unknown as Project;
-  const html = renderZh(createElement(AssetsPage, {
-    project,
-    projectFiles: [
+    assetGenerationJobs: [
       {
-        id: 'file_player',
-        name: 'player.png',
-        path: 'assets/images/player.png',
-        type: 'file',
-        size: 2048,
-        modifiedAt: new Date().toISOString()
+        id: 'job_splash',
+        projectId: 'project_assets_jobs',
+        title: 'Generated Splash',
+        kind: 'image_2d',
+        prompt: 'a splash screen',
+        providerId: 'asset_provider_openai',
+        providerName: 'OpenAI Images',
+        providerAdapter: 'openai-image',
+        references: [],
+        outputSpec: {},
+        status: 'completed',
+        progress: 1,
+        createdBy: 'user',
+        outputs: [
+          {
+            id: 'output_splash',
+            name: 'splash.png',
+            kind: 'image_2d',
+            path: 'assets/generated/images/splash.png',
+            mimeType: 'image/png',
+            format: 'png',
+            size: 1024
+          }
+        ],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString()
       }
-    ],
-    assetGenerationProviders: [],
-    onOpenAsset: noop,
-    onOpenProjectFile: noop
-  }));
+    ]
+  } as unknown as Project;
+  const html = renderZh(
+    createElement(AssetsPage, {
+      project,
+      projectFiles: [
+        {
+          id: 'file_player',
+          name: 'player.png',
+          path: 'assets/images/player.png',
+          type: 'file',
+          size: 2048,
+          modifiedAt: new Date().toISOString()
+        }
+      ],
+      assetGenerationProviders: [],
+      onOpenAsset: noop,
+      onOpenProjectFile: noop
+    })
+  );
 
   assert.match(html, /player\.png/);
   assert.match(html, /生成记录/);

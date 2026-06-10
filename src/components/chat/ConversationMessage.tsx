@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from 'react';
+import { memo, useEffect, useState, type JSX } from 'react';
 import type {
   AgentCoreMessagePart,
   AgentToolArtifact,
@@ -40,7 +40,7 @@ import { renderChatMessageBlocks } from './transcript/message-blocks';
 
 export { getMessagePlainText } from './transcript/message-plain-text';
 
-export function ChatTranscriptMessage(props: {
+export const ChatTranscriptMessage = memo(function ChatTranscriptMessage(props: {
   message: ChatMessage;
   openablePaths: string[];
   searchQuery: string;
@@ -53,7 +53,7 @@ export function ChatTranscriptMessage(props: {
   const language = useUiLanguage();
   const isAssistant = props.message.role === 'assistant';
   const copyText = getMessagePlainText(props.message, props.developerMode);
-  const userAttachments = !isAssistant ? props.message.metadata?.promptAttachments ?? [] : [];
+  const userAttachments = !isAssistant ? (props.message.metadata?.promptAttachments ?? []) : [];
 
   return (
     <div
@@ -101,13 +101,21 @@ export function ChatTranscriptMessage(props: {
         </div>
         <div className="chat-transcript-content">
           {userAttachments.length > 0 ? <UserAttachmentStrip attachments={userAttachments} /> : null}
-          {renderChatMessageBlocks(props.message, props.openablePaths, props.searchQuery, props.onOpenPath, props.developerMode)}
+          {renderChatMessageBlocks(
+            props.message,
+            props.openablePaths,
+            props.searchQuery,
+            props.onOpenPath,
+            props.developerMode
+          )}
         </div>
-        {isAssistant ? <AssistantMetadataPanel metadata={props.message.metadata} developerMode={props.developerMode} /> : null}
+        {isAssistant ? (
+          <AssistantMetadataPanel metadata={props.message.metadata} developerMode={props.developerMode} />
+        ) : null}
       </div>
     </div>
   );
-}
+});
 
 function CompletedMessageProcessSummary(props: {
   message: ChatMessage;
@@ -144,7 +152,11 @@ function CompletedMessageProcessSummary(props: {
         />
         {!props.developerMode ? null : (
           <div className="chat-completed-process-note">
-            {localize(language, '开发者模式：正文只渲染最终回复，工具过程来自结构化历史块。', 'Developer mode: the body renders only the final reply; tool activity comes from structured history blocks.')}
+            {localize(
+              language,
+              '开发者模式：正文只渲染最终回复，工具过程来自结构化历史块。',
+              'Developer mode: the body renders only the final reply; tool activity comes from structured history blocks.'
+            )}
           </div>
         )}
       </div>
@@ -185,7 +197,11 @@ export function PendingTranscriptMessage(props: { prompt: string }): JSX.Element
           <div className="chat-pending-stack" aria-live="polite">
             <div className="chat-pending-line strong">{localize(language, '正在准备回复…', 'Preparing response…')}</div>
             <div className="chat-pending-line">
-              {localize(language, '运行状态会在输入框上方持续更新。', 'Runtime status will update above the input box.')}
+              {localize(
+                language,
+                '运行状态会在输入框上方持续更新。',
+                'Runtime status will update above the input box.'
+              )}
             </div>
           </div>
         </div>
@@ -202,8 +218,18 @@ function UserAttachmentStrip(props: { attachments: PromptAttachment[] }): JSX.El
   return (
     <div className="chat-user-attachments">
       {props.attachments.map((attachment) => (
-        <span key={attachment.id} className={`chat-user-attachment-chip ${attachment.kind}`} title={attachment.relativePath || attachment.path}>
-          {attachment.previewDataUrl ? <img src={attachment.previewDataUrl} alt="" /> : <span className="chat-user-attachment-icon" aria-hidden="true">{attachment.kind === 'image' ? 'IMG' : 'FILE'}</span>}
+        <span
+          key={attachment.id}
+          className={`chat-user-attachment-chip ${attachment.kind}`}
+          title={attachment.relativePath || attachment.path}
+        >
+          {attachment.previewDataUrl ? (
+            <img src={attachment.previewDataUrl} alt="" />
+          ) : (
+            <span className="chat-user-attachment-icon" aria-hidden="true">
+              {attachment.kind === 'image' ? 'IMG' : 'FILE'}
+            </span>
+          )}
           <span>{attachment.name}</span>
         </span>
       ))}
@@ -266,14 +292,16 @@ export function StreamingTranscriptMessage(props: {
   const agentCoreToolExecutions = props.agentCoreParts?.length
     ? buildCompletedMessageProcessTools({ agentCoreParts: props.agentCoreParts })
     : [];
-  const toolExecutions = agentCoreToolExecutions.length > 0
-    ? agentCoreToolExecutions
-    : pairStreamingToolExecutions(props.toolUses, props.toolResults);
+  const toolExecutions =
+    agentCoreToolExecutions.length > 0
+      ? agentCoreToolExecutions
+      : pairStreamingToolExecutions(props.toolUses, props.toolResults);
   const visibleStages = getVisibleRuntimeStages(props.stages, props.developerMode);
   const agentCoreTimeline = props.agentCoreParts?.length
     ? renderAgentCoreParts({
         parts: props.agentCoreParts,
         developerMode: props.developerMode,
+        assistantTextRenderMode: 'streaming-hybrid',
         openablePaths: props.openablePaths,
         searchQuery: '',
         onOpenPath: props.onOpenPath
@@ -286,6 +314,7 @@ export function StreamingTranscriptMessage(props: {
     visibleStages,
     autoExpandActiveToolGroup: true,
     developerMode: props.developerMode,
+    assistantTextRenderMode: 'streaming-hybrid',
     openablePaths: props.openablePaths,
     searchQuery: '',
     onOpenPath: props.onOpenPath
@@ -317,12 +346,16 @@ export function StreamingTranscriptMessage(props: {
               {localize(language, '正在处理', 'Processing')}
               {elapsed ? <em className="chat-transcript-elapsed">{elapsed}</em> : null}
             </span>
-            <span className="chat-transcript-time">{props.statusMessage || localize(language, '生成中…', 'Generating…')}</span>
+            <span className="chat-transcript-time">
+              {props.statusMessage || localize(language, '生成中…', 'Generating…')}
+            </span>
           </div>
           <div className="chat-transcript-content">
             {props.pendingPermission ? (
               <div className={`chat-content-block permission ${props.pendingPermission.risk}`}>
-                <div className="chat-content-block-title">{localize(language, '等待权限确认', 'Permission Required')}</div>
+                <div className="chat-content-block-title">
+                  {localize(language, '等待权限确认', 'Permission Required')}
+                </div>
                 <div className="chat-content-block-body">
                   <strong>{props.pendingPermission.title}</strong>
                   <span>{props.pendingPermission.detail}</span>
@@ -339,10 +372,22 @@ export function StreamingTranscriptMessage(props: {
                 </div>
               </div>
             ) : null}
-            {hasAgentCoreTimeline ? agentCoreTimeline : hasProcessTimeline ? processTimeline : (
+            {hasAgentCoreTimeline ? (
+              agentCoreTimeline
+            ) : hasProcessTimeline ? (
+              processTimeline
+            ) : (
               <div className="chat-pending-stack" aria-live="polite">
-                <div className="chat-pending-line strong">{props.statusMessage || localize(language, '正在准备回复…', 'Preparing response…')}</div>
-                <div className="chat-pending-line">{localize(language, '消息会实时出现在这里；系统会根据当前会话与工作区上下文持续生成。', 'The reply will stream here in real time based on the current session and workspace context.')}</div>
+                <div className="chat-pending-line strong">
+                  {props.statusMessage || localize(language, '正在准备回复…', 'Preparing response…')}
+                </div>
+                <div className="chat-pending-line">
+                  {localize(
+                    language,
+                    '消息会实时出现在这里；系统会根据当前会话与工作区上下文持续生成。',
+                    'The reply will stream here in real time based on the current session and workspace context.'
+                  )}
+                </div>
               </div>
             )}
           </div>

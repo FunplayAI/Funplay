@@ -11,7 +11,11 @@ import { checkUnityHealth } from '../../electron/main/unity-bridge.ts';
 import { executeAgentToolAction } from '../../electron/main/agent-platform/workspace-tools.ts';
 import { openUnityProjectDirectly } from '../../electron/main/unity-install-tasks.ts';
 import { readUnityProjectVersion } from '../../electron/main/unity-version.ts';
-import { createCocosProjectFromTemplate } from '../../electron/main/agent-platform/cocos-adapter.ts';
+import {
+  createCocosProjectFromTemplate,
+  isCocosProjectCurrentlyOpen,
+  openCocosProject
+} from '../../electron/main/agent-platform/cocos-adapter.ts';
 import {
   callUnityTool,
   completeUnityMcpArgument,
@@ -22,7 +26,13 @@ import {
   listUnityTools,
   readUnityResource
 } from '../../electron/main/unity-mcp-client.ts';
-import { getMcpConnectionSnapshot, postMcpJsonRpcForConfig, reconnectMcpConnection, resetMcpConnection, stopMcpConnection } from '../../electron/main/mcp-connection-manager.ts';
+import {
+  getMcpConnectionSnapshot,
+  postMcpJsonRpcForConfig,
+  reconnectMcpConnection,
+  resetMcpConnection,
+  stopMcpConnection
+} from '../../electron/main/mcp-connection-manager.ts';
 import {
   completeTask,
   createTask,
@@ -31,8 +41,24 @@ import {
   listEnvironmentTasks,
   taskStageUpdate
 } from '../../electron/main/environment-task-manager.ts';
-import { diagnoseEnvironment, getProjectRuntimeState, isLikelyUnityHubPath, listEnvironmentTasksForState, resolveUnityHubBinaryPath, runEnvironmentAction } from '../../electron/main/environment-service.ts';
-import { buildMcpPlugin, buildProject, buildState, buildStdioMcpPlugin, readJsonRequest, sendJsonRpc, startSdkHttpMcpServer, startTestMcpServer } from './test-helpers.ts';
+import {
+  diagnoseEnvironment,
+  getProjectRuntimeState,
+  isLikelyUnityHubPath,
+  listEnvironmentTasksForState,
+  resolveUnityHubBinaryPath,
+  runEnvironmentAction
+} from '../../electron/main/environment-service.ts';
+import {
+  buildMcpPlugin,
+  buildProject,
+  buildState,
+  buildStdioMcpPlugin,
+  readJsonRequest,
+  sendJsonRpc,
+  startSdkHttpMcpServer,
+  startTestMcpServer
+} from './test-helpers.ts';
 
 async function startUnityMcpServer(options: { projectPath?: string } = {}): Promise<{
   baseUrl: string;
@@ -87,15 +113,16 @@ async function startUnityMcpServer(options: { projectPath?: string } = {}): Prom
     baseUrl: `http://127.0.0.1:${address.port}/`,
     origins,
     methods,
-    close: () => new Promise<void>((resolve, reject) => {
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve();
-      });
-    })
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      })
   };
 }
 
@@ -129,7 +156,7 @@ async function startCocosMcpProjectServer(projectPath: string): Promise<{
       return;
     }
     if (method === 'tools/call') {
-      const params = body.params && typeof body.params === 'object' ? body.params as Record<string, unknown> : {};
+      const params = body.params && typeof body.params === 'object' ? (body.params as Record<string, unknown>) : {};
       if (params.name === 'get_project_info') {
         sendJsonRpc(response, body.id, {
           structuredContent: {
@@ -156,10 +183,7 @@ async function startCocosMcpProjectServer(projectPath: string): Promise<{
           {
             uri: 'cocos://project/context',
             mimeType: 'text/plain',
-            text: [
-              'Funplay Cocos MCP Project Context',
-              `- Project Path: ${projectPath}`
-            ].join('\n')
+            text: ['Funplay Cocos MCP Project Context', `- Project Path: ${projectPath}`].join('\n')
           }
         ]
       });
@@ -175,15 +199,16 @@ async function startCocosMcpProjectServer(projectPath: string): Promise<{
   return {
     baseUrl: `http://127.0.0.1:${address.port}/`,
     methods,
-    close: () => new Promise<void>((resolve, reject) => {
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve();
-      });
-    })
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      })
   };
 }
 
@@ -197,7 +222,10 @@ async function writeCocosProjectFixture(projectPath: string): Promise<void> {
   await writeFile(join(bridgePath, 'server.json'), '{}', 'utf8');
 }
 
-async function writeFakeCocosCreator(executablePath: string, script = '#!/bin/sh\nwhile true; do sleep 1; done\n'): Promise<void> {
+async function writeFakeCocosCreator(
+  executablePath: string,
+  script = '#!/bin/sh\nwhile true; do sleep 1; done\n'
+): Promise<void> {
   await mkdir(join(executablePath, '..'), { recursive: true });
   await writeFile(executablePath, script, 'utf8');
   await chmod(executablePath, 0o755);
@@ -426,10 +454,15 @@ test('unity mcp client exposes prompt, resource template, and completion capabil
     const templates = await listUnityResourceTemplates(server.baseUrl);
     assert.equal(templates[0]?.uriTemplate, 'unity://asset/{guid}');
 
-    const completion = await completeUnityMcpArgument(server.baseUrl, {
-      type: 'ref/prompt',
-      name: 'unity.scene_review'
-    }, 'scene', 'Ma');
+    const completion = await completeUnityMcpArgument(
+      server.baseUrl,
+      {
+        type: 'ref/prompt',
+        name: 'unity.scene_review'
+      },
+      'scene',
+      'Ma'
+    );
     assert.deepEqual(completion.values, ['MainScene', 'BattleScene']);
     assert.equal(completion.total, 2);
     assert.equal(completion.hasMore, false);
@@ -447,13 +480,21 @@ test('unity mcp optional capability calls fall back when server does not adverti
   try {
     assert.deepEqual(await listUnityPrompts(server.baseUrl), []);
     assert.deepEqual(await listUnityResourceTemplates(server.baseUrl), []);
-    assert.deepEqual(await completeUnityMcpArgument(server.baseUrl, {
-      type: 'ref/prompt',
-      name: 'unity.scene_review'
-    }, 'scene', 'Ma'), {
-      values: [],
-      raw: {}
-    });
+    assert.deepEqual(
+      await completeUnityMcpArgument(
+        server.baseUrl,
+        {
+          type: 'ref/prompt',
+          name: 'unity.scene_review'
+        },
+        'scene',
+        'Ma'
+      ),
+      {
+        values: [],
+        raw: {}
+      }
+    );
     assert.equal(server.requests.filter((method) => method === 'initialize').length, 1);
     assert.equal(server.requests.includes('prompts/list'), false);
     assert.equal(server.requests.includes('resources/templates/list'), false);
@@ -510,24 +551,26 @@ test('mcp compatibility matrix covers a web search style tool server', async () 
       tools: {},
       resources: {}
     },
-    toolsListByCall: [[
-      {
-        name: 'web.search',
-        description: 'Search public web sources',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            query: {
-              type: 'string'
+    toolsListByCall: [
+      [
+        {
+          name: 'web.search',
+          description: 'Search public web sources',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string'
+              },
+              limit: {
+                type: 'number'
+              }
             },
-            limit: {
-              type: 'number'
-            }
-          },
-          required: ['query']
+            required: ['query']
+          }
         }
-      }
-    ]]
+      ]
+    ]
   });
   const plugin = {
     ...buildMcpPlugin(server.baseUrl),
@@ -790,7 +833,13 @@ test('cocos onboarding diagnostics mirror Unity-style staged setup and preserve 
     const ids = diagnostics.checks.map((check) => check.id);
     const projectCheck = diagnostics.checks.find((check) => check.id === 'engine-project');
 
-    assert.deepEqual(ids, ['cocos-dashboard', 'engine-project', 'engine-opened', 'bridge-installed', 'bridge-connected']);
+    assert.deepEqual(ids, [
+      'cocos-dashboard',
+      'engine-project',
+      'engine-opened',
+      'bridge-installed',
+      'bridge-connected'
+    ]);
     assert.equal(diagnostics.dimension, '3d');
     assert.equal(diagnostics.enginePluginId, 'mcp_cocos');
     assert.equal(diagnostics.ready, false);
@@ -850,18 +899,20 @@ test('cocos project runtime state reports online Cocos MCP when the bridge serve
   const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-runtime-'));
   const server = await startCocosMcpProjectServer(root);
   const timestamp = new Date().toISOString();
-  state.mcpPlugins = [{
-    id: 'mcp_cocos',
-    name: 'Funplay Cocos MCP',
-    kind: 'engine',
-    transport: 'http',
-    baseUrl: server.baseUrl,
-    enabled: true,
-    isDefault: false,
-    notes: 'Funplay built-in Cocos Creator MCP bridge.',
-    createdAt: timestamp,
-    updatedAt: timestamp
-  }];
+  state.mcpPlugins = [
+    {
+      id: 'mcp_cocos',
+      name: 'Funplay Cocos MCP',
+      kind: 'engine',
+      transport: 'http',
+      baseUrl: server.baseUrl,
+      enabled: true,
+      isDefault: false,
+      notes: 'Funplay built-in Cocos Creator MCP bridge.',
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+  ];
   try {
     const bridgePath = join(root, 'extensions', 'funplay-cocos-mcp');
     await mkdir(join(root, 'assets'), { recursive: true });
@@ -898,18 +949,20 @@ test('cocos onboarding keeps MCP connectivity pending when the online server bel
   const otherRoot = await mkdtemp(join(tmpdir(), 'funplay-cocos-other-'));
   const server = await startCocosMcpProjectServer(otherRoot);
   const timestamp = new Date().toISOString();
-  state.mcpPlugins = [{
-    id: 'mcp_cocos',
-    name: 'Funplay Cocos MCP',
-    kind: 'engine',
-    transport: 'http',
-    baseUrl: server.baseUrl,
-    enabled: true,
-    isDefault: false,
-    notes: 'Funplay built-in Cocos Creator MCP bridge.',
-    createdAt: timestamp,
-    updatedAt: timestamp
-  }];
+  state.mcpPlugins = [
+    {
+      id: 'mcp_cocos',
+      name: 'Funplay Cocos MCP',
+      kind: 'engine',
+      transport: 'http',
+      baseUrl: server.baseUrl,
+      enabled: true,
+      isDefault: false,
+      notes: 'Funplay built-in Cocos Creator MCP bridge.',
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+  ];
   try {
     const bridgePath = join(root, 'extensions', 'funplay-cocos-mcp');
     await mkdir(join(root, 'assets'), { recursive: true });
@@ -947,18 +1000,20 @@ test('cocos onboarding hides open-project action when the project is already ope
   const previousCreator = process.env.COCOS_CREATOR_EXECUTABLE;
   let child: ChildProcess | undefined;
   const timestamp = new Date().toISOString();
-  state.mcpPlugins = [{
-    id: 'mcp_cocos_offline',
-    name: 'Funplay Cocos MCP',
-    kind: 'engine',
-    transport: 'http',
-    baseUrl: 'http://127.0.0.1:1/',
-    enabled: true,
-    isDefault: false,
-    notes: 'Funplay built-in Cocos Creator MCP bridge.',
-    createdAt: timestamp,
-    updatedAt: timestamp
-  }];
+  state.mcpPlugins = [
+    {
+      id: 'mcp_cocos_offline',
+      name: 'Funplay Cocos MCP',
+      kind: 'engine',
+      transport: 'http',
+      baseUrl: 'http://127.0.0.1:1/',
+      enabled: true,
+      isDefault: false,
+      notes: 'Funplay built-in Cocos Creator MCP bridge.',
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+  ];
   try {
     await writeCocosProjectFixture(projectPath);
     await writeFakeCocosCreator(fakeCreator);
@@ -981,7 +1036,10 @@ test('cocos onboarding hides open-project action when the project is already ope
     assert.equal(openedCheck?.status, 'passed');
     assert.equal(openedCheck?.actions.length, 0);
     assert.equal(connectionCheck?.status, 'warning');
-    assert.equal(connectionCheck?.actions.some((action) => action.id === 'open_cocos_project'), false);
+    assert.equal(
+      connectionCheck?.actions.some((action) => action.id === 'open_cocos_project'),
+      false
+    );
     assert.equal(JSON.stringify(diagnostics).includes('open_cocos_project'), false);
   } finally {
     await stopChildProcess(child);
@@ -997,21 +1055,48 @@ test('cocos onboarding hides open-project action when the project is already ope
 
 test('cocos open-project action does not relaunch an already open project', async () => {
   environmentTasks.clear();
-  const state = buildState(buildProject());
   const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-open-guard-'));
   const projectPath = join(root, 'Arrow');
   const fakeCreator = join(root, 'CocosCreator');
+  const launchLog = join(root, 'cocos-launches.log');
+  const project = {
+    ...buildProject(projectPath),
+    engine: {
+      platform: 'cocos' as const,
+      setupMode: 'import' as const,
+      projectPath,
+      dimension: '2d' as const
+    }
+  };
+  const state = buildState(project);
   const previousCreator = process.env.COCOS_CREATOR_EXECUTABLE;
+  const previousLaunchLog = process.env.FUNPLAY_FAKE_CREATOR_LOG;
   let child: ChildProcess | undefined;
   try {
     await writeCocosProjectFixture(projectPath);
-    await writeFakeCocosCreator(fakeCreator);
+    await writeFakeCocosCreator(
+      fakeCreator,
+      [
+        '#!/usr/bin/env node',
+        "const fs = require('node:fs');",
+        "if (process.env.FUNPLAY_FAKE_CREATOR_LOG) fs.appendFileSync(process.env.FUNPLAY_FAKE_CREATOR_LOG, process.argv.slice(2).join(' ') + '\\n');",
+        "if (process.env.FUNPLAY_FAKE_CREATOR_HOLD === '1') setInterval(() => undefined, 1000);",
+        'else process.exit(0);',
+        ''
+      ].join('\n')
+    );
     process.env.COCOS_CREATOR_EXECUTABLE = fakeCreator;
+    process.env.FUNPLAY_FAKE_CREATOR_LOG = launchLog;
     child = spawn(fakeCreator, ['--project', projectPath], {
-      stdio: 'ignore'
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        FUNPLAY_FAKE_CREATOR_HOLD: '1'
+      }
     });
     await new Promise((resolve) => setTimeout(resolve, 150));
 
+    assert.equal(isCocosProjectCurrentlyOpen(projectPath), true);
     const result = await runEnvironmentAction(state, {
       actionId: 'open_cocos_project',
       platform: 'cocos',
@@ -1027,12 +1112,40 @@ test('cocos open-project action does not relaunch an already open project', asyn
     assert.equal(task?.stage, 'waiting_manual');
     assert.equal(task?.progress, 72);
     assert.match(task?.message ?? '', /不会重复打开同一个项目/);
+
+    const directOpen = openCocosProject({ projectPath });
+    assert.equal(directOpen.ok, true);
+    assert.match(directOpen.summary, /Project already open: yes/);
+    assert.match(directOpen.summary, /Skipped launch/);
+
+    const agentOpen = await executeAgentToolAction(
+      project,
+      {
+        type: 'open_engine_project',
+        platform: 'cocos',
+        projectPath
+      },
+      {
+        appState: state
+      }
+    );
+    assert.equal(agentOpen.ok, true);
+    assert.match(agentOpen.summary, /Project open: yes/);
+    assert.match(agentOpen.summary, /skipped launching another Cocos Creator instance/i);
+
+    const launches = (await readFile(launchLog, 'utf8')).trim().split('\n');
+    assert.equal(launches.length, 1);
   } finally {
     await stopChildProcess(child);
     if (typeof previousCreator === 'undefined') {
       delete process.env.COCOS_CREATOR_EXECUTABLE;
     } else {
       process.env.COCOS_CREATOR_EXECUTABLE = previousCreator;
+    }
+    if (typeof previousLaunchLog === 'undefined') {
+      delete process.env.FUNPLAY_FAKE_CREATOR_LOG;
+    } else {
+      process.env.FUNPLAY_FAKE_CREATOR_LOG = previousLaunchLog;
     }
     environmentTasks.clear();
     await rm(root, { recursive: true, force: true });
@@ -1080,18 +1193,20 @@ test('cocos create project task waits for real MCP connectivity before completin
 
     const server = await startCocosMcpProjectServer(targetProjectPath);
     const timestamp = new Date().toISOString();
-    state.mcpPlugins = [{
-      id: 'mcp_cocos',
-      name: 'Funplay Cocos MCP',
-      kind: 'engine',
-      transport: 'http',
-      baseUrl: server.baseUrl,
-      enabled: true,
-      isDefault: false,
-      notes: 'Funplay built-in Cocos Creator MCP bridge.',
-      createdAt: timestamp,
-      updatedAt: timestamp
-    }];
+    state.mcpPlugins = [
+      {
+        id: 'mcp_cocos',
+        name: 'Funplay Cocos MCP',
+        kind: 'engine',
+        transport: 'http',
+        baseUrl: server.baseUrl,
+        enabled: true,
+        isDefault: false,
+        notes: 'Funplay built-in Cocos Creator MCP bridge.',
+        createdAt: timestamp,
+        updatedAt: timestamp
+      }
+    ];
     try {
       const tasks = await listEnvironmentTasksForState(state);
       const reconciledTask = tasks.find((item) => item.id === result.taskId);

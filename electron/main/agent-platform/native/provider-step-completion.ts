@@ -1,7 +1,4 @@
-import type {
-  AgentRunControllerContinuationContext,
-  AgentRunControllerSnapshot
-} from '../../agent-core/index';
+import type { AgentRunControllerContinuationContext, AgentRunControllerSnapshot } from '../../agent-core/index';
 import {
   resolveAgentRunControllerCommand,
   type AgentRunControllerContinuationCounterKey
@@ -9,9 +6,7 @@ import {
 import type { AgentCoreProviderStepResult } from '../../../../shared/types';
 import type { ConversationOperationStageEvent } from '../operation-log';
 import type { GenericAgentRuntimeParams } from '../types';
-import {
-  type NativeTodoSnapshot
-} from './continuation-policy';
+import { type NativeTodoSnapshot } from './continuation-policy';
 import { NATIVE_PARTIAL_WRITE_CONTINUATION_LIMIT } from './tool-loop-options';
 
 export type NativeNoToolProviderCompletionDecision =
@@ -266,9 +261,10 @@ export function createNativeNoToolProviderTerminalEffect(input: {
       action: 'fail',
       detail: input.decision.detail,
       streamSuffix: input.runtime === 'ai-sdk' ? 'controllerAction=fail' : 'finalText=empty',
-      failedCoreStageSummary: input.runtime === 'ai-sdk'
-        ? 'Agent Run Controller 判定 AI SDK Native 工具循环失败。'
-        : 'Agent Core v2 判定 provider 没有返回可显示的最终文本。'
+      failedCoreStageSummary:
+        input.runtime === 'ai-sdk'
+          ? 'Agent Run Controller 判定 AI SDK Native 工具循环失败。'
+          : 'Agent Core v2 判定 provider 没有返回可显示的最终文本。'
     };
   }
   if (input.decision.action === 'unsupported') {
@@ -276,20 +272,23 @@ export function createNativeNoToolProviderTerminalEffect(input: {
       action: 'unsupported',
       detail: input.decision.detail,
       streamSuffix: `controllerAction=${input.decision.controllerAction}`,
-      failedCoreStageSummary: input.runtime === 'ai-sdk'
-        ? 'Agent Run Controller 返回了 AI SDK 分支无法完成的动作。'
-        : 'Agent Run Controller 返回了无工具分支无法处理的动作。'
+      failedCoreStageSummary:
+        input.runtime === 'ai-sdk'
+          ? 'Agent Run Controller 返回了 AI SDK 分支无法完成的动作。'
+          : 'Agent Run Controller 返回了无工具分支无法处理的动作。'
     };
   }
   return {
     action: 'complete',
     detail: input.decision.detail,
-    completedCoreReason: input.runtime === 'ai-sdk'
-      ? 'AI SDK provider stop 且没有待处理工具，产出最终回复。'
-      : 'Provider stop 且没有 tool call，并产出最终可见文本。',
-    completedCoreStageSummary: input.runtime === 'ai-sdk'
-      ? 'Agent Core v2 状态机完成本轮 AI SDK Native 工具循环。'
-      : 'Agent Core v2 状态机完成本轮 Native 工具循环。'
+    completedCoreReason:
+      input.runtime === 'ai-sdk'
+        ? 'AI SDK provider stop 且没有待处理工具，产出最终回复。'
+        : 'Provider stop 且没有 tool call，并产出最终可见文本。',
+    completedCoreStageSummary:
+      input.runtime === 'ai-sdk'
+        ? 'Agent Core v2 状态机完成本轮 AI SDK Native 工具循环。'
+        : 'Agent Core v2 状态机完成本轮 Native 工具循环。'
   };
 }
 
@@ -362,26 +361,30 @@ export function applyNativeNoToolProviderTerminalCoreEffect(input: {
   emitCoreStateStage: (status: 'completed' | 'failed', summary: string) => void;
 }): void {
   if (input.effect.action === 'complete') {
-    input.emitStage?.(createNativeProviderToolStreamCompletedStage({
-      runtime: input.runtime,
-      stepCount: input.stepCount,
-      finishReason: input.finishReason,
-      toolCalls: input.toolCalls,
-      usage: input.usage
-    }));
+    input.emitStage?.(
+      createNativeProviderToolStreamCompletedStage({
+        runtime: input.runtime,
+        stepCount: input.stepCount,
+        finishReason: input.finishReason,
+        toolCalls: input.toolCalls,
+        usage: input.usage
+      })
+    );
     input.markCompleted(input.effect.completedCoreReason ?? input.effect.detail);
     input.emitCoreStateStage('completed', input.effect.completedCoreStageSummary ?? input.effect.detail);
     return;
   }
 
-  input.emitStage?.(createNativeProviderToolStreamCompletedStage({
-    runtime: input.runtime,
-    stepCount: input.stepCount,
-    finishReason: input.finishReason,
-    toolCalls: input.toolCalls,
-    usage: input.usage,
-    suffix: input.effect.streamSuffix
-  }));
+  input.emitStage?.(
+    createNativeProviderToolStreamCompletedStage({
+      runtime: input.runtime,
+      stepCount: input.stepCount,
+      finishReason: input.finishReason,
+      toolCalls: input.toolCalls,
+      usage: input.usage,
+      suffix: input.effect.streamSuffix
+    })
+  );
   input.markFailed(input.effect.detail);
   input.emitCoreStateStage('failed', input.effect.failedCoreStageSummary ?? input.effect.detail);
 }
@@ -416,15 +419,16 @@ export function createNativeProviderToolStreamCompletedStage(input: {
 }): ConversationOperationStageEvent {
   return {
     stageId: 'stage:native_tool_stream',
-    title: input.runtime === 'ai-sdk' ? '执行真实 Tool Loop' : '执行兼容 Tool Loop',
+    title: '执行工具步骤',
     target: 'stage:native_tool_stream',
     status: 'completed',
     summary: [
-      `完成 ${input.stepCount} 步`,
-      input.finishReason ? `finishReason=${input.finishReason}` : '',
-      input.toolCalls.length > 0 ? `tools=${input.toolCalls.join(', ')}` : 'tools=none',
+      `已完成 ${input.stepCount} 轮工具执行`,
+      input.toolCalls.length > 0 ? `调用工具：${input.toolCalls.join(', ')}` : '未调用工具',
       input.suffix
-    ].filter(Boolean).join('；'),
+    ]
+      .filter(Boolean)
+      .join('；'),
     input: {
       step: input.stepCount,
       finishReason: input.finishReason,

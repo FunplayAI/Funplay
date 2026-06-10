@@ -362,7 +362,7 @@ test('native provider terminal core effect owns stream-completed and core termin
   assert.equal(completed.length, 0);
   assert.deepEqual(failed, ['empty response']);
   assert.equal(stages.length, 1);
-  assert.match(stages[0], /执行兼容 Tool Loop/);
+  assert.match(stages[0], /执行工具步骤/);
   assert.match(stages[0], /finalText=empty/);
   assert.deepEqual(coreStages, ['failed:Agent Core v2 判定 provider 没有返回可显示的最终文本。']);
 });
@@ -405,7 +405,7 @@ test('native provider terminal core effect completes through one controller comm
 
   assert.deepEqual(failed, []);
   assert.deepEqual(completed, ['AI SDK provider stop 且没有待处理工具，产出最终回复。']);
-  assert.deepEqual(stages, ['执行真实 Tool Loop:completed']);
+  assert.deepEqual(stages, ['执行工具步骤:completed']);
   assert.deepEqual(coreStages, ['completed:Agent Core v2 状态机完成本轮 AI SDK Native 工具循环。']);
 });
 
@@ -424,18 +424,20 @@ test('native provider tool stream completion stage is shared by native runtimes'
     toolCalls: []
   });
 
-  assert.equal(openAiStage.title, '执行兼容 Tool Loop');
-  assert.match(openAiStage.summary ?? '', /完成 2 步/);
-  assert.match(openAiStage.summary ?? '', /tools=read_file, write_file/);
+  assert.equal(openAiStage.title, '执行工具步骤');
+  assert.match(openAiStage.summary ?? '', /已完成 2 轮工具执行/);
+  assert.match(openAiStage.summary ?? '', /调用工具：read_file, write_file/);
   assert.match(openAiStage.summary ?? '', /finalText=empty/);
+  assert.doesNotMatch(openAiStage.summary ?? '', /tool loop|Tool Loop|真实/i);
   assert.deepEqual(openAiStage.input, {
     step: 2,
     finishReason: 'stop',
     toolsUsed: ['read_file', 'write_file'],
     usage: undefined
   });
-  assert.equal(aiSdkStage.title, '执行真实 Tool Loop');
-  assert.match(aiSdkStage.summary ?? '', /tools=none/);
+  assert.equal(aiSdkStage.title, '执行工具步骤');
+  assert.match(aiSdkStage.summary ?? '', /未调用工具/);
+  assert.doesNotMatch(aiSdkStage.summary ?? '', /tool loop|Tool Loop|真实/i);
 });
 
 test('native provider completion resolver preserves terminal controller actions', () => {

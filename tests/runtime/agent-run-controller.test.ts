@@ -29,14 +29,16 @@ test('Agent Run Controller continues when provider stop contains tool calls', ()
     providerStep: {
       text: 'I will inspect the file.',
       finishReason: 'stop',
-      toolCalls: [{
-        toolUseId: 'tool_read_1',
-        providerCallId: 'call_read_1',
-        name: 'read_file',
-        input: {
-          path: 'README.md'
+      toolCalls: [
+        {
+          toolUseId: 'tool_read_1',
+          providerCallId: 'call_read_1',
+          name: 'read_file',
+          input: {
+            path: 'README.md'
+          }
         }
-      }]
+      ]
     }
   });
 
@@ -44,8 +46,14 @@ test('Agent Run Controller continues when provider stop contains tool calls', ()
   assert.equal(snapshot.lastDecision?.terminal, false);
   assert.equal(snapshot.coreState.state, 'executing_tools');
   assert.deepEqual(snapshot.pendingToolUseIds, ['tool_read_1']);
-  assert.equal(snapshot.parts.some((part) => part.kind === 'assistant_text'), true);
-  assert.equal(snapshot.parts.some((part) => part.kind === 'tool_call'), true);
+  assert.equal(
+    snapshot.parts.some((part) => part.kind === 'assistant_text'),
+    true
+  );
+  assert.equal(
+    snapshot.parts.some((part) => part.kind === 'tool_call'),
+    true
+  );
 });
 
 test('Agent Run Controller records tool results and returns to model input build', () => {
@@ -56,13 +64,15 @@ test('Agent Run Controller records tool results and returns to model input build
   controller.recordProviderStep({
     providerStep: {
       finishReason: 'tool_calls',
-      toolCalls: [{
-        toolUseId: 'tool_read_1',
-        name: 'read_file',
-        input: {
-          path: 'README.md'
+      toolCalls: [
+        {
+          toolUseId: 'tool_read_1',
+          name: 'read_file',
+          input: {
+            path: 'README.md'
+          }
         }
-      }]
+      ]
     }
   });
   const snapshot = controller.recordToolResult({
@@ -77,6 +87,65 @@ test('Agent Run Controller records tool results and returns to model input build
   assert.deepEqual(snapshot.completedToolUseIds, ['tool_read_1']);
   assert.equal(snapshot.parts.at(-1)?.kind, 'tool_result');
   assert.equal(getToolCallStatus(snapshot.parts, 'tool_read_1'), 'completed');
+});
+
+test('Agent Run Controller stores only the new suffix when provider text is a cumulative snapshot', () => {
+  const controller = createAgentRunController({
+    createdAt: fixedClock()
+  });
+  controller.start();
+  controller.recordProviderStep({
+    providerStep: {
+      text: '收到，我先检查项目。',
+      finishReason: 'tool_calls',
+      toolCalls: [
+        {
+          toolUseId: 'tool_ls',
+          name: 'list_files',
+          input: {}
+        }
+      ]
+    }
+  });
+  controller.recordToolResult({
+    toolUseId: 'tool_ls',
+    toolName: 'list_files',
+    content: 'package.json'
+  });
+  controller.recordProviderStep({
+    providerStep: {
+      text: '收到，我先检查项目。结构清晰，开始实现。',
+      finishReason: 'tool_calls',
+      toolCalls: [
+        {
+          toolUseId: 'tool_write',
+          name: 'write_file',
+          input: {
+            path: 'index.html'
+          }
+        }
+      ]
+    }
+  });
+  controller.recordToolResult({
+    toolUseId: 'tool_write',
+    toolName: 'write_file',
+    content: 'wrote index.html'
+  });
+  const snapshot = controller.recordProviderStep({
+    providerStep: {
+      text: '收到，我先检查项目。结构清晰，开始实现。已经完成。',
+      finishReason: 'stop',
+      toolCalls: []
+    }
+  });
+
+  const textParts = snapshot.parts.filter((part) => part.kind === 'assistant_text');
+  assert.deepEqual(
+    textParts.map((part) => (part.kind === 'assistant_text' ? part.text : '')),
+    ['收到，我先检查项目。', '结构清晰，开始实现。', '已经完成。']
+  );
+  assert.equal(snapshot.nextAction, 'complete');
 });
 
 test('Agent Run Controller records provider usage as canonical parts', () => {
@@ -210,13 +279,15 @@ test('Agent Run Controller represents permission waits as structured pause parts
   const snapshot = controller.recordProviderStep({
     providerStep: {
       finishReason: 'tool_calls',
-      toolCalls: [{
-        toolUseId: 'tool_write_1',
-        name: 'write_file',
-        input: {
-          path: 'index.html'
+      toolCalls: [
+        {
+          toolUseId: 'tool_write_1',
+          name: 'write_file',
+          input: {
+            path: 'index.html'
+          }
         }
-      }]
+      ]
     },
     pendingPermission: {
       requestId: 'perm_write_1',
@@ -246,13 +317,15 @@ test('Agent Run Controller records permission denial as tool error for continuat
   controller.recordProviderStep({
     providerStep: {
       finishReason: 'tool_calls',
-      toolCalls: [{
-        toolUseId: 'tool_write_denied',
-        name: 'write_file',
-        input: {
-          path: 'index.html'
+      toolCalls: [
+        {
+          toolUseId: 'tool_write_denied',
+          name: 'write_file',
+          input: {
+            path: 'index.html'
+          }
         }
-      }]
+      ]
     },
     pendingPermission: {
       requestId: 'perm_write_denied',
@@ -286,13 +359,15 @@ test('Agent Run Controller records permission approval as a structured tool resu
   controller.recordProviderStep({
     providerStep: {
       finishReason: 'tool_calls',
-      toolCalls: [{
-        toolUseId: 'tool_write_approved',
-        name: 'write_file',
-        input: {
-          path: 'index.html'
+      toolCalls: [
+        {
+          toolUseId: 'tool_write_approved',
+          name: 'write_file',
+          input: {
+            path: 'index.html'
+          }
         }
-      }]
+      ]
     },
     pendingPermission: {
       requestId: 'perm_write_approved',
@@ -417,13 +492,15 @@ test('Agent Run Controller finalizes pending permission waits on resumable inter
   controller.recordProviderStep({
     providerStep: {
       finishReason: 'tool_calls',
-      toolCalls: [{
-        toolUseId: 'tool_write_waiting',
-        name: 'write_file',
-        input: {
-          path: 'index.html'
+      toolCalls: [
+        {
+          toolUseId: 'tool_write_waiting',
+          name: 'write_file',
+          input: {
+            path: 'index.html'
+          }
         }
-      }]
+      ]
     },
     pendingPermission: {
       requestId: 'perm_write_waiting',
@@ -452,13 +529,15 @@ test('Agent Run Controller ignores duplicate completed tool result ids exactly o
   controller.recordProviderStep({
     providerStep: {
       finishReason: 'tool_calls',
-      toolCalls: [{
-        toolUseId: 'tool_read_1',
-        name: 'read_file',
-        input: {
-          path: 'README.md'
+      toolCalls: [
+        {
+          toolUseId: 'tool_read_1',
+          name: 'read_file',
+          input: {
+            path: 'README.md'
+          }
         }
-      }]
+      ]
     }
   });
   controller.recordToolResult({
@@ -477,7 +556,10 @@ test('Agent Run Controller ignores duplicate completed tool result ids exactly o
   assert.equal(duplicate.coreState.state, 'building_model_input');
   assert.deepEqual(duplicate.completedToolUseIds, ['tool_read_1']);
   assert.equal(duplicate.parts.length, partCountAfterFirstResult);
-  assert.equal(duplicate.parts.filter((part) => part.kind === 'tool_result' && part.toolUseId === 'tool_read_1').length, 1);
+  assert.equal(
+    duplicate.parts.filter((part) => part.kind === 'tool_result' && part.toolUseId === 'tool_read_1').length,
+    1
+  );
 });
 
 test('Agent Run Controller supports host-forced continuation after no-tool text', () => {
@@ -503,9 +585,14 @@ test('Agent Run Controller supports host-forced continuation after no-tool text'
   assert.equal(snapshot.lastContinuation?.reason, 'partial_write');
   assert.match(snapshot.lastDecision?.reason ?? '', /partial_write/);
   const textPart = snapshot.parts.find((part) => part.kind === 'assistant_text');
-  const continuationPart = snapshot.parts.find((part) => part.kind === 'system_event' && part.metadata?.type === 'continuation');
+  const continuationPart = snapshot.parts.find(
+    (part) => part.kind === 'system_event' && part.metadata?.type === 'continuation'
+  );
   assert.equal(textPart?.kind === 'assistant_text' ? textPart.final : undefined, false);
-  assert.equal(continuationPart?.kind === 'system_event' ? continuationPart.metadata?.reason : undefined, 'partial_write');
+  assert.equal(
+    continuationPart?.kind === 'system_event' ? continuationPart.metadata?.reason : undefined,
+    'partial_write'
+  );
 });
 
 test('Agent Core boundary summarizes run controller snapshots consistently', () => {
@@ -571,13 +658,15 @@ test('Agent Core runtime bridge owns state and run controller projection', () =>
     phase: 'step_recorded',
     providerStep: {
       finishReason: 'tool_calls',
-      toolCalls: [{
-        toolUseId: 'tool_bridge_1',
-      name: 'read_file',
-      input: {
-        path: 'README.md'
+      toolCalls: [
+        {
+          toolUseId: 'tool_bridge_1',
+          name: 'read_file',
+          input: {
+            path: 'README.md'
+          }
         }
-      }]
+      ]
     }
   });
   assert.equal(providerSnapshot.runController.nextAction, 'execute_tools');
@@ -638,13 +727,15 @@ test('Agent Core run engine applies provider and tool boundary events', () => {
     phase: 'step_recorded',
     providerStep: {
       finishReason: 'tool_calls',
-      toolCalls: [{
-        toolUseId: 'tool_engine_1',
-        name: 'read_file',
-        input: {
-          path: 'README.md'
+      toolCalls: [
+        {
+          toolUseId: 'tool_engine_1',
+          name: 'read_file',
+          input: {
+            path: 'README.md'
+          }
         }
-      }]
+      ]
     }
   });
 
@@ -698,9 +789,14 @@ test('Agent Run Controller owns incomplete todo continuation decisions', () => {
   assert.equal(snapshot.coreState.state, 'building_model_input');
   assert.equal(snapshot.lastContinuation?.reason, 'incomplete_todo');
   const textPart = snapshot.parts.find((part) => part.kind === 'assistant_text');
-  const continuationPart = snapshot.parts.find((part) => part.kind === 'system_event' && part.metadata?.type === 'continuation');
+  const continuationPart = snapshot.parts.find(
+    (part) => part.kind === 'system_event' && part.metadata?.type === 'continuation'
+  );
   assert.equal(textPart?.kind === 'assistant_text' ? textPart.final : undefined, false);
-  assert.equal(continuationPart?.kind === 'system_event' ? continuationPart.metadata?.reason : undefined, 'incomplete_todo');
+  assert.equal(
+    continuationPart?.kind === 'system_event' ? continuationPart.metadata?.reason : undefined,
+    'incomplete_todo'
+  );
 });
 
 test('Agent Run Controller owns partial write continuation decisions', () => {
@@ -729,9 +825,14 @@ test('Agent Run Controller owns partial write continuation decisions', () => {
   assert.equal(snapshot.coreState.state, 'building_model_input');
   assert.equal(snapshot.lastContinuation?.reason, 'partial_write');
   const textPart = snapshot.parts.find((part) => part.kind === 'assistant_text');
-  const continuationPart = snapshot.parts.find((part) => part.kind === 'system_event' && part.metadata?.type === 'continuation');
+  const continuationPart = snapshot.parts.find(
+    (part) => part.kind === 'system_event' && part.metadata?.type === 'continuation'
+  );
   assert.equal(textPart?.kind === 'assistant_text' ? textPart.final : undefined, false);
-  assert.equal(continuationPart?.kind === 'system_event' ? continuationPart.metadata?.reason : undefined, 'partial_write');
+  assert.equal(
+    continuationPart?.kind === 'system_event' ? continuationPart.metadata?.reason : undefined,
+    'partial_write'
+  );
 });
 
 test('Agent Run Controller exposes length continuation as controller state', () => {
@@ -751,7 +852,9 @@ test('Agent Run Controller exposes length continuation as controller state', () 
   assert.equal(snapshot.coreState.state, 'building_model_input');
   assert.equal(snapshot.lastContinuation?.reason, 'length');
   const textPart = snapshot.parts.find((part) => part.kind === 'assistant_text');
-  const continuationPart = snapshot.parts.find((part) => part.kind === 'system_event' && part.metadata?.type === 'continuation');
+  const continuationPart = snapshot.parts.find(
+    (part) => part.kind === 'system_event' && part.metadata?.type === 'continuation'
+  );
   assert.equal(textPart?.kind === 'assistant_text' ? textPart.final : undefined, false);
   assert.equal(continuationPart?.kind === 'system_event' ? continuationPart.metadata?.reason : undefined, 'length');
 });
@@ -785,7 +888,10 @@ test('Agent Run Controller owns context compression trigger and summary recordin
   assert.equal(summarized.nextAction, 'build_model_input');
   assert.equal(summarized.coreState.state, 'building_model_input');
   assert.equal(summaryPart?.kind, 'context_summary');
-  assert.equal(summaryPart?.kind === 'context_summary' ? summaryPart.structured?.nextStep : undefined, 'Resume from stable cursor');
+  assert.equal(
+    summaryPart?.kind === 'context_summary' ? summaryPart.structured?.nextStep : undefined,
+    'Resume from stable cursor'
+  );
 });
 
 test('Agent Run Controller completes only on no-tool stop with final text', () => {

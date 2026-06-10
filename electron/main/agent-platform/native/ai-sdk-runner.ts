@@ -4,9 +4,7 @@ import { buildNativeToolLoopMessages } from '../model-message-builder';
 import { ProjectInstructionTracker } from '../project-instruction-tracker';
 import { createProviderRuntimeController } from '../provider-runtime-events';
 import type { GenericAgentRuntimeParams } from '../types';
-import {
-  resolveLatestTodoSnapshotFromHistory
-} from './continuation-policy';
+import { resolveLatestTodoSnapshotFromHistory } from './continuation-policy';
 import {
   buildNativeMainToolLoopFinalPrompt,
   resolveNativeMainToolLoopMaxOutputTokens,
@@ -14,14 +12,8 @@ import {
 } from './tool-loop-options';
 import { NativeAiSdkStepState } from './ai-sdk-step-state';
 import { completeNativeAiSdkProviderStep } from './ai-sdk-completion-stage';
-import {
-  runNativeAiSdkProviderStep,
-  type NativeAiSdkLoopState
-} from './ai-sdk-provider-step';
-import {
-  createNativeToolLoopControllerBridge,
-  type NativeToolLoopCallbacks
-} from './tool-loop-controller';
+import { runNativeAiSdkProviderStep, type NativeAiSdkLoopState } from './ai-sdk-provider-step';
+import { createNativeToolLoopControllerBridge, type NativeToolLoopCallbacks } from './tool-loop-controller';
 import { createNativeToolLoopPrompt } from './tool-loop-prompt';
 import { createNativeRuntimeSystemPrompt } from './prompt';
 import { initializeNativeToolLoopToolPool } from './tool-loop-setup';
@@ -37,34 +29,34 @@ export async function runNativeAiSdkToolLoop(
   }
   const model = createLanguageModel(params.provider);
   const instructionTracker = new ProjectInstructionTracker(params.project, params.context.projectInstructions);
-  const {
-    includeWriteTools,
-    includeMcpToolCalls,
-    includeCommandTools,
-    toolPool,
-    toolNames
-  } = await initializeNativeToolLoopToolPool(params, callbacks, {
-    title: '准备真实 Tool Schema',
-    runningSummary: '正在初始化 Native 工作区工具池。',
-    completedSummary: (toolCount) => `已注册 ${toolCount} 个 Native 工作区工具。`
-  }, {
-    projectInstructionGuard: ({ toolName, input }) => {
-      const guard = instructionTracker.guardWriteBeforeLocalInstructions(toolName, input);
-      if (guard) {
-        callbacks?.emitStage?.({
-          stageId: 'stage:native_ai_sdk_project_instruction_guard',
-          title: '写入前发现局部 Agent 指令',
-          target: toolName,
-          status: 'completed',
-          summary: `已在执行 ${toolName} 前载入 ${guard.paths.join(', ')}，本次写入已拦截并回放给模型重试。`,
-          input: {
-            paths: guard.paths
+  const { includeWriteTools, includeMcpToolCalls, includeCommandTools, toolPool, toolNames } =
+    await initializeNativeToolLoopToolPool(
+      params,
+      callbacks,
+      {
+        title: '准备工具能力',
+        runningSummary: '正在初始化工作区工具能力。',
+        completedSummary: (toolCount) => `已准备 ${toolCount} 个工作区工具。`
+      },
+      {
+        projectInstructionGuard: ({ toolName, input }) => {
+          const guard = instructionTracker.guardWriteBeforeLocalInstructions(toolName, input);
+          if (guard) {
+            callbacks?.emitStage?.({
+              stageId: 'stage:native_ai_sdk_project_instruction_guard',
+              title: '写入前发现局部 Agent 指令',
+              target: toolName,
+              status: 'completed',
+              summary: `已在执行 ${toolName} 前载入 ${guard.paths.join(', ')}，本次写入已拦截并回放给模型重试。`,
+              input: {
+                paths: guard.paths
+              }
+            });
           }
-        });
+          return guard;
+        }
       }
-      return guard;
-    }
-  });
+    );
 
   const loopState: NativeAiSdkLoopState = {
     messages: buildNativeToolLoopMessages({
@@ -99,10 +91,7 @@ export async function runNativeAiSdkToolLoop(
     stageId: 'stage:native_ai_sdk_agent_core_v2',
     turnId: params.turnId
   });
-  const {
-    submitEvent,
-    emitCoreStateStage
-  } = controllerBridge;
+  const { submitEvent, emitCoreStateStage } = controllerBridge;
   const providerController = createProviderRuntimeController({
     submitEvent,
     mapToolEventsToCore: false
@@ -110,10 +99,10 @@ export async function runNativeAiSdkToolLoop(
 
   callbacks?.emitStage?.({
     stageId: 'stage:native_tool_stream',
-    title: '执行真实 Tool Loop',
+    title: '执行工具步骤',
     target: 'stage:native_tool_stream',
     status: 'running',
-    summary: '已启动真实 tool-calling 流，由 Agent Core 状态与 provider finishReason 驱动续跑。'
+    summary: '已启动工具执行，正在根据模型结果推进任务。'
   });
   emitCoreStateStage('running', 'AI SDK Native tool loop 已接入 Agent Core v2 状态机。');
 
@@ -139,10 +128,7 @@ export async function runNativeAiSdkToolLoop(
           const closing = await generateText({
             model,
             system: createNativeRuntimeSystemPrompt(params.uiLanguage),
-            messages: [
-              ...loopState.messages,
-              { role: 'user', content: buildNativeMainToolLoopFinalPrompt(maxSteps) }
-            ],
+            messages: [...loopState.messages, { role: 'user', content: buildNativeMainToolLoopFinalPrompt(maxSteps) }],
             maxOutputTokens,
             abortSignal: params.abortSignal
           });
@@ -152,9 +138,10 @@ export async function runNativeAiSdkToolLoop(
         }
       }
       if (!budgetReply) {
-        budgetReply = params.uiLanguage === 'en-US'
-          ? `Reached the ${maxSteps}-step tool-loop budget. Continue from the work already completed, or rephrase the request.`
-          : `已达到 ${maxSteps} 轮工具循环步数上限。可以基于已完成的工作继续，或换一种方式提问。`;
+        budgetReply =
+          params.uiLanguage === 'en-US'
+            ? `Reached the ${maxSteps}-step tool-loop budget. Continue from the work already completed, or rephrase the request.`
+            : `已达到 ${maxSteps} 轮工具循环步数上限。可以基于已完成的工作继续，或换一种方式提问。`;
       }
       return {
         assistantMessage: budgetReply,
