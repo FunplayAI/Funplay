@@ -6,6 +6,15 @@ This project follows a pre-1.0 release flow. Minor versions may include breaking
 
 ## Unreleased
 
+### Removed
+
+- Removed the Claude Code SDK runtime; the native runtime is now the only agent runtime. Anthropic models remain fully supported through the regular Anthropic API provider.
+- Removed the `@anthropic-ai/claude-agent-sdk` dependency and its packaging entries, the Claude CLI detection/login/session-import surface, and the `FUNPLAY_CLAUDE_CODE_*` / `FUNPLAY_E2E_CLAUDE_*` development environment variables.
+
+### Changed
+
+- Existing sessions configured for the Claude Code runtime migrate automatically to the native runtime; persisted Claude session metadata is cleaned up by a store migration.
+
 ## 0.3.9 - 2026-06-10
 
 ### Changed

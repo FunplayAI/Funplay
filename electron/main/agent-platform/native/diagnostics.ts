@@ -307,12 +307,12 @@ export function classifyNativeRuntimeError(input: {
       suggestedAction: '切换会话权限，或对本次工具请求选择允许后重试。'
     });
   }
-  if (/unsupported provider|not supported by native|sdkproxyonly|env-mode should use claude sdk|protocol .* only supported/.test(message)) {
+  if (/unsupported provider|not supported by native|protocol .* only supported/.test(message)) {
     return withBase({
       code: 'native_provider_unsupported',
       severity: 'error',
-      summary: '当前 provider 不支持 native runtime。',
-      suggestedAction: '切换到 Claude SDK runtime，或选择 native 支持的 provider/protocol。'
+      summary: '当前 provider/协议不被 native runtime 支持。',
+      suggestedAction: '切换到 native runtime 支持的 provider 或协议（anthropic / openai-compatible / google / bedrock / vertex）。'
     });
   }
   if (/tool loop|tool-calling|tool calling|tool call/.test(message)) {

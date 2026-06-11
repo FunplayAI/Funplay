@@ -1,24 +1,10 @@
 import { AI_PROVIDER_PRESETS, inferOpenAiCompatibleApiMode } from '../../../shared/provider-catalog';
-import type { AiProvider, AiProviderApiMode, AiProviderAuthStyle, AiProviderInput, AiProviderModel, AiProviderProtocol, AiProviderRoleModels } from '../../../shared/types';
+import type { AiProvider, AiProviderApiMode, AiProviderAuthStyle, AiProviderInput, AiProviderModel, AiProviderProtocol } from '../../../shared/types';
 import { localize } from '../../i18n';
 
 export type ProviderDraft = AiProviderInput & { presetId: string };
 
 export const MODEL_CANDIDATE_LIMIT = 100;
-
-export const claudeRoleModelFields: Array<{
-  key: keyof AiProviderRoleModels;
-  zh: string;
-  en: string;
-  placeholder: string;
-}> = [
-  { key: 'default', zh: '默认', en: 'Default', placeholder: 'gpt-5.5-xhigh' },
-  { key: 'haiku', zh: '快速/Haiku', en: 'Fast / Haiku', placeholder: 'gpt-5.5-mini' },
-  { key: 'sonnet', zh: '标准/Sonnet', en: 'Standard / Sonnet', placeholder: 'gpt-5.5-xhigh' },
-  { key: 'opus', zh: '高阶/Opus', en: 'Advanced / Opus', placeholder: 'gpt-5.5' },
-  { key: 'small', zh: '小模型', en: 'Small', placeholder: 'gpt-5.5-mini' },
-  { key: 'reasoning', zh: '推理', en: 'Reasoning', placeholder: 'gpt-5.5-xhigh' }
-];
 
 const defaultPreset = AI_PROVIDER_PRESETS[0];
 
@@ -32,12 +18,9 @@ export const emptyProviderDraft: ProviderDraft = {
   apiKey: '',
   model: defaultPreset.defaultModel,
   upstreamModel: defaultPreset.upstreamModel,
-  claudeCodeCompatible: false,
-  claudeRoleModels: defaultPreset.defaultRoleModels ?? {},
   headers: defaultPreset.defaultHeaders,
   envOverrides: defaultPreset.defaultEnvOverrides,
   availableModels: defaultPreset.availableModels,
-  sdkProxyOnly: defaultPreset.sdkProxyOnly,
   providerMeta: defaultPreset.providerMeta,
   contextWindowTokens: undefined,
   maxOutputTokens: undefined,
@@ -59,12 +42,9 @@ export function createProviderDraft(provider: AiProvider | null): ProviderDraft 
         apiKey: '',
         model: provider.model,
         upstreamModel: provider.upstreamModel,
-        claudeCodeCompatible: provider.claudeCodeCompatible ?? provider.protocol === 'anthropic',
-        claudeRoleModels: provider.claudeRoleModels ?? {},
         headers: provider.headers ?? {},
         envOverrides: provider.envOverrides ?? {},
         availableModels: provider.availableModels,
-        sdkProxyOnly: provider.sdkProxyOnly,
         providerMeta: provider.providerMeta,
         contextWindowTokens: provider.contextWindowTokens,
         maxOutputTokens: provider.maxOutputTokens,
@@ -86,12 +66,9 @@ export function createProviderInputFromDraft(draft: ProviderDraft, options?: { m
     apiKey: draft.apiKey,
     model: draft.model.trim() || options?.modelFallback || draft.model,
     upstreamModel: draft.upstreamModel,
-    claudeCodeCompatible: draft.protocol === 'anthropic' || draft.sdkProxyOnly ? true : undefined,
-    claudeRoleModels: draft.protocol === 'anthropic' ? draft.claudeRoleModels : undefined,
     headers: draft.headers,
     envOverrides: draft.envOverrides,
     availableModels: draft.availableModels,
-    sdkProxyOnly: draft.sdkProxyOnly,
     providerMeta: draft.providerMeta,
     contextWindowTokens: draft.contextWindowTokens,
     maxOutputTokens: draft.maxOutputTokens,

@@ -575,6 +575,95 @@ test('initializeStore migrates ask-first agent defaults to build', async () => {
   }
 });
 
+test('v12 migration drops claude provider columns and migrates persisted runtime ids to native', () => {
+  const db = new Database(':memory:');
+  const timestamp = new Date().toISOString();
+  try {
+    runMigrations(db);
+    db.exec('PRAGMA user_version = 11');
+    db.exec('ALTER TABLE providers ADD COLUMN claude_code_compatible INTEGER NOT NULL DEFAULT 0');
+    db.exec("ALTER TABLE providers ADD COLUMN claude_role_models_json TEXT NOT NULL DEFAULT '{}'");
+    db.exec('ALTER TABLE providers ADD COLUMN sdk_proxy_only INTEGER NOT NULL DEFAULT 0');
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.prepare(`
+      INSERT INTO chat_sessions (id, project_id, title, auto_title, created_at, updated_at, runtime_json, is_active)
+      VALUES (?, ?, ?, 0, ?, ?, ?, 0)
+    `).run(
+      'session_legacy_claude',
+      'project_legacy',
+      'Legacy session',
+      timestamp,
+      timestamp,
+      JSON.stringify({
+        runtimeId: 'claude-code-sdk',
+        model: 'claude-sonnet-4-6',
+        claudeCodeSessionId: 'cli_session',
+        claudeCodeSessionCwd: '/tmp/project',
+        claudeContextSummary: 'summary',
+        claudeContextSummaryUpdatedAt: timestamp,
+        claudeContextSummaryTurnCount: 3,
+        claudeContextSummaryCoverage: { mode: 'boundary' },
+        claudeWriteMode: 'external'
+      })
+    );
+    db.prepare('INSERT INTO app_settings (key, value_json) VALUES (?, ?)').run(
+      SETTINGS_KEYS.agent,
+      JSON.stringify({
+        permissionMode: 'full-access',
+        runtimeStrategy: 'claude-code-sdk'
+      })
+    );
+    db.prepare(`
+      INSERT INTO runtime_runs (id, kind, project_id, status, started_at, updated_at, request_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'run_legacy_claude',
+      'conversation',
+      'project_legacy',
+      'completed',
+      timestamp,
+      timestamp,
+      JSON.stringify({
+        kind: 'conversation',
+        projectId: 'project_legacy',
+        runtimeId: 'claude-code-sdk'
+      })
+    );
+    assert.equal(readVersion(db), 11);
+
+    runMigrations(db);
+
+    assert.equal(readVersion(db), LATEST_VERSION);
+    const providerColumns = (db.prepare("PRAGMA table_info('providers')").all() as Array<{ name: string }>)
+      .map((column) => column.name);
+    assert.equal(providerColumns.includes('claude_code_compatible'), false);
+    assert.equal(providerColumns.includes('claude_role_models_json'), false);
+    assert.equal(providerColumns.includes('sdk_proxy_only'), false);
+
+    const sessionRow = db.prepare('SELECT runtime_json FROM chat_sessions WHERE id = ?').get('session_legacy_claude') as
+      | { runtime_json: string | null }
+      | undefined;
+    const overrides = JSON.parse(sessionRow?.runtime_json ?? '{}') as Record<string, unknown>;
+    assert.equal(overrides.runtimeId, 'native');
+    assert.equal(overrides.model, 'claude-sonnet-4-6');
+    for (const key of Object.keys(overrides)) {
+      assert.equal(key.startsWith('claude'), false, `expected legacy override ${key} to be stripped`);
+    }
+
+    const settingsRow = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(SETTINGS_KEYS.agent) as
+      | { value_json: string }
+      | undefined;
+    assert.equal((JSON.parse(settingsRow?.value_json ?? '{}') as { runtimeStrategy?: string }).runtimeStrategy, 'native');
+
+    const runRow = db.prepare('SELECT request_json FROM runtime_runs WHERE id = ?').get('run_legacy_claude') as
+      | { request_json: string }
+      | undefined;
+    assert.equal((JSON.parse(runRow?.request_json ?? '{}') as { runtimeId?: string }).runtimeId, 'native');
+  } finally {
+    db.close();
+  }
+});
+
 test('initial migration declares all expected tables', () => {
   // Documents the expected baseline so future migrations have a clear contract.
   const initial = MIGRATIONS.find((migration) => migration.version === 1);

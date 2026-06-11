@@ -31,7 +31,7 @@ import { registerAppHandlers } from './ipc-handlers/app-handlers';
 import { registerDialogHandlers } from './ipc-handlers/dialog-handlers';
 import { registerAgentHandlers } from './ipc-handlers/agent-handlers';
 import { registerProjectHandlers } from './ipc-handlers/project-handlers';
-import { registerClaudeHandlers } from './ipc-handlers/claude-handlers';
+import { registerRuntimeDoctorHandlers } from './ipc-handlers/runtime-doctor-handlers';
 import { registerSettingsHandlers } from './ipc-handlers/settings-handlers';
 import { registerMcpHandlers } from './ipc-handlers/mcp-handlers';
 import { registerUnityHandlers } from './ipc-handlers/unity-handlers';
@@ -219,7 +219,7 @@ function registerIpcHandlers(): void {
   registerDialogHandlers(ipcMain, ctx);
   registerAgentHandlers(ipcMain, ctx);
   registerProjectHandlers(ipcMain, ctx);
-  registerClaudeHandlers(ipcMain, ctx);
+  registerRuntimeDoctorHandlers(ipcMain, ctx);
   registerSettingsHandlers(ipcMain, ctx);
   registerMcpHandlers(ipcMain, ctx);
   registerUnityHandlers(ipcMain, ctx);

@@ -637,14 +637,12 @@ function collectCrossSessionSummaries(
     .filter((session) =>
       session.id !== activeSessionId &&
       session.chat.length > 0 &&
-      Boolean(session.runtimeOverrides?.nativeContextSummary || session.runtimeOverrides?.claudeContextSummary)
+      Boolean(session.runtimeOverrides?.nativeContextSummary)
     )
     .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
     .slice(0, MAX_CROSS_SESSION_SUMMARIES)
     .map((session) => {
-      const summarySource =
-        session.runtimeOverrides?.nativeContextSummary ||
-        session.runtimeOverrides?.claudeContextSummary;
+      const summarySource = session.runtimeOverrides?.nativeContextSummary;
       const summarySourcePreview = summarySource ? truncateWithFlag(summarySource.trim(), 900) : undefined;
       const summarized = summarySourcePreview
         ? {
@@ -680,9 +678,7 @@ function collectRelatedSessionEvidence(
     if (session.id === activeSessionId || session.chat.length === 0) {
       continue;
     }
-    const summarySource =
-      session.runtimeOverrides?.nativeContextSummary ||
-      session.runtimeOverrides?.claudeContextSummary;
+    const summarySource = session.runtimeOverrides?.nativeContextSummary;
     if (!summarySource) {
       continue;
     }

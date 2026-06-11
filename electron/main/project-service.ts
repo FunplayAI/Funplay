@@ -712,17 +712,10 @@ export function updateProjectSessionRuntime(
     outputFormat: hasOutputFormat ? runtime.outputFormat : currentOverrides.outputFormat,
     agents: hasAgents ? runtime.agents : currentOverrides.agents,
     agent: hasAgent ? runtime.agent?.trim() || undefined : currentOverrides.agent,
-    claudeCodeSessionId: currentOverrides.claudeCodeSessionId,
-    claudeCodeSessionCwd: currentOverrides.claudeCodeSessionCwd,
-    claudeContextSummary: currentOverrides.claudeContextSummary,
-    claudeContextSummaryUpdatedAt: currentOverrides.claudeContextSummaryUpdatedAt,
-    claudeContextSummaryTurnCount: currentOverrides.claudeContextSummaryTurnCount,
-    claudeContextSummaryCoverage: currentOverrides.claudeContextSummaryCoverage,
     nativeContextSummary: currentOverrides.nativeContextSummary,
     nativeContextSummaryUpdatedAt: currentOverrides.nativeContextSummaryUpdatedAt,
     nativeContextSummaryTurnCount: currentOverrides.nativeContextSummaryTurnCount,
     nativeContextSummaryCoverage: currentOverrides.nativeContextSummaryCoverage,
-    claudeWriteMode: currentOverrides.claudeWriteMode,
     sessionWritePermissionGrant: currentOverrides.sessionWritePermissionGrant
   };
 
@@ -745,10 +738,7 @@ export function updateProjectSessionRuntime(
               overrides.outputFormat ||
               overrides.agents ||
               overrides.agent ||
-              overrides.claudeCodeSessionId ||
-              overrides.claudeContextSummary ||
               overrides.nativeContextSummary ||
-              overrides.claudeWriteMode ||
               overrides.sessionWritePermissionGrant
                 ? overrides
                 : undefined,

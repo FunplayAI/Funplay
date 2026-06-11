@@ -2,12 +2,19 @@
   "id": "example-multi-bug-cart",
   "title": "修复购物车模块的多处分散 bug（多 bug 迭代）",
   "description": "考察长程与自我验证:购物车有两处不同性质的 bug——添加同名商品不合并、删除不存在的商品会误删最后一项。测试覆盖正常+边界,agent 需逐一定位并修复多处,且不破坏已通过的用例。",
-  "dimensions": ["self_verification", "long_horizon", "tool_reliability"],
-  "runtimes": ["native", "claude-code-sdk"],
+  "dimensions": [
+    "self_verification",
+    "long_horizon",
+    "tool_reliability"
+  ],
+  "runtimes": [
+    "native"
+  ],
   "prompt": "运行 `npm test` 有多个用例失败。src/shopping-cart.js 有几处分散的 bug。请逐一定位并修复，确保所有测试（含边界用例）全部通过，且不要破坏已经通过的用例。",
   "provider": {
-    "native": { "envKey": "FUNPLAY_EVAL_NATIVE" },
-    "claude-code-sdk": { "envKey": "FUNPLAY_EVAL_CLAUDE" }
+    "native": {
+      "envKey": "FUNPLAY_EVAL_NATIVE"
+    }
   },
   "workspace": {
     "files": [
@@ -26,7 +33,16 @@
     ]
   },
   "acceptance": [
-    { "id": "npm-test", "kind": "test", "command": "npm test", "required": true, "timeoutMs": 30000 }
+    {
+      "id": "npm-test",
+      "kind": "test",
+      "command": "npm test",
+      "required": true,
+      "timeoutMs": 30000
+    }
   ],
-  "budget": { "maxSteps": 120, "timeoutMs": 240000 }
+  "budget": {
+    "maxSteps": 120,
+    "timeoutMs": 240000
+  }
 }

@@ -7,7 +7,6 @@ import {
   Download,
   Info,
   Languages,
-  LogIn,
   Monitor,
   Plug,
   RefreshCw,
@@ -15,7 +14,6 @@ import {
   Save,
   Search,
   Sparkles,
-  Terminal,
   Trash2,
   type LucideIcon
 } from 'lucide-react';
@@ -26,8 +24,6 @@ import type {
   AppUpdateSnapshot,
   AssetGenerationProviderConfig,
   AssetGenerationProviderInput,
-  ClaudeRuntimeSetupStatus,
-  ClaudeSessionSummary,
   McpConnectionSnapshot,
   McpPlugin,
   McpRawAuditEntry,
@@ -123,7 +119,6 @@ export function AppSettingsModal(props: {
   onSendRawMcpRequest: (pluginId: string, method: string, params: Record<string, unknown>) => Promise<McpRawRequestResult>;
   onReconnectMcpPlugin: () => void;
   onStopMcpPlugin: () => void;
-  onImportClaudeSession: (sdkSessionId: string) => Promise<void>;
   onRefreshMemoryFiles: () => Promise<void>;
   onSelectMemoryFile: (filePath: string) => Promise<void>;
   onChangeMemoryDraft: (value: string) => void;
@@ -138,11 +133,6 @@ export function AppSettingsModal(props: {
   onClose: () => void;
 }): JSX.Element {
   const [tab, setTab] = useState<AppSettingsTab>(props.initialTab);
-  const [claudeStatus, setClaudeStatus] = useState<ClaudeRuntimeSetupStatus | null>(null);
-  const [claudeSessions, setClaudeSessions] = useState<ClaudeSessionSummary[]>([]);
-  const [claudeLoading, setClaudeLoading] = useState(false);
-  const [claudeActionMessage, setClaudeActionMessage] = useState('');
-  const [importingClaudeSessionId, setImportingClaudeSessionId] = useState('');
   const [memoryQuery, setMemoryQuery] = useState('');
   const [memoryKindFilter, setMemoryKindFilter] = useState<ProjectMemoryEntryKind | ''>('');
   const [memoryTagFilter, setMemoryTagFilter] = useState('');
@@ -153,30 +143,6 @@ export function AppSettingsModal(props: {
   useEffect(() => {
     setTab(props.initialTab);
   }, [props.initialTab]);
-
-  async function refreshClaudeStatus(): Promise<void> {
-    setClaudeLoading(true);
-    setClaudeActionMessage('');
-    try {
-      const [status, sessions] = await Promise.all([
-        window.funplay.detectClaudeRuntime(),
-        window.funplay.listClaudeCliSessions(props.selectedProjectId)
-      ]);
-      setClaudeStatus(status);
-      setClaudeSessions(sessions);
-    } catch (error) {
-      setClaudeActionMessage(error instanceof Error ? error.message : t('Claude 状态读取失败。', 'Failed to read Claude status.'));
-    } finally {
-      setClaudeLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (tab !== 'claude') {
-      return;
-    }
-    void refreshClaudeStatus();
-  }, [tab, props.selectedProjectId]);
 
   useEffect(() => {
     if (tab !== 'notifications') {
@@ -198,31 +164,6 @@ export function AppSettingsModal(props: {
     }
     void props.onRefreshMemoryFiles();
   }, [tab, props.selectedProjectId]);
-
-  async function handleClaudeLogin(): Promise<void> {
-    setClaudeLoading(true);
-    setClaudeActionMessage('');
-    try {
-      const result = await window.funplay.runClaudeLogin();
-      setClaudeActionMessage(result.output || t('已启动 Claude 登录。', 'Claude login started.'));
-    } catch (error) {
-      setClaudeActionMessage(error instanceof Error ? error.message : t('Claude 登录启动失败。', 'Failed to start Claude login.'));
-    } finally {
-      setClaudeLoading(false);
-    }
-  }
-
-  async function handleImportClaudeSession(sessionId: string): Promise<void> {
-    setImportingClaudeSessionId(sessionId);
-    setClaudeActionMessage('');
-    try {
-      await props.onImportClaudeSession(sessionId);
-    } catch (error) {
-      setClaudeActionMessage(error instanceof Error ? error.message : t('Claude 会话导入失败。', 'Failed to import Claude session.'));
-    } finally {
-      setImportingClaudeSessionId('');
-    }
-  }
 
   async function runUpdateAction(action: 'check' | 'download' | 'install'): Promise<void> {
     setUpdateAction(action);
@@ -271,7 +212,6 @@ export function AppSettingsModal(props: {
     { id: 'asset-provider', label: t('素材 Provider', 'Asset Provider'), desc: t('图片、3D 与音频生成', 'Image, 3D, and audio generation'), Icon: Sparkles },
     { id: 'mcp', label: 'MCP', desc: t('全局 MCP Registry', 'Global MCP Registry'), Icon: Plug },
     { id: 'web-search', label: 'Web Search', desc: t('搜索来源、抽取与评测', 'Sources, extraction, and evaluation'), Icon: Search },
-    { id: 'claude', label: 'Claude Code', desc: t('安装、登录与历史会话', 'Install, login, and CLI sessions'), Icon: Terminal },
     { id: 'memory', label: 'Memory', desc: t('浏览、编辑与清理项目记忆', 'Browse, edit, and clear project memory'), Icon: Database },
     { id: 'notifications', label: t('通知', 'Notifications'), desc: t('提醒任务与系统通知', 'Reminder tasks and system alerts'), Icon: Bell },
     { id: 'about', label: t('关于', 'About'), desc: t('产品信息与说明', 'Product info and notes'), Icon: Info }
@@ -354,8 +294,7 @@ export function AppSettingsModal(props: {
               <div className="segmented-options">
                 {([
                   ['native', 'Native'],
-                  ['auto', 'Auto'],
-                  ['claude-code-sdk', 'Claude Code']
+                  ['auto', 'Auto']
                 ] as Array<[AgentRuntimeStrategy, string]>).map(([strategy, label]) => (
                   <Button key={strategy} size="sm" variant="secondary" className={`settings-choice-button ${props.runtimeStrategy === strategy ? 'active' : ''}`} onClick={() => props.onChangeRuntimeStrategy(strategy)}>
                     {label}
@@ -367,7 +306,7 @@ export function AppSettingsModal(props: {
                 checked={props.developerMode}
                 onCheckedChange={props.onChangeDeveloperMode}
                 label={t('开发者模式', 'Developer Mode')}
-                description={t('显示 Claude runtime、SDK 阶段、工具边界等调试级运行细节。默认关闭。', 'Show debug-level runtime details such as Claude runtime, SDK stages, and tool-boundary events. Off by default.')}
+                description={t('显示运行时阶段、工具边界等调试级运行细节。默认关闭。', 'Show debug-level runtime details such as runtime stages and tool-boundary events. Off by default.')}
               />
             </section>
           ) : null}
@@ -430,82 +369,6 @@ export function AppSettingsModal(props: {
                 settings={props.aiSettings.webSearch}
                 onUpdateSettings={props.onUpdateWebSearchSettings}
               />
-            </section>
-          ) : null}
-
-          {tab === 'claude' ? (
-            <section className="app-settings-section claude-settings-section">
-              <div className="claude-settings-header">
-                <div>
-                  <strong>Claude Code Runtime</strong>
-                  <div className="helper-copy">{t('检测本机 Claude CLI、启动登录，并把 Claude CLI 历史会话导入当前项目。', 'Detect local Claude CLI, start login, and import Claude CLI history into the current project.')}</div>
-                </div>
-                <div className="modal-actions compact">
-                  <Button size="sm" variant="secondary" leadingIcon={<RefreshCw size={14} aria-hidden="true" />} loading={claudeLoading} onClick={() => void refreshClaudeStatus()}>
-                    {claudeLoading ? t('检测中…', 'Checking…') : t('重新检测', 'Refresh')}
-                  </Button>
-                  <Button size="sm" variant="primary" leadingIcon={<LogIn size={14} aria-hidden="true" />} onClick={() => void handleClaudeLogin()} disabled={claudeLoading || !claudeStatus?.hasClaude}>
-                    {t('登录 Claude', 'Login Claude')}
-                  </Button>
-                </div>
-              </div>
-
-              <div className={`claude-runtime-status ${claudeStatus?.hasClaude ? 'ready' : 'missing'}`}>
-                <InfoRow label={t('CLI 状态', 'CLI Status')} value={claudeStatus?.hasClaude ? t('已检测到', 'Detected') : t('未检测到', 'Missing')} />
-                <InfoRow label={t('主路径', 'Primary Path')} value={claudeStatus?.claudePath || t('未配置', 'Not configured')} />
-                <InfoRow label={t('版本', 'Version')} value={claudeStatus?.claudeVersion || '-'} />
-                <InfoRow label="SDK" value={claudeStatus?.hasSdk ? t('已安装', 'Installed') : t('未安装', 'Missing')} />
-                {claudeStatus?.loginHint ? <div className="helper-copy">{claudeStatus.loginHint}</div> : null}
-              </div>
-
-              {claudeStatus?.otherInstalls.length ? (
-                <div className="claude-install-list">
-                  <strong>{t('检测到的安装', 'Detected Installs')}</strong>
-                  {claudeStatus.otherInstalls.map((install) => (
-                    <div key={install.path} className={`claude-install-row ${install.selected ? 'selected' : ''}`}>
-                      <span>{install.selected ? t('当前使用', 'Selected') : install.installType}</span>
-                      <code>{install.path}</code>
-                      <em>{install.version || '-'}</em>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-
-              <div className="claude-session-import">
-                <div className="claude-settings-header">
-                  <div>
-                    <strong>{t('Claude CLI 历史会话', 'Claude CLI History')}</strong>
-                    <div className="helper-copy">{props.selectedProjectId ? t('默认显示当前项目目录关联的 CLI 会话。', 'Showing CLI sessions related to the current project directory by default.') : t('先选择一个项目后再导入。', 'Select a project before importing.')}</div>
-                  </div>
-                </div>
-
-                {claudeSessions.length > 0 ? (
-                  <div className="claude-session-list">
-                    {claudeSessions.slice(0, 24).map((session) => (
-                      <div key={session.sessionId} className="claude-session-row">
-                        <div className="claude-session-copy">
-                          <strong>{session.title}</strong>
-                          <span>{session.preview || session.cwd || session.sessionId}</span>
-                          <em>{[session.updatedAt ? formatAbsoluteTime(session.updatedAt) : '', session.cwd].filter(Boolean).join(' · ')}</em>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          leadingIcon={<Download size={14} aria-hidden="true" />}
-                          onClick={() => void handleImportClaudeSession(session.sessionId)}
-                          disabled={!props.selectedProjectId || importingClaudeSessionId === session.sessionId}
-                        >
-                          {importingClaudeSessionId === session.sessionId ? t('导入中…', 'Importing…') : t('导入', 'Import')}
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="helper-copy">{claudeLoading ? t('正在读取 Claude CLI 会话…', 'Reading Claude CLI sessions…') : t('没有找到可导入的 Claude CLI 会话。', 'No Claude CLI sessions found.')}</div>
-                )}
-              </div>
-
-              {claudeActionMessage ? <div className="agent-composer-error neutral">{claudeActionMessage}</div> : null}
             </section>
           ) : null}
 

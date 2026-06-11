@@ -3,8 +3,7 @@ import assert from 'node:assert/strict';
 import {
   accumulateUsage,
   emptyUsageTotals,
-  normalizeAiSdkUsage,
-  normalizeClaudeSdkUsage
+  normalizeAiSdkUsage
 } from '../../electron/main/agent-platform/usage.ts';
 
 test('normalizeAiSdkUsage maps detailed input/output and cache fields', () => {
@@ -52,37 +51,6 @@ test('normalizeAiSdkUsage returns null for empty or invalid usage', () => {
   assert.equal(normalizeAiSdkUsage({}), null);
   assert.equal(normalizeAiSdkUsage({ inputTokens: 0, outputTokens: 0, totalTokens: 0 }), null);
   assert.equal(normalizeAiSdkUsage({ inputTokens: -5, outputTokens: -3 }), null);
-});
-
-test('normalizeClaudeSdkUsage maps Anthropic snake_case fields with cache buckets', () => {
-  const usage = normalizeClaudeSdkUsage(
-    {
-      input_tokens: 200,
-      output_tokens: 80,
-      cache_creation_input_tokens: 50,
-      cache_read_input_tokens: 1000
-    },
-    { provider: 'anthropic', model: 'claude-opus-4-7' }
-  );
-
-  assert.ok(usage);
-  assert.equal(usage!.inputTokens, 200);
-  assert.equal(usage!.outputTokens, 80);
-  assert.equal(usage!.cacheCreationTokens, 50);
-  assert.equal(usage!.cacheReadTokens, 1000);
-  assert.equal(usage!.totalTokens, 200 + 80 + 50 + 1000);
-});
-
-test('normalizeClaudeSdkUsage strips cache fields when zero and stays defined for live tokens', () => {
-  const usage = normalizeClaudeSdkUsage({
-    input_tokens: 10,
-    output_tokens: 5
-  });
-
-  assert.ok(usage);
-  assert.equal(usage!.cacheCreationTokens, undefined);
-  assert.equal(usage!.cacheReadTokens, undefined);
-  assert.equal(usage!.totalTokens, 15);
 });
 
 test('accumulateUsage sums fields and increments turn counter', () => {

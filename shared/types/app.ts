@@ -1,4 +1,4 @@
-import type { Project, ProjectSessionRuntimeId } from './project';
+import type { ProjectSessionRuntimeId } from './project';
 import type { AiProviderProtocol } from './provider';
 import type { RuntimeDiagnosticSeverity, RuntimeRecoveryAction } from './diagnostics';
 
@@ -113,41 +113,4 @@ export interface RuntimeDoctorResult {
   providerId?: string;
   runtimeId?: ProjectSessionRuntimeId;
   exportedLog?: string;
-}
-
-export interface ClaudeInstallDetection {
-  path: string;
-  version?: string;
-  installType: 'native' | 'homebrew' | 'npm' | 'bun' | 'sdk-bundled' | 'winget' | 'unknown';
-  selected?: boolean;
-}
-
-export interface ClaudeRuntimeSetupStatus {
-  hasClaude: boolean;
-  claudeVersion?: string;
-  claudePath?: string;
-  claudeInstallType?: ClaudeInstallDetection['installType'];
-  otherInstalls: ClaudeInstallDetection[];
-  hasSdk: boolean;
-  canUseSdk: boolean;
-  loginHint: string;
-}
-
-export interface ClaudeSessionSummary {
-  sessionId: string;
-  title: string;
-  cwd?: string;
-  projectPath?: string;
-  preview?: string;
-  messageCount?: number;
-  updatedAt?: string;
-  createdAt?: string;
-}
-
-export interface ClaudeSessionImportResult {
-  project: Project;
-  sessionId: string;
-  importedMessageCount: number;
-  sdkSessionId: string;
-  title: string;
 }

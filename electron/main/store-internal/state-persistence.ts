@@ -156,10 +156,7 @@ export function persistStateSync(database: Database.Database, state: AppState): 
             upstream_model,
             headers_json,
             env_overrides_json,
-            claude_code_compatible,
-            claude_role_models_json,
             available_models_json,
-            sdk_proxy_only,
             provider_meta_json,
             context_window_tokens,
             max_output_tokens,
@@ -172,7 +169,7 @@ export function persistStateSync(database: Database.Database, state: AppState): 
             created_at,
             updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             protocol = excluded.protocol,
@@ -183,10 +180,7 @@ export function persistStateSync(database: Database.Database, state: AppState): 
             upstream_model = excluded.upstream_model,
             headers_json = excluded.headers_json,
             env_overrides_json = excluded.env_overrides_json,
-            claude_code_compatible = excluded.claude_code_compatible,
-            claude_role_models_json = excluded.claude_role_models_json,
             available_models_json = excluded.available_models_json,
-            sdk_proxy_only = excluded.sdk_proxy_only,
             provider_meta_json = excluded.provider_meta_json,
             context_window_tokens = excluded.context_window_tokens,
             max_output_tokens = excluded.max_output_tokens,
@@ -210,10 +204,7 @@ export function persistStateSync(database: Database.Database, state: AppState): 
           serializedProvider.upstream_model,
           serializedProvider.headers_json,
           serializedProvider.env_overrides_json,
-          serializedProvider.claude_code_compatible,
-          serializedProvider.claude_role_models_json,
           serializedProvider.available_models_json,
-          serializedProvider.sdk_proxy_only,
           serializedProvider.provider_meta_json,
           serializedProvider.context_window_tokens,
           serializedProvider.max_output_tokens,

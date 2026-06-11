@@ -6,7 +6,6 @@ import type {
   AiProviderInput,
   AiProviderMeta,
   AiProviderModel,
-  AiProviderRoleModels,
   AssetGenerationProviderInput,
   AssetGenerationRequest,
   PromptAttachment,
@@ -32,7 +31,7 @@ const mcpToolRiskPolicySchema = z.enum(['infer', 'read', 'write']);
 const unityProfileSchema = z.enum(['core', 'full']);
 const unityHealthStatusSchema = z.enum(['idle', 'online', 'offline']);
 const agentPermissionModeSchema = z.enum(['full-access', 'read-only']);
-const agentRuntimeStrategySchema = z.enum(['auto', 'native', 'claude-code-sdk']);
+const agentRuntimeStrategySchema = z.enum(['auto', 'native']);
 export const uiLanguageSchema = z.enum(['zh-CN', 'en-US']);
 const webSearchProviderSchema = z.enum(['auto', 'duckduckgo', 'brave', 'bing']);
 const assetGenerationKindSchema = z.enum([
@@ -65,7 +64,7 @@ const configurableAssetGenerationProviderAdapterSchema = z.enum([
   'elevenlabs'
 ]);
 const projectSessionRuntimeIdSchema = z.custom<ProjectSessionRuntimeId>((value) =>
-  ['native', 'claude-code-sdk'].includes(String(value))
+  ['native'].includes(String(value))
 );
 const projectSessionEffortSchema = z.custom<ProjectSessionEffort>((value) => ['auto', 'low', 'medium', 'high', 'xhigh', 'max'].includes(String(value)));
 const environmentActionKindSchema = z.enum([
@@ -87,14 +86,6 @@ const environmentActionKindSchema = z.enum([
 
 const trimmedString = (min = 1, max = 4000) => z.string().trim().min(min).max(max);
 const optionalTrimmedString = (max = 4000) => z.string().trim().max(max).optional();
-const aiProviderRoleModelsSchema = z.object({
-  default: optionalTrimmedString(240),
-  reasoning: optionalTrimmedString(240),
-  small: optionalTrimmedString(240),
-  haiku: optionalTrimmedString(240),
-  sonnet: optionalTrimmedString(240),
-  opus: optionalTrimmedString(240)
-}).strict() satisfies z.ZodType<AiProviderRoleModels>;
 const stringRecordSchema = z.record(z.string().trim().min(1).max(160), z.string().max(4000));
 const mcpEnvRecordSchema = z.record(z.string().trim().min(1).max(160), z.string().max(4000));
 const mcpToolPolicyOverrideSchema = z.object({
@@ -179,10 +170,7 @@ export const aiProviderInputSchema = z.object({
   upstreamModel: optionalTrimmedString(240),
   headers: stringRecordSchema.optional(),
   envOverrides: stringRecordSchema.optional(),
-  claudeCodeCompatible: z.boolean().optional(),
-  claudeRoleModels: aiProviderRoleModelsSchema.optional(),
   availableModels: z.array(aiProviderModelSchema).max(100).optional(),
-  sdkProxyOnly: z.boolean().optional(),
   providerMeta: aiProviderMetaSchema.optional(),
   contextWindowTokens: providerContextWindowTokensSchema,
   maxOutputTokens: providerMaxOutputTokensSchema,

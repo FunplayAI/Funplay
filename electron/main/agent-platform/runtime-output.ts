@@ -17,7 +17,7 @@ type RuntimeToolResult = Parameters<NonNullable<GenericAgentRuntimeParams['onToo
 type RuntimeUsage = Parameters<NonNullable<GenericAgentRuntimeParams['onUsage']>>[0];
 
 function normalizeRuntimeId(runtimeId?: ProjectSessionRuntimeId): ProjectSessionRuntimeId | undefined {
-  return runtimeId === 'native' || runtimeId === 'claude-code-sdk' ? runtimeId : undefined;
+  return runtimeId === 'native' ? runtimeId : undefined;
 }
 
 function normalizeStageEvent(stage: ConversationOperationStageEvent) {

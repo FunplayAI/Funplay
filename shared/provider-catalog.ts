@@ -7,7 +7,6 @@ import type {
   AiProviderModelCapabilities,
   AiProviderPreset,
   AiProviderProtocol,
-  AiProviderRoleModels,
   OpenAiCompatibleChatTokenParameter,
   OpenAiCompatibleInterleavedReasoningField,
   OpenAiCompatibleReasoningRequestStyle,
@@ -97,14 +96,6 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     baseUrl: 'https://api.anthropic.com',
     defaultModel: 'claude-sonnet-4-6',
     upstreamModel: 'claude-sonnet-4-6',
-    defaultRoleModels: {
-      default: 'claude-sonnet-4-6',
-      reasoning: 'claude-opus-4-8',
-      small: 'claude-haiku-4-5-20251001',
-      haiku: 'claude-haiku-4-5-20251001',
-      sonnet: 'claude-sonnet-4-6',
-      opus: 'claude-opus-4-8'
-    },
     availableModels: [
       {
         modelId: 'claude-sonnet-4-6',
@@ -127,7 +118,7 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     ],
     providerMeta: {
       apiKeyUrl: 'https://console.anthropic.com/settings/keys',
-      docsUrl: 'https://docs.anthropic.com/claude-code/setup',
+      docsUrl: 'https://docs.anthropic.com',
       statusPageUrl: 'https://status.anthropic.com',
       billingModel: 'pay_as_you_go'
     },
@@ -432,9 +423,7 @@ export function getProviderPresetDefaults(input: Pick<AiProvider, 'name' | 'prot
   upstreamModel?: string;
   headers?: Record<string, string>;
   envOverrides?: Record<string, string>;
-  roleModels?: AiProviderRoleModels;
   availableModels?: AiProviderModel[];
-  sdkProxyOnly?: boolean;
   providerMeta?: AiProviderMeta;
 } {
   const preset = findAiProviderPreset(input);
@@ -443,9 +432,7 @@ export function getProviderPresetDefaults(input: Pick<AiProvider, 'name' | 'prot
     upstreamModel: preset?.upstreamModel,
     headers: preset?.defaultHeaders,
     envOverrides: preset?.defaultEnvOverrides,
-    roleModels: preset?.defaultRoleModels,
     availableModels: preset?.availableModels,
-    sdkProxyOnly: preset?.sdkProxyOnly,
     providerMeta: preset?.providerMeta
   };
 }

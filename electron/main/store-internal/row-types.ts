@@ -26,10 +26,7 @@ export interface ProviderStructuredRow {
   upstream_model: string | null;
   headers_json: string | null;
   env_overrides_json: string | null;
-  claude_code_compatible: number;
-  claude_role_models_json: string | null;
   available_models_json: string | null;
-  sdk_proxy_only: number;
   provider_meta_json: string | null;
   context_window_tokens: number | null;
   max_output_tokens: number | null;

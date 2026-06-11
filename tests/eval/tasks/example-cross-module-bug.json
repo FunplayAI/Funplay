@@ -2,12 +2,19 @@
   "id": "example-cross-module-bug",
   "title": "跨模块定位并修复 bug（根因在依赖模块）",
   "description": "考察调试与代码导航:测试失败发生在 checkout 模块,但真正的 bug 在它依赖的 pricing 模块(把百分比当成了固定金额)。agent 需要顺着调用链读到根因再修,而不是在症状处乱改。",
-  "dimensions": ["self_verification", "tool_reliability", "long_horizon"],
-  "runtimes": ["native", "claude-code-sdk"],
+  "dimensions": [
+    "self_verification",
+    "tool_reliability",
+    "long_horizon"
+  ],
+  "runtimes": [
+    "native"
+  ],
   "prompt": "运行 `npm test`，checkout 的测试失败了。根因不在 checkout.js 本身，而在它所依赖的模块里。请顺着调用链定位真正的 bug 并修复，确保所有测试通过。",
   "provider": {
-    "native": { "envKey": "FUNPLAY_EVAL_NATIVE" },
-    "claude-code-sdk": { "envKey": "FUNPLAY_EVAL_CLAUDE" }
+    "native": {
+      "envKey": "FUNPLAY_EVAL_NATIVE"
+    }
   },
   "workspace": {
     "files": [
@@ -30,7 +37,16 @@
     ]
   },
   "acceptance": [
-    { "id": "npm-test", "kind": "test", "command": "npm test", "required": true, "timeoutMs": 30000 }
+    {
+      "id": "npm-test",
+      "kind": "test",
+      "command": "npm test",
+      "required": true,
+      "timeoutMs": 30000
+    }
   ],
-  "budget": { "maxSteps": 120, "timeoutMs": 240000 }
+  "budget": {
+    "maxSteps": 120,
+    "timeoutMs": 240000
+  }
 }

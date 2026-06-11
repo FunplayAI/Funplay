@@ -376,8 +376,7 @@ const NATIVE_PROVIDER_SUMMARY_TIMEOUT_MS = 20_000;
 export function shouldUseNativeProviderContextSummary(provider?: AiProvider): boolean {
   // Opt-in for now: default stays on the reliable extractive summary so existing
   // behavior and tests are unchanged. Enable model-generated summaries with
-  // FUNPLAY_NATIVE_CONTEXT_SUMMARY_PROVIDER=1 once eval confirms the quality win,
-  // mirroring the claude-code-sdk runtime's provider summary path.
+  // FUNPLAY_NATIVE_CONTEXT_SUMMARY_PROVIDER=1 once eval confirms the quality win.
   return Boolean(provider && process.env.FUNPLAY_NATIVE_CONTEXT_SUMMARY_PROVIDER === '1');
 }
 

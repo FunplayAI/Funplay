@@ -17,12 +17,11 @@ export type GameAgentPluginReportStatus = 'completed' | 'failed' | 'skipped';
 export type GameAgentActionStatus = 'planned' | 'suggested' | 'running' | 'completed' | 'failed' | 'skipped';
 export type GameAgentOperationType = 'tool_call' | 'resource_read';
 export type AgentPermissionMode = 'full-access' | 'ask' | 'read-only';
-export type ProjectSessionRuntimeId = 'native' | 'claude-code-sdk';
+export type ProjectSessionRuntimeId = 'native';
 export type AgentRuntimeStrategy = 'auto' | ProjectSessionRuntimeId;
 export type AgentRuntimeReportId = ProjectSessionRuntimeId;
 export type ProjectSessionMode = 'agent';
 export type ProjectSessionEffort = 'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-export type ClaudeRuntimeWriteMode = 'external-audited' | 'host-controlled';
 export type AgentRunKind = 'conversation' | 'bootstrap';
 export type AgentRunResumeStrategy = 'restart_prompt' | 'resume_after_last_completed_tool' | 'resume_from_checkpoint';
 export type AgentRuntimeRunStatus = 'running' | 'interrupted' | 'failed' | 'completed';
@@ -167,22 +166,6 @@ export interface ProjectMemoryFileContent extends ProjectMemoryFileSummary {
   content: string;
 }
 
-export interface ClaudeContextSummaryCoverage {
-  version: number;
-  strategy: 'provider' | 'extractive';
-  sourceRuntimeSessionId?: string;
-  fromMessageId?: string;
-  toMessageId?: string;
-  boundaryRowId?: number;
-  boundaryOrdinal?: number;
-  coveredMessageCount?: number;
-  summaryInputMessageIds?: string[];
-  messageCount: number;
-  turnCount: number;
-  generatedAt: string;
-  audit?: ContextSummaryAudit;
-}
-
 export interface NativeContextSummaryCoverage {
   version: number;
   strategy: 'provider' | 'extractive';
@@ -234,17 +217,10 @@ export interface ProjectSession {
     outputFormat?: Record<string, unknown>;
     agents?: Record<string, unknown>;
     agent?: string;
-    claudeCodeSessionId?: string;
-    claudeCodeSessionCwd?: string;
-    claudeContextSummary?: string;
-    claudeContextSummaryUpdatedAt?: string;
-    claudeContextSummaryTurnCount?: number;
-    claudeContextSummaryCoverage?: ClaudeContextSummaryCoverage;
     nativeContextSummary?: string;
     nativeContextSummaryUpdatedAt?: string;
     nativeContextSummaryTurnCount?: number;
     nativeContextSummaryCoverage?: NativeContextSummaryCoverage;
-    claudeWriteMode?: ClaudeRuntimeWriteMode;
     sessionWritePermissionGrant?: SessionWritePermissionGrant;
   };
   chat: ChatMessage[];

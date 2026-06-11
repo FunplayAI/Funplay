@@ -3,7 +3,6 @@ import type {
   AiProvider,
   AiProviderMeta,
   AiProviderModel,
-  AiProviderRoleModels,
   ChatMessage,
   GameAgentRun,
   McpPlugin,
@@ -28,25 +27,6 @@ import type {
   ProviderStructuredRow,
   SessionRow
 } from './row-types';
-
-function normalizeProviderRoleModels(input?: AiProviderRoleModels | null): AiProviderRoleModels | undefined {
-  if (!input) {
-    return undefined;
-  }
-
-  const normalized: AiProviderRoleModels = {};
-  for (const key of ['default', 'reasoning', 'small', 'haiku', 'sonnet', 'opus'] as const) {
-    const value = input[key]?.trim();
-    if (value) {
-      normalized[key] = value;
-    }
-  }
-  return Object.keys(normalized).length > 0 ? normalized : undefined;
-}
-
-function parseProviderRoleModels(raw: string | null): AiProviderRoleModels | undefined {
-  return normalizeProviderRoleModels(parseJson<AiProviderRoleModels>(raw, {}));
-}
 
 function normalizeStringRecord(input?: Record<string, string> | null): Record<string, string> | undefined {
   if (!input) {
@@ -102,10 +82,7 @@ export function serializeProviderRecord(provider: AiProvider): ProviderStructure
     upstream_model: provider.upstreamModel ?? null,
     headers_json: JSON.stringify(normalizeStringRecord(provider.headers) ?? {}),
     env_overrides_json: JSON.stringify(normalizeStringRecord(provider.envOverrides) ?? {}),
-    claude_code_compatible: provider.protocol === 'anthropic' ? 1 : 0,
-    claude_role_models_json: JSON.stringify(normalizeProviderRoleModels(provider.claudeRoleModels) ?? {}),
     available_models_json: JSON.stringify(normalizeProviderModels(provider.availableModels) ?? []),
-    sdk_proxy_only: provider.sdkProxyOnly ? 1 : 0,
     provider_meta_json: JSON.stringify(normalizeProviderMeta(provider.providerMeta) ?? {}),
     context_window_tokens: normalizeProviderContextWindowTokens(provider.contextWindowTokens) ?? null,
     max_output_tokens: normalizeProviderMaxOutputTokens(provider.maxOutputTokens) ?? null,
@@ -140,10 +117,7 @@ function hydrateProviderFromStructuredRow(row: ProviderStructuredRow): AiProvide
     upstreamModel: row.upstream_model ?? defaults.upstreamModel,
     headers: normalizeStringRecord(parseJson<Record<string, string>>(row.headers_json, {})) ?? defaults.headers,
     envOverrides: normalizeStringRecord(parseJson<Record<string, string>>(row.env_overrides_json, {})) ?? defaults.envOverrides,
-    claudeCodeCompatible: row.protocol === 'anthropic',
-    claudeRoleModels: parseProviderRoleModels(row.claude_role_models_json) ?? defaults.roleModels,
     availableModels: normalizeProviderModels(parseJson<AiProviderModel[]>(row.available_models_json, [])) ?? defaults.availableModels,
-    sdkProxyOnly: row.sdk_proxy_only === 1 || defaults.sdkProxyOnly,
     providerMeta: normalizeProviderMeta(parseJson<AiProviderMeta>(row.provider_meta_json, {})) ?? defaults.providerMeta,
     contextWindowTokens: normalizeProviderContextWindowTokens(row.context_window_tokens ?? undefined),
     maxOutputTokens: normalizeProviderMaxOutputTokens(row.max_output_tokens ?? undefined),
@@ -293,6 +267,34 @@ function hydrateProjectFromStructuredRow(row: ProjectStructuredRow): Project {
   };
 }
 
+const LEGACY_CLAUDE_OVERRIDE_KEYS = [
+  'claudeCodeSessionId',
+  'claudeCodeSessionCwd',
+  'claudeContextSummary',
+  'claudeContextSummaryUpdatedAt',
+  'claudeContextSummaryTurnCount',
+  'claudeContextSummaryCoverage',
+  'claudeWriteMode'
+] as const;
+
+function hydrateSessionRuntimeOverrides(raw: string | null): ProjectSession['runtimeOverrides'] {
+  if (!raw) {
+    return undefined;
+  }
+  const parsed = parseJson<Record<string, unknown> | undefined>(raw, undefined);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return undefined;
+  }
+  const normalized: Record<string, unknown> = { ...parsed };
+  for (const key of LEGACY_CLAUDE_OVERRIDE_KEYS) {
+    delete normalized[key];
+  }
+  if (normalized.runtimeId === 'claude-code-sdk') {
+    normalized.runtimeId = 'native';
+  }
+  return Object.keys(normalized).length > 0 ? (normalized as ProjectSession['runtimeOverrides']) : undefined;
+}
+
 export function hydrateProjectSessionsFromRows(project: Project, sessionRows: SessionRow[], messageRows: MessageRow[]): Project {
   if (sessionRows.length === 0) {
     return project;
@@ -328,7 +330,7 @@ export function hydrateProjectSessionsFromRows(project: Project, sessionRows: Se
     autoTitle: row.auto_title === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    runtimeOverrides: row.runtime_json ? parseJson(row.runtime_json, undefined) : undefined,
+    runtimeOverrides: hydrateSessionRuntimeOverrides(row.runtime_json),
     chat: messagesBySession.get(row.id) ?? []
   }));
 

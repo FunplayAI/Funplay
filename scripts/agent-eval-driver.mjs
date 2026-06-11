@@ -1,7 +1,7 @@
 // Agent eval driver.
 //
-// Drives ONE real-provider agent run through a chosen runtime (native or
-// claude-code-sdk) inside a prepared workspace, then exits. The agent mutates
+// Drives ONE real-provider agent run through the native runtime inside a
+// prepared workspace, then exits. The agent mutates
 // the workspace through its real tools; agent-eval.mjs runs the deterministic
 // acceptance checks afterward. This is the real-provider counterpart to the
 // scripted scripts/native-runtime-e2e.mjs.
@@ -49,7 +49,7 @@ function buildProvider(runtimeId) {
   if (!apiKey) {
     throw new Error(`${prefix}_API_KEY is required for eval runtime "${runtimeId}".`);
   }
-  const protocol = process.env[`${prefix}_PROTOCOL`] || (runtimeId === 'claude-code-sdk' ? 'anthropic' : 'openai-compatible');
+  const protocol = process.env[`${prefix}_PROTOCOL`] || 'openai-compatible';
   const timestamp = new Date().toISOString();
   return {
     id: `provider_eval_${runtimeId}`,

@@ -17,7 +17,6 @@ import type { GenericAgentBootstrapTask, GenericAgentConversationTask, GenericAg
 import { executeGenericAgentRuntimeEventStream } from './runtime-event-stream';
 import { createRuntimeEventResultProjection } from './runtime-event-result';
 import { acquireAgentSessionLock, releaseAgentSessionLock } from './session-run-lock';
-import { buildClaudeContextSummaryForSessionWithProvider, resetClaudeContextCompressionState } from './claude/runtime';
 import { prepareNativeContextHandoff, resetNativeContextCompressionState } from './native/context-handoff';
 import { recordActiveRunAgentCoreParts, recordActiveRunLifecycleHook, recordActiveRunSkillActivation } from './run-registry';
 import { loadAgentLifecycleHookConfigForProject } from './agent-hooks';
@@ -160,7 +159,7 @@ export async function executeGenericConversation(task: GenericAgentConversationT
   if (!supportsGenericAgentRuntimeCapability(runtime, 'conversation')) {
     throw new Error(`Runtime ${runtime.id} does not support conversation turns.`);
   }
-  const runtimeGrantId = runtime.id === 'native' || runtime.id === 'claude-code-sdk' ? runtime.id : undefined;
+  const runtimeGrantId = runtime.id === 'native' ? runtime.id : undefined;
   const permissionGrantContext = {
     runtimeId: runtimeGrantId,
     cwd: currentProject.engine?.projectPath
@@ -188,105 +187,39 @@ export async function executeGenericConversation(task: GenericAgentConversationT
   });
 
   if (isManualCompactPrompt(task.message)) {
-    if (runtime.id === 'native') {
-      const summaryResult = prepareNativeContextHandoff({
-        project: currentProject,
-        sessionId: activeSession.id,
-        provider: task.provider,
-        currentPrompt: task.message,
-        force: true
-      });
-      const updatedAt = nowIso();
-      let nextProject = currentProject;
-      const steps: GameAgentStep[] = [];
-
-      if (summaryResult?.summary.trim()) {
-        resetNativeContextCompressionState(activeSession.id);
-        task.onStatus?.('thinking', '已压缩 Native runtime 上下文。');
-        task.onStage?.({
-          stageId: 'stage:native_context_compressed',
-          phase: 'context_compressed',
-          title: '压缩 Native runtime 上下文',
-          target: 'stage:native_context_compressed',
-          status: 'completed',
-          summary: '已生成上下文摘要，下一轮 native runtime 将以摘要加未覆盖消息继续。',
-          runtimeId: 'native',
-          providerId: task.provider?.id,
-          model: task.provider?.model,
-          input: {
-            contextSummary: summaryResult.summary,
-            contextSummaryCoverage: summaryResult.coverage,
-            boundaryRowId: summaryResult.coverage.boundaryRowId,
-            boundaryOrdinal: summaryResult.coverage.boundaryOrdinal,
-            coveredMessageCount: summaryResult.coverage.coveredMessageCount ?? summaryResult.coverage.messageCount
-          }
-        });
-        steps.push(createStep('memory', '压缩 Native runtime 上下文', '已生成摘要并更新 Native 上下文边界。', 'completed'));
-        nextProject = replaceProjectSession(
-          currentProject,
-          {
-            ...activeSession,
-            updatedAt,
-            runtimeOverrides: {
-              ...activeSession.runtimeOverrides,
-              ...summaryResult.patch
-            }
-          },
-          activeSession.id
-        );
-      } else {
-        task.onStatus?.('thinking', '当前会话还不需要压缩。');
-        steps.push(createStep('memory', '跳过 Native runtime 上下文压缩', '当前会话未达到压缩阈值或没有可压缩的新消息。', 'skipped'));
-      }
-
-      const run: GameAgentRun = {
-        id: makeId('run'),
-        mode: 'update',
-        input: task.message,
-        status: 'completed',
-        usedProviderId: task.provider?.id,
-        usedModel: task.provider?.model,
-        startedAt,
-        finishedAt: updatedAt,
-        steps,
-        pluginReports: [],
-        executionPlan: nextProject.currentExecutionPlan,
-        operationLog: []
-      };
-
-      nextProject = {
-        ...nextProject,
-        activeSessionId: activeSession.id,
-        lastAgentRun: run,
-        updatedAt
-      };
-
-      return { project: nextProject, run };
-    }
-
-    const summaryResult = await buildClaudeContextSummaryForSessionWithProvider(activeSession);
+    const summaryResult = prepareNativeContextHandoff({
+      project: currentProject,
+      sessionId: activeSession.id,
+      provider: task.provider,
+      currentPrompt: task.message,
+      force: true
+    });
     const updatedAt = nowIso();
     let nextProject = currentProject;
     const steps: GameAgentStep[] = [];
 
-    if (summaryResult.summary.trim()) {
-      resetClaudeContextCompressionState(activeSession.id);
-      task.onStatus?.('thinking', '已压缩 Claude runtime 上下文。');
+    if (summaryResult?.summary.trim()) {
+      resetNativeContextCompressionState(activeSession.id);
+      task.onStatus?.('thinking', '已压缩 Native runtime 上下文。');
       task.onStage?.({
-        stageId: 'stage:context_compressed',
+        stageId: 'stage:native_context_compressed',
         phase: 'context_compressed',
-        title: '压缩 Claude runtime 上下文',
-        target: 'stage:context_compressed',
+        title: '压缩 Native runtime 上下文',
+        target: 'stage:native_context_compressed',
         status: 'completed',
-        summary: '已生成上下文摘要，下一轮将以摘要加未覆盖消息启动新 Claude 会话。',
+        summary: '已生成上下文摘要，下一轮 native runtime 将以摘要加未覆盖消息继续。',
+        runtimeId: 'native',
+        providerId: task.provider?.id,
+        model: task.provider?.model,
         input: {
           contextSummary: summaryResult.summary,
           contextSummaryCoverage: summaryResult.coverage,
-          boundaryOrdinal: summaryResult.coverage?.boundaryOrdinal,
-          coveredMessageCount: summaryResult.coverage?.coveredMessageCount ?? summaryResult.coverage?.messageCount
+          boundaryRowId: summaryResult.coverage.boundaryRowId,
+          boundaryOrdinal: summaryResult.coverage.boundaryOrdinal,
+          coveredMessageCount: summaryResult.coverage.coveredMessageCount ?? summaryResult.coverage.messageCount
         }
       });
-      steps.push(createStep('memory', '压缩 Claude runtime 上下文', '已生成摘要并清空 Claude resume 会话。', 'completed'));
+      steps.push(createStep('memory', '压缩 Native runtime 上下文', '已生成摘要并更新 Native 上下文边界。', 'completed'));
       nextProject = replaceProjectSession(
         currentProject,
         {
@@ -294,19 +227,14 @@ export async function executeGenericConversation(task: GenericAgentConversationT
           updatedAt,
           runtimeOverrides: {
             ...activeSession.runtimeOverrides,
-            claudeCodeSessionId: '',
-            claudeCodeSessionCwd: currentProject.engine?.projectPath,
-            claudeContextSummary: summaryResult.summary,
-            claudeContextSummaryUpdatedAt: updatedAt,
-            claudeContextSummaryCoverage: summaryResult.coverage,
-            claudeContextSummaryTurnCount: summaryResult.coverage?.turnCount ?? activeSession.runtimeOverrides?.claudeContextSummaryTurnCount
+            ...summaryResult.patch
           }
         },
         activeSession.id
       );
     } else {
       task.onStatus?.('thinking', '当前会话还不需要压缩。');
-      steps.push(createStep('memory', '跳过 Claude runtime 上下文压缩', '当前会话未达到压缩阈值或没有可压缩的新消息。', 'skipped'));
+      steps.push(createStep('memory', '跳过 Native runtime 上下文压缩', '当前会话未达到压缩阈值或没有可压缩的新消息。', 'skipped'));
     }
 
     const run: GameAgentRun = {

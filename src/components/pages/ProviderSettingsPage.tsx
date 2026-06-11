@@ -205,10 +205,7 @@ function providerToInput(provider: AiProvider, overrides: Partial<AiProviderInpu
     upstreamModel: provider.upstreamModel,
     headers: provider.headers,
     envOverrides: provider.envOverrides,
-    claudeCodeCompatible: provider.claudeCodeCompatible,
-    claudeRoleModels: provider.claudeRoleModels,
     availableModels: provider.availableModels,
-    sdkProxyOnly: provider.sdkProxyOnly,
     providerMeta: provider.providerMeta,
     contextWindowTokens: provider.contextWindowTokens,
     maxOutputTokens: provider.maxOutputTokens,
@@ -503,7 +500,7 @@ export function RuntimeDoctorDialog(props: {
   const repairGuidance = buildProviderRepairGuidance(props.result, props.provider, language);
   return (
     <ModalShell
-      title={t('Claude Runtime 诊断', 'Claude Runtime Doctor')}
+      title={t('Runtime 诊断', 'Runtime Doctor')}
       subtitle={`${props.provider.name} · ${props.provider.protocol} · ${props.provider.model}`}
       className="runtime-doctor-modal"
       onClose={props.onClose}

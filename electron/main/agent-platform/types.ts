@@ -19,7 +19,6 @@ import type {
   PromptAttachment,
   AiProvider,
   AgentPermissionMode,
-  ClaudeRuntimeWriteMode,
   AppState,
   ChatMessageMetadata,
   ChatMediaBlock,
@@ -39,7 +38,7 @@ import type {
 
 export type GenericAgentTaskKind = 'bootstrap' | 'conversation';
 export type GenericAgentPhase = 'thinking' | 'streaming';
-export type GenericAgentRuntimeId = ProjectSessionRuntimeId;
+export type GenericAgentRuntimeId = 'native';
 export type GenericAgentRuntimeOutputEvent =
   | {
       type: 'status';
@@ -458,9 +457,7 @@ export interface GenericAgentRuntimeResult {
   suggestedAction?: string;
   recoveryActions?: RuntimeRecoveryAction[];
   sessionRuntimePatch?: Partial<NonNullable<ProjectSession['runtimeOverrides']>>;
-  effectiveCapabilities?: Partial<GenericAgentRuntimeCapabilities> & {
-    claudeWriteMode?: ClaudeRuntimeWriteMode;
-  };
+  effectiveCapabilities?: Partial<GenericAgentRuntimeCapabilities>;
   steps: GameAgentStep[];
 }
 

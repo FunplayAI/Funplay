@@ -5,11 +5,9 @@ import type {
   AgentRuntimeReportId,
   AgentRunResumeStrategy,
   AgentOperationStatus,
-  ProjectSessionRuntimeId,
   AgentTaskGraph,
   AgentVerificationReport,
-  ClaudeContextSummaryCoverage,
-  NativeContextSummaryCoverage,
+  NativeContextSummaryCoverage
 } from './project';
 import type {
   AgentToolArtifact,
@@ -612,7 +610,7 @@ export interface AgentRuntimeEvent {
   providerStep?: AgentCoreProviderStepResult;
   contextSummary?: {
     summary: string;
-    coverage?: ClaudeContextSummaryCoverage | NativeContextSummaryCoverage | Record<string, unknown>;
+    coverage?: NativeContextSummaryCoverage | Record<string, unknown>;
     runtimeId?: AgentRuntimeReportId;
     sourceStageId?: string;
   };

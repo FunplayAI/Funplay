@@ -24,10 +24,7 @@ export interface AiProvider {
   upstreamModel?: string;
   headers?: Record<string, string>;
   envOverrides?: Record<string, string>;
-  claudeCodeCompatible?: boolean;
-  claudeRoleModels?: AiProviderRoleModels;
   availableModels?: AiProviderModel[];
-  sdkProxyOnly?: boolean;
   providerMeta?: AiProviderMeta;
   contextWindowTokens?: number;
   maxOutputTokens?: number;
@@ -103,10 +100,7 @@ export interface AiProviderInput {
   upstreamModel?: string;
   headers?: Record<string, string>;
   envOverrides?: Record<string, string>;
-  claudeCodeCompatible?: boolean;
-  claudeRoleModels?: AiProviderRoleModels;
   availableModels?: AiProviderModel[];
-  sdkProxyOnly?: boolean;
   providerMeta?: AiProviderMeta;
   contextWindowTokens?: number;
   maxOutputTokens?: number;
@@ -138,9 +132,7 @@ export interface AiProviderPreset {
   upstreamModel?: string;
   defaultHeaders?: Record<string, string>;
   defaultEnvOverrides?: Record<string, string>;
-  defaultRoleModels?: AiProviderRoleModels;
   availableModels?: AiProviderModel[];
-  sdkProxyOnly?: boolean;
   providerMeta?: AiProviderMeta;
   openAiCompatible?: OpenAiCompatibleProviderProfile;
   apiKeyHint: string;

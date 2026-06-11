@@ -4,7 +4,7 @@ import type { McpConnectionSnapshot, McpPlugin, McpRawAuditEntry, McpRawRequestR
 import type { AgentRuntimeCapabilityReport, AgentRuntimeStatus, AgentReplayLog, AgentSkillCatalogResult, AgentSkillRegistrySnapshot } from './agent';
 import type { PromptStreamEvent, PromptStreamHandle, AgentUserInputResponse } from './stream';
 import type { PromptAttachment, PromptAttachmentImportItem } from './chat';
-import type { AppNotification, AppUpdateSnapshot, ScheduledNotificationTask, ClaudeRuntimeSetupStatus, ClaudeSessionSummary, ClaudeSessionImportResult, RuntimeDoctorResult } from './app';
+import type { AppNotification, AppUpdateSnapshot, ScheduledNotificationTask, RuntimeDoctorResult } from './app';
 import type { AssetGenerationProviderConfig, AssetGenerationProviderInput, AssetGenerationProviderProfile, AssetGenerationRequest } from './asset-generation';
 
 export interface AppState {
@@ -120,10 +120,6 @@ export interface FunPlayApi {
       filePath?: string;
     }
   ) => Promise<ProjectMemoryFileSummary[]>;
-  detectClaudeRuntime: () => Promise<ClaudeRuntimeSetupStatus>;
-  runClaudeLogin: () => Promise<{ success: true; output?: string }>;
-  listClaudeCliSessions: (projectId?: string) => Promise<ClaudeSessionSummary[]>;
-  importClaudeCliSession: (projectId: string, sdkSessionId: string) => Promise<ClaudeSessionImportResult>;
   pickPromptAttachments: (projectId: string) => Promise<PromptAttachment[]>;
   listAgentRuntimeCapabilities: () => Promise<AgentRuntimeCapabilityReport[]>;
   getAgentRuntimeStatus: (projectId?: string) => Promise<AgentRuntimeStatus[]>;
@@ -191,7 +187,7 @@ export interface FunPlayApi {
   setDefaultProvider: (providerId: string) => Promise<AiSettings>;
   listProviderModels: (input: AiProviderModelListRequest) => Promise<AiProviderModelListResult>;
   testProvider: (providerId: string) => Promise<AiTestResult>;
-  runClaudeDoctor: (input?: { providerId?: string; projectId?: string; live?: boolean }) => Promise<RuntimeDoctorResult>;
+  runRuntimeDoctor: (input?: { providerId?: string; projectId?: string; live?: boolean }) => Promise<RuntimeDoctorResult>;
   runProviderDoctor: (providerId: string, input?: { projectId?: string; live?: boolean }) => Promise<RuntimeDoctorResult>;
   repairProviderDiagnostic: (input: { actionId: string; providerId?: string; projectId?: string; sessionId?: string; authStyle?: AiProviderAuthStyle; url?: string }) => Promise<{ success: true; stateChanged: boolean }>;
   exportRuntimeDiagnostics: (input?: { providerId?: string; projectId?: string; live?: boolean }) => Promise<string>;

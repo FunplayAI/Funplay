@@ -10,10 +10,6 @@ export interface RuntimeStageLike {
 }
 
 const DEVELOPER_RUNTIME_PATTERNS = [
-  /\bclaude\b/i,
-  /Claude\s+(Agent\s+)?SDK/i,
-  /Claude\s+Code/i,
-  /stage:claude/i,
   /stage:/i,
   /stage:(?:tool_loop|native_tool|openai_compatible|runtime_fallback)/i,
   /Native\s+(?:真实\s+)?Tool\s+Loop/i,

@@ -114,7 +114,7 @@ function emitStageSideEvent(ctx: StreamContext, stage: StageEvent): void {
       toolUseId: typeof stage.input?.toolUseId === 'string' ? stage.input.toolUseId : undefined,
       toolName: typeof stage.input?.toolName === 'string' ? stage.input.toolName : undefined,
       elapsedSeconds: typeof stage.input?.elapsedSeconds === 'number' ? stage.input.elapsedSeconds : undefined,
-      message: stage.summary || 'Claude 工具执行超时。',
+      message: stage.summary || '工具执行超时。',
       startedAt: ctx.startedAt
     });
   }

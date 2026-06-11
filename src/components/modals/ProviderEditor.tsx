@@ -1,12 +1,11 @@
 import { useEffect, useId, useMemo, useState, type JSX } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { AI_PROVIDER_PRESETS, resolveProviderAvailableModels, resolveProviderTokenLimits } from '../../../shared/provider-catalog';
-import type { AiProvider, AiProviderApiMode, AiProviderAuthStyle, AiProviderInput, AiProviderModelListRequest, AiProviderModelListResult, AiProviderProtocol, AiProviderRoleModels } from '../../../shared/types';
+import type { AiProvider, AiProviderApiMode, AiProviderAuthStyle, AiProviderInput, AiProviderModelListRequest, AiProviderModelListResult, AiProviderProtocol } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import { Button, CheckboxField, SelectField, TextAreaField, TextField } from '../ui/index';
 import {
   authStyleForProtocol,
-  claudeRoleModelFields,
   createProviderDraft,
   createProviderInputFromDraft,
   describeProviderPreset,
@@ -72,13 +71,6 @@ export function ProviderEditor(props: {
   }, [resolvedModelChoices]);
   const canFetchModelList = Boolean(draft.baseUrl.trim() && (draft.apiKey.trim() || props.provider?.hasStoredApiKey));
 
-  const updateClaudeRoleModel = (key: keyof AiProviderRoleModels, value: string): void => {
-    setDraft((current) => ({
-      ...current,
-      claudeRoleModels: { ...(current.claudeRoleModels ?? {}), [key]: value }
-    }));
-  };
-
   const applyProviderPreset = (presetId: string): void => {
     const next = AI_PROVIDER_PRESETS.find((item) => item.id === presetId);
     if (!next) return;
@@ -92,12 +84,9 @@ export function ProviderEditor(props: {
       baseUrl: next.baseUrl,
       model: props.provider ? current.model : next.defaultModel,
       upstreamModel: next.upstreamModel,
-      claudeCodeCompatible: next.protocol === 'anthropic' || Boolean(next.sdkProxyOnly),
-      claudeRoleModels: next.defaultRoleModels ?? (next.protocol === 'anthropic' ? current.claudeRoleModels ?? {} : {}),
       headers: next.defaultHeaders,
       envOverrides: next.defaultEnvOverrides,
       availableModels: next.availableModels,
-      sdkProxyOnly: next.sdkProxyOnly,
       providerMeta: next.providerMeta
     }));
   };
@@ -255,9 +244,7 @@ export function ProviderEditor(props: {
               ...current,
               protocol,
               authStyle: authStyleForProtocol(protocol, current.authStyle),
-              apiMode: protocol === 'openai-compatible' ? current.apiMode ?? 'chat' : undefined,
-              claudeCodeCompatible: protocol === 'anthropic' || current.sdkProxyOnly,
-              claudeRoleModels: protocol === 'anthropic' ? current.claudeRoleModels ?? {} : {}
+              apiMode: protocol === 'openai-compatible' ? current.apiMode ?? 'chat' : undefined
             }));
           }}
         />
@@ -284,12 +271,6 @@ export function ProviderEditor(props: {
             { value: 'custom_header', label: 'custom_header' }
           ]}
           onValueChange={(value) => setDraft((current) => ({ ...current, authStyle: value as AiProviderAuthStyle }))}
-        />
-        <CheckboxField
-          label="SDK Proxy Only"
-          description={localize(language, '只允许 Claude Code SDK/兼容链路使用该 Provider。', 'Only allow this provider through the Claude Code SDK/compatible path.')}
-          checked={Boolean(draft.sdkProxyOnly)}
-          onCheckedChange={(checked) => setDraft((current) => ({ ...current, sdkProxyOnly: checked }))}
         />
         <div className="provider-role-model-grid">
           <TextField
@@ -351,31 +332,7 @@ export function ProviderEditor(props: {
           onCheckedChange={(checked) => setDraft((current) => ({ ...current, requestTimeoutMs: checked ? false : undefined }))}
         />
         <TextAreaField label="Headers" value={formatStringRecord(draft.headers)} onValueChange={(value) => setDraft((current) => ({ ...current, headers: parseStringRecord(value) }))} placeholder="X-Custom-Header=value" />
-        <TextAreaField label="Env Overrides" value={formatStringRecord(draft.envOverrides)} onValueChange={(value) => setDraft((current) => ({ ...current, envOverrides: parseStringRecord(value) }))} placeholder="CLAUDE_CODE_USE_BEDROCK=1" />
-        {draft.protocol === 'anthropic' ? (
-          <div className="fp-field provider-compat-section">
-            <div className="provider-compat-title">{localize(language, 'Claude runtime 角色模型映射', 'Claude runtime role model mapping')}</div>
-            <div className="helper-copy">
-              {localize(
-                language,
-                'Anthropic 协议 Provider 默认使用 Claude runtime 内置 WebSearch/WebFetch；未填写的角色会自动使用默认模型。',
-                'Anthropic-protocol providers use Claude runtime built-in WebSearch/WebFetch by default; empty roles fall back to the default model.'
-              )}
-            </div>
-            <div className="provider-role-model-grid">
-              {claudeRoleModelFields.map((field) => (
-                <TextField
-                  className="compact"
-                  key={field.key}
-                  label={localize(language, field.zh, field.en)}
-                  value={draft.claudeRoleModels?.[field.key] ?? ''}
-                  placeholder={field.placeholder}
-                  onValueChange={(value) => updateClaudeRoleModel(field.key, value)}
-                />
-              ))}
-            </div>
-          </div>
-        ) : null}
+        <TextAreaField label="Env Overrides" value={formatStringRecord(draft.envOverrides)} onValueChange={(value) => setDraft((current) => ({ ...current, envOverrides: parseStringRecord(value) }))} placeholder="HTTPS_PROXY=http://127.0.0.1:7890" />
       </details>
       <TextAreaField label={localize(language, '备注', 'Notes')} value={draft.notes} onValueChange={(value) => setDraft((current) => ({ ...current, notes: value }))} />
       <div className="modal-actions">

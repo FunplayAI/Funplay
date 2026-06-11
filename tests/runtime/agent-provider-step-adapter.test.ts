@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   aiSdkStepToAgentCoreProviderStepResult,
-  claudeResultEventToAgentCoreProviderStepResult,
   normalizeAgentCoreProviderFinishReason,
   openAiCompatibleStepToAgentCoreProviderStepResult
 } from '../../electron/main/agent-platform/provider-step-adapter.ts';
@@ -95,34 +94,4 @@ test('AI SDK provider step maps tool calls and usage', () => {
   assert.equal(step.toolCalls[0]?.providerCallId, 'tool_1');
   assert.equal(step.usage?.inputTokens, 7);
   assert.equal(step.usage?.outputTokens, 4);
-});
-
-test('Claude result event maps success and error states', () => {
-  const success = claudeResultEventToAgentCoreProviderStepResult({
-    type: 'result',
-    subtype: 'success',
-    result: 'ok',
-    is_error: false,
-    session_id: 'claude_1',
-    usage: {
-      input_tokens: 12,
-      output_tokens: 6,
-      cache_read_input_tokens: 2
-    }
-  }, {
-    providerId: 'provider_claude',
-    model: 'claude-sonnet'
-  });
-  const failure = claudeResultEventToAgentCoreProviderStepResult({
-    type: 'result',
-    subtype: 'error',
-    result: 'failed',
-    is_error: true
-  });
-
-  assert.equal(success.finishReason, 'stop');
-  assert.equal(success.text, 'ok');
-  assert.equal(success.usage?.totalTokens, 20);
-  assert.equal(success.rawMetadata?.sessionId, 'claude_1');
-  assert.equal(failure.finishReason, 'error');
 });

@@ -1,4 +1,4 @@
-import type { AiProvider, AiProviderInput, AiProviderMeta, AiProviderModel, AiProviderRoleModels, AiSettings, AppState } from '../../shared/types';
+import type { AiProvider, AiProviderInput, AiProviderMeta, AiProviderModel, AiSettings, AppState } from '../../shared/types';
 import {
   getProviderPresetDefaults,
   inferOpenAiCompatibleApiMode,
@@ -13,21 +13,6 @@ import {
   normalizeProviderRequestTimeoutMs
 } from './provider-runtime-options';
 import { makeId, nowIso } from '../../shared/utils';
-
-function normalizeProviderRoleModels(input?: AiProviderRoleModels): AiProviderRoleModels | undefined {
-  if (!input) {
-    return undefined;
-  }
-
-  const normalized: AiProviderRoleModels = {};
-  for (const key of ['default', 'reasoning', 'small', 'haiku', 'sonnet', 'opus'] as const) {
-    const value = input[key]?.trim();
-    if (value) {
-      normalized[key] = value;
-    }
-  }
-  return Object.keys(normalized).length > 0 ? normalized : undefined;
-}
 
 function normalizeStringRecord(input?: Record<string, string>): Record<string, string> | undefined {
   if (!input) {
@@ -71,14 +56,6 @@ function normalizeProviderMeta(input?: AiProviderMeta): AiProviderMeta | undefin
   return Object.values(normalized).some(Boolean) ? normalized : undefined;
 }
 
-function resolveClaudeCodeCompatible(input: Pick<AiProviderInput, 'protocol'>): boolean {
-  return input.protocol === 'anthropic';
-}
-
-function resolveClaudeRoleModels(input: Pick<AiProviderInput, 'protocol' | 'claudeRoleModels'>): AiProviderRoleModels | undefined {
-  return input.protocol === 'anthropic' ? normalizeProviderRoleModels(input.claudeRoleModels) : undefined;
-}
-
 export async function createProvider(state: AppState, input: AiProviderInput): Promise<AiProvider> {
   const timestamp = nowIso();
   const firstProvider = state.providers.length === 0;
@@ -104,10 +81,7 @@ export async function createProvider(state: AppState, input: AiProviderInput): P
     upstreamModel: resolveProviderUpstreamModel(providerForUpstream),
     headers: normalizeStringRecord(input.headers) ?? presetDefaults.headers,
     envOverrides: normalizeStringRecord(input.envOverrides) ?? presetDefaults.envOverrides,
-    claudeCodeCompatible: resolveClaudeCodeCompatible(input),
-    claudeRoleModels: resolveClaudeRoleModels(input) ?? presetDefaults.roleModels,
     availableModels,
-    sdkProxyOnly: input.sdkProxyOnly ?? presetDefaults.sdkProxyOnly,
     providerMeta: normalizeProviderMeta(input.providerMeta) ?? presetDefaults.providerMeta,
     contextWindowTokens: normalizeProviderContextWindowTokens(input.contextWindowTokens),
     maxOutputTokens: normalizeProviderMaxOutputTokens(input.maxOutputTokens),
@@ -148,12 +122,6 @@ export async function updateProvider(state: AppState, providerId: string, input:
     upstreamModel: input.upstreamModel?.trim() || current.upstreamModel || presetDefaults.upstreamModel,
     availableModels
   });
-  const claudeCodeCompatible = input.protocol === 'anthropic';
-  const claudeRoleModels = input.protocol === 'anthropic'
-    ? input.claudeRoleModels === undefined
-      ? normalizeProviderRoleModels(current.claudeRoleModels)
-      : normalizeProviderRoleModels(input.claudeRoleModels)
-    : undefined;
   const updated: AiProvider = {
     ...current,
     name: input.name.trim(),
@@ -171,10 +139,7 @@ export async function updateProvider(state: AppState, providerId: string, input:
     upstreamModel,
     headers: normalizeStringRecord(input.headers) ?? current.headers ?? presetDefaults.headers,
     envOverrides: normalizeStringRecord(input.envOverrides) ?? current.envOverrides ?? presetDefaults.envOverrides,
-    claudeCodeCompatible,
-    claudeRoleModels: claudeRoleModels ?? presetDefaults.roleModels,
     availableModels,
-    sdkProxyOnly: input.sdkProxyOnly ?? current.sdkProxyOnly ?? presetDefaults.sdkProxyOnly,
     providerMeta: normalizeProviderMeta(input.providerMeta) ?? current.providerMeta ?? presetDefaults.providerMeta,
     contextWindowTokens: normalizeProviderContextWindowTokens(input.contextWindowTokens),
     maxOutputTokens: normalizeProviderMaxOutputTokens(input.maxOutputTokens),

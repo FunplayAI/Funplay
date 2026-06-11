@@ -11,7 +11,7 @@ const checks = [
   {
     id: 'skills-registry-context-tools',
     title: 'Skills v2 registry, context activation, and tools',
-    command: 'node --experimental-strip-types --import ./tests/register-ts-loader.mjs --test --test-name-pattern "agent skill registry|filesystem skill metadata|slash-invoked filesystem skill|auto-activates model-invocable|native skill tools|Claude Agent SDK options preload" tests/runtime/agent-runtime.test.ts',
+    command: 'node --experimental-strip-types --import ./tests/register-ts-loader.mjs --test --test-name-pattern "agent skill registry|filesystem skill metadata|slash-invoked filesystem skill|auto-activates model-invocable|native skill tools" tests/runtime/agent-runtime.test.ts',
     timeoutMs: 45_000
   },
   {

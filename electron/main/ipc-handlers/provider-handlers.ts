@@ -12,11 +12,6 @@ import { createProvider, deleteProvider, setDefaultProvider, updateProvider } fr
 import { listProviderModels } from '../provider-model-service';
 import { testProviderConnection } from '../text-generator';
 import { resolveProviderTokenLimits } from '../../../shared/provider-catalog';
-import {
-  classifyClaudeRuntimeError,
-  redactClaudeRuntimeErrorDetail,
-  testClaudeCodeSdkProviderRuntime
-} from '../agent-platform/claude/runtime';
 import { resolveProviderForRuntime } from '../agent-platform/provider-resolver';
 import { sanitizeProviderForRenderer } from '../provider-secret-store';
 import { runRuntimeDoctor, repairRuntimeDoctor } from '../runtime-doctor-service';
@@ -90,52 +85,6 @@ export function registerProviderHandlers(ipcMain: IpcMain, ctx: HandlerContext):
       const resolved = resolveProviderForRuntime({ state, explicitProvider: provider });
       const tokenLimits = resolveProviderTokenLimits(provider);
       const modelPresetLabel = tokenLimits.displayName || tokenLimits.modelId;
-      if (runtimeStrategy !== 'native' && resolved.canUseClaudeCode) {
-        try {
-          const probe = await testClaudeCodeSdkProviderRuntime(provider);
-          return {
-            providerId: validatedProviderId,
-            status: 'success' as const,
-            message: [
-              `Claude SDK runtime 探针成功：${probe.responsePreview || 'OK'}`,
-              `Runtime: ${probe.runtimeId}`,
-              `CLI: ${probe.executableSource ?? 'unknown'} ${probe.executablePath ? `(${probe.executablePath})` : ''}`.trim(),
-              `Protocol: ${probe.providerProtocol ?? provider.protocol}`,
-              `Base URL: ${probe.baseUrl || provider.baseUrl || '(default)'}`,
-              `Model: ${probe.model || resolved.upstreamModel || provider.model}`,
-              modelPresetLabel ? `Model preset: ${modelPresetLabel}` : '',
-              `Context window: ${formatTokenLimit(tokenLimits.effectiveContextWindowTokens)}`,
-              `Max output: ${formatTokenLimit(tokenLimits.effectiveMaxOutputTokens)}`,
-              `Runtime strategy: ${runtimeStrategy}`
-            ].filter(Boolean).join('\n'),
-            testedAt
-          };
-        } catch (probeError) {
-          const diagnostic = classifyClaudeRuntimeError({ error: probeError, provider });
-          return {
-            providerId: validatedProviderId,
-            status: 'error' as const,
-            message: [
-              'Claude SDK runtime 探针失败；该测试已按当前 runtime/provider 真实链路执行。',
-              diagnostic.summary,
-              diagnostic.suggestedAction,
-              probeError instanceof Error ? redactClaudeRuntimeErrorDetail(probeError.message, provider) : 'Unknown Claude SDK runtime error',
-              `Provider: ${provider.name}`,
-              `Protocol: ${provider.protocol}`,
-              `Base URL: ${provider.baseUrl || '(default)'}`,
-              `Model: ${resolved.upstreamModel || provider.model}`,
-              modelPresetLabel ? `Model preset: ${modelPresetLabel}` : '',
-              `Context window: ${formatTokenLimit(tokenLimits.effectiveContextWindowTokens)}`,
-              `Max output: ${formatTokenLimit(tokenLimits.effectiveMaxOutputTokens)}`,
-              `Runtime strategy: ${runtimeStrategy}`
-            ].filter(Boolean).join('\n'),
-            testedAt
-          };
-        }
-      }
-      if (resolved.sdkProxyOnly) {
-        throw new Error('Provider is marked sdkProxyOnly; set runtime strategy to auto or claude-code-sdk before testing.');
-      }
       const text = await testProviderConnection(provider);
       return {
         providerId: validatedProviderId,

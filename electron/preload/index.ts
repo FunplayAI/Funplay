@@ -143,13 +143,8 @@ const api: FunPlayApi = {
   saveProjectMemoryFile: (projectId: string, filePath: string, content: string) =>
     ipcRenderer.invoke('memory:saveFile', projectId, filePath, content),
   clearProjectMemory: (projectId: string, input) => ipcRenderer.invoke('memory:clear', projectId, input),
-  detectClaudeRuntime: () => ipcRenderer.invoke('claude:detectRuntime'),
-  runClaudeLogin: () => ipcRenderer.invoke('claude:login'),
-  listClaudeCliSessions: (projectId?: string) => ipcRenderer.invoke('claude:listSessions', projectId),
-  importClaudeCliSession: (projectId: string, sdkSessionId: string) =>
-    ipcRenderer.invoke('claude:importSession', projectId, sdkSessionId),
-  runClaudeDoctor: (input?: { providerId?: string; projectId?: string; live?: boolean }) =>
-    ipcRenderer.invoke('claude:doctor', input),
+  runRuntimeDoctor: (input?: { providerId?: string; projectId?: string; live?: boolean }) =>
+    ipcRenderer.invoke('runtimeDoctor:run', input),
   pickPromptAttachments: (projectId: string) => ipcRenderer.invoke('dialog:pickPromptAttachments', projectId),
   listAgentRuntimeCapabilities: () => ipcRenderer.invoke('agent:listRuntimeCapabilities'),
   getAgentRuntimeStatus: (projectId?: string) => ipcRenderer.invoke('agent:getRuntimeStatus', projectId),

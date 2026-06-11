@@ -1,4 +1,4 @@
-import type { AiProvider, AiProviderInput, AiProviderModel, AiProviderModelListRequest, AiProviderModelListResult, AppState } from '../../shared/types';
+import type { AiProvider, AiProviderModel, AiProviderModelListRequest, AiProviderModelListResult, AppState } from '../../shared/types';
 import {
   getProviderPresetDefaults,
   inferOpenAiCompatibleApiMode,
@@ -96,10 +96,7 @@ function buildProviderForModelList(state: AppState, request: AiProviderModelList
     upstreamModel: input.upstreamModel?.trim() || current?.upstreamModel || presetDefaults.upstreamModel,
     headers: input.headers ?? current?.headers ?? presetDefaults.headers,
     envOverrides: input.envOverrides ?? current?.envOverrides ?? presetDefaults.envOverrides,
-    claudeCodeCompatible: input.claudeCodeCompatible ?? current?.claudeCodeCompatible ?? input.protocol === 'anthropic',
-    claudeRoleModels: input.claudeRoleModels ?? current?.claudeRoleModels ?? presetDefaults.roleModels,
     availableModels: input.availableModels ?? current?.availableModels ?? presetDefaults.availableModels,
-    sdkProxyOnly: input.sdkProxyOnly ?? current?.sdkProxyOnly ?? presetDefaults.sdkProxyOnly,
     providerMeta: input.providerMeta ?? current?.providerMeta ?? presetDefaults.providerMeta,
     contextWindowTokens: normalizeProviderContextWindowTokens(input.contextWindowTokens),
     maxOutputTokens: normalizeProviderMaxOutputTokens(input.maxOutputTokens),

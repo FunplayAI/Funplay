@@ -5,8 +5,7 @@ import type {
   RuntimeUsage
 } from '../../../shared/types';
 import type { OpenAiCompatibleToolCall, OpenAiCompatibleToolStepResult } from '../openai-compatible-types';
-import type { ClaudeResultEvent } from './claude/types';
-import { normalizeAiSdkUsage, normalizeClaudeSdkUsage, normalizeOpenAiUsage } from './usage';
+import { normalizeAiSdkUsage, normalizeOpenAiUsage } from './usage';
 
 interface ProviderStepAdapterOptions {
   providerId?: string;
@@ -131,29 +130,6 @@ export function aiSdkStepToAgentCoreProviderStepResult(
     })),
     rawMetadata: {
       rawFinishReason: step.finishReason
-    }
-  };
-}
-
-export function claudeResultEventToAgentCoreProviderStepResult(
-  event: ClaudeResultEvent | undefined,
-  options: ProviderStepAdapterOptions = {}
-): AgentCoreProviderStepResult {
-  return {
-    text: event?.result,
-    toolCalls: [],
-    finishReason: normalizeAgentCoreProviderFinishReason(event?.terminal_reason ?? event?.subtype, {
-      isError: Boolean(event?.is_error)
-    }),
-    usage: usageOrUndefined(normalizeClaudeSdkUsage(event?.usage as Parameters<typeof normalizeClaudeSdkUsage>[0], {
-      provider: options.providerId,
-      model: options.model
-    })),
-    rawMetadata: {
-      subtype: event?.subtype,
-      terminalReason: event?.terminal_reason,
-      sessionId: event?.session_id,
-      isError: event?.is_error
     }
   };
 }

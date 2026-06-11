@@ -13,6 +13,13 @@ function addColumnIfMissing(database: Database.Database, tableName: string, colu
   }
 }
 
+function dropColumnIfExists(database: Database.Database, tableName: string, columnName: string): void {
+  const columns = database.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === columnName)) {
+    database.exec(`ALTER TABLE ${tableName} DROP COLUMN ${columnName}`);
+  }
+}
+
 const initial: Migration = {
   version: 1,
   description: 'Initial schema with providers, projects, sessions, agent runs, runtime runs, file checkpoints',
@@ -397,6 +404,88 @@ const assetGenerationProjectLedger: Migration = {
   }
 };
 
+const LEGACY_CLAUDE_RUNTIME_ID = 'claude-code-sdk';
+const LEGACY_CLAUDE_OVERRIDE_KEYS = [
+  'claudeCodeSessionId',
+  'claudeCodeSessionCwd',
+  'claudeContextSummary',
+  'claudeContextSummaryUpdatedAt',
+  'claudeContextSummaryTurnCount',
+  'claudeContextSummaryCoverage',
+  'claudeWriteMode'
+] as const;
+
+const removeClaudeRuntime: Migration = {
+  version: 12,
+  description: 'Remove Claude Code SDK runtime: drop claude provider columns, migrate persisted runtime ids to native',
+  up(database) {
+    dropColumnIfExists(database, 'providers', 'claude_code_compatible');
+    dropColumnIfExists(database, 'providers', 'claude_role_models_json');
+    dropColumnIfExists(database, 'providers', 'sdk_proxy_only');
+
+    const sessionRows = database
+      .prepare('SELECT id, runtime_json FROM chat_sessions WHERE runtime_json IS NOT NULL')
+      .all() as Array<{ id: string; runtime_json: string }>;
+    const updateSession = database.prepare('UPDATE chat_sessions SET runtime_json = ? WHERE id = ?');
+    for (const row of sessionRows) {
+      let overrides: Record<string, unknown>;
+      try {
+        overrides = JSON.parse(row.runtime_json) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) {
+        continue;
+      }
+      let changed = false;
+      if (overrides.runtimeId === LEGACY_CLAUDE_RUNTIME_ID) {
+        overrides.runtimeId = 'native';
+        changed = true;
+      }
+      for (const key of LEGACY_CLAUDE_OVERRIDE_KEYS) {
+        if (key in overrides) {
+          delete overrides[key];
+          changed = true;
+        }
+      }
+      if (changed) {
+        updateSession.run(Object.keys(overrides).length > 0 ? JSON.stringify(overrides) : null, row.id);
+      }
+    }
+
+    const agentSettingsRow = database
+      .prepare('SELECT value_json FROM app_settings WHERE key = ?')
+      .get('agent_settings') as { value_json: string } | undefined;
+    if (agentSettingsRow) {
+      try {
+        const settings = JSON.parse(agentSettingsRow.value_json) as Record<string, unknown>;
+        if (settings && typeof settings === 'object' && settings.runtimeStrategy === LEGACY_CLAUDE_RUNTIME_ID) {
+          settings.runtimeStrategy = 'native';
+          database.prepare('UPDATE app_settings SET value_json = ? WHERE key = ?').run(JSON.stringify(settings), 'agent_settings');
+        }
+      } catch {
+        // Malformed settings JSON: leave as-is; runtime defaults take over at load time.
+      }
+    }
+
+    const runRows = database
+      .prepare("SELECT id, request_json FROM runtime_runs WHERE request_json LIKE '%claude-code-sdk%'")
+      .all() as Array<{ id: string; request_json: string }>;
+    const updateRun = database.prepare('UPDATE runtime_runs SET request_json = ? WHERE id = ?');
+    for (const row of runRows) {
+      try {
+        const request = JSON.parse(row.request_json) as Record<string, unknown>;
+        if (request && typeof request === 'object' && request.runtimeId === LEGACY_CLAUDE_RUNTIME_ID) {
+          request.runtimeId = 'native';
+          updateRun.run(JSON.stringify(request), row.id);
+        }
+      } catch {
+        // Malformed request JSON: leave as-is.
+      }
+    }
+  }
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   initial,
   usageTracking,
@@ -408,7 +497,8 @@ export const MIGRATIONS: readonly Migration[] = [
   mcpToolPolicyConfig,
   mcpToolSnapshots,
   mcpRawAudits,
-  assetGenerationProjectLedger
+  assetGenerationProjectLedger,
+  removeClaudeRuntime
 ];
 
 function readUserVersion(database: Database.Database): number {

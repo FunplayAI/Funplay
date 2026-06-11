@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const reportDir = join(repoRoot, 'out/maturity-gate');
 const args = new Set(process.argv.slice(2));
-const requireLive = args.has('--require-live') || process.env.FUNPLAY_MATURITY_REQUIRE_LIVE === 'true';
 const failOnSkipped = args.has('--fail-on-skipped') || process.env.FUNPLAY_MATURITY_FAIL_ON_SKIPPED === 'true';
 const requiredDryMaturityTier = process.argv
   .slice(2)
@@ -17,10 +16,6 @@ const requiredDryMaturityTier = process.argv
   .join('=') ||
   process.env.FUNPLAY_MATURITY_REQUIRED_TIER ||
   'dry-pass';
-const hasClaudeLiveCredentials = Boolean(
-  process.env.FUNPLAY_E2E_CLAUDE_API_KEY?.trim() &&
-  process.env.FUNPLAY_E2E_CLAUDE_MODEL?.trim()
-);
 
 const gates = [
   {
@@ -52,17 +47,6 @@ const gates = [
     required: true,
     nestedReportPath: join(repoRoot, 'out/agent-benchmark/latest-report.json'),
     requiredMaturityTier: requiredDryMaturityTier
-  },
-  {
-    id: 'claude-live-e2e',
-    title: 'Live Claude SDK runtime E2E',
-    command: 'npm run agent:e2e:claude-live',
-    timeoutMs: 1_000_000,
-    required: requireLive,
-    env: {
-      FUNPLAY_E2E_CLAUDE_REQUIRED: requireLive ? 'true' : 'false'
-    },
-    nestedReportPath: join(repoRoot, 'out/agent-e2e/claude-live-report.json')
   }
 ];
 
@@ -73,7 +57,6 @@ function nowIso() {
 function redactSecrets(value) {
   let output = value;
   for (const secret of [
-    process.env.FUNPLAY_E2E_CLAUDE_API_KEY,
     process.env.ANTHROPIC_API_KEY,
     process.env.ANTHROPIC_AUTH_TOKEN
   ]) {
@@ -223,9 +206,7 @@ function renderMarkdown(report) {
     `- Status: ${report.status}`,
     `- Started: ${report.startedAt}`,
     `- Finished: ${report.finishedAt}`,
-    `- Require live Claude: ${report.requireLive ? 'yes' : 'no'}`,
     `- Required dry maturity tier: ${report.requiredDryMaturityTier}`,
-    `- Claude live credentials present: ${report.environment.hasClaudeLiveCredentials ? 'yes' : 'no'}`,
     `- Platform: ${report.environment.platform}/${report.environment.arch}`,
     `- Node: ${report.environment.node}`,
     '',
@@ -325,15 +306,13 @@ async function main() {
     status: computeOverallStatus(results),
     startedAt,
     finishedAt: nowIso(),
-    requireLive,
     failOnSkipped,
     requiredDryMaturityTier,
     environment: {
       ci: Boolean(process.env.CI),
       platform: process.platform,
       arch: process.arch,
-      node: process.version,
-      hasClaudeLiveCredentials
+      node: process.version
     },
     gates: results
   };

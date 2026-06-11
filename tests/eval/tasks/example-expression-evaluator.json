@@ -2,12 +2,19 @@
   "id": "example-expression-evaluator",
   "title": "实现中缀算术表达式求值器（算法）",
   "description": "高难度算法:实现支持 + - * / 和括号、正确运算符优先级的中缀表达式求值。需要解析逻辑(如双栈或递归下降),是这套任务集里最能区分模型能力的一个。",
-  "dimensions": ["planning", "long_horizon", "tool_reliability"],
-  "runtimes": ["native", "claude-code-sdk"],
+  "dimensions": [
+    "planning",
+    "long_horizon",
+    "tool_reliability"
+  ],
+  "runtimes": [
+    "native"
+  ],
   "prompt": "实现 src/evaluator.js 里的 evaluate(expr)：对包含整数、+ - * /、括号和空格的中缀表达式求值，遵循标准运算符优先级。确保 npm test 全部通过。",
   "provider": {
-    "native": { "envKey": "FUNPLAY_EVAL_NATIVE" },
-    "claude-code-sdk": { "envKey": "FUNPLAY_EVAL_CLAUDE" }
+    "native": {
+      "envKey": "FUNPLAY_EVAL_NATIVE"
+    }
   },
   "workspace": {
     "files": [
@@ -26,7 +33,16 @@
     ]
   },
   "acceptance": [
-    { "id": "npm-test", "kind": "test", "command": "npm test", "required": true, "timeoutMs": 30000 }
+    {
+      "id": "npm-test",
+      "kind": "test",
+      "command": "npm test",
+      "required": true,
+      "timeoutMs": 30000
+    }
   ],
-  "budget": { "maxSteps": 120, "timeoutMs": 240000 }
+  "budget": {
+    "maxSteps": 120,
+    "timeoutMs": 240000
+  }
 }
