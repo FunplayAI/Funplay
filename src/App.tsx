@@ -9,6 +9,8 @@ import { useAssetGenerationProviders } from './hooks/useAssetGenerationProviders
 import { useSessionComposerStore } from './stores/sessionComposerStore';
 import { useUiShellStore, type WorkspaceSection } from './stores/uiShellStore';
 import { useProjectStore } from './stores/projectStore';
+import { useSessionStore } from './stores/sessionStore';
+import { useEngineSetupStore } from './stores/engineSetupStore';
 import { useNotificationTasks } from './hooks/useNotificationTasks';
 import { useProjectMemory } from './hooks/useProjectMemory';
 import { useChatFileOpeners, useFileInspector } from './hooks/useFileInspector';
@@ -34,8 +36,7 @@ import {
   type ProjectFileEntry,
   type Project,
   type ProjectSessionEffort,
-  type ProjectSessionRuntimeId,
-  type UnitySettings
+  type ProjectSessionRuntimeId
 } from '../shared/types';
 import { AppShell } from './components/layout/AppShell';
 import { AgentWorkbench } from './components/layout/AgentWorkbench';
@@ -89,13 +90,6 @@ type SessionRuntimeUpdate = {
   effort?: ProjectSessionEffort;
 };
 
-const emptySettings: UnitySettings = {
-  baseUrl: 'http://127.0.0.1:8765/',
-  profile: 'core',
-  lastStatus: 'idle',
-  lastCreatedProjectDirectory: '~/Downloads',
-  lastAssignedMcpPort: 8765
-};
 
 function App(): JSX.Element {
   // App-shell navigation + lifecycle UI state lives in the Zustand ui-shell store.
@@ -119,8 +113,11 @@ function App(): JSX.Element {
     handleUpdateAssetGenerationProvider,
     handleDeleteAssetGenerationProvider
   } = useAssetGenerationProviders();
-  const [settings, setSettings] = useState<UnitySettings>(emptySettings);
-  const [settingsDraft, setSettingsDraft] = useState(emptySettings);
+  // Engine/project-setup state (settings + onboarding wizard) lives in the engine-setup store.
+  const {
+    settings, setSettings, settingsDraft, setSettingsDraft,
+    onboardingProjectPath, setOnboardingProjectPath, onboardingEnginePluginId, setOnboardingEnginePluginId
+  } = useEngineSetupStore();
   // Per-session composer state now lives in the Zustand session-composer store.
   // The store setters share the React Dispatch<SetStateAction> shape, so call
   // sites and the hooks that receive them work unchanged.
@@ -133,7 +130,8 @@ function App(): JSX.Element {
   const queuedPromptsBySession = useSessionComposerStore((store) => store.queuedPrompts);
   const setQueuedPromptsBySession = useSessionComposerStore((store) => store.setQueuedPrompts);
   const clearSessionScopedState = useSessionComposerStore((store) => store.clearSessionScoped);
-  const [localActiveSessionByProject, setLocalActiveSessionByProject] = useState<Record<string, string>>({});
+  const localActiveSessionByProject = useSessionStore((store) => store.localActiveSessionByProject);
+  const setLocalActiveSessionByProject = useSessionStore((store) => store.setLocalActiveSessionByProject);
 
   const activeSessionSwitchTokenRef = useRef(0);
   const dequeueSessionIdsRef = useRef<Set<string>>(new Set());
@@ -147,9 +145,6 @@ function App(): JSX.Element {
     );
     return next;
   }
-
-  const [onboardingProjectPath, setOnboardingProjectPath] = useState('~/Downloads');
-  const [onboardingEnginePluginId, setOnboardingEnginePluginId] = useState('');
 
   const { uiPreferences, setUiPreferences, platformCards } = useUiPreferences();
   const {
