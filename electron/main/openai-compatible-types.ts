@@ -28,10 +28,17 @@ export interface OpenAiCompatibleToolCall {
   argumentsParseError?: string;
 }
 
+export interface OpenAiCompatibleImagePart {
+  mimeType: string;
+  dataBase64: string;
+}
+
 export type OpenAiCompatibleToolMessage =
   | {
       role: 'user';
       content: string;
+      /** Optional image parts; only serialized when the resolved model has vision capability. */
+      images?: OpenAiCompatibleImagePart[];
     }
   | {
       role: 'assistant';

@@ -21,6 +21,7 @@ export async function executeOpenAiCompatibleToolStage(input: {
   toolPool: NativeToolPool;
   instructionTracker: ProjectInstructionTracker;
   recordRunControllerToolResult: (toolResult: NativeRunControllerToolResult) => unknown;
+  visionEnabled?: boolean;
 }): Promise<{
   editFailureRecoveries: NativeEditFailureRecovery[];
 }> {
@@ -34,6 +35,7 @@ export async function executeOpenAiCompatibleToolStage(input: {
     callbacks: input.callbacks,
     toolPool: input.toolPool,
     instructionTracker: input.instructionTracker,
-    recordRunControllerToolResult: input.recordRunControllerToolResult
+    recordRunControllerToolResult: input.recordRunControllerToolResult,
+    visionEnabled: input.visionEnabled
   });
 }

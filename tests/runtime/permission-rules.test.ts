@@ -17,7 +17,9 @@ import {
 import type { AgentPermissionImpact, AgentPermissionRule } from '../../shared/types/index.ts';
 import type { AgentToolPermissionRequest } from '../../electron/main/agent-platform/permission-broker.ts';
 
-function rule(overrides: Partial<AgentPermissionRule> & Pick<AgentPermissionRule, 'toolName' | 'action'>): AgentPermissionRule {
+function rule(
+  overrides: Partial<AgentPermissionRule> & Pick<AgentPermissionRule, 'toolName' | 'action'>
+): AgentPermissionRule {
   return {
     id: `rule_${Math.random().toString(36).slice(2)}`,
     scope: 'session',
@@ -54,14 +56,8 @@ test('command prefix matches on token boundaries only', () => {
     evaluatePermissionRules(rules, 'run_command', impact({ commands: ['npm   run test:runtime'] })),
     'allow'
   );
-  assert.equal(
-    evaluatePermissionRules(rules, 'run_command', impact({ commands: ['npm run'] })),
-    'allow'
-  );
-  assert.equal(
-    evaluatePermissionRules(rules, 'run_command', impact({ commands: ['npm runner'] })),
-    undefined
-  );
+  assert.equal(evaluatePermissionRules(rules, 'run_command', impact({ commands: ['npm run'] })), 'allow');
+  assert.equal(evaluatePermissionRules(rules, 'run_command', impact({ commands: ['npm runner'] })), undefined);
   assert.equal(evaluatePermissionRules(rules, 'run_command', impact({ commands: [] })), undefined);
 });
 
@@ -70,24 +66,26 @@ test('deny wins over allow regardless of rule order', () => {
     rule({ toolName: 'run_command', commandPrefix: 'npm', action: 'allow' }),
     rule({ toolName: 'run_command', commandPrefix: 'npm run', action: 'deny' })
   ];
-  assert.equal(
-    evaluatePermissionRules(rules, 'run_command', impact({ commands: ['npm run dist'] })),
-    'deny'
-  );
-  assert.equal(
-    evaluatePermissionRules(rules, 'run_command', impact({ commands: ['npm install'] })),
-    'allow'
-  );
+  assert.equal(evaluatePermissionRules(rules, 'run_command', impact({ commands: ['npm run dist'] })), 'deny');
+  assert.equal(evaluatePermissionRules(rules, 'run_command', impact({ commands: ['npm install'] })), 'allow');
 });
 
 test('wildcard tool rules match any tool; path rules require all paths to match', () => {
   const rules = [rule({ toolName: '*', pathGlob: 'Assets/**', action: 'allow' })];
   assert.equal(
-    evaluatePermissionRules(rules, 'write_file', impact({ toolName: 'write_file', paths: ['Assets/a.png', 'Assets/sub/b.txt'] })),
+    evaluatePermissionRules(
+      rules,
+      'write_file',
+      impact({ toolName: 'write_file', paths: ['Assets/a.png', 'Assets/sub/b.txt'] })
+    ),
     'allow'
   );
   assert.equal(
-    evaluatePermissionRules(rules, 'write_file', impact({ toolName: 'write_file', paths: ['Assets/a.png', 'src/b.ts'] })),
+    evaluatePermissionRules(
+      rules,
+      'write_file',
+      impact({ toolName: 'write_file', paths: ['Assets/a.png', 'src/b.ts'] })
+    ),
     undefined
   );
 });

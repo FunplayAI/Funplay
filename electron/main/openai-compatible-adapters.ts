@@ -255,7 +255,15 @@ export class ChatCompletionsAdapter implements OpenAiCompatibleProtocolAdapter {
         }
         return {
           role: 'user',
-          content: message.content
+          content: message.images?.length
+            ? [
+                { type: 'text', text: message.content },
+                ...message.images.map((image) => ({
+                  type: 'image_url',
+                  image_url: { url: `data:${image.mimeType};base64,${image.dataBase64}` }
+                }))
+              ]
+            : message.content
         };
       })
     ];
@@ -378,7 +386,19 @@ export class ResponsesAdapter implements OpenAiCompatibleProtocolAdapter {
         return items;
       }
       return [
-        serializeResponsesTextMessage('user', message.content)
+        message.images?.length
+          ? {
+              type: 'message',
+              role: 'user',
+              content: [
+                { type: 'input_text', text: message.content },
+                ...message.images.map((image) => ({
+                  type: 'input_image',
+                  image_url: `data:${image.mimeType};base64,${image.dataBase64}`
+                }))
+              ]
+            }
+          : serializeResponsesTextMessage('user', message.content)
       ];
     });
 
@@ -554,7 +574,13 @@ export class AnthropicMessagesAdapter implements OpenAiCompatibleProtocolAdapter
         pushAnthropicMessageBlocks(turns, 'assistant', blocks);
         continue;
       }
-      pushAnthropicMessageBlocks(turns, 'user', [{ type: 'text', text: message.content }]);
+      pushAnthropicMessageBlocks(turns, 'user', [
+        { type: 'text', text: message.content },
+        ...(message.images ?? []).map((image) => ({
+          type: 'image' as const,
+          source: { type: 'base64' as const, media_type: image.mimeType, data: image.dataBase64 }
+        }))
+      ]);
     }
 
     if (useExplicitCacheBreakpoints && turns.length > 0) {

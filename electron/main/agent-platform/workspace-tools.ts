@@ -129,7 +129,10 @@ import {
   unique,
   truncate,
   isDocumentLikePath,
-  normalizeWorkspaceFilePath
+  normalizeWorkspaceFilePath,
+  mediaMimeForPath,
+  readWorkspaceFileBytes,
+  MAX_MEDIA_BYTES
 } from './workspace-tools-types';
 export {
   type WorkspaceWriteOperation,
@@ -2071,6 +2074,18 @@ export async function executeAgentToolAction(
           pages: action.pages,
           maxChars: typeof action.limit === 'number' ? Math.min(action.limit * 120, MAX_DOCUMENT_CHARS) : undefined
         });
+      }
+      const imageMime = mediaMimeForPath(action.path);
+      if (imageMime?.startsWith('image/')) {
+        // Image files cannot be text-decoded; return them as media so a
+        // vision-capable model can see them (a follow-up image turn is injected
+        // by the tool loop). Non-vision models get the summary note instead.
+        const { absolutePath, relativePath, size } = await readWorkspaceFileBytes(project, action.path, MAX_MEDIA_BYTES);
+        return {
+          ok: true,
+          summary: `图像文件 ${relativePath}（${imageMime}, ${size} bytes）。如模型支持视觉，将随后附上图像内容。`,
+          media: [{ type: 'image', mimeType: imageMime, localPath: absolutePath, title: relativePath }]
+        };
       }
       const file = await readProjectFileForProject(project, action.path);
       return {

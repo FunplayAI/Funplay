@@ -43,7 +43,11 @@ test('effort resolution clamps to the model-declared supported levels', () => {
   const gpt = provider({
     model: 'gpt-5.5',
     availableModels: [
-      { modelId: 'gpt-5.5', displayName: 'GPT-5.5', capabilities: { supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high'] } }
+      {
+        modelId: 'gpt-5.5',
+        displayName: 'GPT-5.5',
+        capabilities: { supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high'] }
+      }
     ]
   });
   assert.equal(resolveProviderEffortLevel(gpt, 'high'), 'high');
@@ -74,11 +78,19 @@ test('anthropic-messages adapter maps a tool result to a user tool_result block'
     stepRequest({
       messages: [
         { role: 'user', content: 'run the build' },
-        { role: 'assistant', content: '', toolCalls: [{ id: 'call_1', name: 'run_command', arguments: { command: 'npm run build' } }] },
+        {
+          role: 'assistant',
+          content: '',
+          toolCalls: [{ id: 'call_1', name: 'run_command', arguments: { command: 'npm run build' } }]
+        },
         { role: 'tool', toolCallId: 'call_1', name: 'run_command', content: 'build ok' }
       ] as OpenAiCompatibleToolMessage[]
     })
-  ) as { messages: Array<{ role: string; content: Array<Record<string, unknown>> }>; max_tokens: number; system?: unknown };
+  ) as {
+    messages: Array<{ role: string; content: Array<Record<string, unknown>> }>;
+    max_tokens: number;
+    system?: unknown;
+  };
 
   assert.equal(typeof body.max_tokens, 'number');
   const toolUse = body.messages.find((m) => m.role === 'assistant')?.content.find((b) => b.type === 'tool_use');
@@ -95,9 +107,10 @@ test('anthropic-messages adapter adds cache_control breakpoints only for anthrop
       { modelId: 'qwen-cache', displayName: 'Qwen', capabilities: { cachingShape: 'anthropic-explicit' } }
     ]
   });
-  const body = adapter.serializeToolStepRequest(
-    stepRequest({ provider: explicit, model: 'qwen-cache' })
-  ) as { system?: Array<Record<string, unknown>>; messages: Array<{ content: Array<Record<string, unknown>> }> };
+  const body = adapter.serializeToolStepRequest(stepRequest({ provider: explicit, model: 'qwen-cache' })) as {
+    system?: Array<Record<string, unknown>>;
+    messages: Array<{ content: Array<Record<string, unknown>> }>;
+  };
   assert.ok(Array.isArray(body.system));
   assert.ok(body.system?.[0]?.cache_control);
 
