@@ -568,10 +568,6 @@ function App(): JSX.Element {
     (selectedSessionRuntime?.providerId
       ? providers.find((provider) => provider.id === selectedSessionRuntime.providerId && provider.enabled)
       : undefined) ?? selectedDefaultProvider;
-  const selectedComposerValue = selectedSessionId ? (sessionDrafts[selectedSessionId] ?? '') : '';
-  const selectedComposerAttachments = selectedSessionId ? (sessionAttachments[selectedSessionId] ?? []) : [];
-  const selectedComposerError = selectedSessionId ? (sessionComposerErrors[selectedSessionId] ?? '') : '';
-  const selectedQueuedPrompts = selectedSessionId ? (queuedPromptsBySession[selectedSessionId] ?? []) : [];
   const { handlePickPromptAttachments, handleImportPromptAttachmentFiles, removePromptAttachment } =
     usePromptAttachmentImport({
       projectId: selectedProjectView?.id,
@@ -1564,10 +1560,6 @@ function App(): JSX.Element {
                 }
                 activePromptStream={selectedProjectStream}
                 developerMode={uiPreferences.developerMode}
-                composerDraft={selectedComposerValue}
-                composerAttachments={selectedComposerAttachments}
-                composerError={selectedComposerError}
-                queuedPrompts={selectedQueuedPrompts}
                 isSending={Boolean(
                   selectedProjectStream && !['completed', 'cancelled', 'error'].includes(selectedProjectStream.phase)
                 )}

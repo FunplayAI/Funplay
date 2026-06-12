@@ -16,6 +16,7 @@ import { localize, useUiLanguage, type UiLanguage } from '../../i18n';
 import { ChatComposer, type EngineConnectionSummary, type QueuedPromptItem } from './ChatComposer';
 import { MessageList, type EmptyChatAction } from './MessageList';
 import { getVisibleRuntimeStatusMessage } from './runtime-display';
+import { useSessionComposerStore } from '../../stores/sessionComposerStore';
 import {
   buildRuntimeTaskSummaryFromAgentCoreParts,
   buildRuntimeTaskSummaryFromTools
@@ -28,6 +29,8 @@ import { Button } from '../ui/index';
 export type { AgentPromptStreamState } from './agent/agent-stream-state';
 
 const EMPTY_CHAT_MESSAGES: ChatMessage[] = [];
+const EMPTY_ATTACHMENTS: PromptAttachment[] = [];
+const EMPTY_QUEUE: QueuedPromptItem[] = [];
 
 export function AgentChatView(props: {
   project: Project | null;
@@ -46,12 +49,8 @@ export function AgentChatView(props: {
     checkpointNote: string;
     rolledBackCount: number;
   } | null;
-  composerDraft: string;
-  composerAttachments: PromptAttachment[];
   activePromptStream: AgentPromptStreamState | null;
   developerMode: boolean;
-  composerError: string;
-  queuedPrompts: QueuedPromptItem[];
   isSending: boolean;
   onComposerChange: (value: string) => void;
   onPickAttachments: () => void;
@@ -110,6 +109,20 @@ export function AgentChatView(props: {
     }
     return props.project.sessions.find((session) => session.id === props.project?.activeSessionId) ?? props.project.sessions[0] ?? null;
   }, [props.project]);
+  // Per-session composer state is read directly from the session-composer store,
+  // keyed by the active session id (equal to App's selectedSessionId), instead of
+  // being drilled down as props.
+  const composerSessionId = activeSession?.id ?? '';
+  const composerDraft = useSessionComposerStore((store) => (composerSessionId ? store.drafts[composerSessionId] ?? '' : ''));
+  const composerAttachments = useSessionComposerStore((store) =>
+    composerSessionId ? store.attachments[composerSessionId] ?? EMPTY_ATTACHMENTS : EMPTY_ATTACHMENTS
+  );
+  const composerError = useSessionComposerStore((store) =>
+    composerSessionId ? store.composerErrors[composerSessionId] ?? '' : ''
+  );
+  const queuedPrompts = useSessionComposerStore((store) =>
+    composerSessionId ? store.queuedPrompts[composerSessionId] ?? EMPTY_QUEUE : EMPTY_QUEUE
+  );
   const sessionMessages: ChatMessage[] = props.project ? activeSession?.chat ?? props.project.chat : EMPTY_CHAT_MESSAGES;
   const visibleStreamStatusMessage = getVisibleRuntimeStatusMessage(visibleStream?.statusMessage, props.developerMode, language);
   const activeModelLabel = props.provider?.model || t('本地规划器', 'Local Planner');
@@ -123,8 +136,8 @@ export function AgentChatView(props: {
   const contextUsage = useMemo(() => estimateCurrentSessionContextUsage({
     messages: sessionMessages,
     stream: visibleStream,
-    draft: props.composerDraft,
-    attachments: props.composerAttachments,
+    draft: composerDraft,
+    attachments: composerAttachments,
     modelLabel: props.sessionModel || activeModelLabel,
     provider: contextUsageProvider,
     language
@@ -132,8 +145,8 @@ export function AgentChatView(props: {
     activeModelLabel,
     contextUsageProvider,
     language,
-    props.composerAttachments,
-    props.composerDraft,
+    composerAttachments,
+    composerDraft,
     props.sessionModel,
     sessionMessages,
     visibleStream
@@ -227,8 +240,8 @@ export function AgentChatView(props: {
   const emptyChatActions = buildEmptyChatActions(language, props.permissionMode);
 
   function handleSend(): void {
-    const prompt = props.composerDraft.trim();
-    if (!prompt && props.composerAttachments.length === 0) {
+    const prompt = composerDraft.trim();
+    if (!prompt && composerAttachments.length === 0) {
       return;
     }
 
@@ -301,11 +314,11 @@ export function AgentChatView(props: {
             )}
             <div className="agent-chat-column">
               <ChatComposer
-                draft={props.composerDraft}
-                attachments={props.composerAttachments}
+                draft={composerDraft}
+                attachments={composerAttachments}
                 contextUsage={contextUsage}
-                error={props.composerError}
-                queuedPrompts={props.queuedPrompts}
+                error={composerError}
+                queuedPrompts={queuedPrompts}
                 isSending={props.isSending}
                 statusMessage={visibleStreamStatusMessage}
                 runtimeTaskSummary={runtimeTaskSummary}
