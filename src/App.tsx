@@ -5,6 +5,7 @@ import { useSelectedProjectView } from './hooks/useSelectedProjectView';
 import { useAppNotifications } from './hooks/useAppNotifications';
 import { useAppUpdateStatus } from './hooks/useAppUpdateStatus';
 import { useProviderManager } from './hooks/useProviderManager';
+import { useAssetGenerationProviders } from './hooks/useAssetGenerationProviders';
 import { useNotificationTasks } from './hooks/useNotificationTasks';
 import { useProjectMemory } from './hooks/useProjectMemory';
 import { useChatFileOpeners, useFileInspector } from './hooks/useFileInspector';
@@ -19,7 +20,6 @@ import { ensureProjectSessions } from '../shared/project-sessions';
 import {
   type AgentPermissionMode,
   type AssetGenerationProviderConfig,
-  type AssetGenerationProviderInput,
   type BootstrapPayload,
   type CreateProjectInput,
   type EngineProjectDimension,
@@ -109,9 +109,13 @@ function App(): JSX.Element {
   const [isDeletingProject, setIsDeletingProject] = useState(false);
 
   const [projects, setProjects] = useState<Project[]>([]);
-  const [assetGenerationProviderConfigs, setAssetGenerationProviderConfigs] = useState<AssetGenerationProviderConfig[]>(
-    []
-  );
+  const {
+    assetGenerationProviderConfigs,
+    setAssetGenerationProviderConfigs,
+    handleCreateAssetGenerationProvider,
+    handleUpdateAssetGenerationProvider,
+    handleDeleteAssetGenerationProvider
+  } = useAssetGenerationProviders();
   const [settings, setSettings] = useState<UnitySettings>(emptySettings);
   const [settingsDraft, setSettingsDraft] = useState(emptySettings);
   const [selectedProjectId, setSelectedProjectId] = useState('');
@@ -135,6 +139,24 @@ function App(): JSX.Element {
       () => undefined
     );
     return next;
+  }
+
+  // Single source of truth for tearing down the per-session draft/attachment/
+  // error/queue records when a session (or all of a project's sessions) is
+  // deleted, so the four Record<string, …> maps never drift out of sync.
+  function clearSessionScopedState(sessionIds: string[]): void {
+    if (sessionIds.length === 0) {
+      return;
+    }
+    const removeKeys = <T,>(record: Record<string, T>): Record<string, T> => {
+      const next = { ...record };
+      sessionIds.forEach((id) => delete next[id]);
+      return next;
+    };
+    setSessionDrafts(removeKeys);
+    setSessionAttachments(removeKeys);
+    setSessionComposerErrors(removeKeys);
+    setQueuedPromptsBySession(removeKeys);
   }
 
   const [onboardingProjectPath, setOnboardingProjectPath] = useState('~/Downloads');
@@ -818,24 +840,6 @@ function App(): JSX.Element {
     setShowAppSettingsModal(true);
   }
 
-  async function handleCreateAssetGenerationProvider(input: AssetGenerationProviderInput): Promise<void> {
-    const provider = await window.funplay.createAssetGenerationProvider(input);
-    setAssetGenerationProviderConfigs((current) => [provider, ...current.filter((item) => item.id !== provider.id)]);
-  }
-
-  async function handleUpdateAssetGenerationProvider(
-    providerId: string,
-    input: AssetGenerationProviderInput
-  ): Promise<void> {
-    const provider = await window.funplay.updateAssetGenerationProvider(providerId, input);
-    setAssetGenerationProviderConfigs((current) => current.map((item) => (item.id === provider.id ? provider : item)));
-  }
-
-  async function handleDeleteAssetGenerationProvider(providerId: string): Promise<void> {
-    await window.funplay.deleteAssetGenerationProvider(providerId);
-    setAssetGenerationProviderConfigs((current) => current.filter((provider) => provider.id !== providerId));
-  }
-
   const sidebarNavItems = [
     { id: 'settings', label: localize(uiPreferences.language, '项目设置', 'Project Settings'), icon: '⚙' },
     { id: 'assets', label: localize(uiPreferences.language, '素材库', 'Assets'), icon: '▧' }
@@ -963,26 +967,7 @@ function App(): JSX.Element {
         delete next[projectPendingDelete.id];
         return next;
       });
-      setSessionDrafts((current) => {
-        const next = { ...current };
-        projectPendingDelete.sessions.forEach((session) => delete next[session.id]);
-        return next;
-      });
-      setSessionAttachments((current) => {
-        const next = { ...current };
-        projectPendingDelete.sessions.forEach((session) => delete next[session.id]);
-        return next;
-      });
-      setSessionComposerErrors((current) => {
-        const next = { ...current };
-        projectPendingDelete.sessions.forEach((session) => delete next[session.id]);
-        return next;
-      });
-      setQueuedPromptsBySession((current) => {
-        const next = { ...current };
-        projectPendingDelete.sessions.forEach((session) => delete next[session.id]);
-        return next;
-      });
+      clearSessionScopedState(projectPendingDelete.sessions.map((session) => session.id));
 
       if (selectedProjectId === projectPendingDelete.id) {
         const nextProjectId = result.remainingProjects[0]?.id ?? '';
@@ -1257,26 +1242,7 @@ function App(): JSX.Element {
       ...current,
       [updated.id]: updated.activeSessionId || updated.sessions[0]?.id || ''
     }));
-    setSessionDrafts((current) => {
-      const next = { ...current };
-      delete next[sessionId];
-      return next;
-    });
-    setSessionAttachments((current) => {
-      const next = { ...current };
-      delete next[sessionId];
-      return next;
-    });
-    setSessionComposerErrors((current) => {
-      const next = { ...current };
-      delete next[sessionId];
-      return next;
-    });
-    setQueuedPromptsBySession((current) => {
-      const next = { ...current };
-      delete next[sessionId];
-      return next;
-    });
+    clearSessionScopedState([sessionId]);
     setSection('agent');
   }
 
