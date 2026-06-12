@@ -8,6 +8,7 @@ import { useProviderManager } from './hooks/useProviderManager';
 import { useAssetGenerationProviders } from './hooks/useAssetGenerationProviders';
 import { useSessionComposerStore } from './stores/sessionComposerStore';
 import { useUiShellStore, type WorkspaceSection } from './stores/uiShellStore';
+import { useProjectStore } from './stores/projectStore';
 import { useNotificationTasks } from './hooks/useNotificationTasks';
 import { useProjectMemory } from './hooks/useProjectMemory';
 import { useChatFileOpeners, useFileInspector } from './hooks/useFileInspector';
@@ -104,11 +105,13 @@ function App(): JSX.Element {
     showAppSettingsModal, setShowAppSettingsModal, appSettingsInitialTab, setAppSettingsInitialTab,
     isLoading, setIsLoading, bootstrapError, setBootstrapError
   } = useUiShellStore();
-  const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(false);
-  const [projectPendingDelete, setProjectPendingDelete] = useState<Project | null>(null);
-  const [isDeletingProject, setIsDeletingProject] = useState(false);
-
-  const [projects, setProjects] = useState<Project[]>([]);
+  // Project-domain state lives in the Zustand project store.
+  const {
+    projects, setProjects, selectedProjectId, setSelectedProjectId, projectFiles, setProjectFiles,
+    assetLibraryViewByProject, setAssetLibraryViewByProject, showDeleteProjectModal, setShowDeleteProjectModal,
+    projectPendingDelete, setProjectPendingDelete, isDeletingProject, setIsDeletingProject,
+    deleteProjectSourceFiles, setDeleteProjectSourceFiles
+  } = useProjectStore();
   const {
     assetGenerationProviderConfigs,
     setAssetGenerationProviderConfigs,
@@ -118,7 +121,6 @@ function App(): JSX.Element {
   } = useAssetGenerationProviders();
   const [settings, setSettings] = useState<UnitySettings>(emptySettings);
   const [settingsDraft, setSettingsDraft] = useState(emptySettings);
-  const [selectedProjectId, setSelectedProjectId] = useState('');
   // Per-session composer state now lives in the Zustand session-composer store.
   // The store setters share the React Dispatch<SetStateAction> shape, so call
   // sites and the hooks that receive them work unchanged.
@@ -132,9 +134,6 @@ function App(): JSX.Element {
   const setQueuedPromptsBySession = useSessionComposerStore((store) => store.setQueuedPrompts);
   const clearSessionScopedState = useSessionComposerStore((store) => store.clearSessionScoped);
   const [localActiveSessionByProject, setLocalActiveSessionByProject] = useState<Record<string, string>>({});
-  const [projectFiles, setProjectFiles] = useState<ProjectFileEntry[]>([]);
-  const [deleteProjectSourceFiles, setDeleteProjectSourceFiles] = useState(false);
-  const [assetLibraryViewByProject, setAssetLibraryViewByProject] = useState<Record<string, AssetLibraryViewId>>({});
 
   const activeSessionSwitchTokenRef = useRef(0);
   const dequeueSessionIdsRef = useRef<Set<string>>(new Set());

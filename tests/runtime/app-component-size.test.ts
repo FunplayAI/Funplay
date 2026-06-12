@@ -37,8 +37,9 @@ const BASELINES: Record<string, number> = {
   // UI-fix pass removed dead imports + sessionRuntimeId passdown;
   // G-refactor: clearSessionScopedState helper + useAssetGenerationProviders hook;
   // UI-rewrite phase 1: per-session composer state moved to sessionComposerStore (Zustand);
-  // phase 2: app-shell navigation/lifecycle state moved to uiShellStore.
-  'src/App.tsx': 1915,
+  // phase 2: app-shell navigation/lifecycle state moved to uiShellStore;
+  // phase 3: project-domain state moved to projectStore.
+  'src/App.tsx': 1914,
   // ConversationMessage.tsx split into transcript/* modules by U47-3 — now 317 lines.
   // tool-activity.tsx split into tool/* modules by U47-4 — now 452 lines.
   // AgentChatView.tsx split into agent/* modules by U47-5 — now 371 lines.
