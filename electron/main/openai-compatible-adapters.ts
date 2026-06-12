@@ -6,14 +6,20 @@ import type {
   OpenAiCompatibleToolCall
 } from './openai-compatible-types';
 import {
+  ANTHROPIC_EFFORT_THINKING_BUDGET_TOKENS,
   resolveOpenAiCompatibleChatTokenParameter,
-  resolveOpenAiCompatibleProviderProfile
+  resolveOpenAiCompatibleProviderProfile,
+  resolveProviderModelMetadata,
+  type ResolvedProviderEffortLevel
 } from '../../shared/provider-catalog';
 import {
   isRecord,
+  extractReasoningFromAnthropicMessageBody,
   extractReasoningFromChatChoices,
+  extractTextFromAnthropicMessageBody,
   extractTextFromChatChoices,
-  extractTextFromResponsesBody
+  extractTextFromResponsesBody,
+  normalizeAnthropicMessagesUsage
 } from './openai-compatible-transport';
 import {
   getOpenAiCompatibleAssistantReasoningFields,
@@ -153,7 +159,9 @@ function makeParsedResponse(text: string, body: unknown): OpenAiCompatibleParsed
   };
 }
 
-function getChatTokenParameter(request: OpenAiCompatibleRequest | OpenAiCompatibleToolStepRequest): 'max_tokens' | 'max_completion_tokens' {
+function getChatTokenParameter(
+  request: OpenAiCompatibleRequest | OpenAiCompatibleToolStepRequest
+): 'max_tokens' | 'max_completion_tokens' {
   return resolveOpenAiCompatibleChatTokenParameter({
     name: request.provider.name,
     protocol: request.provider.protocol,
@@ -184,6 +192,11 @@ function serializeResponsesTextMessage(role: 'user' | 'assistant', content: stri
       }
     ]
   };
+}
+
+// OpenAI-style reasoning knobs only define low/medium/high on the wire; xhigh/max clamp to high.
+function toOpenAiReasoningEffort(level: ResolvedProviderEffortLevel): 'low' | 'medium' | 'high' {
+  return level === 'low' || level === 'medium' ? level : 'high';
 }
 
 export class ChatCompletionsAdapter implements OpenAiCompatibleProtocolAdapter {
@@ -244,7 +257,15 @@ export class ChatCompletionsAdapter implements OpenAiCompatibleProtocolAdapter {
         }
         return {
           role: 'user',
-          content: message.content
+          content: message.images?.length
+            ? [
+                { type: 'text', text: message.content },
+                ...message.images.map((image) => ({
+                  type: 'image_url',
+                  image_url: { url: `data:${image.mimeType};base64,${image.dataBase64}` }
+                }))
+              ]
+            : message.content
         };
       })
     ];
@@ -257,6 +278,9 @@ export class ChatCompletionsAdapter implements OpenAiCompatibleProtocolAdapter {
     }
     if (shouldSendAutoToolChoice(request)) {
       body.tool_choice = 'auto';
+    }
+    if (request.effort) {
+      body.reasoning_effort = toOpenAiReasoningEffort(request.effort);
     }
     body[getChatTokenParameter(request)] = request.maxOutputTokens;
     return body;
@@ -364,7 +388,19 @@ export class ResponsesAdapter implements OpenAiCompatibleProtocolAdapter {
         return items;
       }
       return [
-        serializeResponsesTextMessage('user', message.content)
+        message.images?.length
+          ? {
+              type: 'message',
+              role: 'user',
+              content: [
+                { type: 'input_text', text: message.content },
+                ...message.images.map((image) => ({
+                  type: 'input_image',
+                  image_url: `data:${image.mimeType};base64,${image.dataBase64}`
+                }))
+              ]
+            }
+          : serializeResponsesTextMessage('user', message.content)
       ];
     });
 
@@ -378,7 +414,8 @@ export class ResponsesAdapter implements OpenAiCompatibleProtocolAdapter {
       ...(request.tools.length > 0
         ? { tools: request.tools.map((toolDefinition) => serializeResponsesToolDefinition(toolDefinition, request)) }
         : {}),
-      ...(shouldSendAutoToolChoice(request) ? { tool_choice: 'auto' } : {})
+      ...(shouldSendAutoToolChoice(request) ? { tool_choice: 'auto' } : {}),
+      ...(request.effort ? { reasoning: { effort: toOpenAiReasoningEffort(request.effort) } } : {})
     };
   }
 
@@ -402,14 +439,237 @@ export class ResponsesAdapter implements OpenAiCompatibleProtocolAdapter {
         }
         const parsedArguments = parseToolArguments(item.arguments);
         return {
-          id:
-            typeof item.call_id === 'string'
-              ? item.call_id
-              : typeof item.id === 'string'
-                ? item.id
-                : `call_${index}`,
+          id: typeof item.call_id === 'string' ? item.call_id : typeof item.id === 'string' ? item.id : `call_${index}`,
           name,
           ...parsedArguments
+        };
+      })
+      .filter((toolCall): toolCall is OpenAiCompatibleToolCall => Boolean(toolCall));
+  }
+}
+
+type AnthropicMessageBlock = Record<string, unknown>;
+
+interface AnthropicMessageTurn {
+  role: 'user' | 'assistant';
+  content: AnthropicMessageBlock[];
+}
+
+const ANTHROPIC_MIN_MESSAGES_THINKING_BUDGET_TOKENS = 1024;
+const ANTHROPIC_EPHEMERAL_CACHE_CONTROL = { type: 'ephemeral' as const };
+
+// The Messages API requires strictly alternating user/assistant turns, so consecutive
+// same-role messages (e.g. several tool results) fold into one turn's content blocks.
+function pushAnthropicMessageBlocks(
+  turns: AnthropicMessageTurn[],
+  role: AnthropicMessageTurn['role'],
+  blocks: AnthropicMessageBlock[]
+): void {
+  if (blocks.length === 0) {
+    return;
+  }
+  const last = turns[turns.length - 1];
+  if (last && last.role === role) {
+    last.content.push(...blocks);
+    return;
+  }
+  turns.push({
+    role,
+    content: blocks
+  });
+}
+
+function mapAnthropicStopReasonToFinishReason(stopReason: string | undefined, text: string): string | undefined {
+  if (stopReason === 'tool_use') {
+    return 'tool_calls';
+  }
+  if (stopReason === 'max_tokens') {
+    return 'length';
+  }
+  if (stopReason === 'end_turn' || stopReason === 'stop_sequence') {
+    return 'stop';
+  }
+  if (stopReason) {
+    return stopReason;
+  }
+  return text.trim() ? 'stop' : undefined;
+}
+
+export class AnthropicMessagesAdapter implements OpenAiCompatibleProtocolAdapter {
+  readonly apiMode = 'anthropic-messages' as const;
+
+  getCompletionUrl(baseUrl: string): string {
+    // Anthropic-compatible endpoints sit at <root>/v1/messages; tolerate base URLs
+    // that already end in /v1 (the common OpenAI-compatible configuration style).
+    return baseUrl.endsWith('/v1') ? `${baseUrl}/messages` : `${baseUrl}/v1/messages`;
+  }
+
+  serializeRequest(request: OpenAiCompatibleRequest): unknown {
+    const system = request.messages
+      .filter((message) => message.role === 'system')
+      .map((message) => message.content.trim())
+      .filter(Boolean)
+      .join('\n\n');
+    const turns: AnthropicMessageTurn[] = [];
+    for (const message of request.messages) {
+      if (message.role === 'system' || !message.content.trim()) {
+        continue;
+      }
+      pushAnthropicMessageBlocks(turns, 'user', [{ type: 'text', text: message.content }]);
+    }
+
+    return {
+      model: request.model,
+      max_tokens: request.maxOutputTokens,
+      ...(system ? { system } : {}),
+      messages: turns
+    };
+  }
+
+  serializeToolStepRequest(request: OpenAiCompatibleToolStepRequest): unknown {
+    const capabilities = resolveProviderModelMetadata(request.provider)?.capabilities;
+    const useExplicitCacheBreakpoints = capabilities?.cachingShape === 'anthropic-explicit';
+    const preserveReasoning = capabilities?.preserveReasoning === true;
+
+    const turns: AnthropicMessageTurn[] = [];
+    for (const message of request.messages) {
+      if (message.role === 'responses_output') {
+        continue;
+      }
+      if (message.role === 'tool') {
+        pushAnthropicMessageBlocks(turns, 'user', [
+          {
+            type: 'tool_result',
+            tool_use_id: message.toolCallId,
+            content: [{ type: 'text', text: message.content }]
+          }
+        ]);
+        continue;
+      }
+      if (message.role === 'assistant') {
+        const blocks: AnthropicMessageBlock[] = [];
+        if (preserveReasoning && message.reasoningContent?.trim()) {
+          // MiniMax-style interleaved thinking round-trip: prior-turn reasoning is
+          // re-sent as a thinking block ahead of the visible assistant content.
+          blocks.push({
+            type: 'thinking',
+            thinking: message.reasoningContent,
+            signature: ''
+          });
+        }
+        if (message.content?.trim()) {
+          blocks.push({ type: 'text', text: message.content });
+        }
+        for (const toolCall of message.toolCalls ?? []) {
+          blocks.push({
+            type: 'tool_use',
+            id: toolCall.id,
+            name: toolCall.name,
+            input: toolCall.arguments
+          });
+        }
+        pushAnthropicMessageBlocks(turns, 'assistant', blocks);
+        continue;
+      }
+      pushAnthropicMessageBlocks(turns, 'user', [
+        { type: 'text', text: message.content },
+        ...(message.images ?? []).map((image) => ({
+          type: 'image' as const,
+          source: { type: 'base64' as const, media_type: image.mimeType, data: image.dataBase64 }
+        }))
+      ]);
+    }
+
+    if (useExplicitCacheBreakpoints && turns.length > 0) {
+      // One breakpoint on the last block of the last message: everything before it
+      // (system + tools + history) becomes the reusable cached prefix.
+      const lastTurn = turns[turns.length - 1];
+      const lastBlock = lastTurn.content[lastTurn.content.length - 1];
+      lastTurn.content[lastTurn.content.length - 1] = {
+        ...lastBlock,
+        cache_control: ANTHROPIC_EPHEMERAL_CACHE_CONTROL
+      };
+    }
+
+    const system = request.system.trim()
+      ? useExplicitCacheBreakpoints
+        ? [
+            {
+              type: 'text',
+              text: request.system,
+              cache_control: ANTHROPIC_EPHEMERAL_CACHE_CONTROL
+            }
+          ]
+        : request.system
+      : undefined;
+
+    const thinkingBudgetTokens = request.effort
+      ? Math.min(
+          ANTHROPIC_EFFORT_THINKING_BUDGET_TOKENS[request.effort],
+          request.maxOutputTokens - ANTHROPIC_MIN_MESSAGES_THINKING_BUDGET_TOKENS
+        )
+      : 0;
+
+    return {
+      model: request.model,
+      max_tokens: request.maxOutputTokens,
+      ...(system ? { system } : {}),
+      messages: turns,
+      ...(request.tools.length > 0
+        ? {
+            tools: request.tools.map((toolDefinition) => ({
+              name: toolDefinition.name,
+              description: toolDefinition.description,
+              input_schema: normalizeOpenAiCompatibleToolParameters(toolDefinition.parameters, {
+                provider: request.provider,
+                model: request.model,
+                apiMode: 'anthropic-messages'
+              }) ?? { type: 'object', properties: {} }
+            }))
+          }
+        : {}),
+      ...(shouldSendAutoToolChoice(request) ? { tool_choice: { type: 'auto' } } : {}),
+      ...(thinkingBudgetTokens >= ANTHROPIC_MIN_MESSAGES_THINKING_BUDGET_TOKENS
+        ? { thinking: { type: 'enabled', budget_tokens: thinkingBudgetTokens } }
+        : {})
+    };
+  }
+
+  parseResponse(body: unknown): OpenAiCompatibleParsedResponse {
+    const record = isRecord(body) ? body : {};
+    const text = extractTextFromAnthropicMessageBody(body);
+    const reasoningContent = extractReasoningFromAnthropicMessageBody(body);
+    const stopReason = typeof record.stop_reason === 'string' ? record.stop_reason : undefined;
+    return {
+      text,
+      reasoningContent: reasoningContent || undefined,
+      finishReason: mapAnthropicStopReasonToFinishReason(stopReason, text),
+      rawFinishReason: stopReason,
+      usage: normalizeAnthropicMessagesUsage(record.usage),
+      responseId: typeof record.id === 'string' ? record.id : undefined,
+      responseModelId: typeof record.model === 'string' ? record.model : undefined,
+      responseTimestamp: undefined,
+      responseBody: body
+    };
+  }
+
+  parseToolCalls(body: unknown): OpenAiCompatibleToolCall[] {
+    if (!isRecord(body) || !Array.isArray(body.content)) {
+      return [];
+    }
+    return body.content
+      .map((block, index) => {
+        if (!isRecord(block) || block.type !== 'tool_use') {
+          return undefined;
+        }
+        const name = typeof block.name === 'string' ? block.name : '';
+        if (!name) {
+          return undefined;
+        }
+        return {
+          id: typeof block.id === 'string' ? block.id : `toolu_${index}`,
+          name,
+          ...parseToolArguments(block.input)
         };
       })
       .filter((toolCall): toolCall is OpenAiCompatibleToolCall => Boolean(toolCall));

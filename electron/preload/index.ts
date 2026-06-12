@@ -29,8 +29,7 @@ const api: FunPlayApi = {
     projectPath: string;
     enginePluginId?: string;
     unityEditorVersion?: string;
-  }) =>
-    ipcRenderer.invoke('onboarding:diagnoseEnvironment', input),
+  }) => ipcRenderer.invoke('onboarding:diagnoseEnvironment', input),
   runEnvironmentAction: (input: {
     actionId: EnvironmentActionKind;
     platform: PlatformChoice;
@@ -71,27 +70,40 @@ const api: FunPlayApi = {
     ipcRenderer.on(channel, wrapped);
     return () => ipcRenderer.removeListener(channel, wrapped);
   },
-  readProjectFile: (projectId: string, filePath: string) => ipcRenderer.invoke('projects:readFile', projectId, filePath),
+  readProjectFile: (projectId: string, filePath: string) =>
+    ipcRenderer.invoke('projects:readFile', projectId, filePath),
   writeProjectFile: (projectId: string, filePath: string, content: string) =>
     ipcRenderer.invoke('projects:writeFile', projectId, filePath, content),
-  openProjectFile: (projectId: string, filePath: string) => ipcRenderer.invoke('projects:openFile', projectId, filePath),
-  revealProjectFile: (projectId: string, filePath: string) => ipcRenderer.invoke('projects:revealFile', projectId, filePath),
-  startProjectHtmlPreviewServer: (projectId: string) => ipcRenderer.invoke('projects:startHtmlPreviewServer', projectId),
+  openProjectFile: (projectId: string, filePath: string) =>
+    ipcRenderer.invoke('projects:openFile', projectId, filePath),
+  revealProjectFile: (projectId: string, filePath: string) =>
+    ipcRenderer.invoke('projects:revealFile', projectId, filePath),
+  startProjectHtmlPreviewServer: (projectId: string) =>
+    ipcRenderer.invoke('projects:startHtmlPreviewServer', projectId),
   stopProjectHtmlPreviewServer: (projectId: string) => ipcRenderer.invoke('projects:stopHtmlPreviewServer', projectId),
   refreshProjectRuntimeState: (projectId: string) => ipcRenderer.invoke('projects:refreshRuntimeState', projectId),
-  createProjectSession: (projectId: string, title?: string) => ipcRenderer.invoke('projects:createSession', projectId, title),
+  createProjectSession: (projectId: string, title?: string) =>
+    ipcRenderer.invoke('projects:createSession', projectId, title),
   renameProjectSession: (projectId: string, sessionId: string, title: string) =>
     ipcRenderer.invoke('projects:renameSession', projectId, sessionId, title),
-  deleteProjectSession: (projectId: string, sessionId: string) => ipcRenderer.invoke('projects:deleteSession', projectId, sessionId),
-  setActiveProjectSession: (projectId: string, sessionId: string) => ipcRenderer.invoke('projects:setActiveSession', projectId, sessionId),
-  updateProjectAgentPolicy: (projectId: string, policy) => ipcRenderer.invoke('projects:updateAgentPolicy', projectId, policy),
+  deleteProjectSession: (projectId: string, sessionId: string) =>
+    ipcRenderer.invoke('projects:deleteSession', projectId, sessionId),
+  setActiveProjectSession: (projectId: string, sessionId: string) =>
+    ipcRenderer.invoke('projects:setActiveSession', projectId, sessionId),
+  updateProjectAgentPolicy: (projectId: string, policy) =>
+    ipcRenderer.invoke('projects:updateAgentPolicy', projectId, policy),
   listAgentSkillCatalog: (options?: { refresh?: boolean }) => ipcRenderer.invoke('skills:listCatalog', options),
   listProjectAgentSkillRegistry: (projectId: string) => ipcRenderer.invoke('skills:listProjectRegistry', projectId),
   updateProjectSessionRuntime: (projectId: string, sessionId: string, runtime) =>
     ipcRenderer.invoke('projects:updateSessionRuntime', projectId, sessionId, runtime),
   sendPrompt: (projectId: string, message: string) => ipcRenderer.invoke('projects:sendPrompt', projectId, message),
-  startPromptStream: (projectId: string, message: string, sessionId?: string, attachments?: PromptAttachment[], uiLanguage?: 'zh-CN' | 'en-US') =>
-    ipcRenderer.invoke('projects:startPromptStream', projectId, message, sessionId, attachments, uiLanguage),
+  startPromptStream: (
+    projectId: string,
+    message: string,
+    sessionId?: string,
+    attachments?: PromptAttachment[],
+    uiLanguage?: 'zh-CN' | 'en-US'
+  ) => ipcRenderer.invoke('projects:startPromptStream', projectId, message, sessionId, attachments, uiLanguage),
   importPromptAttachments: (projectId, items) => ipcRenderer.invoke('dialog:importPromptAttachments', projectId, items),
   getPathForFile: (file) => webUtils.getPathForFile(file),
   cancelPromptStream: (streamId: string) => ipcRenderer.invoke('projects:cancelPromptStream', streamId),
@@ -139,17 +151,13 @@ const api: FunPlayApi = {
   listNotificationTasks: () => ipcRenderer.invoke('notifications:listTasks'),
   cancelNotificationTask: (taskId: string) => ipcRenderer.invoke('notifications:cancelTask', taskId),
   listProjectMemoryFiles: (projectId: string) => ipcRenderer.invoke('memory:listFiles', projectId),
-  readProjectMemoryFile: (projectId: string, filePath: string) => ipcRenderer.invoke('memory:readFile', projectId, filePath),
+  readProjectMemoryFile: (projectId: string, filePath: string) =>
+    ipcRenderer.invoke('memory:readFile', projectId, filePath),
   saveProjectMemoryFile: (projectId: string, filePath: string, content: string) =>
     ipcRenderer.invoke('memory:saveFile', projectId, filePath, content),
   clearProjectMemory: (projectId: string, input) => ipcRenderer.invoke('memory:clear', projectId, input),
-  detectClaudeRuntime: () => ipcRenderer.invoke('claude:detectRuntime'),
-  runClaudeLogin: () => ipcRenderer.invoke('claude:login'),
-  listClaudeCliSessions: (projectId?: string) => ipcRenderer.invoke('claude:listSessions', projectId),
-  importClaudeCliSession: (projectId: string, sdkSessionId: string) =>
-    ipcRenderer.invoke('claude:importSession', projectId, sdkSessionId),
-  runClaudeDoctor: (input?: { providerId?: string; projectId?: string; live?: boolean }) =>
-    ipcRenderer.invoke('claude:doctor', input),
+  runRuntimeDoctor: (input?: { providerId?: string; projectId?: string; live?: boolean }) =>
+    ipcRenderer.invoke('runtimeDoctor:run', input),
   pickPromptAttachments: (projectId: string) => ipcRenderer.invoke('dialog:pickPromptAttachments', projectId),
   listAgentRuntimeCapabilities: () => ipcRenderer.invoke('agent:listRuntimeCapabilities'),
   getAgentRuntimeStatus: (projectId?: string) => ipcRenderer.invoke('agent:getRuntimeStatus', projectId),
@@ -221,15 +229,22 @@ const api: FunPlayApi = {
     baseUrl?: string
   ) => ipcRenderer.invoke('unity:completeArgument', ref, argumentName, value, context, baseUrl),
   createProvider: (input: AiProviderInput) => ipcRenderer.invoke('providers:create', input),
-  updateProvider: (providerId: string, input: AiProviderInput) => ipcRenderer.invoke('providers:update', providerId, input),
+  updateProvider: (providerId: string, input: AiProviderInput) =>
+    ipcRenderer.invoke('providers:update', providerId, input),
   deleteProvider: (providerId: string) => ipcRenderer.invoke('providers:delete', providerId),
   setDefaultProvider: (providerId: string) => ipcRenderer.invoke('providers:setDefault', providerId),
   listProviderModels: (input) => ipcRenderer.invoke('providers:listModels', input),
   testProvider: (providerId: string) => ipcRenderer.invoke('providers:test', providerId),
   runProviderDoctor: (providerId: string, input?: { projectId?: string; live?: boolean }) =>
     ipcRenderer.invoke('providers:doctor', providerId, input),
-  repairProviderDiagnostic: (input: { actionId: string; providerId?: string; projectId?: string; sessionId?: string; authStyle?: AiProviderAuthStyle; url?: string }) =>
-    ipcRenderer.invoke('providers:repair', input),
+  repairProviderDiagnostic: (input: {
+    actionId: string;
+    providerId?: string;
+    projectId?: string;
+    sessionId?: string;
+    authStyle?: AiProviderAuthStyle;
+    url?: string;
+  }) => ipcRenderer.invoke('providers:repair', input),
   exportRuntimeDiagnostics: (input?: { providerId?: string; projectId?: string; live?: boolean }) =>
     ipcRenderer.invoke('diagnostics:export', input)
 };

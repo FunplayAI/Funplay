@@ -2,12 +2,19 @@
   "id": "example-lru-cache",
   "title": "从零实现 LRU 缓存（复杂数据结构）",
   "description": "考察规划与实现:给定行为测试(含容量淘汰、访问刷新最近使用),从空函数实现一个正确的 LRU 缓存。逻辑比单函数实现复杂,需要正确维护使用顺序。",
-  "dimensions": ["planning", "tool_reliability", "long_horizon"],
-  "runtimes": ["native", "claude-code-sdk"],
+  "dimensions": [
+    "planning",
+    "tool_reliability",
+    "long_horizon"
+  ],
+  "runtimes": [
+    "native"
+  ],
   "prompt": "实现 src/lru.js 里的 createLRU(capacity)，支持 get(key) 与 put(key, value)，并在超过容量时淘汰最近最少使用的条目。确保 npm test 全部通过。",
   "provider": {
-    "native": { "envKey": "FUNPLAY_EVAL_NATIVE" },
-    "claude-code-sdk": { "envKey": "FUNPLAY_EVAL_CLAUDE" }
+    "native": {
+      "envKey": "FUNPLAY_EVAL_NATIVE"
+    }
   },
   "workspace": {
     "files": [
@@ -26,7 +33,16 @@
     ]
   },
   "acceptance": [
-    { "id": "npm-test", "kind": "test", "command": "npm test", "required": true, "timeoutMs": 30000 }
+    {
+      "id": "npm-test",
+      "kind": "test",
+      "command": "npm test",
+      "required": true,
+      "timeoutMs": 30000
+    }
   ],
-  "budget": { "maxSteps": 120, "timeoutMs": 240000 }
+  "budget": {
+    "maxSteps": 120,
+    "timeoutMs": 240000
+  }
 }

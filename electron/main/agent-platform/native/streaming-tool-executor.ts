@@ -19,6 +19,7 @@ import {
 import { type NativeRunControllerToolResult, type NativeToolLoopCallbacks } from './tool-loop-controller';
 import { observeNativeToolLoopToolResult } from './tool-loop-observer';
 import type { NativeOpenAiToolInvocation, NativeToolLoopState } from './tool-loop-state';
+import { collectToolResultImageParts } from './multimodal';
 import {
   executeNativeWorkspaceToolTransaction,
   recordNativeWorkspaceToolTransactionResult,
@@ -263,6 +264,49 @@ function createNativeStreamingToolRecorder(input: {
     recordToolResult,
     recordToolUseStart
   };
+}
+
+/**
+ * Tool results carry images on the UI-facing `media` field only. OpenAI-compatible
+ * APIs cannot embed images inside a tool-result message, so when the model has
+ * vision we push a synthetic follow-up user turn carrying the image parts (the
+ * established Cline/OpenHands pattern). Without vision we leave a short text note
+ * so the model knows an image exists but it cannot see it.
+ */
+async function appendToolResultImageMessage(input: {
+  state: NativeToolLoopState;
+  toolResult: NativeWorkspaceToolOutput;
+  toolName: string;
+  visionEnabled: boolean;
+}): Promise<void> {
+  const imageBlocks = input.toolResult.media?.filter((block) => block.type === 'image') ?? [];
+  if (imageBlocks.length === 0) {
+    return;
+  }
+  if (!input.visionEnabled) {
+    input.state.messages.push({
+      role: 'user',
+      content: `（工具 ${input.toolName} 返回了 ${imageBlocks.length} 张图像，但当前模型不支持图像输入，无法查看。如需理解图像内容，请改用支持视觉的模型。）`
+    });
+    return;
+  }
+  const { parts, droppedCount } = await collectToolResultImageParts(imageBlocks);
+  if (parts.length === 0) {
+    input.state.messages.push({
+      role: 'user',
+      content: `（工具 ${input.toolName} 返回的图像无法解码或超出大小上限，已跳过。）`
+    });
+    return;
+  }
+  const note =
+    droppedCount > 0
+      ? `以下为工具 ${input.toolName} 返回的图像（另有 ${droppedCount} 张因数量/大小上限被跳过）：`
+      : `以下为工具 ${input.toolName} 返回的图像：`;
+  input.state.messages.push({
+    role: 'user',
+    content: note,
+    images: parts
+  });
 }
 
 function formatToolResultContentForModel(summary: string, toolResult: NativeWorkspaceToolOutput): string {
@@ -575,6 +619,7 @@ export async function executeNativeStreamingToolPlan(input: {
   toolPool: NativeToolPool;
   instructionTracker: ProjectInstructionTracker;
   recordRunControllerToolResult: (toolResult: NativeRunControllerToolResult) => unknown;
+  visionEnabled?: boolean;
 }): Promise<{
   editFailureRecoveries: NativeEditFailureRecovery[];
 }> {
@@ -636,6 +681,12 @@ export async function executeNativeStreamingToolPlan(input: {
           execution,
           eventObserver,
           recordToolResult: recorder.recordToolResult
+        });
+        await appendToolResultImageMessage({
+          state: input.state,
+          toolResult: execution.toolResult,
+          toolName: execution.invocation.toolCall.name,
+          visionEnabled: input.visionEnabled === true
         });
         recordExecutionSideEffects({
           execution,

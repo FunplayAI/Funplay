@@ -1,8 +1,21 @@
+import type { AgentPermissionRule } from './agent';
 import type { AgentToolArtifact, AgentToolBrowserResult, AgentToolTerminalResult, ChatMessage } from './chat';
 import type { AssetGenerationJob, AssetGenerationPreset } from './asset-generation';
-import type { McpPluginBindings, UnityHealthResult, PlatformChoice, ProjectSetupMode, EngineProjectDimension, McpPluginKind } from './unity';
+import type {
+  McpPluginBindings,
+  UnityHealthResult,
+  PlatformChoice,
+  ProjectSetupMode,
+  EngineProjectDimension,
+  McpPluginKind
+} from './unity';
 
-export type GameTemplateId = 'generic-workspace' | 'engine-game-prototype' | '2d-roguelike' | 'narrative-adventure' | 'topdown-action';
+export type GameTemplateId =
+  | 'generic-workspace'
+  | 'engine-game-prototype'
+  | '2d-roguelike'
+  | 'narrative-adventure'
+  | 'topdown-action';
 export type TaskPhase = 'Concept' | 'Content' | 'Unity' | 'Validation';
 export type TaskStatus = 'pending' | 'in_progress' | 'done';
 export type AssetType = 'character' | 'environment' | 'ui' | 'audio' | 'vfx';
@@ -17,12 +30,11 @@ export type GameAgentPluginReportStatus = 'completed' | 'failed' | 'skipped';
 export type GameAgentActionStatus = 'planned' | 'suggested' | 'running' | 'completed' | 'failed' | 'skipped';
 export type GameAgentOperationType = 'tool_call' | 'resource_read';
 export type AgentPermissionMode = 'full-access' | 'ask' | 'read-only';
-export type ProjectSessionRuntimeId = 'native' | 'claude-code-sdk';
+export type ProjectSessionRuntimeId = 'native';
 export type AgentRuntimeStrategy = 'auto' | ProjectSessionRuntimeId;
 export type AgentRuntimeReportId = ProjectSessionRuntimeId;
 export type ProjectSessionMode = 'agent';
 export type ProjectSessionEffort = 'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-export type ClaudeRuntimeWriteMode = 'external-audited' | 'host-controlled';
 export type AgentRunKind = 'conversation' | 'bootstrap';
 export type AgentRunResumeStrategy = 'restart_prompt' | 'resume_after_last_completed_tool' | 'resume_from_checkpoint';
 export type AgentRuntimeRunStatus = 'running' | 'interrupted' | 'failed' | 'completed';
@@ -34,12 +46,7 @@ export type AgentTaskSubagentMode = 'single' | 'parallel' | 'background';
 export type AgentTaskSubagentStatus = 'pending' | 'running' | 'completed' | 'failed';
 export type AgentVerificationCheckKind = 'command' | 'build' | 'test' | 'browser' | 'mcp' | 'manual';
 export type AgentVerificationStatus = 'pending' | 'running' | 'passed' | 'failed' | 'skipped';
-export type AgentVerificationTrigger =
-  | 'manual'
-  | 'timeline'
-  | 'tool_result'
-  | 'active_write'
-  | 'active_engine';
+export type AgentVerificationTrigger = 'manual' | 'timeline' | 'tool_result' | 'active_write' | 'active_engine';
 export type ProjectMemoryFileKind = 'longterm' | 'daily' | 'note';
 export type ProjectMemoryEntryKind = 'user_preference' | 'project_fact' | 'decision' | 'task_state';
 export type ProjectMemoryClearScope = 'file' | 'daily' | 'all';
@@ -167,22 +174,6 @@ export interface ProjectMemoryFileContent extends ProjectMemoryFileSummary {
   content: string;
 }
 
-export interface ClaudeContextSummaryCoverage {
-  version: number;
-  strategy: 'provider' | 'extractive';
-  sourceRuntimeSessionId?: string;
-  fromMessageId?: string;
-  toMessageId?: string;
-  boundaryRowId?: number;
-  boundaryOrdinal?: number;
-  coveredMessageCount?: number;
-  summaryInputMessageIds?: string[];
-  messageCount: number;
-  turnCount: number;
-  generatedAt: string;
-  audit?: ContextSummaryAudit;
-}
-
 export interface NativeContextSummaryCoverage {
   version: number;
   strategy: 'provider' | 'extractive';
@@ -209,6 +200,8 @@ export interface ContextSummaryAudit {
 export interface SessionWritePermissionGrant {
   tools: string[];
   mcpTools?: string[];
+  /** Argument-scoped session rules. Absent on grants persisted before rules existed. */
+  rules?: AgentPermissionRule[];
   grantedAt: number;
   expiresAt: number;
   runtimeId?: ProjectSessionRuntimeId;
@@ -234,17 +227,10 @@ export interface ProjectSession {
     outputFormat?: Record<string, unknown>;
     agents?: Record<string, unknown>;
     agent?: string;
-    claudeCodeSessionId?: string;
-    claudeCodeSessionCwd?: string;
-    claudeContextSummary?: string;
-    claudeContextSummaryUpdatedAt?: string;
-    claudeContextSummaryTurnCount?: number;
-    claudeContextSummaryCoverage?: ClaudeContextSummaryCoverage;
     nativeContextSummary?: string;
     nativeContextSummaryUpdatedAt?: string;
     nativeContextSummaryTurnCount?: number;
     nativeContextSummaryCoverage?: NativeContextSummaryCoverage;
-    claudeWriteMode?: ClaudeRuntimeWriteMode;
     sessionWritePermissionGrant?: SessionWritePermissionGrant;
   };
   chat: ChatMessage[];

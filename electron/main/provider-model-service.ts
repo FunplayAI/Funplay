@@ -1,4 +1,10 @@
-import type { AiProvider, AiProviderInput, AiProviderModel, AiProviderModelListRequest, AiProviderModelListResult, AppState } from '../../shared/types';
+import type {
+  AiProvider,
+  AiProviderModel,
+  AiProviderModelListRequest,
+  AiProviderModelListResult,
+  AppState
+} from '../../shared/types';
 import {
   getProviderPresetDefaults,
   inferOpenAiCompatibleApiMode,
@@ -65,7 +71,8 @@ function buildModelListUrl(provider: AiProvider): string {
   if (provider.protocol === 'anthropic') {
     parsed.pathname = path && path !== '/' && /\/v\d+(?:\/|$)/i.test(path) ? `${path}/models` : '/v1/models';
   } else if (provider.protocol === 'google') {
-    parsed.pathname = path && path !== '/' && /\/v\d+(?:beta|alpha)?(?:\/|$)/i.test(path) ? `${path}/models` : '/v1beta/models';
+    parsed.pathname =
+      path && path !== '/' && /\/v\d+(?:beta|alpha)?(?:\/|$)/i.test(path) ? `${path}/models` : '/v1beta/models';
   } else {
     parsed.pathname = `${path && path !== '/' ? path : '/v1'}/models`;
   }
@@ -96,10 +103,7 @@ function buildProviderForModelList(state: AppState, request: AiProviderModelList
     upstreamModel: input.upstreamModel?.trim() || current?.upstreamModel || presetDefaults.upstreamModel,
     headers: input.headers ?? current?.headers ?? presetDefaults.headers,
     envOverrides: input.envOverrides ?? current?.envOverrides ?? presetDefaults.envOverrides,
-    claudeCodeCompatible: input.claudeCodeCompatible ?? current?.claudeCodeCompatible ?? input.protocol === 'anthropic',
-    claudeRoleModels: input.claudeRoleModels ?? current?.claudeRoleModels ?? presetDefaults.roleModels,
     availableModels: input.availableModels ?? current?.availableModels ?? presetDefaults.availableModels,
-    sdkProxyOnly: input.sdkProxyOnly ?? current?.sdkProxyOnly ?? presetDefaults.sdkProxyOnly,
     providerMeta: input.providerMeta ?? current?.providerMeta ?? presetDefaults.providerMeta,
     contextWindowTokens: normalizeProviderContextWindowTokens(input.contextWindowTokens),
     maxOutputTokens: normalizeProviderMaxOutputTokens(input.maxOutputTokens),
@@ -191,9 +195,23 @@ function normalizeRemoteModelEntry(item: unknown, provider: AiProvider): AiProvi
   }
   const modelId = provider.protocol === 'google' ? rawId.replace(/^models\//, '') : rawId;
   const displayName = readString(record, ['display_name', 'displayName', 'name', 'description']);
-  const contextWindow = readNumber(record, ['context_window', 'contextWindow', 'context_length', 'contextLength', 'inputTokenLimit', 'max_context_length']);
-  const maxOutputTokens = readNumber(record, ['max_output_tokens', 'maxOutputTokens', 'outputTokenLimit', 'max_tokens']);
-  const supportedMethods = Array.isArray(record.supportedGenerationMethods) ? record.supportedGenerationMethods.map(String) : [];
+  const contextWindow = readNumber(record, [
+    'context_window',
+    'contextWindow',
+    'context_length',
+    'contextLength',
+    'inputTokenLimit',
+    'max_context_length'
+  ]);
+  const maxOutputTokens = readNumber(record, [
+    'max_output_tokens',
+    'maxOutputTokens',
+    'outputTokenLimit',
+    'max_tokens'
+  ]);
+  const supportedMethods = Array.isArray(record.supportedGenerationMethods)
+    ? record.supportedGenerationMethods.map(String)
+    : [];
   return {
     modelId,
     upstreamModelId: rawId !== modelId ? rawId : undefined,
@@ -238,7 +256,10 @@ function normalizeRemoteModels(body: unknown, provider: AiProvider): AiProviderM
   return [...byId.values()];
 }
 
-export async function listProviderModels(state: AppState, request: AiProviderModelListRequest): Promise<AiProviderModelListResult> {
+export async function listProviderModels(
+  state: AppState,
+  request: AiProviderModelListRequest
+): Promise<AiProviderModelListResult> {
   const provider = buildProviderForModelList(state, request);
   if (!provider.baseUrl.trim()) {
     throw new Error('Base URL is required before fetching models.');
@@ -246,7 +267,11 @@ export async function listProviderModels(state: AppState, request: AiProviderMod
   if (!provider.apiKey.trim()) {
     throw new Error('API Key is required before fetching models.');
   }
-  if (provider.protocol !== 'openai-compatible' && provider.protocol !== 'anthropic' && provider.protocol !== 'google') {
+  if (
+    provider.protocol !== 'openai-compatible' &&
+    provider.protocol !== 'anthropic' &&
+    provider.protocol !== 'google'
+  ) {
     throw new Error(`Fetching model lists for ${provider.protocol} providers is not supported yet.`);
   }
 

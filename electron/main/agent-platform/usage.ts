@@ -12,13 +12,6 @@ interface AiSdkUsageLike {
   };
 }
 
-interface ClaudeSdkUsageLike {
-  input_tokens?: number;
-  output_tokens?: number;
-  cache_creation_input_tokens?: number;
-  cache_read_input_tokens?: number;
-}
-
 interface OpenAiUsageLike {
   prompt_tokens?: number;
   completion_tokens?: number;
@@ -41,7 +34,10 @@ function safeNumber(value: number | undefined | null): number {
   return value;
 }
 
-export function normalizeAiSdkUsage(usage: AiSdkUsageLike | null | undefined, options: NormalizeOptions = {}): RuntimeUsage | null {
+export function normalizeAiSdkUsage(
+  usage: AiSdkUsageLike | null | undefined,
+  options: NormalizeOptions = {}
+): RuntimeUsage | null {
   if (!usage) {
     return null;
   }
@@ -51,9 +47,8 @@ export function normalizeAiSdkUsage(usage: AiSdkUsageLike | null | undefined, op
   const cacheReadTokens = safeNumber(usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens);
   const cacheCreationTokens = safeNumber(usage.inputTokenDetails?.cacheWriteTokens);
   const reportedTotal = safeNumber(usage.totalTokens);
-  const totalTokens = reportedTotal > 0
-    ? reportedTotal
-    : inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens;
+  const totalTokens =
+    reportedTotal > 0 ? reportedTotal : inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens;
 
   if (totalTokens === 0) {
     return null;
@@ -91,33 +86,6 @@ export function normalizeOpenAiUsage(raw: unknown, options: NormalizeOptions = {
     outputTokens,
     cacheReadTokens: cacheReadTokens > 0 ? cacheReadTokens : undefined,
     cacheCreationTokens: undefined,
-    totalTokens,
-    recordedAt: options.recordedAt ?? nowIso(),
-    provider: options.provider,
-    model: options.model
-  };
-}
-
-export function normalizeClaudeSdkUsage(usage: ClaudeSdkUsageLike | null | undefined, options: NormalizeOptions = {}): RuntimeUsage | null {
-  if (!usage) {
-    return null;
-  }
-
-  const inputTokens = safeNumber(usage.input_tokens);
-  const outputTokens = safeNumber(usage.output_tokens);
-  const cacheCreationTokens = safeNumber(usage.cache_creation_input_tokens);
-  const cacheReadTokens = safeNumber(usage.cache_read_input_tokens);
-  const totalTokens = inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens;
-
-  if (totalTokens === 0) {
-    return null;
-  }
-
-  return {
-    inputTokens,
-    outputTokens,
-    cacheCreationTokens: cacheCreationTokens > 0 ? cacheCreationTokens : undefined,
-    cacheReadTokens: cacheReadTokens > 0 ? cacheReadTokens : undefined,
     totalTokens,
     recordedAt: options.recordedAt ?? nowIso(),
     provider: options.provider,

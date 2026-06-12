@@ -2,12 +2,18 @@
   "id": "example-failing-test-repair",
   "title": "定位并修复导致测试失败的 bug（自我验证，示例）",
   "description": "考察自我验证与纠错：工程里有一个 off-by-one bug 导致现成测试失败，agent 需运行测试、定位原因、修复，并确认测试转绿。真实运行需补 provider 凭据。",
-  "dimensions": ["self_verification", "tool_reliability"],
-  "runtimes": ["native", "claude-code-sdk"],
+  "dimensions": [
+    "self_verification",
+    "tool_reliability"
+  ],
+  "runtimes": [
+    "native"
+  ],
   "prompt": "运行 `npm test` 会失败。请定位失败原因，修复 src/parser.js 的 bug，并确认测试全部通过。",
   "provider": {
-    "native": { "envKey": "FUNPLAY_EVAL_NATIVE" },
-    "claude-code-sdk": { "envKey": "FUNPLAY_EVAL_CLAUDE" }
+    "native": {
+      "envKey": "FUNPLAY_EVAL_NATIVE"
+    }
   },
   "workspace": {
     "files": [

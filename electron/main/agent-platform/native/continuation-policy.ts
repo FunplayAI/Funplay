@@ -36,9 +36,7 @@ export interface NativeEditFailureRecovery {
 }
 
 function normalizeToolInput(input: unknown): Record<string, unknown> | undefined {
-  return input && typeof input === 'object' && !Array.isArray(input)
-    ? input as Record<string, unknown>
-    : undefined;
+  return input && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>) : undefined;
 }
 
 function truncateToolArgumentPreview(value: string, maxLength = 1200): string {
@@ -62,15 +60,25 @@ export function createPartialWriteContinuationPrompt(assistantMessage: string): 
 }
 
 function isEditRecoveryToolName(toolName: string): boolean {
-  return toolName === 'write_file' || toolName === 'edit_file' || toolName === 'multi_edit' || toolName === 'patch_file';
+  return (
+    toolName === 'write_file' || toolName === 'edit_file' || toolName === 'multi_edit' || toolName === 'patch_file'
+  );
 }
 
 function formatEditRecoveryPath(input: Record<string, unknown>): string | undefined {
   return typeof input.path === 'string' && input.path.trim() ? input.path.trim() : undefined;
 }
 
-export function collectEditFailureRecovery(toolCall: OpenAiCompatibleToolCall, toolResult: NativeWorkspaceToolOutput): NativeEditFailureRecovery | undefined {
-  if (!toolResult.isError || !isEditRecoveryToolName(toolCall.name) || !toolResult.edit || toolResult.edit.preflight !== 'failed') {
+export function collectEditFailureRecovery(
+  toolCall: OpenAiCompatibleToolCall,
+  toolResult: NativeWorkspaceToolOutput
+): NativeEditFailureRecovery | undefined {
+  if (
+    !toolResult.isError ||
+    !isEditRecoveryToolName(toolCall.name) ||
+    !toolResult.edit ||
+    toolResult.edit.preflight !== 'failed'
+  ) {
     return undefined;
   }
   return {
@@ -89,7 +97,9 @@ export function createEditFailureRecoveryPrompt(recoveries: NativeEditFailureRec
     const hint = recovery.recoveryHint ? `；建议：${recovery.recoveryHint}` : '';
     return `${index + 1}. ${recovery.toolName}${path}${failureKind}: ${truncateToolArgumentPreview(recovery.summary, 500)}${hint}`;
   });
-  const paths = [...new Set(recoveries.map((recovery) => recovery.path).filter((path): path is string => Boolean(path)))];
+  const paths = [
+    ...new Set(recoveries.map((recovery) => recovery.path).filter((path): path is string => Boolean(path)))
+  ];
   const hasWritePathFailure = recoveries.some((recovery) => recovery.toolName === 'write_file');
   return [
     '上一轮文件写入/编辑工具失败，失败的工具没有修改项目文件。下一步必须按恢复流程继续，不要把失败当成功。',
@@ -112,7 +122,9 @@ export function createEditFailureRecoveryPrompt(recoveries: NativeEditFailureRec
 }
 
 function normalizeTodoStatus(value: unknown): NativeTodoItemStatus | undefined {
-  return value === 'pending' || value === 'in_progress' || value === 'completed' || value === 'cancelled' ? value : undefined;
+  return value === 'pending' || value === 'in_progress' || value === 'completed' || value === 'cancelled'
+    ? value
+    : undefined;
 }
 
 function normalizeTodoPriority(value: unknown): NativeTodoItemSnapshot['priority'] {
@@ -146,10 +158,7 @@ function resolveTodoInputItems(input: Record<string, unknown> | undefined): unkn
   if (!input) {
     return undefined;
   }
-  const candidates = [
-    input.items,
-    parseTodoInputAlias(input.todos)
-  ];
+  const candidates = [input.items, parseTodoInputAlias(input.todos)];
   for (const candidate of candidates) {
     if (Array.isArray(candidate)) {
       return candidate;
@@ -173,7 +182,9 @@ function parseTodoSnapshotFromInput(input: Record<string, unknown> | undefined):
     return undefined;
   }
   const items = rawItems
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item)))
+    .filter((item): item is Record<string, unknown> =>
+      Boolean(item && typeof item === 'object' && !Array.isArray(item))
+    )
     .map((item): NativeTodoItemSnapshot | undefined => {
       const status = normalizeTodoStatus(item.status);
       const content = typeof item.content === 'string' ? item.content.trim() : '';
@@ -191,25 +202,6 @@ function parseTodoSnapshotFromInput(input: Record<string, unknown> | undefined):
   return createTodoSnapshot(items);
 }
 
-function parseTodoSnapshotFromSummary(summary: string): NativeTodoSnapshot | undefined {
-  const items = summary
-    .split('\n')
-    .map((line): NativeTodoItemSnapshot | undefined => {
-      const match = line.match(/^-\s+\[(pending|in_progress|completed|cancelled)]\s+(.+?)(?:\s+\((high|medium|low)\))?:\s+(.+)$/);
-      if (!match) {
-        return undefined;
-      }
-      return {
-        id: match[2]?.trim() || undefined,
-        content: match[4]?.trim() || '',
-        status: match[1] as NativeTodoItemStatus,
-        priority: normalizeTodoPriority(match[3])
-      };
-    })
-    .filter((item): item is NativeTodoItemSnapshot => Boolean(item?.content));
-  return createTodoSnapshot(items);
-}
-
 export function resolveTodoSnapshotFromToolResult(input: {
   toolName: string;
   toolInput?: Record<string, unknown>;
@@ -219,24 +211,31 @@ export function resolveTodoSnapshotFromToolResult(input: {
   if (input.toolName !== 'update_todo_list' || input.isError) {
     return undefined;
   }
-  return parseTodoSnapshotFromInput(input.toolInput) ?? parseTodoSnapshotFromSummary(input.summary);
+  // The structured tool input is the only source of truth — the rendered
+  // summary text is a display artifact and is never re-parsed host-side.
+  return parseTodoSnapshotFromInput(input.toolInput);
 }
 
 function selectNativeToolLoopSession(project: Project, sessionId?: string): ProjectSession | undefined {
   const ensured = ensureProjectSessions(project);
   return sessionId
     ? ensured.sessions.find((session) => session.id === sessionId)
-    : ensured.sessions.find((session) => session.id === ensured.activeSessionId) ?? ensured.sessions[0];
+    : (ensured.sessions.find((session) => session.id === ensured.activeSessionId) ?? ensured.sessions[0]);
 }
 
-function resolveLatestTodoSnapshotFromAgentCoreParts(parts: AgentCoreMessagePart[] | undefined): NativeTodoSnapshot | undefined {
+function resolveLatestTodoSnapshotFromAgentCoreParts(
+  parts: AgentCoreMessagePart[] | undefined
+): NativeTodoSnapshot | undefined {
   if (!parts?.length) {
     return undefined;
   }
-  const toolInputs = new Map<string, {
-    name: string;
-    input?: Record<string, unknown>;
-  }>();
+  const toolInputs = new Map<
+    string,
+    {
+      name: string;
+      input?: Record<string, unknown>;
+    }
+  >();
   let latestSnapshot: NativeTodoSnapshot | undefined;
   for (const part of [...parts].sort((left, right) => {
     if (left.sequence !== right.sequence) {
@@ -268,7 +267,9 @@ function resolveLatestTodoSnapshotFromAgentCoreParts(parts: AgentCoreMessagePart
   return latestSnapshot;
 }
 
-export function resolveLatestTodoSnapshotFromHistory(params: Pick<GenericAgentRuntimeParams, 'project' | 'context'>): NativeTodoSnapshot | undefined {
+export function resolveLatestTodoSnapshotFromHistory(
+  params: Pick<GenericAgentRuntimeParams, 'project' | 'context'>
+): NativeTodoSnapshot | undefined {
   const session = selectNativeToolLoopSession(params.project, params.context.activeSessionId);
   const chat = session?.chat ?? [];
   for (let index = chat.length - 1; index >= 0; index -= 1) {
@@ -300,7 +301,10 @@ export function shouldContinueAfterIncompleteTodo(input: {
   if (input.latestTodoSnapshot?.hasInProgress) {
     return true;
   }
-  return looksLikeUnfinishedAgentWriteReply(input.assistantMessage) || looksLikeAgentTodoContinuationReply(input.assistantMessage);
+  return (
+    looksLikeUnfinishedAgentWriteReply(input.assistantMessage) ||
+    looksLikeAgentTodoContinuationReply(input.assistantMessage)
+  );
 }
 
 export function createIncompleteTodoContinuationPrompt(snapshot: NativeTodoSnapshot, assistantMessage: string): string {

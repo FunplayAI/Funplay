@@ -11,11 +11,6 @@ export const PROJECT_SESSION_RUNTIME_OPTIONS: ProjectSessionRuntimeOption[] = [
     id: 'native',
     label: 'Native',
     description: 'Funplay built-in multi-provider runtime'
-  },
-  {
-    id: 'claude-code-sdk',
-    label: 'Claude Code',
-    description: 'Claude Code CLI-backed runtime'
   }
 ];
 

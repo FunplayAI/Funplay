@@ -1,6 +1,8 @@
 import type { GenericAgentRuntimeParams } from './types';
 import type { AgentToolDefinition, AgentToolRisk } from './tool-registry';
-import type { AgentPermissionImpact } from '../../../shared/types';
+import type { AgentPermissionImpact, AgentPermissionRule } from '../../../shared/types';
+import { toProjectRelativePermissionPath } from './permission-session-store';
+import { describeRunCommandSandboxStatus } from './system-shell';
 
 export type AgentToolPermissionDecision = 'allow' | 'deny';
 
@@ -25,6 +27,82 @@ export interface AgentToolPermissionRequest {
   detail?: string;
   risk?: AgentToolRisk;
   mcp?: NonNullable<AgentPermissionImpact['mcp']>;
+}
+
+function normalizeCommandForRuleMatch(command: string): string {
+  return command.trim().replace(/\s+/g, ' ');
+}
+
+function commandPrefixMatches(commands: string[] | undefined, prefix: string): boolean {
+  if (!commands?.length) {
+    return false;
+  }
+  const normalizedPrefix = normalizeCommandForRuleMatch(prefix);
+  return commands.some((command) => {
+    const normalized = normalizeCommandForRuleMatch(command);
+    return normalized === normalizedPrefix || normalized.startsWith(`${normalizedPrefix} `);
+  });
+}
+
+/** Minimal glob: '**' crosses directory separators, '*' stays within one segment. */
+export function matchesPermissionPathGlob(path: string, glob: string): boolean {
+  const crossSegment = '\u0001';
+  const escaped = glob
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, crossSegment)
+    .replace(/\*/g, '[^/]*')
+    .replace(/\u0001/g, '.*');
+  return new RegExp(`^${escaped}$`).test(path);
+}
+
+function pathGlobMatches(paths: string[] | undefined, glob: string, projectPath?: string): boolean {
+  if (!paths?.length) {
+    return false;
+  }
+  return paths.every((path) => matchesPermissionPathGlob(toProjectRelativePermissionPath(path, projectPath), glob));
+}
+
+function ruleMatches(
+  rule: AgentPermissionRule,
+  toolName: string,
+  impact: AgentPermissionImpact,
+  projectPath?: string
+): boolean {
+  if (rule.toolName !== '*' && rule.toolName !== toolName) {
+    return false;
+  }
+  if (rule.commandPrefix && !commandPrefixMatches(impact.commands, rule.commandPrefix)) {
+    return false;
+  }
+  if (rule.pathGlob && !pathGlobMatches(impact.paths, rule.pathGlob, projectPath)) {
+    return false;
+  }
+  return true;
+}
+
+/** Deny wins over allow; 'ask' rules never short-circuit (they fall through to the prompt). */
+export function evaluatePermissionRules(
+  rules: AgentPermissionRule[] | undefined,
+  toolName: string,
+  impact: AgentPermissionImpact,
+  projectPath?: string
+): 'allow' | 'deny' | undefined {
+  if (!rules?.length) {
+    return undefined;
+  }
+  let allowed = false;
+  for (const rule of rules) {
+    if (!ruleMatches(rule, toolName, impact, projectPath)) {
+      continue;
+    }
+    if (rule.action === 'deny') {
+      return 'deny';
+    }
+    if (rule.action === 'allow') {
+      allowed = true;
+    }
+  }
+  return allowed ? 'allow' : undefined;
 }
 
 function isToolPreApproved(context: AgentPermissionContext, toolName: string, mcpPermissionKey?: string): boolean {
@@ -53,33 +131,33 @@ const PLAN_CONFIRMABLE_TOOL_NAMES = new Set([
 
 function formatPermissionDetail(request: AgentToolPermissionRequest): string {
   const impact = buildPermissionImpact(request);
-  return request.detail ??
+  return (
+    request.detail ??
     [
       `工具：${request.tool.name}`,
       `权限策略：${request.tool.permissionPolicy}`,
       `检查点策略：${request.tool.checkpointPolicy}`,
       impact.paths?.length ? `路径：${impact.paths.join(' · ')}` : '',
       impact.commands?.length ? `命令：${impact.commands.join(' · ')}` : '',
-      impact.mcp?.pluginName || impact.mcp?.pluginId ? `MCP Server：${impact.mcp.pluginName ?? impact.mcp.pluginId}` : '',
+      request.tool.name === 'run_command'
+        ? `沙箱：${describeRunCommandSandboxStatus(request.input?.unsandboxed === true)}`
+        : '',
+      impact.mcp?.pluginName || impact.mcp?.pluginId
+        ? `MCP Server：${impact.mcp.pluginName ?? impact.mcp.pluginId}`
+        : '',
       impact.mcp?.toolName ? `MCP Tool：${impact.mcp.toolName}` : '',
       impact.mcp?.permission ? `MCP 策略：${impact.mcp.permission}/${impact.mcp.risk ?? 'infer'}` : '',
       impact.cwd ? `目录：${impact.cwd}` : '',
       impact.reason ? `原因：${impact.reason}` : '',
       impact.inputSummary?.length ? `输入摘要：${impact.inputSummary.join('；')}` : '',
       '允许后，本轮才会执行该写入型或高风险工具。'
-    ].filter(Boolean).join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n')
+  );
 }
 
-const LARGE_INPUT_KEYS = new Set([
-  'content',
-  'data',
-  'base64',
-  'patch',
-  'oldText',
-  'newText',
-  'edits',
-  'input'
-]);
+const LARGE_INPUT_KEYS = new Set(['content', 'data', 'base64', 'patch', 'oldText', 'newText', 'edits', 'input']);
 
 function readInputString(input: Record<string, unknown> | undefined, key: string): string | undefined {
   const value = input?.[key];
@@ -99,7 +177,8 @@ function collectInputStrings(input: Record<string, unknown> | undefined, keys: s
         if (typeof item === 'string' && item.trim()) {
           values.push(item.trim());
         } else if (item && typeof item === 'object') {
-          const path = readInputString(item as Record<string, unknown>, 'path') ??
+          const path =
+            readInputString(item as Record<string, unknown>, 'path') ??
             readInputString(item as Record<string, unknown>, 'filePath');
           if (path) {
             values.push(path);
@@ -167,11 +246,24 @@ export async function resolveAgentToolPermission(
   context: AgentPermissionContext | undefined,
   request: AgentToolPermissionRequest
 ): Promise<AgentToolPermissionDecision> {
-  if (request.tool.permissionPolicy === 'always' || (request.tool.readOnly && request.tool.permissionPolicy !== 'ask')) {
+  if (
+    request.tool.permissionPolicy === 'always' ||
+    (request.tool.readOnly && request.tool.permissionPolicy !== 'ask')
+  ) {
     return 'allow';
   }
 
   if (!context) {
+    return 'deny';
+  }
+
+  const ruleVerdict = evaluatePermissionRules(
+    context.permission.rules,
+    request.tool.name,
+    buildPermissionImpact(request),
+    context.permission.projectPath
+  );
+  if (ruleVerdict === 'deny') {
     return 'deny';
   }
 
@@ -193,6 +285,10 @@ export async function resolveAgentToolPermission(
     });
 
     return decision === 'allow' || decision === 'allow_session' ? 'allow' : 'deny';
+  }
+
+  if (ruleVerdict === 'allow') {
+    return 'allow';
   }
 
   if (isToolPreApproved(context, request.tool.name, request.mcp?.permissionKey)) {

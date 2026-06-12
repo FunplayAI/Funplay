@@ -16,10 +16,10 @@ import type {
   AgentUserInputOption,
   AgentUserInputResponse,
   AgentPermissionImpact,
+  AgentPermissionRule,
   PromptAttachment,
   AiProvider,
   AgentPermissionMode,
-  ClaudeRuntimeWriteMode,
   AppState,
   ChatMessageMetadata,
   ChatMediaBlock,
@@ -39,7 +39,7 @@ import type {
 
 export type GenericAgentTaskKind = 'bootstrap' | 'conversation';
 export type GenericAgentPhase = 'thinking' | 'streaming';
-export type GenericAgentRuntimeId = ProjectSessionRuntimeId;
+export type GenericAgentRuntimeId = 'native';
 export type GenericAgentRuntimeOutputEvent =
   | {
       type: 'status';
@@ -315,7 +315,13 @@ export interface GenericAgentWorkspaceContext {
     truncated?: boolean;
   }>;
   workspaceEvidence?: Array<{
-    kind: 'message_path' | 'recent_file' | 'entrypoint' | 'session_summary' | 'related_session' | 'verification_failure_file';
+    kind:
+      | 'message_path'
+      | 'recent_file'
+      | 'entrypoint'
+      | 'session_summary'
+      | 'related_session'
+      | 'verification_failure_file';
     source: string;
     path?: string;
     title?: string;
@@ -346,6 +352,10 @@ export interface GenericAgentRuntimeParams {
     allowSessionWriteTools: boolean;
     allowedWriteTools?: string[];
     allowedMcpTools?: string[];
+    /** Argument-level rules (deny > allow > pre-approval); evaluated by the permission broker. */
+    rules?: AgentPermissionRule[];
+    /** Project root used to normalize impact paths for pathGlob rule matching. */
+    projectPath?: string;
   };
   activeRunId?: string;
   lifecycleHooks?: AgentLifecycleHookConfig;
@@ -458,9 +468,7 @@ export interface GenericAgentRuntimeResult {
   suggestedAction?: string;
   recoveryActions?: RuntimeRecoveryAction[];
   sessionRuntimePatch?: Partial<NonNullable<ProjectSession['runtimeOverrides']>>;
-  effectiveCapabilities?: Partial<GenericAgentRuntimeCapabilities> & {
-    claudeWriteMode?: ClaudeRuntimeWriteMode;
-  };
+  effectiveCapabilities?: Partial<GenericAgentRuntimeCapabilities>;
   steps: GameAgentStep[];
 }
 

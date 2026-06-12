@@ -31,10 +31,28 @@ export async function resolveNativeToolPermission(
     title: request.toolName,
     risk: request.risk ?? 'medium',
     readOnly: !request.isWrite,
-    permissionPolicy: request.isWrite ? 'ask' as const : 'always' as const,
-    checkpointPolicy: request.isWrite ? 'external_best_effort' as const : 'none' as const
+    permissionPolicy: request.isWrite ? ('ask' as const) : ('always' as const),
+    checkpointPolicy: request.isWrite ? ('external_best_effort' as const) : ('none' as const)
   };
-  return resolveAgentToolPermission(context, {
+  // Tools can flag inputs that must be explicitly approved every run (e.g. run_command
+  // with unsandboxed:true). Strip pre-approvals and allow-rules so the broker always
+  // prompts; deny rules are kept because deny still wins.
+  const forceExplicitApproval = registeredTool?.requiresExplicitApproval?.(request.input) === true;
+  const effectiveContext =
+    forceExplicitApproval && context
+      ? {
+          permission: {
+            ...context.permission,
+            allowWriteTools: false,
+            allowSessionWriteTools: false,
+            allowedWriteTools: [],
+            allowedMcpTools: [],
+            rules: context.permission.rules?.filter((rule) => rule.action === 'deny')
+          },
+          requestPermission: context.requestPermission
+        }
+      : context;
+  return resolveAgentToolPermission(effectiveContext, {
     tool,
     input: request.input,
     title: request.title,

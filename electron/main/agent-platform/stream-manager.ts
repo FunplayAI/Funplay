@@ -1,8 +1,23 @@
-import { ensureProjectSessions, getActiveProjectSession, replaceProjectSession } from '../../../shared/project-sessions';
-import type { AgentRuntimeResumeContext, AgentUserInputResponse, AppState, ProjectSessionRuntimeId, PromptAttachment, PromptStreamEvent, PromptStreamHandle, Project } from '../../../shared/types';
+import {
+  ensureProjectSessions,
+  getActiveProjectSession,
+  replaceProjectSession
+} from '../../../shared/project-sessions';
+import type {
+  AgentPermissionImpact,
+  AgentRuntimeResumeContext,
+  AgentUserInputResponse,
+  AppState,
+  ProjectSessionRuntimeId,
+  PromptAttachment,
+  PromptStreamEvent,
+  PromptStreamHandle,
+  Project
+} from '../../../shared/types';
 import { makeId, nowIso } from '../../../shared/utils';
 import {
   DEFAULT_SESSION_WRITE_PERMISSION_TOOLS,
+  deriveScopedSessionPermissionRules,
   grantSessionWritePermission,
   hasSessionWritePermission
 } from './permission-session-store';
@@ -16,22 +31,13 @@ import {
   removePersistedRun,
   unregisterActiveRun
 } from './run-registry';
-import {
-  cancelPendingPermissionsForStream,
-  resolvePendingPermission
-} from './permission-registry';
-import {
-  cancelPendingUserInputsForStream,
-  resolvePendingUserInput
-} from './user-input-registry';
+import { cancelPendingPermissionsForStream, resolvePendingPermission } from './permission-registry';
+import { cancelPendingUserInputsForStream, resolvePendingUserInput } from './user-input-registry';
 import { createStateAdapter } from './state-adapter';
 import { getState, setState } from '../store';
 import type { StreamContext } from './stream-types';
 import { createRuntimeEventSink } from './runtime-event-sink';
-import {
-  makePermissionHandlers,
-  makeUserInputHandlers
-} from './stream-interactions';
+import { makePermissionHandlers, makeUserInputHandlers } from './stream-interactions';
 import {
   deleteActiveStream,
   finalizeStream,
@@ -40,10 +46,7 @@ import {
   processStreamError,
   registerActiveStream
 } from './stream-lifecycle';
-import {
-  buildResumeContextForRun,
-  restoreFilesForResume
-} from './stream-resume';
+import { buildResumeContextForRun, restoreFilesForResume } from './stream-resume';
 
 function formatPromptWithAttachments(message: string, attachments?: PromptAttachment[]): string {
   const prompt = message.trim();
@@ -53,11 +56,7 @@ function formatPromptWithAttachments(message: string, attachments?: PromptAttach
 
   const attachmentLines = attachments.map((attachment, index) => {
     const targetPath = attachment.relativePath || attachment.path;
-    const meta = [
-      attachment.kind,
-      attachment.mimeType,
-      `${attachment.size} bytes`
-    ].filter(Boolean).join(', ');
+    const meta = [attachment.kind, attachment.mimeType, `${attachment.size} bytes`].filter(Boolean).join(', ');
     return `${index + 1}. ${attachment.name} -> ${targetPath}${meta ? ` (${meta})` : ''}`;
   });
 
@@ -90,6 +89,7 @@ async function persistSessionWritePermissionGrant(params: {
   mcpToolKey?: string;
   runtimeId?: ProjectSessionRuntimeId;
   cwd?: string;
+  impact?: AgentPermissionImpact;
 }): Promise<void> {
   const state = getState();
   const project = state.projects.find((item) => item.id === params.projectId);
@@ -105,13 +105,25 @@ async function persistSessionWritePermissionGrant(params: {
 
   const cwd = params.cwd ?? ensured.engine?.projectPath;
   const runtimeId = params.runtimeId ?? session.runtimeOverrides?.runtimeId;
-  const tools = params.mcpToolKey && params.toolName === 'call_mcp_tool'
+  // Prefer an argument-scoped rule (command prefix / path glob) over blanket
+  // tool grants; fall back to the legacy blanket grant when none is derivable.
+  const scopedRules = params.mcpToolKey
+    ? undefined
+    : deriveScopedSessionPermissionRules({
+        toolName: params.toolName,
+        impact: params.impact,
+        projectPath: cwd
+      });
+  const tools = scopedRules?.length
     ? []
-    : params.toolName
-      ? [params.toolName]
-      : [...DEFAULT_SESSION_WRITE_PERMISSION_TOOLS];
+    : params.mcpToolKey && params.toolName === 'call_mcp_tool'
+      ? []
+      : params.toolName
+        ? [params.toolName]
+        : [...DEFAULT_SESSION_WRITE_PERMISSION_TOOLS];
   const grant = grantSessionWritePermission(params.sessionId, {
     tools,
+    rules: scopedRules,
     mcpTools: params.mcpToolKey ? [params.mcpToolKey] : undefined,
     runtimeId,
     cwd
@@ -420,7 +432,8 @@ export async function respondToAgentPermissionRequest(
       toolName: pending.toolName,
       mcpToolKey: pending.impact?.mcp?.permissionKey,
       runtimeId: pending.runtimeId,
-      cwd: pending.cwd
+      cwd: pending.cwd,
+      impact: pending.impact
     });
   }
   pending.resolve(decision);
@@ -447,10 +460,7 @@ export async function respondToAgentPermissionRequest(
   return { success: true };
 }
 
-export function respondToAgentUserInputRequest(
-  requestId: string,
-  response: AgentUserInputResponse
-): { success: true } {
+export function respondToAgentUserInputRequest(requestId: string, response: AgentUserInputResponse): { success: true } {
   resolvePendingUserInput(requestId, response);
   return { success: true };
 }

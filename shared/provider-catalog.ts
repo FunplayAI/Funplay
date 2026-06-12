@@ -7,12 +7,12 @@ import type {
   AiProviderModelCapabilities,
   AiProviderPreset,
   AiProviderProtocol,
-  AiProviderRoleModels,
   OpenAiCompatibleChatTokenParameter,
   OpenAiCompatibleInterleavedReasoningField,
   OpenAiCompatibleReasoningRequestStyle,
   OpenAiCompatibleSchemaTransform,
-  OpenAiCompatibleToolChoiceMode
+  OpenAiCompatibleToolChoiceMode,
+  ProjectSessionEffort
 } from './types';
 
 export interface ResolvedOpenAiCompatibleProviderProfile {
@@ -51,9 +51,9 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     baseUrl: 'https://api.openai.com/v1',
     defaultModel: 'gpt-5.5',
     availableModels: [
-      { modelId: 'gpt-5.5', displayName: 'GPT-5.5', capabilities: { toolUse: true, vision: true, contextWindow: 400_000, maxOutputTokens: 128_000 } },
-      { modelId: 'gpt-5.5-pro', displayName: 'GPT-5.5 Pro', capabilities: { toolUse: true, vision: true, contextWindow: 400_000, maxOutputTokens: 128_000 } },
-      { modelId: 'gpt-5.2', displayName: 'GPT-5.2', capabilities: { toolUse: true, vision: true, contextWindow: 400_000, maxOutputTokens: 128_000 } }
+      { modelId: 'gpt-5.5', displayName: 'GPT-5.5', capabilities: { toolUse: true, vision: true, contextWindow: 400_000, maxOutputTokens: 128_000, supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high'], parallelToolCalls: true } },
+      { modelId: 'gpt-5.5-pro', displayName: 'GPT-5.5 Pro', capabilities: { toolUse: true, vision: true, contextWindow: 400_000, maxOutputTokens: 128_000, supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high'], parallelToolCalls: true } },
+      { modelId: 'gpt-5.2', displayName: 'GPT-5.2', capabilities: { toolUse: true, vision: true, contextWindow: 400_000, maxOutputTokens: 128_000, supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high'], parallelToolCalls: true } }
     ],
     openAiCompatible: {
       supportsChatCompletions: true,
@@ -97,14 +97,6 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     baseUrl: 'https://api.anthropic.com',
     defaultModel: 'claude-sonnet-4-6',
     upstreamModel: 'claude-sonnet-4-6',
-    defaultRoleModels: {
-      default: 'claude-sonnet-4-6',
-      reasoning: 'claude-opus-4-8',
-      small: 'claude-haiku-4-5-20251001',
-      haiku: 'claude-haiku-4-5-20251001',
-      sonnet: 'claude-sonnet-4-6',
-      opus: 'claude-opus-4-8'
-    },
     availableModels: [
       {
         modelId: 'claude-sonnet-4-6',
@@ -127,7 +119,7 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     ],
     providerMeta: {
       apiKeyUrl: 'https://console.anthropic.com/settings/keys',
-      docsUrl: 'https://docs.anthropic.com/claude-code/setup',
+      docsUrl: 'https://docs.anthropic.com',
       statusPageUrl: 'https://status.anthropic.com',
       billingModel: 'pay_as_you_go'
     },
@@ -157,10 +149,11 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     baseUrl: 'https://api.deepseek.com/v1',
     defaultModel: 'deepseek-v4-flash',
     availableModels: [
-      { modelId: 'deepseek-chat', upstreamModelId: 'deepseek-v4-flash', displayName: 'DeepSeek Chat', capabilities: { toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 384_000 } },
-      { modelId: 'deepseek-reasoner', upstreamModelId: 'deepseek-v4-flash', displayName: 'DeepSeek Reasoner', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 384_000 } },
-      { modelId: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash', capabilities: { toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 384_000 } },
-      { modelId: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 384_000 } }
+      // DeepSeek context caching is automatic (disk cache keyed by prefix) — no cache_control breakpoints.
+      { modelId: 'deepseek-chat', upstreamModelId: 'deepseek-v4-flash', displayName: 'DeepSeek Chat', capabilities: { toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 384_000, cachingShape: 'implicit' } },
+      { modelId: 'deepseek-reasoner', upstreamModelId: 'deepseek-v4-flash', displayName: 'DeepSeek Reasoner', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 384_000, cachingShape: 'implicit' } },
+      { modelId: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash', capabilities: { toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 384_000, cachingShape: 'implicit' } },
+      { modelId: 'deepseek-v4-pro', displayName: 'DeepSeek V4 Pro', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 384_000, cachingShape: 'implicit' } }
     ],
     openAiCompatible: {
       supportsChatCompletions: true,
@@ -183,9 +176,12 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     defaultModel: 'qwen3-max',
     availableModels: [
-      { modelId: 'qwen3-max', displayName: 'Qwen3 Max', capabilities: { toolUse: true, contextWindow: 262_144, maxOutputTokens: 32_768 } },
-      { modelId: 'qwen3.5-plus', displayName: 'Qwen3.5 Plus', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 65_536 } },
-      { modelId: 'qwen3.5-flash', displayName: 'Qwen3.5 Flash', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 65_536 } }
+      // Qwen supports both implicit caching and Anthropic-style explicit cache_control (explicit breakpoints
+      // bill cached reads at 10% of input price vs 20% implicit) — declare the explicit shape so the
+      // anthropic-messages dialect emits cache_control breakpoints.
+      { modelId: 'qwen3-max', displayName: 'Qwen3 Max', capabilities: { toolUse: true, contextWindow: 262_144, maxOutputTokens: 32_768, cachingShape: 'anthropic-explicit' } },
+      { modelId: 'qwen3.5-plus', displayName: 'Qwen3.5 Plus', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 65_536, cachingShape: 'anthropic-explicit' } },
+      { modelId: 'qwen3.5-flash', displayName: 'Qwen3.5 Flash', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 65_536, cachingShape: 'anthropic-explicit' } }
     ],
     openAiCompatible: {
       supportsChatCompletions: true,
@@ -212,8 +208,9 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     baseUrl: 'https://api.moonshot.cn/v1',
     defaultModel: 'kimi-k2.6',
     availableModels: [
-      { modelId: 'kimi-k2.6', displayName: 'Kimi K2.6', capabilities: { reasoning: true, toolUse: true, vision: true } },
-      { modelId: 'kimi-k2.5', displayName: 'Kimi K2.5', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 262_144, maxOutputTokens: 32_768 } }
+      // Moonshot exposes an Anthropic-compatible Messages endpoint (…/anthropic) aimed at Claude-Code-style harnesses.
+      { modelId: 'kimi-k2.6', displayName: 'Kimi K2.6', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 262_144, anthropicEndpoint: true } },
+      { modelId: 'kimi-k2.5', displayName: 'Kimi K2.5', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 262_144, maxOutputTokens: 32_768, anthropicEndpoint: true } }
     ],
     openAiCompatible: {
       supportsChatCompletions: true,
@@ -240,8 +237,9 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
     defaultModel: 'glm-5.1',
     availableModels: [
-      { modelId: 'glm-5.1', displayName: 'GLM 5.1', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 200_000, maxOutputTokens: 128_000 } },
-      { modelId: 'glm-5', displayName: 'GLM 5', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 200_000, maxOutputTokens: 128_000 } }
+      // Z.ai/Zhipu exposes an Anthropic-compatible Messages endpoint (…/api/anthropic) aimed at Claude-Code-style harnesses.
+      { modelId: 'glm-5.1', displayName: 'GLM 5.1', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 200_000, maxOutputTokens: 128_000, anthropicEndpoint: true } },
+      { modelId: 'glm-5', displayName: 'GLM 5', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 200_000, maxOutputTokens: 128_000, anthropicEndpoint: true } }
     ],
     openAiCompatible: {
       supportsChatCompletions: true,
@@ -323,8 +321,10 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     baseUrl: 'https://api.minimaxi.com/v1',
     defaultModel: 'MiniMax-M3',
     availableModels: [
-      { modelId: 'MiniMax-M3', displayName: 'MiniMax M3', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 40960 } },
-      { modelId: 'MiniMax-M2.7', displayName: 'MiniMax M2.7', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 40960 } }
+      // MiniMax M2.x/M3 interleaved thinking only round-trips over the Anthropic-compatible endpoint, and the
+      // model expects prior-turn reasoning to be re-sent on subsequent requests (preserveReasoning).
+      { modelId: 'MiniMax-M3', displayName: 'MiniMax M3', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 40960, anthropicEndpoint: true, preserveReasoning: true } },
+      { modelId: 'MiniMax-M2.7', displayName: 'MiniMax M2.7', capabilities: { reasoning: true, toolUse: true, contextWindow: 1_000_000, maxOutputTokens: 40960, anthropicEndpoint: true, preserveReasoning: true } }
     ],
     openAiCompatible: {
       supportsChatCompletions: true,
@@ -432,9 +432,7 @@ export function getProviderPresetDefaults(input: Pick<AiProvider, 'name' | 'prot
   upstreamModel?: string;
   headers?: Record<string, string>;
   envOverrides?: Record<string, string>;
-  roleModels?: AiProviderRoleModels;
   availableModels?: AiProviderModel[];
-  sdkProxyOnly?: boolean;
   providerMeta?: AiProviderMeta;
 } {
   const preset = findAiProviderPreset(input);
@@ -443,9 +441,7 @@ export function getProviderPresetDefaults(input: Pick<AiProvider, 'name' | 'prot
     upstreamModel: preset?.upstreamModel,
     headers: preset?.defaultHeaders,
     envOverrides: preset?.defaultEnvOverrides,
-    roleModels: preset?.defaultRoleModels,
     availableModels: preset?.availableModels,
-    sdkProxyOnly: preset?.sdkProxyOnly,
     providerMeta: preset?.providerMeta
   };
 }
@@ -595,4 +591,96 @@ export function resolveProviderUpstreamModel(provider: Pick<AiProvider, 'model' 
   }
   const match = provider.availableModels?.find((entry) => entry.modelId === model);
   return match?.upstreamModelId?.trim() || model;
+}
+
+export type ResolvedProviderEffortLevel = Exclude<ProjectSessionEffort, 'auto'>;
+
+const PROVIDER_EFFORT_LEVEL_ORDER: ResolvedProviderEffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+const DEFAULT_SUPPORTED_EFFORT_LEVELS: ResolvedProviderEffortLevel[] = ['low', 'medium', 'high'];
+
+/**
+ * Maps a session effort request onto the levels the selected model actually supports.
+ * 'auto' (or no request) means "let the provider decide" and maps to no knob at all; models
+ * that don't declare supportsEffort in the catalog never get an effort/reasoning parameter.
+ * Unsupported levels clamp to the closest supported level at or below the request.
+ */
+export function resolveProviderEffortLevel(
+  provider: Pick<AiProvider, 'name' | 'protocol' | 'baseUrl' | 'model' | 'upstreamModel' | 'availableModels'>,
+  requested: ProjectSessionEffort | undefined
+): ResolvedProviderEffortLevel | undefined {
+  if (!requested || requested === 'auto') {
+    return undefined;
+  }
+  const capabilities = resolveProviderModelMetadata(provider)?.capabilities;
+  if (!capabilities?.supportsEffort) {
+    return undefined;
+  }
+  const supported = PROVIDER_EFFORT_LEVEL_ORDER.filter((level) =>
+    (capabilities.supportedEffortLevels ?? DEFAULT_SUPPORTED_EFFORT_LEVELS).includes(level)
+  );
+  if (supported.length === 0) {
+    return undefined;
+  }
+  if (supported.includes(requested)) {
+    return requested;
+  }
+  const requestedIndex = PROVIDER_EFFORT_LEVEL_ORDER.indexOf(requested);
+  let resolved = supported[0];
+  for (const level of supported) {
+    if (PROVIDER_EFFORT_LEVEL_ORDER.indexOf(level) <= requestedIndex) {
+      resolved = level;
+    }
+  }
+  return resolved;
+}
+
+/**
+ * Provider-options payload for the AI SDK Anthropic provider (`providerOptions.anthropic`).
+ * Declared as type aliases (not interfaces) so the members stay assignable to the AI SDK's
+ * `Record<string, JSONValue>` provider-options bag.
+ */
+export type AnthropicEffortProviderOptions =
+  | { thinking: { type: 'adaptive' }; effort: 'low' | 'medium' | 'high' | 'max' }
+  | { thinking: { type: 'enabled'; budgetTokens: number }; effort: 'low' | 'medium' | 'high' | 'max' }
+  | { effort: 'low' | 'medium' | 'high' | 'max' };
+
+export const ANTHROPIC_EFFORT_THINKING_BUDGET_TOKENS: Record<ResolvedProviderEffortLevel, number> = {
+  low: 4096,
+  medium: 8192,
+  high: 16384,
+  xhigh: 24576,
+  max: 32768
+};
+
+const ANTHROPIC_MIN_THINKING_BUDGET_TOKENS = 1024;
+
+// The AI SDK (@ai-sdk/anthropic 3.x) effort enum has no 'xhigh'; clamp it to 'high' on the wire.
+function toAnthropicSdkEffort(level: ResolvedProviderEffortLevel): 'low' | 'medium' | 'high' | 'max' {
+  return level === 'xhigh' ? 'high' : level;
+}
+
+/**
+ * Maps a resolved effort level to `providerOptions.anthropic` knobs:
+ * - Adaptive-thinking models take `thinking: { type: 'adaptive' }` plus the effort level
+ *   (fixed budgets 400 on those models).
+ * - Other effort-capable models take a classic extended-thinking budget, clamped below
+ *   maxOutputTokens (the API requires budget_tokens < max_tokens, minimum 1024).
+ */
+export function resolveAnthropicEffortProviderOptions(input: {
+  effort: ResolvedProviderEffortLevel;
+  capabilities?: AiProviderModelCapabilities;
+  maxOutputTokens: number;
+}): AnthropicEffortProviderOptions {
+  const effort = toAnthropicSdkEffort(input.effort);
+  if (input.capabilities?.supportsAdaptiveThinking) {
+    return { thinking: { type: 'adaptive' }, effort };
+  }
+  const budgetTokens = Math.min(
+    ANTHROPIC_EFFORT_THINKING_BUDGET_TOKENS[input.effort],
+    input.maxOutputTokens - ANTHROPIC_MIN_THINKING_BUDGET_TOKENS
+  );
+  if (budgetTokens >= ANTHROPIC_MIN_THINKING_BUDGET_TOKENS) {
+    return { thinking: { type: 'enabled', budgetTokens }, effort };
+  }
+  return { effort };
 }

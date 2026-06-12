@@ -1,4 +1,5 @@
 import { inferOpenAiCompatibleApiMode } from '../../../../shared/provider-catalog';
+import { drainBackgroundCommandNoticeMessage } from '../persistent-terminal-store';
 import { buildNativeToolLoopMessages } from '../model-message-builder';
 import { ProjectInstructionTracker } from '../project-instruction-tracker';
 import { createProviderRuntimeController } from '../provider-runtime-events';
@@ -91,6 +92,10 @@ export async function runOpenAiCompatibleNativeToolLoop(
   });
   while (true) {
     params.abortSignal?.throwIfAborted();
+    const backgroundNotice = drainBackgroundCommandNoticeMessage(params.project.id);
+    if (backgroundNotice) {
+      state.messages.push({ role: 'user', content: backgroundNotice });
+    }
     if (stepIndex >= maxSteps) {
       providerController.completeRun(`已达到 ${maxSteps} 轮工具循环步数预算上限。`);
       emitCoreStateStage('completed', `工具循环达到 ${maxSteps} 轮步数预算上限，已强制收尾。`);

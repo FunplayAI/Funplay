@@ -2,12 +2,19 @@
   "id": "example-implement-module",
   "title": "实现模块的多个函数使测试通过（规划/长程，示例）",
   "description": "考察规划与多步实现：工程里有多个待实现的空函数和现成测试，agent 需读懂测试意图、依次实现全部函数并通过确定性验收。真实运行需补 provider 凭据。",
-  "dimensions": ["planning", "long_horizon", "tool_reliability"],
-  "runtimes": ["native", "claude-code-sdk"],
+  "dimensions": [
+    "planning",
+    "long_horizon",
+    "tool_reliability"
+  ],
+  "runtimes": [
+    "native"
+  ],
   "prompt": "src/calc.js 里的函数都还是 TODO。请阅读 calc.test.js 的期望，实现所有函数，确保 `npm test` 全部通过。",
   "provider": {
-    "native": { "envKey": "FUNPLAY_EVAL_NATIVE" },
-    "claude-code-sdk": { "envKey": "FUNPLAY_EVAL_CLAUDE" }
+    "native": {
+      "envKey": "FUNPLAY_EVAL_NATIVE"
+    }
   },
   "workspace": {
     "files": [

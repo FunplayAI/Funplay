@@ -5,7 +5,10 @@ import { join } from 'node:path';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createNativeWorkspaceTools } from '../../electron/main/agent-platform/native/tool-adapter.ts';
-import { executeAgentToolAction, executeWorkspaceToolAction } from '../../electron/main/agent-platform/workspace-tools.ts';
+import {
+  executeAgentToolAction,
+  executeWorkspaceToolAction
+} from '../../electron/main/agent-platform/workspace-tools.ts';
 import { disposePersistentTerminals } from '../../electron/main/agent-platform/persistent-terminal-store.ts';
 import { closeBrowserPagesForProject } from '../../electron/main/agent-platform/browser-inspection-store.ts';
 import { restoreFileCheckpoint } from '../../electron/main/agent-platform/file-checkpoint-store.ts';
@@ -47,12 +50,14 @@ test('workspace write tool writes inside project and blocks traversal', async ()
 
     assert.equal(writeResult.ok, true);
     assert.match(writeResult.summary, /已写入 notes\/hello\.md/);
-    assert.deepEqual(writeResult.changedFiles, [{
-      path: 'notes/hello.md',
-      operation: 'created',
-      size: 7,
-      error: undefined
-    }]);
+    assert.deepEqual(writeResult.changedFiles, [
+      {
+        path: 'notes/hello.md',
+        operation: 'created',
+        size: 7,
+        error: undefined
+      }
+    ]);
     assert.deepEqual(writeResult.edit, {
       strategy: 'write_file',
       patchFirst: false,
@@ -67,10 +72,12 @@ test('workspace write tool writes inside project and blocks traversal', async ()
     });
     assert.equal(directoryResult.ok, true);
     assert.match(directoryResult.summary, /已创建目录 assets\/sprites/);
-    assert.deepEqual(directoryResult.changedFiles, [{
-      path: 'assets/sprites',
-      operation: 'directory_created'
-    }]);
+    assert.deepEqual(directoryResult.changedFiles, [
+      {
+        path: 'assets/sprites',
+        operation: 'directory_created'
+      }
+    ]);
     assert.equal((await stat(join(projectPath, 'assets', 'sprites'))).isDirectory(), true);
 
     const readResult = await executeWorkspaceToolAction(project, {
@@ -127,11 +134,11 @@ test('workspace find, read range, and edit tools support code-style workflows', 
     assert.doesNotMatch(rangeResult.summary, /1\tone/);
 
     await mkdir(join(projectPath, 'src'), { recursive: true });
-    await writeFile(join(projectPath, 'src', 'component.tsx'), [
-      'export function AlphaWidget() {',
-      '  return <div>NeedleOne</div>;',
-      '}'
-    ].join('\n'), 'utf8');
+    await writeFile(
+      join(projectPath, 'src', 'component.tsx'),
+      ['export function AlphaWidget() {', '  return <div>NeedleOne</div>;', '}'].join('\n'),
+      'utf8'
+    );
     await writeFile(join(projectPath, 'src', 'component.test.tsx'), 'expect("NeedleOne").toBeTruthy();', 'utf8');
     await writeFile(join(projectPath, 'src', 'notes.md'), 'NeedleOne in docs', 'utf8');
 
@@ -179,12 +186,14 @@ test('workspace find, read range, and edit tools support code-style workflows', 
       }
     );
     assert.equal(editResult.ok, true);
-    assert.deepEqual(editResult.changedFiles, [{
-      path: 'alpha.ts',
-      operation: 'modified',
-      size: 13,
-      replacementCount: 1
-    }]);
+    assert.deepEqual(editResult.changedFiles, [
+      {
+        path: 'alpha.ts',
+        operation: 'modified',
+        size: 13,
+        replacementCount: 1
+      }
+    ]);
     assert.deepEqual(editResult.edit, {
       strategy: 'search_replace',
       patchFirst: false,
@@ -237,12 +246,16 @@ test('workspace game project inspector recognizes web game workflows and assets'
     await writeFile(join(projectPath, 'src', 'main.ts'), 'console.log("play");', 'utf8');
     await writeFile(join(projectPath, 'assets', 'images', 'hero.png'), 'png', 'utf8');
     await writeFile(join(projectPath, 'assets', 'audio', 'theme.ogg'), 'ogg', 'utf8');
-    await writeFile(join(projectPath, 'package.json'), JSON.stringify({
-      scripts: {
-        dev: 'vite --host 127.0.0.1',
-        build: 'vite build'
-      }
-    }), 'utf8');
+    await writeFile(
+      join(projectPath, 'package.json'),
+      JSON.stringify({
+        scripts: {
+          dev: 'vite --host 127.0.0.1',
+          build: 'vite build'
+        }
+      }),
+      'utf8'
+    );
 
     const result = await executeWorkspaceToolAction(project, {
       type: 'inspect_game_project'
@@ -317,15 +330,21 @@ test('native media tools attach and save rich media blocks', async () => {
       includeWriteTools: false
     });
     const mediaTool = tools.media_attach_file as unknown as {
-      execute: (input: Record<string, unknown>, options: Record<string, unknown>) => Promise<{
+      execute: (
+        input: Record<string, unknown>,
+        options: Record<string, unknown>
+      ) => Promise<{
         summary: string;
         media?: Array<{ title?: string }>;
       }>;
     };
-    const adapterResult = await mediaTool.execute({
-      filePath: 'media/note.txt',
-      title: 'Adapter note'
-    }, {});
+    const adapterResult = await mediaTool.execute(
+      {
+        filePath: 'media/note.txt',
+        title: 'Adapter note'
+      },
+      {}
+    );
     assert.match(adapterResult.summary, /Attached media/);
     assert.equal(adapterResult.media?.[0]?.title, 'Adapter note');
   } finally {
@@ -498,7 +517,10 @@ test('workspace patch tools preview and apply unified diffs with checkpoint', as
       addedLines: 2,
       removedLines: 1
     });
-    assert.equal(await readFile(join(projectPath, 'alpha.ts'), 'utf8'), 'const a = 1;\nconst b = 20;\nconst added = true;\nconst c = 3;\n');
+    assert.equal(
+      await readFile(join(projectPath, 'alpha.ts'), 'utf8'),
+      'const a = 1;\nconst b = 20;\nconst added = true;\nconst c = 3;\n'
+    );
 
     const checkpointDiff = await executeAgentToolAction(
       project,
@@ -546,11 +568,7 @@ test('workspace patch tools preview and apply unified diffs with checkpoint', as
     const failed = await executeWorkspaceToolAction(project, {
       type: 'preview_patch',
       path: 'alpha.ts',
-      patch: [
-        '@@ -1,1 +1,1 @@',
-        '-missing context',
-        '+replacement'
-      ].join('\n')
+      patch: ['@@ -1,1 +1,1 @@', '-missing context', '+replacement'].join('\n')
     });
     assert.equal(failed.ok, false);
     assert.equal(failed.isError, true);
@@ -585,7 +603,7 @@ test('workspace run_command executes in project with timeout and cwd guards', as
 
     const longOutputResult = await executeWorkspaceToolAction(project, {
       type: 'run_command',
-      command: "node -e \"process.stdout.write('x'.repeat(70000))\"",
+      command: 'node -e "process.stdout.write(\'x\'.repeat(70000))"',
       timeoutMs: 5_000
     });
     assert.equal(longOutputResult.ok, true);
@@ -608,11 +626,11 @@ test('workspace run_command executes in project with timeout and cwd guards', as
       command: 'node -e "setInterval(() => {}, 1000)" &',
       timeoutMs: 5_000
     });
-    assert.equal(backgroundResult.ok, true);
-    assert.match(backgroundResult.summary, /已改用持久终端/);
-    assert.equal(backgroundResult.terminal?.status, 'running');
-    assert.equal(backgroundResult.terminal?.command, 'node -e "setInterval(() => {}, 1000)"');
-    assert.equal(backgroundResult.command?.timedOut, false);
+    assert.equal(backgroundResult.ok, false);
+    assert.equal(backgroundResult.isError, true);
+    assert.match(backgroundResult.summary, /已拒绝执行后台命令/);
+    assert.match(backgroundResult.summary, /background:true/);
+    assert.match(backgroundResult.summary, /terminal_start/);
 
     const timeoutResult = await executeWorkspaceToolAction(project, {
       type: 'run_command',
@@ -738,7 +756,7 @@ test('workspace terminal_read writes command_output artifact for truncated termi
     const written = await executeAgentToolAction(project, {
       type: 'terminal_write',
       sessionId,
-      input: "node -e \"for (let i = 0; i < 180; i += 1) console.log('artifact-line-' + i)\"",
+      input: 'node -e "for (let i = 0; i < 180; i += 1) console.log(\'artifact-line-\' + i)"',
       reason: 'produce long terminal output'
     });
     assert.equal(written.ok, true);

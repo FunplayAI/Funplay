@@ -107,7 +107,10 @@ function resolveProjectPath(project: Project): string | undefined {
   return resolve(projectPath.replace(/^~/, process.env.HOME ?? '~'));
 }
 
-function truncateWithFlag(value: string | undefined, maxLength: number): {
+function truncateWithFlag(
+  value: string | undefined,
+  maxLength: number
+): {
   value?: string;
   truncated?: boolean;
 } {
@@ -187,7 +190,7 @@ function readJsonFile(rootPath: string, relativePath: string): Record<string, un
     }
     const parsed = JSON.parse(readFileSync(absolutePath, 'utf8')) as unknown;
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
+      ? (parsed as Record<string, unknown>)
       : undefined;
   } catch {
     return undefined;
@@ -195,9 +198,7 @@ function readJsonFile(rootPath: string, relativePath: string): Record<string, un
 }
 
 function recordFromUnknown(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 function stringFromUnknown(value: unknown): string | undefined {
@@ -211,9 +212,7 @@ function parsePackageManagerSpec(value: unknown): GenericProjectContextIndex['pa
   }
   const match = /^(npm|pnpm|yarn|bun)(?:@|$)/i.exec(spec);
   const name = match?.[1]?.toLowerCase();
-  return name === 'npm' || name === 'pnpm' || name === 'yarn' || name === 'bun'
-    ? name
-    : undefined;
+  return name === 'npm' || name === 'pnpm' || name === 'yarn' || name === 'bun' ? name : undefined;
 }
 
 function detectPackageManager(rootPath: string): GenericProjectContextIndex['packageManager'] {
@@ -263,7 +262,10 @@ function collectPackageJsonEntrypoints(packageJson: Record<string, unknown>): Ar
   return entrypoints;
 }
 
-function collectExistingEntrypoints(rootPath: string, candidates: Array<{ path: string; reason: string }>): Array<{ path: string; reason: string }> {
+function collectExistingEntrypoints(
+  rootPath: string,
+  candidates: Array<{ path: string; reason: string }>
+): Array<{ path: string; reason: string }> {
   const seen = new Set<string>();
   const entrypoints: Array<{ path: string; reason: string }> = [];
   for (const candidate of candidates) {
@@ -324,7 +326,12 @@ function collectProjectContextIndex(project: Project): GenericProjectContextInde
     recentFiles: []
   };
 
-  const addDependency = (name: string, version: unknown, kind: GenericProjectContextIndex['dependencies'][number]['kind'], source: string): void => {
+  const addDependency = (
+    name: string,
+    version: unknown,
+    kind: GenericProjectContextIndex['dependencies'][number]['kind'],
+    source: string
+  ): void => {
     if (index.dependencies.length >= MAX_CONTEXT_INDEX_DEPENDENCIES || typeof version !== 'string') {
       index.truncated = index.dependencies.length >= MAX_CONTEXT_INDEX_DEPENDENCIES || index.truncated;
       return;
@@ -340,7 +347,10 @@ function collectProjectContextIndex(project: Project): GenericProjectContextInde
     for (const [name, command] of Object.entries(scripts)) {
       if (typeof command !== 'string') continue;
       index.scripts.push({ name, command, source: 'package.json' });
-      if (/test|spec|e2e|check|build|typecheck|lint/i.test(name) || /\b(test|vitest|jest|playwright|tsc|eslint)\b/i.test(command)) {
+      if (
+        /test|spec|e2e|check|build|typecheck|lint/i.test(name) ||
+        /\b(test|vitest|jest|playwright|tsc|eslint)\b/i.test(command)
+      ) {
         index.testCommands.push({ name, command, source: 'package.json' });
       }
     }
@@ -364,9 +374,9 @@ function collectProjectContextIndex(project: Project): GenericProjectContextInde
     }
   }
 
-  index.configFiles = CONTEXT_INDEX_CONFIG_CANDIDATES
-    .filter((candidate) => existsSync(resolve(rootPath, candidate)))
-    .slice(0, MAX_CONTEXT_INDEX_CONFIG_FILES);
+  index.configFiles = CONTEXT_INDEX_CONFIG_CANDIDATES.filter((candidate) =>
+    existsSync(resolve(rootPath, candidate))
+  ).slice(0, MAX_CONTEXT_INDEX_CONFIG_FILES);
 
   index.entrypoints = collectExistingEntrypoints(rootPath, [
     ...index.entrypoints,
@@ -397,12 +407,28 @@ export function formatProjectContextIndexSummary(index: GenericProjectContextInd
   return [
     index.packageManager ? `Package manager: ${index.packageManager}` : '',
     index.manifests.length ? `Manifests: ${index.manifests.map((manifest) => manifest.path).join(', ')}` : '',
-    index.scripts.length ? `Scripts: ${index.scripts.map((script) => `${script.name}=${script.command}`).slice(0, 12).join('; ')}` : '',
-    index.testCommands.length ? `Validation commands: ${index.testCommands.map((script) => `${script.name}=${script.command}`).slice(0, 8).join('; ')}` : '',
-    index.entrypoints.length ? `Entrypoints: ${index.entrypoints.map((entrypoint) => `${entrypoint.path} (${entrypoint.reason})`).join(', ')}` : '',
+    index.scripts.length
+      ? `Scripts: ${index.scripts
+          .map((script) => `${script.name}=${script.command}`)
+          .slice(0, 12)
+          .join('; ')}`
+      : '',
+    index.testCommands.length
+      ? `Validation commands: ${index.testCommands
+          .map((script) => `${script.name}=${script.command}`)
+          .slice(0, 8)
+          .join('; ')}`
+      : '',
+    index.entrypoints.length
+      ? `Entrypoints: ${index.entrypoints.map((entrypoint) => `${entrypoint.path} (${entrypoint.reason})`).join(', ')}`
+      : '',
     index.configFiles.length ? `Config files: ${index.configFiles.slice(0, 12).join(', ')}` : '',
-    index.recentFiles.length ? `Recent changes: ${index.recentFiles.map((file) => `${file.status} ${file.path}`).join(', ')}` : ''
-  ].filter(Boolean).join('\n');
+    index.recentFiles.length
+      ? `Recent changes: ${index.recentFiles.map((file) => `${file.status} ${file.path}`).join(', ')}`
+      : ''
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function isPathInsideRoot(rootPath: string, absolutePath: string): boolean {
@@ -468,16 +494,20 @@ function normalizeInstructionPathToken(token: string): string | undefined {
 function extractInstructionPathTokens(message = ''): string[] {
   const rawTokens = [
     ...[...message.matchAll(/`([^`\n]{1,180})`/g)].map((match) => match[1]),
-    ...[...message.matchAll(/@((?:\.\/)?[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*)(?=\s|$|[,，。；;:])/g)].map((match) => match[1]),
-    ...[...message.matchAll(/\b((?:\.\/)?[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+(?::\d+(?::\d+)?)?)\b/g)].map((match) => match[1]),
+    ...[...message.matchAll(/@((?:\.\/)?[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*)(?=\s|$|[,，。；;:])/g)].map(
+      (match) => match[1]
+    ),
+    ...[...message.matchAll(/\b((?:\.\/)?[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+(?::\d+(?::\d+)?)?)\b/g)].map(
+      (match) => match[1]
+    ),
     ...[...message.matchAll(/\b([A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,12}(?::\d+(?::\d+)?)?)\b/g)].map((match) => match[1])
   ];
 
-  return [...new Set(
-    rawTokens
-      .map((token) => normalizeInstructionPathToken(token))
-      .filter((token): token is string => Boolean(token))
-  )].slice(0, MAX_PROJECT_INSTRUCTION_PATH_TOKENS);
+  return [
+    ...new Set(
+      rawTokens.map((token) => normalizeInstructionPathToken(token)).filter((token): token is string => Boolean(token))
+    )
+  ].slice(0, MAX_PROJECT_INSTRUCTION_PATH_TOKENS);
 }
 
 function parseReferenceLine(value: unknown): number | undefined {
@@ -494,7 +524,8 @@ function parseReferenceLine(value: unknown): number | undefined {
 function extractPathReferencesFromText(text = ''): Array<{ path: string; line?: number }> {
   const references: Array<{ path: string; line?: number }> = [];
   const seen = new Set<string>();
-  const pattern = /((?:file:\/\/)?(?:\/|\.\/)?(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,12})(?::(\d+)(?::\d+)?)?/g;
+  const pattern =
+    /((?:file:\/\/)?(?:\/|\.\/)?(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,12})(?::(\d+)(?::\d+)?)?/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(text)) && references.length < MAX_RECENT_VERIFICATION_FAILURE_FILES * 3) {
     const path = match[1] ?? '';
@@ -513,18 +544,17 @@ function isRecentVerificationFailureOperation(record: AgentOperationRecord): boo
   if (record.status !== 'failed') {
     return false;
   }
-  const haystack = [
-    record.id,
-    record.phase,
-    record.title,
-    record.target
-  ].filter(Boolean).join('\n').toLowerCase();
-  return haystack.includes('native_active_verification') ||
+  const haystack = [record.id, record.phase, record.title, record.target].filter(Boolean).join('\n').toLowerCase();
+  return (
+    haystack.includes('native_active_verification') ||
     haystack.includes('verification_handoff') ||
-    haystack.includes('active verification');
+    haystack.includes('active verification')
+  );
 }
 
-function extractVerificationReferencesFromOperation(record: AgentOperationRecord): Array<{ path: string; line?: number }> {
+function extractVerificationReferencesFromOperation(
+  record: AgentOperationRecord
+): Array<{ path: string; line?: number }> {
   const references: Array<{ path: string; line?: number }> = [];
   const seen = new Set<string>();
   const push = (path: string | undefined, line?: number): void => {
@@ -552,8 +582,12 @@ function extractVerificationReferencesFromOperation(record: AgentOperationRecord
     record.errorMessage,
     stringFromUnknown(diagnosis.summary),
     stringFromUnknown(diagnosis.suggestedFocus),
-    ...(Array.isArray(diagnosis.evidence) ? diagnosis.evidence.map((value) => typeof value === 'string' ? value : '') : [])
-  ].filter(Boolean).join('\n');
+    ...(Array.isArray(diagnosis.evidence)
+      ? diagnosis.evidence.map((value) => (typeof value === 'string' ? value : ''))
+      : [])
+  ]
+    .filter(Boolean)
+    .join('\n');
   for (const reference of extractPathReferencesFromText(evidenceText)) {
     push(reference.path, reference.line);
   }
@@ -598,22 +632,14 @@ function extractContextTerms(message = ''): string[] {
     const value = match[0];
     return value.length > 8 ? [value.slice(0, 8)] : [value];
   });
-  const stopWords = new Set([
-    'the',
-    'and',
-    'for',
-    'with',
-    'this',
-    'that',
-    'please',
-    'implement',
-    'agent'
-  ]);
-  return [...new Set([...latinTerms, ...cjkTerms].filter((term) => !stopWords.has(term)))]
-    .slice(0, 16);
+  const stopWords = new Set(['the', 'and', 'for', 'with', 'this', 'that', 'please', 'implement', 'agent']);
+  return [...new Set([...latinTerms, ...cjkTerms].filter((term) => !stopWords.has(term)))].slice(0, 16);
 }
 
-function summarizeSessionMessages(messages: string[], maxChars: number): {
+function summarizeSessionMessages(
+  messages: string[],
+  maxChars: number
+): {
   summary: string;
   truncated?: boolean;
 } {
@@ -634,17 +660,16 @@ function collectCrossSessionSummaries(
   terms: string[]
 ): GenericAgentWorkspaceContext['crossSessionSummaries'] {
   return [...(project.sessions ?? [])]
-    .filter((session) =>
-      session.id !== activeSessionId &&
-      session.chat.length > 0 &&
-      Boolean(session.runtimeOverrides?.nativeContextSummary || session.runtimeOverrides?.claudeContextSummary)
+    .filter(
+      (session) =>
+        session.id !== activeSessionId &&
+        session.chat.length > 0 &&
+        Boolean(session.runtimeOverrides?.nativeContextSummary)
     )
     .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
     .slice(0, MAX_CROSS_SESSION_SUMMARIES)
     .map((session) => {
-      const summarySource =
-        session.runtimeOverrides?.nativeContextSummary ||
-        session.runtimeOverrides?.claudeContextSummary;
+      const summarySource = session.runtimeOverrides?.nativeContextSummary;
       const summarySourcePreview = summarySource ? truncateWithFlag(summarySource.trim(), 900) : undefined;
       const summarized = summarySourcePreview
         ? {
@@ -680,9 +705,7 @@ function collectRelatedSessionEvidence(
     if (session.id === activeSessionId || session.chat.length === 0) {
       continue;
     }
-    const summarySource =
-      session.runtimeOverrides?.nativeContextSummary ||
-      session.runtimeOverrides?.claudeContextSummary;
+    const summarySource = session.runtimeOverrides?.nativeContextSummary;
     if (!summarySource) {
       continue;
     }
@@ -705,12 +728,14 @@ function collectRelatedSessionEvidence(
       truncated: excerpt.truncated || start > 0
     });
   }
-  return evidence
-    .sort((left, right) => left.title.localeCompare(right.title))
-    .slice(0, MAX_RELATED_SESSION_EVIDENCE);
+  return evidence.sort((left, right) => left.title.localeCompare(right.title)).slice(0, MAX_RELATED_SESSION_EVIDENCE);
 }
 
-function readWorkspaceEvidenceFile(rootPath: string, relativePath: string, line?: number): {
+function readWorkspaceEvidenceFile(
+  rootPath: string,
+  relativePath: string,
+  line?: number
+): {
   excerpt?: string;
   truncated?: boolean;
 } {
@@ -782,9 +807,7 @@ function collectWorkspaceEvidence(input: {
     const currentMessagePathTokens = extractInstructionPathTokens(input.message);
     const recentMessagePathTokens = [
       ...new Set(
-        (input.recentMessages ?? [])
-          .slice(-8)
-          .flatMap((message) => extractInstructionPathTokens(message.content))
+        (input.recentMessages ?? []).slice(-8).flatMap((message) => extractInstructionPathTokens(message.content))
       )
     ];
     const pathCandidates: Array<{
@@ -1038,14 +1061,16 @@ export function buildGenericWorkspaceContext(
           `bridgeInstalled=${ensured.runtimeState.bridgeInstalled}`,
           ensured.runtimeState.activeSceneSummary ? `activeScene=${ensured.runtimeState.activeSceneSummary}` : '',
           ensured.runtimeState.recentConsoleSummary ? `console=${ensured.runtimeState.recentConsoleSummary}` : ''
-        ].filter(Boolean).join('; ')
+        ]
+          .filter(Boolean)
+          .join('; ')
       : undefined,
     executionPlanSummary: ensured.currentExecutionPlan
       ? [
           ensured.currentExecutionPlan.summary,
-          ...ensured.currentExecutionPlan.actions.slice(0, 6).map((action) =>
-            `${action.status}: ${action.pluginKind}/${action.title} -> ${action.objective}`
-          )
+          ...ensured.currentExecutionPlan.actions
+            .slice(0, 6)
+            .map((action) => `${action.status}: ${action.pluginKind}/${action.title} -> ${action.objective}`)
         ].join('\n')
       : undefined,
     activeSessionId: activeSession.id,

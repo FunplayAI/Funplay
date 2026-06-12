@@ -40,7 +40,6 @@ Unity is the first-class engine workflow today. The architecture is engine-aware
 
 - Project-first desktop workspace: sessions, files, assets, providers, and engine state live around a real local project.
 - Native agent runtime: file reading, patching, terminal, browser inspection, web search, MCP, memory, notifications, and checkpoint tools.
-- Claude Code runtime option: use Claude Code-style project automation from the same desktop shell.
 - Multi-provider setup: OpenAI-compatible providers, Anthropic, Google, Bedrock, and custom endpoints.
 - Asset Generation Center: provider-backed generation jobs with deterministic output naming and project asset discovery.
 - Engine integration layer: Unity workflow support today, with a path toward additional engines through MCP and engine adapters.
@@ -82,11 +81,8 @@ Funplay supports separate configuration for chat/model providers, asset-generati
 
 Useful environment variables for development:
 
-- `FUNPLAY_CLAUDE_CODE_CLI_PATH` - override the Claude Code CLI executable path.
-- `FUNPLAY_CLAUDE_CODE_FORCE_CLI=1` - force the legacy Claude CLI stream path.
 - `FUNPLAY_ALLOW_LOCAL_WEB_TOOLS=1` - allow local URL fetches in web tool tests.
 - `BRAVE_SEARCH_API_KEY` / `BING_SEARCH_API_KEY` - enable web search providers.
-- `FUNPLAY_E2E_CLAUDE_API_KEY` + `FUNPLAY_E2E_CLAUDE_MODEL` - enable live Claude SDK E2E checks.
 
 ## Development
 

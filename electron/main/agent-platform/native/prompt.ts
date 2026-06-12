@@ -1,6 +1,10 @@
 import type { GenericAgentRuntimeParams } from '../types';
 import { FUNPLAY_HTML_PREVIEW_CAPABILITY_PROMPT_ZH } from '../preview-capabilities';
-import { createResponseLanguageContextLine, createResponseLanguageInstruction, type RuntimeUiLanguage } from '../response-language';
+import {
+  createResponseLanguageContextLine,
+  createResponseLanguageInstruction,
+  type RuntimeUiLanguage
+} from '../response-language';
 
 export interface NativeRuntimeWorkspaceEvidence {
   fileTreeSummary?: string;
@@ -46,7 +50,9 @@ function formatResumeContext(params: GenericAgentRuntimeParams): string {
         transaction.checkpoint
           ? `- checkpoint: ${transaction.checkpoint.policy}${transaction.checkpoint.status ? `/${transaction.checkpoint.status}` : ''}${transaction.checkpoint.snapshotId ? ` snapshot=${transaction.checkpoint.snapshotId}` : ''}`
           : ''
-      ].filter(Boolean).join('\n')
+      ]
+        .filter(Boolean)
+        .join('\n')
     : '';
 
   return [
@@ -70,24 +76,26 @@ function formatResumeContext(params: GenericAgentRuntimeParams): string {
     '恢复规则：',
     '- 当前运行是在中断或失败后继续，不是全新任务。',
     '- 如果 lastToolBoundary.status 是 completed，把该工具视为已经完成；不要重复执行同一个工具，除非用户请求或后续检查证明必须重试。',
-    transaction ? '- 如果恢复工具事务摘要显示 status 为 completed，把该 transactionId/toolUseId 视为 host 已经落盘的完成边界；不要为了“补写”而重复执行同一工具。' : '',
+    transaction
+      ? '- 如果恢复工具事务摘要显示 status 为 completed，把该 transactionId/toolUseId 视为 host 已经落盘的完成边界；不要为了“补写”而重复执行同一工具。'
+      : '',
     '- 如果文件已恢复到 checkpoint，先基于当前文件状态继续，不要假设中断后的外部修改仍存在。',
     '- 优先从上一个工具边界之后继续推进，并在最终回复中说明恢复后的处理结果。',
     transactionSummary
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function formatWorkspaceEvidenceItem(item: GenericWorkspaceEvidenceItem, index: number): string {
   const label = item.title ?? item.path ?? item.kind;
   return [
     `## Evidence ${index + 1}: ${label}${item.truncated ? ' (truncated)' : ''}`,
-    [
-      `kind=${item.kind}`,
-      `source=${item.source}`,
-      item.path ? `path=${item.path}` : ''
-    ].filter(Boolean).join(' · '),
+    [`kind=${item.kind}`, `source=${item.source}`, item.path ? `path=${item.path}` : ''].filter(Boolean).join(' · '),
     item.excerpt
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function formatStructuredWorkspaceEvidence(params: GenericAgentRuntimeParams): string {
@@ -102,6 +110,127 @@ function formatStructuredWorkspaceEvidence(params: GenericAgentRuntimeParams): s
   ].join('\n\n');
 }
 
+function formatProjectInstructionsSection(params: GenericAgentRuntimeParams): string {
+  return params.context.projectInstructions.length
+    ? [
+        '',
+        '项目级 Agent 指令（来自工作区文件，优先遵守）：',
+        ...params.context.projectInstructions.map((instruction) =>
+          [`## ${instruction.path}${instruction.truncated ? ' (truncated)' : ''}`, instruction.content].join('\n')
+        )
+      ].join('\n\n')
+    : '';
+}
+
+function formatLifecycleHookContextSection(params: GenericAgentRuntimeParams): string {
+  return params.lifecycleHookContext?.length
+    ? [
+        '',
+        '生命周期 Hook 附加上下文（由 host 运行器注入）：',
+        ...params.lifecycleHookContext.map((context, index) => `## Hook Context ${index + 1}\n${context}`)
+      ].join('\n\n')
+    : '';
+}
+
+function formatEnabledSkillsSection(params: GenericAgentRuntimeParams): string {
+  return params.context.toolContext.skills.length
+    ? [
+        '',
+        '用户赋予的 Agent Skills（项目设置中启用，按触发场景采用）：',
+        ...params.context.toolContext.skills.map((skill) =>
+          [
+            `## ${skill.name}`,
+            skill.description ? `用途：${skill.description}` : '',
+            skill.trigger ? `触发场景：${skill.trigger}` : '',
+            skill.dependencies?.length ? `依赖：${skill.dependencies.join(', ')}` : '',
+            skill.examples?.length ? ['示例：', ...skill.examples.map((example) => `- ${example}`)].join('\n') : '',
+            '执行准则：',
+            skill.instruction
+          ]
+            .filter(Boolean)
+            .join('\n')
+        )
+      ].join('\n\n')
+    : '';
+}
+
+function formatActiveSkillsSection(params: GenericAgentRuntimeParams): string {
+  return params.context.toolContext.activeSkills.length
+    ? [
+        '',
+        '本轮显式调用的文件系统 Agent Skills（已按需加载完整 SKILL.md）：',
+        ...params.context.toolContext.activeSkills.map((skill) =>
+          [
+            `## ${skill.name}`,
+            skill.description ? `用途：${skill.description}` : '',
+            `来源：${skill.source}`,
+            `信任：${skill.trustLevel} · 验证：${skill.verificationStatus}`,
+            `权限策略：${skill.permissionPolicy}（只约束 Skill 工作流，不授予工具权限）`,
+            `脚本策略：${skill.scriptPolicy}${skill.declaredScripts?.length ? ` · 声明脚本 ${skill.declaredScripts.length} 个，必须通过普通工具权限流程执行` : ''}`,
+            skill.allowedTools?.length ? `建议工具：${skill.allowedTools.join(', ')}` : '',
+            '执行准则：',
+            skill.instruction
+          ]
+            .filter(Boolean)
+            .join('\n')
+        )
+      ].join('\n\n')
+    : '';
+}
+
+function formatSkillIndexSection(params: GenericAgentRuntimeParams): string {
+  return params.context.toolContext.skillIndex.length
+    ? [
+        '',
+        '可用文件系统 Agent Skills（只列 metadata，完整指令按需读取）：',
+        '如果用户明确点名某个 Skill，或任务明显匹配某个 Skill，先用 list_agent_skills/read_agent_skill 读取完整 SKILL.md，再执行。',
+        ...params.context.toolContext.skillIndex.map((skill) =>
+          [
+            `## ${skill.name}`,
+            skill.description ? `用途：${skill.description}` : '',
+            `来源：${skill.source}`,
+            `可调用：user=${skill.userInvocable ? 'yes' : 'no'} model=${skill.modelInvocable ? 'yes' : 'no'}`,
+            `信任：${skill.trustLevel} · 验证：${skill.verificationStatus}`,
+            `权限策略：${skill.permissionPolicy}`,
+            skill.declaredScripts?.length
+              ? `声明脚本：${skill.declaredScripts.length} 个（不能直接执行，需普通工具权限）`
+              : '',
+            skill.allowedTools?.length ? `建议工具：${skill.allowedTools.join(', ')}` : ''
+          ]
+            .filter(Boolean)
+            .join('\n')
+        )
+      ].join('\n\n')
+    : '';
+}
+
+// Static-per-run environment block for the tool-loop system prompt. All values are
+// collected by the host once when the run starts (context.ts) — git is NOT re-run
+// per step, so the block stays byte-identical for the lifetime of a run.
+export function formatNativeRuntimeEnvironmentBlock(context: GenericAgentRuntimeParams['context']): string {
+  const environment = context.runtimeEnvironment;
+  const git = environment?.git;
+  return [
+    '环境信息（运行开始时由 host 采集一次，本轮内不会重新执行 git）：',
+    `- 操作系统平台：${environment?.platform ?? process.platform}`,
+    `- 今日日期：${environment?.currentDate ?? new Date().toISOString().slice(0, 10)}`,
+    environment?.timezone ? `- 时区：${environment.timezone}` : '',
+    environment?.shell ? `- Shell：${environment.shell}` : '',
+    `- 工作目录：${environment?.workingDirectory ?? context.projectPath ?? '(未设置项目路径)'}`,
+    `- 项目：${context.projectName}${context.platform ? `（${context.platform}）` : ''}`,
+    environment?.isGitRepository === false ? '- Git：当前工作目录不是 git 仓库' : '',
+    git?.branch ? `- Git 分支：${git.branch}` : '',
+    git
+      ? git.status
+        ? `- Git 状态快照（git status --short${git.statusTruncated ? '，已截断' : ''}）：\n${git.status}`
+        : '- Git 状态快照：工作区干净'
+      : '',
+    git?.recentCommits ? `- 最近提交${git.recentCommitsTruncated ? '（已截断）' : ''}：\n${git.recentCommits}` : ''
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 export function createNativeRuntimeSystemPrompt(uiLanguage?: RuntimeUiLanguage): string {
   return [
     '你是 Funplay 桌面应用中的通用 AI Agent。',
@@ -114,6 +243,48 @@ export function createNativeRuntimeSystemPrompt(uiLanguage?: RuntimeUiLanguage):
     createResponseLanguageInstruction(uiLanguage),
     '允许使用 Markdown，但保持结构简洁。'
   ].join('\n');
+}
+
+// Per-turn dynamic context for the native tool loop. Static rules, tool listings,
+// and the environment snapshot live in the system prompt (tool-loop-prompt.ts);
+// this block only carries what actually changes between turns, serialized with
+// stable keys and compact JSON so the transcript prefix stays cache-friendly.
+export function createNativeRuntimeDynamicContextPrompt(params: GenericAgentRuntimeParams): string {
+  return [
+    '本回合动态上下文（compact JSON，键名稳定；静态运行规则见 system prompt）：',
+    createResponseLanguageContextLine(params.uiLanguage),
+    JSON.stringify({
+      projectId: params.context.projectId,
+      projectName: params.context.projectName,
+      projectPath: params.context.projectPath,
+      projectBrief: params.context.projectBrief,
+      currentGoal: params.context.currentGoal,
+      projectContextIndex: params.context.projectContextIndex,
+      sessionMode: params.context.sessionMode,
+      sessionEffort: params.context.sessionEffort,
+      runtimeSummary: params.context.runtimeSummary,
+      executionPlanSummary: params.context.executionPlanSummary,
+      activeSessionId: params.context.activeSessionId,
+      archivedTurnCount: params.context.archivedTurnCount,
+      crossSessionSummaries: params.context.crossSessionSummaries,
+      relatedSessionEvidence: params.context.relatedSessionEvidence,
+      plugins: params.context.toolContext.plugins
+    }),
+    params.context.archivedSummary
+      ? ['', `更早历史摘要（${params.context.archivedTurnCount} 轮）：`, params.context.archivedSummary].join('\n')
+      : '',
+    params.resumeContext ? ['', formatResumeContext(params)].join('\n') : '',
+    formatStructuredWorkspaceEvidence(params),
+    formatProjectInstructionsSection(params),
+    formatLifecycleHookContextSection(params),
+    formatEnabledSkillsSection(params),
+    formatActiveSkillsSection(params),
+    formatSkillIndexSection(params),
+    '',
+    `用户消息：${params.message}`
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 export function createNativeRuntimeUserPrompt(
@@ -156,80 +327,11 @@ export function createNativeRuntimeUserPrompt(
       : '',
     params.resumeContext ? ['', formatResumeContext(params)].join('\n') : '',
     formatStructuredWorkspaceEvidence(params),
-    params.context.projectInstructions.length
-      ? [
-          '',
-          '项目级 Agent 指令（来自工作区文件，优先遵守）：',
-          ...params.context.projectInstructions.map((instruction) =>
-            [
-              `## ${instruction.path}${instruction.truncated ? ' (truncated)' : ''}`,
-              instruction.content
-            ].join('\n')
-          )
-        ].join('\n\n')
-      : '',
-    params.lifecycleHookContext?.length
-      ? [
-          '',
-          '生命周期 Hook 附加上下文（由 host 运行器注入）：',
-          ...params.lifecycleHookContext.map((context, index) => `## Hook Context ${index + 1}\n${context}`)
-        ].join('\n\n')
-      : '',
-    params.context.toolContext.skills.length
-      ? [
-          '',
-          '用户赋予的 Agent Skills（项目设置中启用，按触发场景采用）：',
-          ...params.context.toolContext.skills.map((skill) =>
-            [
-              `## ${skill.name}`,
-              skill.description ? `用途：${skill.description}` : '',
-              skill.trigger ? `触发场景：${skill.trigger}` : '',
-              skill.dependencies?.length ? `依赖：${skill.dependencies.join(', ')}` : '',
-              skill.examples?.length ? ['示例：', ...skill.examples.map((example) => `- ${example}`)].join('\n') : '',
-              '执行准则：',
-              skill.instruction
-            ].filter(Boolean).join('\n')
-          )
-        ].join('\n\n')
-      : '',
-    params.context.toolContext.activeSkills.length
-      ? [
-          '',
-          '本轮显式调用的文件系统 Agent Skills（已按需加载完整 SKILL.md）：',
-          ...params.context.toolContext.activeSkills.map((skill) =>
-            [
-              `## ${skill.name}`,
-              skill.description ? `用途：${skill.description}` : '',
-              `来源：${skill.source}`,
-              `信任：${skill.trustLevel} · 验证：${skill.verificationStatus}`,
-              `权限策略：${skill.permissionPolicy}（只约束 Skill 工作流，不授予工具权限）`,
-              `脚本策略：${skill.scriptPolicy}${skill.declaredScripts?.length ? ` · 声明脚本 ${skill.declaredScripts.length} 个，必须通过普通工具权限流程执行` : ''}`,
-              skill.allowedTools?.length ? `建议工具：${skill.allowedTools.join(', ')}` : '',
-              '执行准则：',
-              skill.instruction
-            ].filter(Boolean).join('\n')
-          )
-        ].join('\n\n')
-      : '',
-    params.context.toolContext.skillIndex.length
-      ? [
-          '',
-          '可用文件系统 Agent Skills（只列 metadata，完整指令按需读取）：',
-          '如果用户明确点名某个 Skill，或任务明显匹配某个 Skill，先用 list_agent_skills/read_agent_skill 读取完整 SKILL.md，再执行。',
-          ...params.context.toolContext.skillIndex.map((skill) =>
-            [
-              `## ${skill.name}`,
-              skill.description ? `用途：${skill.description}` : '',
-              `来源：${skill.source}`,
-              `可调用：user=${skill.userInvocable ? 'yes' : 'no'} model=${skill.modelInvocable ? 'yes' : 'no'}`,
-              `信任：${skill.trustLevel} · 验证：${skill.verificationStatus}`,
-              `权限策略：${skill.permissionPolicy}`,
-              skill.declaredScripts?.length ? `声明脚本：${skill.declaredScripts.length} 个（不能直接执行，需普通工具权限）` : '',
-              skill.allowedTools?.length ? `建议工具：${skill.allowedTools.join(', ')}` : ''
-            ].filter(Boolean).join('\n')
-          )
-        ].join('\n\n')
-      : '',
+    formatProjectInstructionsSection(params),
+    formatLifecycleHookContextSection(params),
+    formatEnabledSkillsSection(params),
+    formatActiveSkillsSection(params),
+    formatSkillIndexSection(params),
     includeRecentTurns && params.context.recentTurns.length
       ? [
           '',
@@ -238,8 +340,9 @@ export function createNativeRuntimeUserPrompt(
             [
               `## Turn ${index + 1}`,
               turn.userMessage ? `User:\n${turn.userMessage}` : '',
-              ...turn.assistantMessages.map((message, messageIndex) =>
-                `Assistant ${messageIndex + 1}${message.intent ? ` (${message.intent})` : ''}:\n${message.content}`
+              ...turn.assistantMessages.map(
+                (message, messageIndex) =>
+                  `Assistant ${messageIndex + 1}${message.intent ? ` (${message.intent})` : ''}:\n${message.content}`
               )
             ]
               .filter(Boolean)
@@ -247,9 +350,7 @@ export function createNativeRuntimeUserPrompt(
           )
         ].join('\n\n')
       : '',
-    workspaceEvidence?.fileTreeSummary
-      ? ['', '工作区文件树摘要：', workspaceEvidence.fileTreeSummary].join('\n')
-      : '',
+    workspaceEvidence?.fileTreeSummary ? ['', '工作区文件树摘要：', workspaceEvidence.fileTreeSummary].join('\n') : '',
     workspaceEvidence?.directorySummaries.length
       ? [
           '',

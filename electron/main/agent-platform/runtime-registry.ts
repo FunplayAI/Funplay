@@ -1,4 +1,3 @@
-import { claudeCodeSdkRuntime, isClaudeSideRuntimeModel } from './claude/runtime';
 import { nativeRuntime } from './native/runtime';
 import type { AgentRuntimeStrategy, AiProvider } from '../../../shared/types';
 import type { GenericAgentRuntime, GenericAgentRuntimeId } from './types';
@@ -12,7 +11,6 @@ function ensureInitialized(): void {
   }
 
   registerGenericAgentRuntime(nativeRuntime);
-  registerGenericAgentRuntime(claudeCodeSdkRuntime);
   initialized = true;
 }
 
@@ -44,14 +42,6 @@ function resolveNativeRuntime(): GenericAgentRuntime {
   return fallback;
 }
 
-function resolveAvailableRuntime(runtimeId?: GenericAgentRuntimeId): GenericAgentRuntime | undefined {
-  if (!runtimeId) {
-    return undefined;
-  }
-  const runtime = runtimes.get(runtimeId);
-  return runtime?.isAvailable() ? runtime : undefined;
-}
-
 function resolveExplicitRuntime(runtimeId: GenericAgentRuntimeId): GenericAgentRuntime {
   const runtime = runtimes.get(runtimeId);
   if (!runtime) {
@@ -63,32 +53,16 @@ function resolveExplicitRuntime(runtimeId: GenericAgentRuntimeId): GenericAgentR
   return runtime;
 }
 
-export function resolveGenericAgentRuntime(input?: GenericAgentRuntimeId | GenericAgentRuntimeResolveOptions): GenericAgentRuntime {
+export function resolveGenericAgentRuntime(
+  input?: GenericAgentRuntimeId | GenericAgentRuntimeResolveOptions
+): GenericAgentRuntime {
   ensureInitialized();
 
-  const options: GenericAgentRuntimeResolveOptions =
-    typeof input === 'string'
-      ? { runtimeId: input }
-      : input ?? {};
+  const options: GenericAgentRuntimeResolveOptions = typeof input === 'string' ? { runtimeId: input } : (input ?? {});
   const runtimeId = options.runtimeId;
 
   if (runtimeId) {
     return resolveExplicitRuntime(runtimeId);
-  }
-
-  if (options.runtimeStrategy === 'native') {
-    return resolveNativeRuntime();
-  }
-
-  if (options.runtimeStrategy === 'claude-code-sdk') {
-    return resolveAvailableRuntime('claude-code-sdk') ?? resolveNativeRuntime();
-  }
-
-  if (options.provider && isClaudeSideRuntimeModel(options.provider)) {
-    const claudeRuntime = resolveAvailableRuntime('claude-code-sdk');
-    if (claudeRuntime) {
-      return claudeRuntime;
-    }
   }
 
   return resolveNativeRuntime();

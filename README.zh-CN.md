@@ -40,7 +40,6 @@ Funplay 的产品目标很直接：你描述想做的游戏，连接自己信任
 
 - 项目优先的桌面工作区：会话、文件、素材、Provider 和引擎状态都围绕真实本地项目组织。
 - Native Agent runtime：支持文件读取、补丁修改、终端、浏览器检查、Web 搜索、MCP、记忆、通知和 checkpoint 工具。
-- Claude Code runtime 选项：可以在同一个桌面壳里使用接近 Claude Code 的项目自动化能力。
 - 多 Provider 配置：支持 OpenAI 兼容协议、Anthropic、Google、Bedrock 和自定义端点。
 - 素材生成中心：支持外部 Provider 的生成任务、确定性文件命名和项目素材发现。
 - 引擎集成层：当前支持 Unity 工作流，并通过 MCP 和引擎适配器继续扩展到更多引擎。
@@ -82,11 +81,8 @@ Funplay 分别支持聊天/模型 Provider、素材生成 Provider 和 MCP Serve
 
 常用开发环境变量：
 
-- `FUNPLAY_CLAUDE_CODE_CLI_PATH` - 覆盖 Claude Code CLI 可执行文件路径。
-- `FUNPLAY_CLAUDE_CODE_FORCE_CLI=1` - 强制使用旧 Claude CLI stream 路径。
 - `FUNPLAY_ALLOW_LOCAL_WEB_TOOLS=1` - 允许 Web 工具测试访问本地 URL。
 - `BRAVE_SEARCH_API_KEY` / `BING_SEARCH_API_KEY` - 启用 Web Search Provider。
-- `FUNPLAY_E2E_CLAUDE_API_KEY` + `FUNPLAY_E2E_CLAUDE_MODEL` - 启用 live Claude SDK E2E 检查。
 
 ## 本地开发
 

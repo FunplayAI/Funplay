@@ -5,15 +5,8 @@ import { initializeStore, getState, setState } from './store';
 import { initializePptxPreviewRenderer } from './pptx-preview-renderer';
 import { disposeProjectFileWatchers, syncProjectFileWatchers } from './project-file-watcher';
 import { disposePersistentTerminals } from './agent-platform/persistent-terminal-store';
-import {
-  initializeNotificationService,
-  sendAppNotification
-} from './notification-service';
-import {
-  getAppUpdateStatus,
-  initializeAppUpdateService,
-  scheduleStartupUpdateCheck
-} from './update-service';
+import { initializeNotificationService, sendAppNotification } from './notification-service';
+import { getAppUpdateStatus, initializeAppUpdateService, scheduleStartupUpdateCheck } from './update-service';
 import { initializeProviderSecretStore } from './provider-secret-store';
 import { initializeAssetGenerationSecretStore } from './asset-generation-secret-store';
 import { installSessionSecurity, secureBrowserWindow } from './security';
@@ -31,7 +24,7 @@ import { registerAppHandlers } from './ipc-handlers/app-handlers';
 import { registerDialogHandlers } from './ipc-handlers/dialog-handlers';
 import { registerAgentHandlers } from './ipc-handlers/agent-handlers';
 import { registerProjectHandlers } from './ipc-handlers/project-handlers';
-import { registerClaudeHandlers } from './ipc-handlers/claude-handlers';
+import { registerRuntimeDoctorHandlers } from './ipc-handlers/runtime-doctor-handlers';
 import { registerSettingsHandlers } from './ipc-handlers/settings-handlers';
 import { registerMcpHandlers } from './ipc-handlers/mcp-handlers';
 import { registerUnityHandlers } from './ipc-handlers/unity-handlers';
@@ -60,9 +53,9 @@ const completionBadgeTracker = createSessionCompletionBadgeTracker({
 function isPromptStreamCompletedEvent(payload: unknown): payload is Extract<PromptStreamEvent, { type: 'completed' }> {
   return Boolean(
     payload &&
-      typeof payload === 'object' &&
-      (payload as { type?: unknown }).type === 'completed' &&
-      typeof (payload as { sessionId?: unknown }).sessionId === 'string'
+    typeof payload === 'object' &&
+    (payload as { type?: unknown }).type === 'completed' &&
+    typeof (payload as { sessionId?: unknown }).sessionId === 'string'
   );
 }
 
@@ -109,7 +102,9 @@ function recordPromptStreamCompletionForBadge(payload: unknown): void {
 }
 
 function resolvePreloadPath(): string {
-  const candidates = ['../preload/index.js', '../preload/index.mjs'].map((relativePath) => join(__dirname, relativePath));
+  const candidates = ['../preload/index.js', '../preload/index.mjs'].map((relativePath) =>
+    join(__dirname, relativePath)
+  );
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
 }
 
@@ -219,7 +214,7 @@ function registerIpcHandlers(): void {
   registerDialogHandlers(ipcMain, ctx);
   registerAgentHandlers(ipcMain, ctx);
   registerProjectHandlers(ipcMain, ctx);
-  registerClaudeHandlers(ipcMain, ctx);
+  registerRuntimeDoctorHandlers(ipcMain, ctx);
   registerSettingsHandlers(ipcMain, ctx);
   registerMcpHandlers(ipcMain, ctx);
   registerUnityHandlers(ipcMain, ctx);

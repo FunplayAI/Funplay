@@ -55,16 +55,36 @@ export interface AgentToolDefinition<TInput extends Record<string, unknown> = Re
   readOnly: boolean;
   aliases?: string[];
   toolLanguage?: AgentToolLanguageMetadata;
-  validateInput?: (input: TInput, context: AgentToolValidationContext) => Promise<AgentToolValidationResult | undefined> | AgentToolValidationResult | undefined;
-  checkPermissions?: (input: TInput, context: AgentToolPermissionCheckContext) => Promise<WorkspaceToolActionResult | undefined> | WorkspaceToolActionResult | undefined;
+  validateInput?: (
+    input: TInput,
+    context: AgentToolValidationContext
+  ) => Promise<AgentToolValidationResult | undefined> | AgentToolValidationResult | undefined;
+  checkPermissions?: (
+    input: TInput,
+    context: AgentToolPermissionCheckContext
+  ) => Promise<WorkspaceToolActionResult | undefined> | WorkspaceToolActionResult | undefined;
+  /** When true for a given input, session/global pre-approvals are bypassed and the user is prompted every time. */
+  requiresExplicitApproval?: (input: Partial<TInput> | undefined) => boolean;
   getPermissionDetail?: (input: TInput, context: AgentToolPermissionCheckContext) => string | undefined;
   isConcurrencySafe?: (input: Partial<TInput> | undefined) => boolean;
   classifySideEffect?: (input: Partial<TInput> | undefined) => AgentToolSideEffectClassification;
   render?: (input: Partial<TInput> | undefined) => AgentToolRenderResult | undefined;
-  progress?: (input: Partial<TInput> | undefined, context: AgentToolProgressContext) => AgentToolProgressResult | undefined;
-  mapResult?: (result: WorkspaceToolActionResult, context: AgentToolResultMappingContext<TInput>) => WorkspaceToolActionResult;
-  mapToolResultToProtocolResult?: (result: WorkspaceToolActionResult, context: AgentToolResultMappingContext<TInput>) => AgentToolProtocolResult;
-  extractSearchText?: (result: WorkspaceToolActionResult, context: AgentToolResultMappingContext<TInput>) => string | undefined;
+  progress?: (
+    input: Partial<TInput> | undefined,
+    context: AgentToolProgressContext
+  ) => AgentToolProgressResult | undefined;
+  mapResult?: (
+    result: WorkspaceToolActionResult,
+    context: AgentToolResultMappingContext<TInput>
+  ) => WorkspaceToolActionResult;
+  mapToolResultToProtocolResult?: (
+    result: WorkspaceToolActionResult,
+    context: AgentToolResultMappingContext<TInput>
+  ) => AgentToolProtocolResult;
+  extractSearchText?: (
+    result: WorkspaceToolActionResult,
+    context: AgentToolResultMappingContext<TInput>
+  ) => string | undefined;
   userFacingName?: (input: Partial<TInput> | undefined) => string;
   toAutoClassifierInput?: (input: TInput) => unknown;
   getActivityDescription?: (input: Partial<TInput> | undefined) => string | null | undefined;
@@ -122,13 +142,17 @@ export interface AgentToolProtocolResult {
   searchText?: string;
 }
 
-export interface AgentToolResultMappingContext<TInput extends Record<string, unknown> = Record<string, unknown>> extends AgentToolValidationContext {
+export interface AgentToolResultMappingContext<
+  TInput extends Record<string, unknown> = Record<string, unknown>
+> extends AgentToolValidationContext {
   input: TInput;
 }
 
 const staticTools = new Map<WorkspaceToolAction['type'], AgentToolDefinition>();
 
-export function registerAgentTool<TInput extends Record<string, unknown>>(definition: AgentToolDefinition<TInput>): void {
+export function registerAgentTool<TInput extends Record<string, unknown>>(
+  definition: AgentToolDefinition<TInput>
+): void {
   staticTools.set(definition.name, definition as AgentToolDefinition);
 }
 

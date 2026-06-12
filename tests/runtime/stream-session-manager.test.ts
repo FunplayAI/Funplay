@@ -505,12 +505,12 @@ test('stream manager keeps runtime status events out of transcript content', () 
       sessionId: 'session_1',
       toolName: 'Read',
       elapsedSeconds: 300,
-      message: 'Claude 工具执行超时。',
+      message: '工具执行超时。',
       startedAt: '2026-04-22T08:00:00.000Z'
     },
     labels
   );
-  assert.equal(getStreamSessionForSession('project_a', 'session_1')?.statusMessage, 'Claude 工具执行超时。');
+  assert.equal(getStreamSessionForSession('project_a', 'session_1')?.statusMessage, '工具执行超时。');
   assert.equal(getStreamSessionForSession('project_a', 'session_1')?.content, '');
 });
 

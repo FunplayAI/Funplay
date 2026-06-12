@@ -1,7 +1,18 @@
 import { generateText } from 'ai';
-import { ensureProjectSessions, getActiveProjectSession, replaceProjectSession } from '../../../../shared/project-sessions';
+import {
+  ensureProjectSessions,
+  getActiveProjectSession,
+  replaceProjectSession
+} from '../../../../shared/project-sessions';
 import { getProviderPresetDefaults, resolveProviderUpstreamModel } from '../../../../shared/provider-catalog';
-import type { AgentCoreMessagePart, AiProvider, ChatMessage, NativeContextSummaryCoverage, Project, ProjectSession } from '../../../../shared/types';
+import type {
+  AgentCoreMessagePart,
+  AiProvider,
+  ChatMessage,
+  NativeContextSummaryCoverage,
+  Project,
+  ProjectSession
+} from '../../../../shared/types';
 import { createLanguageModel } from '../../ai-provider';
 import { generateOpenAiCompatibleText } from '../../openai-compatible-client';
 import { normalizeProviderContextWindowTokens } from '../../provider-runtime-options';
@@ -20,6 +31,9 @@ export interface NativeContextHandoffResult {
   summary: string;
   coverage: NativeContextSummaryCoverage;
   patch: Partial<NonNullable<ProjectSession['runtimeOverrides']>>;
+  // In-memory only: the messages the summary covers, used to feed structured
+  // turn history into the model-generated summary. Never persisted.
+  summarizedMessages?: ChatMessage[];
 }
 
 function compactWhitespace(value: string): string {
@@ -36,8 +50,52 @@ function truncateMiddle(value: string, maxLength: number): string {
   return `${value.slice(0, headLength)}${marker}${tailLength > 0 ? value.slice(-tailLength) : ''}`;
 }
 
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
+function estimateTokensFromCharCount(charCount: number): number {
+  return Math.ceil(charCount / 4);
+}
+
+interface NativeSessionTokenBaseline {
+  // Provider-reported prompt size (input + cache read/write tokens) of the most
+  // recent run's first provider step — the ground truth for everything the
+  // request contained at that point.
+  promptTokens: number;
+  // Transcript char count (same accounting as estimateSessionContextTokens) at
+  // the moment the baseline was recorded; only the delta past this is estimated
+  // with chars/4.
+  baselineChars: number;
+}
+
+const tokenBaselinesBySession = new Map<string, NativeSessionTokenBaseline>();
+
+export function computeNativeSessionTranscriptChars(session: ProjectSession, currentPrompt = ''): number {
+  const coverage = session.runtimeOverrides?.nativeContextSummaryCoverage;
+  const summary = session.runtimeOverrides?.nativeContextSummary ?? '';
+  const remaining = filterNativeMessagesAfterSummaryBoundary(session.chat ?? [], coverage);
+  const historyText = remaining.map(messageText).join('\n\n');
+  return [summary, historyText, currentPrompt].filter(Boolean).join('\n\n').length;
+}
+
+export function recordNativeSessionTokenBaseline(
+  sessionId: string,
+  usage: { inputTokens: number; cacheReadTokens?: number; cacheCreationTokens?: number },
+  baselineChars: number
+): void {
+  const promptTokens = usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheCreationTokens ?? 0);
+  if (promptTokens <= 0 || baselineChars < 0) {
+    return;
+  }
+  tokenBaselinesBySession.set(sessionId, {
+    promptTokens,
+    baselineChars
+  });
+}
+
+export function clearNativeSessionTokenBaseline(sessionId?: string): void {
+  if (sessionId) {
+    tokenBaselinesBySession.delete(sessionId);
+    return;
+  }
+  tokenBaselinesBySession.clear();
 }
 
 function agentCorePartSummaryText(part: AgentCoreMessagePart): string {
@@ -65,9 +123,7 @@ function messageText(message: ChatMessage): string {
     return message.content;
   }
 
-  const textParts = parts
-    .map(agentCorePartSummaryText)
-    .filter(Boolean);
+  const textParts = parts.map(agentCorePartSummaryText).filter(Boolean);
 
   return textParts.join('\n');
 }
@@ -78,7 +134,9 @@ function summarizeMessage(message: ChatMessage): string {
   const markers = [
     message.storageRowId !== undefined ? `rowid=${message.storageRowId}` : undefined,
     message.ordinal !== undefined ? `ordinal=${message.ordinal}` : undefined
-  ].filter(Boolean).join(', ');
+  ]
+    .filter(Boolean)
+    .join(', ');
   return `- ${prefix}${markers ? ` (${markers})` : ''}: ${text || '(empty)'}`;
 }
 
@@ -131,7 +189,9 @@ function getCompressibleMessages(session: ProjectSession): ChatMessage[] {
   });
 }
 
-function resolveBoundary(messages: ChatMessage[]): Pick<NativeContextSummaryCoverage, 'boundaryRowId' | 'boundaryOrdinal' | 'toMessageId'> {
+function resolveBoundary(
+  messages: ChatMessage[]
+): Pick<NativeContextSummaryCoverage, 'boundaryRowId' | 'boundaryOrdinal' | 'toMessageId'> {
   const last = messages[messages.length - 1];
   return {
     boundaryRowId: last?.storageRowId,
@@ -156,21 +216,9 @@ function resolveModelCandidates(provider?: AiProvider, session?: ProjectSession)
     .filter(Boolean) as string[];
 }
 
-export function resolveNativeContextWindowTokens(provider?: AiProvider, session?: ProjectSession): number {
-  if (session?.runtimeOverrides?.context1m) {
-    return 1_000_000;
-  }
-  const configured = normalizeProviderContextWindowTokens(provider?.contextWindowTokens);
-  if (configured) {
-    return configured;
-  }
-
-  const candidates = resolveModelCandidates(provider, session);
+function resolveCatalogContextWindow(provider: AiProvider | undefined, candidates: string[]): number | undefined {
   const defaults = provider ? getProviderPresetDefaults(provider) : undefined;
-  const modelCatalog = [
-    ...(provider?.availableModels ?? []),
-    ...(defaults?.availableModels ?? [])
-  ];
+  const modelCatalog = [...(provider?.availableModels ?? []), ...(defaults?.availableModels ?? [])];
 
   for (const candidate of candidates) {
     const match = modelCatalog.find((entry) => entry.modelId === candidate || entry.upstreamModelId === candidate);
@@ -178,7 +226,10 @@ export function resolveNativeContextWindowTokens(provider?: AiProvider, session?
       return match.capabilities.contextWindow;
     }
   }
+  return undefined;
+}
 
+function resolveMarkerTableContextWindow(candidates: string[]): number | undefined {
   const marker = candidates.join(' ').toLowerCase();
   if (marker.includes('opus-4-7') || marker.includes('opus-4-8')) {
     return 1_000_000;
@@ -216,15 +267,39 @@ export function resolveNativeContextWindowTokens(provider?: AiProvider, session?
   if (marker.includes('claude') || marker.includes('sonnet') || marker.includes('haiku') || marker.includes('opus')) {
     return 200_000;
   }
-  return 128_000;
+  return undefined;
 }
 
+// Single source of truth for a model's context window: provider model catalog
+// (configured + preset capabilities) first, then the marker table, then 128k.
+export function resolveModelContextWindow(provider?: AiProvider, model?: string): number {
+  const candidates = model?.trim() ? [model.trim()] : resolveModelCandidates(provider, undefined);
+  return resolveCatalogContextWindow(provider, candidates) ?? resolveMarkerTableContextWindow(candidates) ?? 128_000;
+}
+
+export function resolveNativeContextWindowTokens(provider?: AiProvider, session?: ProjectSession): number {
+  if (session?.runtimeOverrides?.context1m) {
+    return 1_000_000;
+  }
+  const configured = normalizeProviderContextWindowTokens(provider?.contextWindowTokens);
+  if (configured) {
+    return configured;
+  }
+
+  const candidates = resolveModelCandidates(provider, session);
+  return resolveCatalogContextWindow(provider, candidates) ?? resolveMarkerTableContextWindow(candidates) ?? 128_000;
+}
+
+// Primary estimator: the provider-reported prompt size for this session plus a
+// chars/4 estimate of everything added since that report. chars/4 alone is only
+// the cold-start fallback before any provider usage has been observed.
 function estimateSessionContextTokens(session: ProjectSession, currentPrompt: string): number {
-  const coverage = session.runtimeOverrides?.nativeContextSummaryCoverage;
-  const summary = session.runtimeOverrides?.nativeContextSummary ?? '';
-  const remaining = filterNativeMessagesAfterSummaryBoundary(session.chat ?? [], coverage);
-  const historyText = remaining.map(messageText).join('\n\n');
-  return estimateTokens([summary, historyText, currentPrompt].filter(Boolean).join('\n\n'));
+  const transcriptChars = computeNativeSessionTranscriptChars(session, currentPrompt);
+  const baseline = tokenBaselinesBySession.get(session.id);
+  if (baseline && transcriptChars >= baseline.baselineChars) {
+    return baseline.promptTokens + estimateTokensFromCharCount(transcriptChars - baseline.baselineChars);
+  }
+  return estimateTokensFromCharCount(transcriptChars);
 }
 
 export function shouldPrepareNativeContextHandoff(options: {
@@ -237,10 +312,7 @@ export function shouldPrepareNativeContextHandoff(options: {
   return estimatedTokens >= Math.floor(windowTokens * NATIVE_CONTEXT_AUTO_BUDGET_RATIO);
 }
 
-function buildExtractiveNativeSummary(options: {
-  previousSummary?: string;
-  messages: ChatMessage[];
-}): string {
+function buildExtractiveNativeSummary(options: { previousSummary?: string; messages: ChatMessage[] }): string {
   const lines = [
     options.previousSummary?.trim()
       ? `Previous native runtime long-context summary:\n${options.previousSummary.trim()}`
@@ -271,11 +343,14 @@ export function buildNativeContextSummaryForSession(options: {
     return undefined;
   }
 
-  if (!options.force && !shouldPrepareNativeContextHandoff({
-    session: options.session,
-    provider: options.provider,
-    currentPrompt: options.currentPrompt ?? ''
-  })) {
+  if (
+    !options.force &&
+    !shouldPrepareNativeContextHandoff({
+      session: options.session,
+      provider: options.provider,
+      currentPrompt: options.currentPrompt ?? ''
+    })
+  ) {
     return undefined;
   }
 
@@ -299,11 +374,16 @@ export function buildNativeContextSummaryForSession(options: {
 
   const previousSummary = options.session.runtimeOverrides?.nativeContextSummary;
   const audit = buildContextSummaryAudit(messagesToSummarize);
-  const summary = appendContextSummaryAudit(buildExtractiveNativeSummary({
-    previousSummary,
-    messages: messagesToSummarize
-  }), audit, EXTRACTIVE_SUMMARY_MAX_CHARS);
-  const coveredMessageCount = (previousCoverage?.coveredMessageCount ?? previousCoverage?.messageCount ?? 0) + messagesToSummarize.length;
+  const summary = appendContextSummaryAudit(
+    buildExtractiveNativeSummary({
+      previousSummary,
+      messages: messagesToSummarize
+    }),
+    audit,
+    EXTRACTIVE_SUMMARY_MAX_CHARS
+  );
+  const coveredMessageCount =
+    (previousCoverage?.coveredMessageCount ?? previousCoverage?.messageCount ?? 0) + messagesToSummarize.length;
   const coverage: NativeContextSummaryCoverage = {
     version: NATIVE_CONTEXT_SUMMARY_VERSION,
     strategy: 'extractive',
@@ -327,7 +407,8 @@ export function buildNativeContextSummaryForSession(options: {
       nativeContextSummaryUpdatedAt: coverage.generatedAt,
       nativeContextSummaryCoverage: coverage,
       nativeContextSummaryTurnCount: coverage.turnCount
-    }
+    },
+    summarizedMessages: messagesToSummarize
   };
 }
 
@@ -346,7 +427,10 @@ export function prepareNativeContextHandoff(options: {
     return undefined;
   }
 
-  if (!options.force && (compressionFailuresBySession.get(session.id) ?? 0) >= NATIVE_CONTEXT_COMPRESSION_FAILURE_LIMIT) {
+  if (
+    !options.force &&
+    (compressionFailuresBySession.get(session.id) ?? 0) >= NATIVE_CONTEXT_COMPRESSION_FAILURE_LIMIT
+  ) {
     return undefined;
   }
 
@@ -374,21 +458,117 @@ const NATIVE_PROVIDER_SUMMARY_MAX_OUTPUT_TOKENS = 1600;
 const NATIVE_PROVIDER_SUMMARY_TIMEOUT_MS = 20_000;
 
 export function shouldUseNativeProviderContextSummary(provider?: AiProvider): boolean {
-  // Opt-in for now: default stays on the reliable extractive summary so existing
-  // behavior and tests are unchanged. Enable model-generated summaries with
-  // FUNPLAY_NATIVE_CONTEXT_SUMMARY_PROVIDER=1 once eval confirms the quality win,
-  // mirroring the claude-code-sdk runtime's provider summary path.
-  return Boolean(provider && process.env.FUNPLAY_NATIVE_CONTEXT_SUMMARY_PROVIDER === '1');
+  // Model-generated summaries are the default compaction path. Set
+  // FUNPLAY_NATIVE_CONTEXT_SUMMARY_PROVIDER=0 to opt out and force the
+  // extractive summary; the extractive path also remains the automatic fallback
+  // whenever the provider summary call fails.
+  return Boolean(provider) && process.env.FUNPLAY_NATIVE_CONTEXT_SUMMARY_PROVIDER !== '0';
 }
 
-function buildNativeProviderSummaryPrompt(extractiveSummary: string): string {
+const STRUCTURED_HISTORY_MAX_ITEMS = 16;
+const STRUCTURED_HISTORY_ITEM_MAX_CHARS = 240;
+const NATIVE_WRITE_TOOL_NAMES = new Set(['write_file', 'edit_file', 'multi_edit', 'patch_file', 'create_directory']);
+const NATIVE_COMMAND_TOOL_NAMES = new Set(['run_command', 'terminal_start', 'terminal_write']);
+
+function pushUnique(items: string[], value: string): void {
+  const trimmed = truncateMiddle(compactWhitespace(value), STRUCTURED_HISTORY_ITEM_MAX_CHARS);
+  if (trimmed && !items.includes(trimmed) && items.length < STRUCTURED_HISTORY_MAX_ITEMS) {
+    items.push(trimmed);
+  }
+}
+
+// Structured digest of the turns being compacted: files touched, commands run,
+// open todos, and the last error — the facts a continuation summary must keep.
+export function buildNativeStructuredTurnHistory(messages: ChatMessage[]): string {
+  const userRequests: string[] = [];
+  const filesTouched: string[] = [];
+  const commandsRun: string[] = [];
+  const assistantConclusions: string[] = [];
+  let openTodos: string[] = [];
+  let lastError = '';
+
+  for (const message of messages) {
+    if (message.role === 'user') {
+      pushUnique(userRequests, message.content);
+      continue;
+    }
+    const parts = message.metadata?.agentCoreParts ?? [];
+    if (parts.length === 0) {
+      pushUnique(assistantConclusions, message.content);
+      continue;
+    }
+    for (const part of parts) {
+      if (part.kind === 'assistant_text') {
+        pushUnique(assistantConclusions, part.text);
+        continue;
+      }
+      if (part.kind === 'tool_call') {
+        if (NATIVE_WRITE_TOOL_NAMES.has(part.name) && typeof part.input?.path === 'string') {
+          pushUnique(filesTouched, `${part.name}: ${part.input.path}`);
+        }
+        if (NATIVE_COMMAND_TOOL_NAMES.has(part.name) && typeof part.input?.command === 'string') {
+          pushUnique(commandsRun, part.input.command);
+        }
+        if (part.name === 'update_todo_list' && Array.isArray(part.input?.todos)) {
+          openTodos = part.input.todos
+            .map((todo) => {
+              const record = todo && typeof todo === 'object' ? (todo as Record<string, unknown>) : {};
+              const status = typeof record.status === 'string' ? record.status : 'pending';
+              const title =
+                typeof record.title === 'string'
+                  ? record.title
+                  : typeof record.content === 'string'
+                    ? record.content
+                    : '';
+              return title && status !== 'completed' && status !== 'cancelled' ? `[${status}] ${title}` : '';
+            })
+            .filter(Boolean)
+            .slice(0, STRUCTURED_HISTORY_MAX_ITEMS);
+        }
+        continue;
+      }
+      if (part.kind === 'tool_error') {
+        lastError = truncateMiddle(compactWhitespace(part.error), STRUCTURED_HISTORY_ITEM_MAX_CHARS);
+        continue;
+      }
+      if (part.kind === 'run_error') {
+        lastError = truncateMiddle(compactWhitespace(part.error), STRUCTURED_HISTORY_ITEM_MAX_CHARS);
+      }
+    }
+  }
+
   return [
-    'Rewrite the following extractive log of an earlier coding-agent conversation into a concise, faithful continuation summary.',
+    userRequests.length ? ['User requests:', ...userRequests.map((item) => `- ${item}`)].join('\n') : '',
+    filesTouched.length ? ['Files touched:', ...filesTouched.map((item) => `- ${item}`)].join('\n') : '',
+    commandsRun.length ? ['Commands run:', ...commandsRun.map((item) => `- ${item}`)].join('\n') : '',
+    assistantConclusions.length
+      ? ['Assistant decisions and conclusions:', ...assistantConclusions.map((item) => `- ${item}`)].join('\n')
+      : '',
+    openTodos.length ? ['Open todos:', ...openTodos.map((item) => `- ${item}`)].join('\n') : '',
+    lastError ? `Last error: ${lastError}` : ''
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+function buildNativeProviderSummaryPrompt(input: {
+  structuredHistory: string;
+  previousSummary?: string;
+  extractiveSummary: string;
+}): string {
+  return [
+    'Write a concise, faithful continuation summary of an earlier coding-agent conversation.',
     'Preserve concrete facts: decisions made, files created or changed, commands run, current state, and any unfinished tasks.',
     'Do not invent details that are not present. Output only the summary text.',
-    '',
-    extractiveSummary
-  ].join('\n');
+    input.previousSummary?.trim()
+      ? ['', 'Previous continuation summary:', input.previousSummary.trim()].join('\n')
+      : '',
+    input.structuredHistory.trim()
+      ? ['', 'Structured turn history:', input.structuredHistory.trim()].join('\n')
+      : ['', 'Extractive log of the turns being summarized:', input.extractiveSummary].join('\n')
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 async function generateNativeProviderSummary(
@@ -420,8 +600,8 @@ async function generateNativeProviderSummary(
   return result.text.trim() || undefined;
 }
 
-// Async variant of prepareNativeContextHandoff that, when enabled, replaces the
-// extractive summary with a model-generated one (strategy: 'provider'). Any
+// Async variant of prepareNativeContextHandoff: by default the summary is
+// model-generated from structured turn history (strategy: 'provider'). Any
 // failure falls back to the extractive result, so this never regresses the
 // reliable path.
 export async function prepareNativeContextHandoffWithModelSummary(options: {
@@ -437,9 +617,17 @@ export async function prepareNativeContextHandoffWithModelSummary(options: {
     return extractive;
   }
   try {
+    const ensured = ensureProjectSessions(options.project);
+    const session =
+      (options.sessionId ? ensured.sessions.find((item) => item.id === options.sessionId) : undefined) ??
+      getActiveProjectSession(ensured);
     const modelSummary = await generateNativeProviderSummary(
       options.provider,
-      buildNativeProviderSummaryPrompt(extractive.summary),
+      buildNativeProviderSummaryPrompt({
+        structuredHistory: buildNativeStructuredTurnHistory(extractive.summarizedMessages ?? []),
+        previousSummary: session?.runtimeOverrides?.nativeContextSummary,
+        extractiveSummary: extractive.summary
+      }),
       options.abortSignal
     );
     if (!modelSummary) {
@@ -454,7 +642,8 @@ export async function prepareNativeContextHandoffWithModelSummary(options: {
         ...extractive.patch,
         nativeContextSummary: summary,
         nativeContextSummaryCoverage: coverage
-      }
+      },
+      summarizedMessages: extractive.summarizedMessages
     };
   } catch {
     return extractive;
@@ -471,6 +660,12 @@ export function applyNativeContextPatchToProject(
   if (!session) {
     return ensured;
   }
+  if (patch.nativeContextSummaryCoverage) {
+    // Compaction moved the coverage boundary, so the recorded provider-token
+    // baseline no longer matches the transcript; fall back to chars/4 until the
+    // next provider usage report.
+    clearNativeSessionTokenBaseline(sessionId);
+  }
   return replaceProjectSession(
     ensured,
     {
@@ -485,6 +680,7 @@ export function applyNativeContextPatchToProject(
 }
 
 export function resetNativeContextCompressionState(sessionId?: string): void {
+  clearNativeSessionTokenBaseline(sessionId);
   if (sessionId) {
     compressionFailuresBySession.delete(sessionId);
     return;

@@ -7,6 +7,7 @@ import { createEditFailureRecoveryPrompt, type NativeEditFailureRecovery } from 
 import { NATIVE_EDIT_FAILURE_CONTINUATION_LIMIT } from './tool-loop-options';
 import { isAbortLikeError } from './tool-loop-output';
 import { executeOpenAiCompatibleToolStage } from './openai-compatible-tool-stage';
+import { resolveModelVisionEnabled } from './multimodal';
 import type { NativeProcessTextStepStream, NativeProcessTextStream } from './tool-loop-process-stream';
 import type { NativeRunControllerToolResult, NativeToolLoopCallbacks } from './tool-loop-controller';
 import {
@@ -112,7 +113,8 @@ export async function recordOpenAiCompatibleToolResultStage(input: {
           recordRunControllerToolResult: (toolResult: NativeRunControllerToolResult) =>
             input.providerController.recordToolResult({
               toolResult
-            })
+            }),
+          visionEnabled: resolveModelVisionEnabled(input.params.provider)
         })
       ).editFailureRecoveries
     );

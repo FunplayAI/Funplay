@@ -3,7 +3,6 @@ import type {
   AiProvider,
   AiProviderMeta,
   AiProviderModel,
-  AiProviderRoleModels,
   ChatMessage,
   GameAgentRun,
   McpPlugin,
@@ -28,25 +27,6 @@ import type {
   ProviderStructuredRow,
   SessionRow
 } from './row-types';
-
-function normalizeProviderRoleModels(input?: AiProviderRoleModels | null): AiProviderRoleModels | undefined {
-  if (!input) {
-    return undefined;
-  }
-
-  const normalized: AiProviderRoleModels = {};
-  for (const key of ['default', 'reasoning', 'small', 'haiku', 'sonnet', 'opus'] as const) {
-    const value = input[key]?.trim();
-    if (value) {
-      normalized[key] = value;
-    }
-  }
-  return Object.keys(normalized).length > 0 ? normalized : undefined;
-}
-
-function parseProviderRoleModels(raw: string | null): AiProviderRoleModels | undefined {
-  return normalizeProviderRoleModels(parseJson<AiProviderRoleModels>(raw, {}));
-}
 
 function normalizeStringRecord(input?: Record<string, string> | null): Record<string, string> | undefined {
   if (!input) {
@@ -102,14 +82,11 @@ export function serializeProviderRecord(provider: AiProvider): ProviderStructure
     upstream_model: provider.upstreamModel ?? null,
     headers_json: JSON.stringify(normalizeStringRecord(provider.headers) ?? {}),
     env_overrides_json: JSON.stringify(normalizeStringRecord(provider.envOverrides) ?? {}),
-    claude_code_compatible: provider.protocol === 'anthropic' ? 1 : 0,
-    claude_role_models_json: JSON.stringify(normalizeProviderRoleModels(provider.claudeRoleModels) ?? {}),
     available_models_json: JSON.stringify(normalizeProviderModels(provider.availableModels) ?? []),
-    sdk_proxy_only: provider.sdkProxyOnly ? 1 : 0,
     provider_meta_json: JSON.stringify(normalizeProviderMeta(provider.providerMeta) ?? {}),
     context_window_tokens: normalizeProviderContextWindowTokens(provider.contextWindowTokens) ?? null,
     max_output_tokens: normalizeProviderMaxOutputTokens(provider.maxOutputTokens) ?? null,
-    request_timeout_ms: provider.requestTimeoutMs === false ? null : provider.requestTimeoutMs ?? null,
+    request_timeout_ms: provider.requestTimeoutMs === false ? null : (provider.requestTimeoutMs ?? null),
     request_timeout_disabled: provider.requestTimeoutMs === false ? 1 : 0,
     chunk_timeout_ms: provider.chunkTimeoutMs ?? null,
     enabled: provider.enabled ? 1 : 0,
@@ -139,15 +116,17 @@ function hydrateProviderFromStructuredRow(row: ProviderStructuredRow): AiProvide
     model: row.model,
     upstreamModel: row.upstream_model ?? defaults.upstreamModel,
     headers: normalizeStringRecord(parseJson<Record<string, string>>(row.headers_json, {})) ?? defaults.headers,
-    envOverrides: normalizeStringRecord(parseJson<Record<string, string>>(row.env_overrides_json, {})) ?? defaults.envOverrides,
-    claudeCodeCompatible: row.protocol === 'anthropic',
-    claudeRoleModels: parseProviderRoleModels(row.claude_role_models_json) ?? defaults.roleModels,
-    availableModels: normalizeProviderModels(parseJson<AiProviderModel[]>(row.available_models_json, [])) ?? defaults.availableModels,
-    sdkProxyOnly: row.sdk_proxy_only === 1 || defaults.sdkProxyOnly,
+    envOverrides:
+      normalizeStringRecord(parseJson<Record<string, string>>(row.env_overrides_json, {})) ?? defaults.envOverrides,
+    availableModels:
+      normalizeProviderModels(parseJson<AiProviderModel[]>(row.available_models_json, [])) ?? defaults.availableModels,
     providerMeta: normalizeProviderMeta(parseJson<AiProviderMeta>(row.provider_meta_json, {})) ?? defaults.providerMeta,
     contextWindowTokens: normalizeProviderContextWindowTokens(row.context_window_tokens ?? undefined),
     maxOutputTokens: normalizeProviderMaxOutputTokens(row.max_output_tokens ?? undefined),
-    requestTimeoutMs: row.request_timeout_disabled === 1 ? false : normalizeProviderRequestTimeoutMs(row.request_timeout_ms ?? undefined),
+    requestTimeoutMs:
+      row.request_timeout_disabled === 1
+        ? false
+        : normalizeProviderRequestTimeoutMs(row.request_timeout_ms ?? undefined),
     chunkTimeoutMs: normalizeProviderChunkTimeoutMs(row.chunk_timeout_ms ?? undefined),
     enabled: row.enabled === 1,
     isDefault: row.is_default === 1,
@@ -288,12 +267,46 @@ function hydrateProjectFromStructuredRow(row: ProjectStructuredRow): Project {
       compressedFrom: 0,
       updatedAt: row.updated_at
     }),
-    currentExecutionPlan: row.current_execution_plan_json ? parseJson(row.current_execution_plan_json, undefined) : undefined,
+    currentExecutionPlan: row.current_execution_plan_json
+      ? parseJson(row.current_execution_plan_json, undefined)
+      : undefined,
     lastExecutedPlan: row.last_executed_plan_json ? parseJson(row.last_executed_plan_json, undefined) : undefined
   };
 }
 
-export function hydrateProjectSessionsFromRows(project: Project, sessionRows: SessionRow[], messageRows: MessageRow[]): Project {
+const LEGACY_CLAUDE_OVERRIDE_KEYS = [
+  'claudeCodeSessionId',
+  'claudeCodeSessionCwd',
+  'claudeContextSummary',
+  'claudeContextSummaryUpdatedAt',
+  'claudeContextSummaryTurnCount',
+  'claudeContextSummaryCoverage',
+  'claudeWriteMode'
+] as const;
+
+function hydrateSessionRuntimeOverrides(raw: string | null): ProjectSession['runtimeOverrides'] {
+  if (!raw) {
+    return undefined;
+  }
+  const parsed = parseJson<Record<string, unknown> | undefined>(raw, undefined);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return undefined;
+  }
+  const normalized: Record<string, unknown> = { ...parsed };
+  for (const key of LEGACY_CLAUDE_OVERRIDE_KEYS) {
+    delete normalized[key];
+  }
+  if (normalized.runtimeId === 'claude-code-sdk') {
+    normalized.runtimeId = 'native';
+  }
+  return Object.keys(normalized).length > 0 ? (normalized as ProjectSession['runtimeOverrides']) : undefined;
+}
+
+export function hydrateProjectSessionsFromRows(
+  project: Project,
+  sessionRows: SessionRow[],
+  messageRows: MessageRow[]
+): Project {
   if (sessionRows.length === 0) {
     return project;
   }
@@ -314,9 +327,10 @@ export function hydrateProjectSessionsFromRows(project: Project, sessionRows: Se
       content: row.content,
       createdAt: row.created_at,
       ordinal: row.sort_order,
-      storageRowId: typeof row.storage_rowid === 'number' && Number.isFinite(row.storage_rowid)
-        ? Math.floor(row.storage_rowid)
-        : undefined,
+      storageRowId:
+        typeof row.storage_rowid === 'number' && Number.isFinite(row.storage_rowid)
+          ? Math.floor(row.storage_rowid)
+          : undefined,
       metadata: row.metadata_json ? parseJson(row.metadata_json, undefined) : undefined
     });
     messagesBySession.set(row.session_id, next);
@@ -328,7 +342,7 @@ export function hydrateProjectSessionsFromRows(project: Project, sessionRows: Se
     autoTitle: row.auto_title === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    runtimeOverrides: row.runtime_json ? parseJson(row.runtime_json, undefined) : undefined,
+    runtimeOverrides: hydrateSessionRuntimeOverrides(row.runtime_json),
     chat: messagesBySession.get(row.id) ?? []
   }));
 
@@ -401,25 +415,31 @@ export function hydrateProjects(projects: Project[]): Project[] {
         enrichedProject.memory.designDirectives.length > 0
           ? enrichedProject.memory
           : deriveProjectMemory(enrichedProject),
-      contextSummary:
-        enrichedProject.contextSummary.projectBrief
-          ? enrichedProject.contextSummary
-          : deriveProjectContextSummary(enrichedProject)
+      contextSummary: enrichedProject.contextSummary.projectBrief
+        ? enrichedProject.contextSummary
+        : deriveProjectContextSummary(enrichedProject)
     };
   });
 }
 
 export function readProjects(database: Database.Database): Project[] {
-  return (database.prepare('SELECT * FROM projects ORDER BY updated_at DESC, created_at DESC').all() as ProjectStructuredRow[])
-    .map((row) => hydrateProjectFromStructuredRow(row));
+  return (
+    database.prepare('SELECT * FROM projects ORDER BY updated_at DESC, created_at DESC').all() as ProjectStructuredRow[]
+  ).map((row) => hydrateProjectFromStructuredRow(row));
 }
 
 export function readProviders(database: Database.Database): AiProvider[] {
-  return (database.prepare('SELECT * FROM providers ORDER BY updated_at DESC, created_at DESC').all() as ProviderStructuredRow[])
-    .map((row) => hydrateProviderFromStructuredRow(row));
+  return (
+    database
+      .prepare('SELECT * FROM providers ORDER BY updated_at DESC, created_at DESC')
+      .all() as ProviderStructuredRow[]
+  ).map((row) => hydrateProviderFromStructuredRow(row));
 }
 
 export function readMcpPlugins(database: Database.Database): McpPlugin[] {
-  return (database.prepare('SELECT * FROM mcp_plugins ORDER BY updated_at DESC, created_at DESC').all() as McpPluginStructuredRow[])
-    .map((row) => hydrateMcpPluginFromStructuredRow(row));
+  return (
+    database
+      .prepare('SELECT * FROM mcp_plugins ORDER BY updated_at DESC, created_at DESC')
+      .all() as McpPluginStructuredRow[]
+  ).map((row) => hydrateMcpPluginFromStructuredRow(row));
 }

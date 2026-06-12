@@ -10,10 +10,6 @@ export interface RuntimeStageLike {
 }
 
 const DEVELOPER_RUNTIME_PATTERNS = [
-  /\bclaude\b/i,
-  /Claude\s+(Agent\s+)?SDK/i,
-  /Claude\s+Code/i,
-  /stage:claude/i,
   /stage:/i,
   /stage:(?:tool_loop|native_tool|openai_compatible|runtime_fallback)/i,
   /Native\s+(?:真实\s+)?Tool\s+Loop/i,
@@ -47,18 +43,16 @@ const DEVELOPER_RUNTIME_PATTERNS = [
 
 export function isDeveloperRuntimeStage(stage: RuntimeStageLike): boolean {
   return isDeveloperRuntimeText(
-    [
-      stage.stageId,
-      stage.phase,
-      stage.target,
-      stage.title,
-      stage.summary,
-      stage.errorMessage
-    ].filter(Boolean).join('\n')
+    [stage.stageId, stage.phase, stage.target, stage.title, stage.summary, stage.errorMessage]
+      .filter(Boolean)
+      .join('\n')
   );
 }
 
-export function getVisibleRuntimeStages<TStage extends RuntimeStageLike>(stages: TStage[], developerMode: boolean): TStage[] {
+export function getVisibleRuntimeStages<TStage extends RuntimeStageLike>(
+  stages: TStage[],
+  developerMode: boolean
+): TStage[] {
   if (developerMode) {
     return stages;
   }

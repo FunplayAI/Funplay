@@ -1,5 +1,10 @@
 import { inferOpenAiCompatibleApiMode } from '../../../../shared/provider-catalog';
-import type { AiProvider, ProjectSessionRuntimeId, RuntimeDiagnosticSeverity, RuntimeRecoveryAction } from '../../../../shared/types';
+import type {
+  AiProvider,
+  ProjectSessionRuntimeId,
+  RuntimeDiagnosticSeverity,
+  RuntimeRecoveryAction
+} from '../../../../shared/types';
 
 export type NativeRuntimeDiagnosticCode =
   | 'native_missing_provider'
@@ -92,7 +97,10 @@ export function redactNativeRuntimeErrorDetail(raw: string, provider?: AiProvide
   return safe
     .replace(/(authorization\s*[:=]\s*bearer\s+)[^\s"'\\]+/gi, '$1[redacted]')
     .replace(/(x-api-key\s*[:=]\s*)[^\s"'\\]+/gi, '$1[redacted]')
-    .replace(/((?:api[_-]?key|apikey|auth[_-]?token|access[_-]?token|secret[_-]?access[_-]?key|session[_-]?token)\s*[:=]\s*)[^\s"'\\]+/gi, '$1[redacted]');
+    .replace(
+      /((?:api[_-]?key|apikey|auth[_-]?token|access[_-]?token|secret[_-]?access[_-]?key|session[_-]?token)\s*[:=]\s*)[^\s"'\\]+/gi,
+      '$1[redacted]'
+    );
 }
 
 export function extractNativeRuntimeErrorDetail(error: unknown, provider?: AiProvider): string {
@@ -135,8 +143,7 @@ export function extractNativeRuntimeErrorDetail(error: unknown, provider?: AiPro
   }
 
   const requestUrl = stringifyErrorField(
-    readErrorField(errorRecord ?? {}, ['requestUrl', 'url']) ??
-      readErrorField(causeRecord ?? {}, ['requestUrl', 'url'])
+    readErrorField(errorRecord ?? {}, ['requestUrl', 'url']) ?? readErrorField(causeRecord ?? {}, ['requestUrl', 'url'])
   );
   if (requestUrl) {
     lines.push(`Request URL: ${requestUrl}`);
@@ -159,7 +166,9 @@ export function extractNativeRuntimeErrorDetail(error: unknown, provider?: AiPro
   return redactNativeRuntimeErrorDetail(trimDetail(lines.join('\n')), provider);
 }
 
-function diagnosticBase(provider?: AiProvider): Pick<NativeRuntimeDiagnostic, 'providerId' | 'protocol' | 'baseUrl' | 'model' | 'upstreamModel' | 'runtimeId'> {
+function diagnosticBase(
+  provider?: AiProvider
+): Pick<NativeRuntimeDiagnostic, 'providerId' | 'protocol' | 'baseUrl' | 'model' | 'upstreamModel' | 'runtimeId'> {
   return {
     providerId: provider?.id,
     protocol: provider?.protocol,
@@ -170,6 +179,17 @@ function diagnosticBase(provider?: AiProvider): Pick<NativeRuntimeDiagnostic, 'p
   };
 }
 
+/** Numeric HTTP status from structured error fields (error or its cause), if present. */
+function readStructuredStatusCode(error: unknown): number | undefined {
+  const errorRecord = isRecord(error) ? error : undefined;
+  const causeRecord = errorRecord && isRecord(errorRecord.cause) ? errorRecord.cause : undefined;
+  const value =
+    readErrorField(errorRecord ?? {}, ['statusCode', 'status', 'responseStatusCode']) ??
+    readErrorField(causeRecord ?? {}, ['statusCode', 'status', 'responseStatusCode']);
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number.parseInt(value, 10) : NaN;
+  return Number.isFinite(parsed) && parsed >= 100 && parsed <= 599 ? parsed : undefined;
+}
+
 export function classifyNativeRuntimeError(input: {
   error?: unknown;
   provider?: AiProvider;
@@ -178,7 +198,9 @@ export function classifyNativeRuntimeError(input: {
   const raw = input.detail ?? extractNativeRuntimeErrorDetail(input.error, input.provider);
   const message = raw.toLowerCase();
   const base = diagnosticBase(input.provider);
-  const withBase = (diagnostic: Omit<NativeRuntimeDiagnostic, keyof ReturnType<typeof diagnosticBase>>): NativeRuntimeDiagnostic => ({
+  const withBase = (
+    diagnostic: Omit<NativeRuntimeDiagnostic, keyof ReturnType<typeof diagnosticBase>>
+  ): NativeRuntimeDiagnostic => ({
     ...base,
     ...diagnostic,
     detail: raw
@@ -190,6 +212,37 @@ export function classifyNativeRuntimeError(input: {
       severity: 'error',
       summary: '当前没有可用的 AI Provider。',
       suggestedAction: '到应用设置里配置并测试一个 AI Provider 后重试。'
+    });
+  }
+
+  // Structured status codes are authoritative; message regexes below are the
+  // fallback for transports that surface only flattened error strings.
+  const statusCode = readStructuredStatusCode(input.error);
+  if (statusCode === 429) {
+    return withBase({
+      code: 'native_rate_limited',
+      severity: 'warn',
+      summary: 'Provider 返回限流错误。',
+      suggestedAction: '稍后重试，或切换到额度更充足的 provider/model。'
+    });
+  }
+  if (statusCode === 502 || statusCode === 503 || statusCode === 504 || statusCode === 529) {
+    return withBase({
+      code: 'native_overloaded',
+      severity: 'warn',
+      summary: 'Provider 暂时过载或网关不可用。',
+      suggestedAction: '稍后重试；如果持续失败，请检查 provider 服务状态或切换 provider。'
+    });
+  }
+  if (statusCode === 401 || statusCode === 403) {
+    return withBase({
+      code: 'native_auth_failed',
+      severity: 'error',
+      summary: 'Provider 认证失败。',
+      suggestedAction: '检查 API key/token、账号额度和 provider 的认证方式。',
+      recoveryActions: input.provider.providerMeta?.apiKeyUrl
+        ? [{ label: '打开 API key 页面', url: input.provider.providerMeta.apiKeyUrl }]
+        : undefined
     });
   }
   if (/context.*(too|exceed|exceeded|long|length)|prompt.*too.*long|maximum context|input.*too.*large/.test(message)) {
@@ -208,7 +261,11 @@ export function classifyNativeRuntimeError(input: {
       suggestedAction: '稍后重试，或切换到额度更充足的 provider/model。'
     });
   }
-  if (/overloaded|529|503|502|504|bad gateway|cloudflare|origin_bad_gateway|origin_unavailable|retryable|temporarily unavailable|capacity/.test(message)) {
+  if (
+    /overloaded|529|503|502|504|bad gateway|cloudflare|origin_bad_gateway|origin_unavailable|retryable|temporarily unavailable|capacity/.test(
+      message
+    )
+  ) {
     return withBase({
       code: 'native_overloaded',
       severity: 'warn',
@@ -221,18 +278,28 @@ export function classifyNativeRuntimeError(input: {
       code: 'native_provider_timeout',
       severity: 'warn',
       summary: 'Provider 单轮响应超时。',
-      suggestedAction: '长任务已经放宽到更长的单轮等待时间；如果仍触发，请让 Agent 先拆分任务并更频繁调用工具，或切换响应更稳定的 provider/model。'
+      suggestedAction:
+        '长任务已经放宽到更长的单轮等待时间；如果仍触发，请让 Agent 先拆分任务并更频繁调用工具，或切换响应更稳定的 provider/model。'
     });
   }
-  if (/(x-api-key|api key).*(bearer|authorization)|bearer.*(x-api-key|api key)|auth style|authentication style|oauth.*api key|custom_header/.test(message)) {
+  if (
+    /(x-api-key|api key).*(bearer|authorization)|bearer.*(x-api-key|api key)|auth style|authentication style|oauth.*api key|custom_header/.test(
+      message
+    )
+  ) {
     return withBase({
       code: 'native_auth_style_mismatch',
       severity: 'error',
       summary: 'Provider 认证方式与当前 native client 配置不匹配。',
-      suggestedAction: '检查 provider 的 authStyle，应在 API key、auth token、env-only 或 custom header 中选择服务商真实要求的方式。'
+      suggestedAction:
+        '检查 provider 的 authStyle，应在 API key、auth token、env-only 或 custom header 中选择服务商真实要求的方式。'
     });
   }
-  if (/401|403|unauthorized|forbidden|invalid.*(api|key|token)|authentication|auth.*failed|permission denied/.test(message)) {
+  if (
+    /401|403|unauthorized|forbidden|invalid.*(api|key|token)|authentication|auth.*failed|permission denied/.test(
+      message
+    )
+  ) {
     return withBase({
       code: 'native_auth_failed',
       severity: 'error',
@@ -251,7 +318,11 @@ export function classifyNativeRuntimeError(input: {
       suggestedAction: '检查 model/upstreamModel 是否是该服务商真实支持的模型 ID。'
     });
   }
-  if (/does not support the openai-compatible responses api|does not support openai-compatible chat completions mode|unsupported api mode|switch this provider to (chat completions|responses)/.test(message)) {
+  if (
+    /does not support the openai-compatible responses api|does not support openai-compatible chat completions mode|unsupported api mode|switch this provider to (chat completions|responses)/.test(
+      message
+    )
+  ) {
     return withBase({
       code: 'native_provider_api_mode_unsupported',
       severity: 'error',
@@ -259,23 +330,37 @@ export function classifyNativeRuntimeError(input: {
       suggestedAction: '在 Provider 设置中切换 Chat Completions/Responses mode，或选择支持该协议模式的 provider。'
     });
   }
-  if (/tool arguments are not valid json|工具调用参数 json 无法解析|malformed tool arguments|invalid json.*tool|tool.*invalid json/.test(message)) {
+  if (
+    /tool arguments are not valid json|工具调用参数 json 无法解析|malformed tool arguments|invalid json.*tool|tool.*invalid json/.test(
+      message
+    )
+  ) {
     return withBase({
       code: 'native_malformed_tool_arguments',
       severity: 'warn',
       summary: '模型返回了无法解析的工具参数。',
-      suggestedAction: 'Funplay 会把这次工具调用作为错误结果回放给模型，不执行副作用；如果频繁发生，请降低任务复杂度或切换工具调用更稳定的模型。'
+      suggestedAction:
+        'Funplay 会把这次工具调用作为错误结果回放给模型，不执行副作用；如果频繁发生，请降低任务复杂度或切换工具调用更稳定的模型。'
     });
   }
-  if (/tool_choice|tool schema|function schema|schema.*(invalid|unsupported)|parameters.*(invalid|unsupported|required)|tools.*(invalid|unsupported|required)/.test(message)) {
+  if (
+    /tool_choice|tool schema|function schema|schema.*(invalid|unsupported)|parameters.*(invalid|unsupported|required)|tools.*(invalid|unsupported|required)/.test(
+      message
+    )
+  ) {
     return withBase({
       code: 'native_tool_schema_invalid',
       severity: 'error',
       summary: 'Provider 不接受当前工具 schema 或工具调用参数格式。',
-      suggestedAction: '检查 provider profile 的 tool_choice、schema transform 和 token 参数配置；必要时切换到已验证的 provider preset。'
+      suggestedAction:
+        '检查 provider profile 的 tool_choice、schema transform 和 token 参数配置；必要时切换到已验证的 provider preset。'
     });
   }
-  if (/econnreset|etimedout|eai_again|und_err_socket|und_err_connect_timeout|socket disconnected|socket hang up|tls connection|other side closed|terminated/.test(message)) {
+  if (
+    /econnreset|etimedout|eai_again|und_err_socket|und_err_connect_timeout|socket disconnected|socket hang up|tls connection|other side closed|terminated/.test(
+      message
+    )
+  ) {
     return withBase({
       code: 'native_network_error',
       severity: 'warn',
@@ -307,12 +392,13 @@ export function classifyNativeRuntimeError(input: {
       suggestedAction: '切换会话权限，或对本次工具请求选择允许后重试。'
     });
   }
-  if (/unsupported provider|not supported by native|sdkproxyonly|env-mode should use claude sdk|protocol .* only supported/.test(message)) {
+  if (/unsupported provider|not supported by native|protocol .* only supported/.test(message)) {
     return withBase({
       code: 'native_provider_unsupported',
       severity: 'error',
-      summary: '当前 provider 不支持 native runtime。',
-      suggestedAction: '切换到 Claude SDK runtime，或选择 native 支持的 provider/protocol。'
+      summary: '当前 provider/协议不被 native runtime 支持。',
+      suggestedAction:
+        '切换到 native runtime 支持的 provider 或协议（anthropic / openai-compatible / google / bedrock / vertex）。'
     });
   }
   if (/tool loop|tool-calling|tool calling|tool call/.test(message)) {

@@ -63,9 +63,9 @@ const benchmarks = [
     timeoutMs: 120_000
   },
   {
-    id: 'claude-code-platform-hooks',
-    title: 'Claude Code style lifecycle hooks slice',
-    command: 'node --experimental-strip-types --import ./tests/register-ts-loader.mjs --test tests/runtime/agent-hooks.test.ts tests/runtime/claude-sdk-options.test.ts && node --experimental-strip-types --import ./tests/register-ts-loader.mjs --test --test-name-pattern "Claude Code runtime compacts long resume|Claude Code runtime retries stale resume|Claude Code runtime runs UserPromptSubmit and Stop|native runtime runs SessionStart|native notification tools emit Notification|native subagent tools emit SubagentStop" tests/runtime/agent-runtime.test.ts',
+    id: 'agent-lifecycle-hooks',
+    title: 'Agent lifecycle hooks slice',
+    command: 'node --experimental-strip-types --import ./tests/register-ts-loader.mjs --test tests/runtime/agent-hooks.test.ts && node --experimental-strip-types --import ./tests/register-ts-loader.mjs --test --test-name-pattern "native runtime runs SessionStart|native notification tools emit Notification|native subagent tools emit SubagentStop" tests/runtime/agent-runtime.test.ts',
     timeoutMs: 45_000
   },
   {

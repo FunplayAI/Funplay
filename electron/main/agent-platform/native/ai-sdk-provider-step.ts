@@ -1,5 +1,7 @@
 import { streamText, type LanguageModel, type ModelMessage } from 'ai';
-import type { AgentCoreProviderStepResult } from '../../../../shared/types';
+import type { ProviderOptions } from '@ai-sdk/provider-utils';
+import type { AgentCoreProviderStepResult, AiProvider, ProjectSessionEffort } from '../../../../shared/types';
+import { resolveProviderEffortLevel, resolveProviderModelMetadata } from '../../../../shared/provider-catalog';
 import { aiSdkStepToAgentCoreProviderStepResult } from '../provider-step-adapter';
 import { ProjectInstructionTracker } from '../project-instruction-tracker';
 import type { GenericAgentRuntimeParams } from '../types';
@@ -18,7 +20,7 @@ import {
   shouldRetryNativeProviderStep,
   waitForNativeProviderStepRetry
 } from './provider-step';
-import { createNativeRuntimeSystemPrompt } from './prompt';
+import { createNativeToolLoopSystemPrompt } from './tool-loop-prompt';
 import { createProviderRuntimeEventAdapter, type ProviderRuntimeController } from '../provider-runtime-events';
 import { createNativeAiSdkToolEventAdapter } from './ai-sdk-tool-event-adapter';
 import type { NativeToolLoopCallbacks } from './tool-loop-controller';
@@ -45,6 +47,60 @@ export interface NativeAiSdkProviderStepResult {
   responseMessages: ModelMessage[];
   finalCandidate: string;
   providerStep: AgentCoreProviderStepResult;
+}
+
+const ANTHROPIC_EPHEMERAL_CACHE_CONTROL = {
+  anthropic: {
+    cacheControl: {
+      type: 'ephemeral' as const
+    }
+  }
+};
+
+// Maps the session effort to Anthropic provider options. The AI SDK anthropic
+// options accept effort low/medium/high/max directly; 'xhigh' (an OpenAI-side
+// level) clamps to 'max'. Gated on the catalog declaring supportsEffort so
+// older models never receive an unknown parameter.
+export function buildNativeAiSdkEffortProviderOptions(
+  provider: AiProvider,
+  sessionEffort: ProjectSessionEffort | undefined
+): ProviderOptions | undefined {
+  if (provider.protocol !== 'anthropic') {
+    return undefined;
+  }
+  const resolved = resolveProviderEffortLevel(provider, sessionEffort);
+  if (!resolved) {
+    return undefined;
+  }
+  const effort = resolved === 'xhigh' ? 'max' : resolved;
+  const capabilities = resolveProviderModelMetadata(provider)?.capabilities;
+  return {
+    anthropic: {
+      effort,
+      ...(capabilities?.supportsAdaptiveThinking ? { thinking: { type: 'adaptive' as const } } : {})
+    }
+  };
+}
+
+// Marks the LAST message of a request with an Anthropic prompt-cache breakpoint.
+// The source messages are never mutated — each step gets a fresh shallow copy of
+// the tail so exactly one history breakpoint exists per request and the stored
+// transcript stays clean for the next step's prefix reuse.
+export function applyNativeAnthropicTailCacheBreakpoint(messages: ModelMessage[]): ModelMessage[] {
+  if (messages.length === 0) {
+    return messages;
+  }
+  const last = messages[messages.length - 1];
+  return [
+    ...messages.slice(0, -1),
+    {
+      ...last,
+      providerOptions: {
+        ...last.providerOptions,
+        ...ANTHROPIC_EPHEMERAL_CACHE_CONTROL
+      }
+    } as ModelMessage
+  ];
 }
 
 function collectAiSdkEditFailureRecoveries(
@@ -115,6 +171,20 @@ export async function runNativeAiSdkProviderStep(input: {
     stepIndex: input.loopState.stepCount,
     emitStage: input.callbacks?.emitStage
   });
+  // Static per run: deterministic given (params, tool definitions), so the bytes
+  // are identical across consecutive steps and providers can prefix-cache it.
+  const systemPrompt = createNativeToolLoopSystemPrompt(input.params, {
+    toolDefinitions: input.toolPool.definitions
+  });
+  const useAnthropicCacheBreakpoints = provider.protocol === 'anthropic';
+  const system = useAnthropicCacheBreakpoints
+    ? {
+        role: 'system' as const,
+        content: systemPrompt,
+        providerOptions: ANTHROPIC_EPHEMERAL_CACHE_CONTROL
+      }
+    : systemPrompt;
+  const effortProviderOptions = buildNativeAiSdkEffortProviderOptions(provider, input.params.context.sessionEffort);
   let result: ReturnType<typeof streamText> | undefined;
   let sawProviderOutput = false;
   for (let attempt = 0; attempt <= NATIVE_PROVIDER_STEP_MAX_RETRIES; attempt += 1) {
@@ -128,19 +198,27 @@ export async function runNativeAiSdkProviderStep(input: {
     try {
       result = streamText({
         model: input.model,
-        system: createNativeRuntimeSystemPrompt(input.params.uiLanguage),
+        system,
         messages: input.loopState.messages,
         tools: input.toolPool.toolSet,
         activeTools: [...input.toolPool.names],
         toolChoice: 'auto',
+        ...(effortProviderOptions ? { providerOptions: effortProviderOptions } : {}),
         prepareStep: ({ messages, stepNumber }) => {
           const dynamicInstructionMessage = input.instructionTracker.formatDynamicInstructionMessage();
-          if (!dynamicInstructionMessage || stepNumber === 0) {
+          const baseMessages =
+            dynamicInstructionMessage && stepNumber > 0
+              ? withDynamicInstructionMessage(messages, dynamicInstructionMessage)
+              : messages;
+          const stepMessages = useAnthropicCacheBreakpoints
+            ? applyNativeAnthropicTailCacheBreakpoint(baseMessages)
+            : baseMessages;
+          if (stepMessages === messages) {
             return undefined;
           }
 
           return {
-            messages: withDynamicInstructionMessage(messages, dynamicInstructionMessage)
+            messages: stepMessages
           };
         },
         stopWhen: () => input.loopState.stepCount >= input.maxSteps,

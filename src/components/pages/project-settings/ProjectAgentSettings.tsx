@@ -174,15 +174,10 @@ export function ProjectAgentSettings(props: {
             ))}
           </div>
           <div className="helper-copy">
-            {props.sessionRuntimeId === 'claude-code-sdk'
-              ? t(
-                  'Claude Code SDK 运行时会使用本地 Claude Code 链路。',
-                  'Claude Code SDK runtime uses the local Claude Code path.'
-                )
-              : t(
-                  'Native 运行时使用 Funplay 内置多 Provider 工具循环。',
-                  'Native runtime uses Funplay built-in multi-provider tool loop.'
-                )}
+            {t(
+              'Native 运行时使用 Funplay 内置多 Provider 工具循环。',
+              'Native runtime uses Funplay built-in multi-provider tool loop.'
+            )}
           </div>
         </div>
       </Card>
@@ -239,8 +234,7 @@ export function ProjectAgentSettings(props: {
 function formatRuntimeStrategyLabel(strategy: AgentRuntimeStrategy, language: UiLanguage): string {
   const labels: Record<AgentRuntimeStrategy, string> = {
     auto: localize(language, 'Auto', 'Auto'),
-    native: localize(language, 'Native', 'Native'),
-    'claude-code-sdk': localize(language, 'Claude Code', 'Claude Code')
+    native: localize(language, 'Native', 'Native')
   };
   return labels[strategy];
 }

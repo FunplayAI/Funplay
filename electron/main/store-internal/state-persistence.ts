@@ -6,15 +6,21 @@ import { serializeMcpPluginRecord, serializeProjectRecord, serializeProviderReco
 
 function writeSetting(database: Database.Database, key: string, value: unknown): void {
   database
-    .prepare(`
+    .prepare(
+      `
       INSERT INTO app_settings (key, value_json)
       VALUES (?, ?)
       ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json
-    `)
+    `
+    )
     .run(key, JSON.stringify(value));
 }
 
-function deleteMissingRows(database: Database.Database, table: 'providers' | 'mcp_plugins' | 'projects', ids: string[]): void {
+function deleteMissingRows(
+  database: Database.Database,
+  table: 'providers' | 'mcp_plugins' | 'projects',
+  ids: string[]
+): void {
   if (ids.length === 0) {
     database.prepare(`DELETE FROM ${table}`).run();
     return;
@@ -127,11 +133,13 @@ export function persistStateSync(database: Database.Database, state: AppState): 
     apiKey: '',
     hasStoredApiKey: provider.hasStoredApiKey ?? Boolean(provider.apiKey.trim())
   }));
-  const persistedAssetGenerationProviders: AssetGenerationProviderConfig[] = (state.assetGenerationProviders ?? []).map((provider) => ({
-    ...provider,
-    apiKey: '',
-    hasStoredApiKey: provider.hasStoredApiKey ?? Boolean(provider.apiKey.trim())
-  }));
+  const persistedAssetGenerationProviders: AssetGenerationProviderConfig[] = (state.assetGenerationProviders ?? []).map(
+    (provider) => ({
+      ...provider,
+      apiKey: '',
+      hasStoredApiKey: provider.hasStoredApiKey ?? Boolean(provider.apiKey.trim())
+    })
+  );
 
   const transaction = database.transaction((snapshot: AppState) => {
     writeSetting(database, SETTINGS_KEYS.unity, snapshot.settings);
@@ -140,11 +148,16 @@ export function persistStateSync(database: Database.Database, state: AppState): 
     writeSetting(database, SETTINGS_KEYS.mcp, snapshot.mcpSettings);
     writeSetting(database, SETTINGS_KEYS.assetGenerationProviders, persistedAssetGenerationProviders);
 
-    deleteMissingRows(database, 'providers', persistedProviders.map((provider) => provider.id));
+    deleteMissingRows(
+      database,
+      'providers',
+      persistedProviders.map((provider) => provider.id)
+    );
     for (const provider of persistedProviders) {
       const serializedProvider = serializeProviderRecord(provider);
       database
-        .prepare(`
+        .prepare(
+          `
           INSERT INTO providers (
             id,
             name,
@@ -156,10 +169,7 @@ export function persistStateSync(database: Database.Database, state: AppState): 
             upstream_model,
             headers_json,
             env_overrides_json,
-            claude_code_compatible,
-            claude_role_models_json,
             available_models_json,
-            sdk_proxy_only,
             provider_meta_json,
             context_window_tokens,
             max_output_tokens,
@@ -172,7 +182,7 @@ export function persistStateSync(database: Database.Database, state: AppState): 
             created_at,
             updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             protocol = excluded.protocol,
@@ -183,10 +193,7 @@ export function persistStateSync(database: Database.Database, state: AppState): 
             upstream_model = excluded.upstream_model,
             headers_json = excluded.headers_json,
             env_overrides_json = excluded.env_overrides_json,
-            claude_code_compatible = excluded.claude_code_compatible,
-            claude_role_models_json = excluded.claude_role_models_json,
             available_models_json = excluded.available_models_json,
-            sdk_proxy_only = excluded.sdk_proxy_only,
             provider_meta_json = excluded.provider_meta_json,
             context_window_tokens = excluded.context_window_tokens,
             max_output_tokens = excluded.max_output_tokens,
@@ -198,7 +205,8 @@ export function persistStateSync(database: Database.Database, state: AppState): 
             notes = excluded.notes,
             created_at = excluded.created_at,
             updated_at = excluded.updated_at
-        `)
+        `
+        )
         .run(
           serializedProvider.id,
           serializedProvider.name,
@@ -210,10 +218,7 @@ export function persistStateSync(database: Database.Database, state: AppState): 
           serializedProvider.upstream_model,
           serializedProvider.headers_json,
           serializedProvider.env_overrides_json,
-          serializedProvider.claude_code_compatible,
-          serializedProvider.claude_role_models_json,
           serializedProvider.available_models_json,
-          serializedProvider.sdk_proxy_only,
           serializedProvider.provider_meta_json,
           serializedProvider.context_window_tokens,
           serializedProvider.max_output_tokens,
@@ -228,11 +233,16 @@ export function persistStateSync(database: Database.Database, state: AppState): 
         );
     }
 
-    deleteMissingRows(database, 'mcp_plugins', snapshot.mcpPlugins.map((plugin) => plugin.id));
+    deleteMissingRows(
+      database,
+      'mcp_plugins',
+      snapshot.mcpPlugins.map((plugin) => plugin.id)
+    );
     for (const plugin of snapshot.mcpPlugins) {
       const serializedPlugin = serializeMcpPluginRecord(plugin);
       database
-        .prepare(`
+        .prepare(
+          `
           INSERT INTO mcp_plugins (
             id,
             project_id,
@@ -272,7 +282,8 @@ export function persistStateSync(database: Database.Database, state: AppState): 
             notes = excluded.notes,
             created_at = excluded.created_at,
             updated_at = excluded.updated_at
-        `)
+        `
+        )
         .run(
           serializedPlugin.id,
           serializedPlugin.project_id,
@@ -295,11 +306,16 @@ export function persistStateSync(database: Database.Database, state: AppState): 
         );
     }
 
-    deleteMissingRows(database, 'projects', snapshot.projects.map((project) => project.id));
+    deleteMissingRows(
+      database,
+      'projects',
+      snapshot.projects.map((project) => project.id)
+    );
     for (const project of snapshot.projects) {
       const serializedProject = serializeProjectRecord(project);
       database
-        .prepare(`
+        .prepare(
+          `
           INSERT INTO projects (
             id,
             name,
@@ -355,7 +371,8 @@ export function persistStateSync(database: Database.Database, state: AppState): 
             context_summary_json = excluded.context_summary_json,
             current_execution_plan_json = excluded.current_execution_plan_json,
             last_executed_plan_json = excluded.last_executed_plan_json
-        `)
+        `
+        )
         .run(
           serializedProject.id,
           serializedProject.name,

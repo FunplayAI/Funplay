@@ -1,8 +1,16 @@
-import type { TaskPhase, AssetType, GameAgentOperationType, AgentPermissionMode, AgentRuntimeStrategy, ProjectSessionEffort } from './project';
+import type {
+  TaskPhase,
+  AssetType,
+  GameAgentOperationType,
+  AgentPermissionMode,
+  AgentRuntimeStrategy,
+  ProjectSessionEffort
+} from './project';
 import type { McpPluginKind } from './unity';
 
 export type AiProviderProtocol = 'openai-compatible' | 'anthropic' | 'google' | 'bedrock' | 'vertex';
-export type AiProviderApiMode = 'responses' | 'chat';
+export type AiProviderApiMode = 'responses' | 'chat' | 'anthropic-messages';
+export type AiProviderCachingShape = 'implicit' | 'anthropic-explicit' | 'none';
 export type AiProviderAuthStyle = 'api_key' | 'auth_token' | 'env_only' | 'custom_header';
 export type AiTestStatus = 'success' | 'error';
 export type OpenAiCompatibleChatTokenParameter = 'max_tokens' | 'max_completion_tokens' | 'auto';
@@ -24,10 +32,7 @@ export interface AiProvider {
   upstreamModel?: string;
   headers?: Record<string, string>;
   envOverrides?: Record<string, string>;
-  claudeCodeCompatible?: boolean;
-  claudeRoleModels?: AiProviderRoleModels;
   availableModels?: AiProviderModel[];
-  sdkProxyOnly?: boolean;
   providerMeta?: AiProviderMeta;
   contextWindowTokens?: number;
   maxOutputTokens?: number;
@@ -59,6 +64,13 @@ export interface AiProviderModelCapabilities {
   supportsEffort?: boolean;
   supportedEffortLevels?: ProjectSessionEffort[];
   supportsAdaptiveThinking?: boolean;
+  /** Prompt-cache shape: implicit (provider caches automatically) vs Anthropic-style explicit cache_control breakpoints. */
+  cachingShape?: AiProviderCachingShape;
+  /** Reasoning must be persisted on assistant turns and re-sent on subsequent requests (MiniMax/DeepSeek/Kimi pattern). */
+  preserveReasoning?: boolean;
+  parallelToolCalls?: boolean;
+  /** Provider exposes an Anthropic-compatible Messages endpoint for this model (anthropic-messages api mode). */
+  anthropicEndpoint?: boolean;
 }
 
 export interface AiProviderModel {
@@ -103,10 +115,7 @@ export interface AiProviderInput {
   upstreamModel?: string;
   headers?: Record<string, string>;
   envOverrides?: Record<string, string>;
-  claudeCodeCompatible?: boolean;
-  claudeRoleModels?: AiProviderRoleModels;
   availableModels?: AiProviderModel[];
-  sdkProxyOnly?: boolean;
   providerMeta?: AiProviderMeta;
   contextWindowTokens?: number;
   maxOutputTokens?: number;
@@ -138,9 +147,7 @@ export interface AiProviderPreset {
   upstreamModel?: string;
   defaultHeaders?: Record<string, string>;
   defaultEnvOverrides?: Record<string, string>;
-  defaultRoleModels?: AiProviderRoleModels;
   availableModels?: AiProviderModel[];
-  sdkProxyOnly?: boolean;
   providerMeta?: AiProviderMeta;
   openAiCompatible?: OpenAiCompatibleProviderProfile;
   apiKeyHint: string;

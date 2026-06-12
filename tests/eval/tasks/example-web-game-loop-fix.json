@@ -2,12 +2,19 @@
   "id": "example-web-game-loop-fix",
   "title": "修复 web 小游戏主循环并验证可运行（示例任务）",
   "description": "示例 eval 任务，演示 schema：带 bug 的最小 web 游戏工程，要求 agent 修复后通过确定性验收。真实运行需补 runtime driver 与 provider 凭据。",
-  "dimensions": ["tool_reliability", "self_verification", "long_horizon"],
-  "runtimes": ["native", "claude-code-sdk"],
+  "dimensions": [
+    "tool_reliability",
+    "self_verification",
+    "long_horizon"
+  ],
+  "runtimes": [
+    "native"
+  ],
   "prompt": "这个工程的贪吃蛇游戏启动后蛇不会移动。请定位并修复 bug，确保 `npm test` 通过，并简要说明你改了什么。",
   "provider": {
-    "native": { "envKey": "FUNPLAY_EVAL_NATIVE" },
-    "claude-code-sdk": { "envKey": "FUNPLAY_EVAL_CLAUDE" }
+    "native": {
+      "envKey": "FUNPLAY_EVAL_NATIVE"
+    }
   },
   "workspace": {
     "files": [

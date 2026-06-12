@@ -1,9 +1,8 @@
 // Agent eval runner (skeleton).
 //
-// Measures real-model agentic completion quality and compares the `native`
-// runtime against the `claude-code-sdk` baseline (parityGap). It reuses the
-// agent-e2e harness model (prepare workspace -> run agent -> deterministic
-// acceptance) and adds per-runtime + per-dimension aggregation.
+// Measures real-model agentic completion quality for the `native` runtime.
+// It reuses the agent-e2e harness model (prepare workspace -> run agent ->
+// deterministic acceptance) and adds per-runtime + per-dimension aggregation.
 //
 // This is a SKELETON: the actual runtime driver (running a real provider
 // through a chosen runtime) is not implemented yet. Until
@@ -23,7 +22,6 @@ const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const defaultTaskDir = join(repoRoot, 'tests/eval/tasks');
 const reportDir = join(repoRoot, 'out/agent-eval');
 const driverPath = join(repoRoot, 'scripts/agent-eval-driver.mjs');
-const baselineRuntime = 'claude-code-sdk';
 const defaultTimeoutMs = 180_000;
 
 function nowIso() {
@@ -163,21 +161,17 @@ function aggregate(results) {
   const allRuns = results.flatMap((result) => result.runs.map((run) => ({ ...run, dimensions: result.task.dimensions ?? [] })));
   const runtimes = [...new Set(allRuns.map((run) => run.runtime))];
   const byRuntime = Object.fromEntries(runtimes.map((runtime) => [runtime, completionRate(allRuns, runtime)]));
-  const nativeRate = byRuntime.native;
-  const baselineRate = byRuntime[baselineRuntime];
-  const parityGap = nativeRate != null && baselineRate != null ? baselineRate - nativeRate : null;
 
   const dimensions = [...new Set(allRuns.flatMap((run) => run.dimensions))].sort();
   const perDimension = Object.fromEntries(dimensions.map((dimension) => {
     const runs = allRuns.filter((run) => run.dimensions.includes(dimension));
     return [dimension, {
-      native: completionRate(runs, 'native'),
-      baseline: completionRate(runs, baselineRuntime)
+      native: completionRate(runs, 'native')
     }];
   }));
 
   const evaluated = allRuns.filter((run) => run.status !== 'skipped').length;
-  return { byRuntime, parityGap, perDimension, evaluated, skipped: allRuns.length - evaluated, runtimes };
+  return { byRuntime, perDimension, evaluated, skipped: allRuns.length - evaluated, runtimes };
 }
 
 function renderMarkdown(report) {
@@ -189,16 +183,14 @@ function renderMarkdown(report) {
     `- Started: ${report.startedAt}`,
     `- Evaluated runs: ${m.evaluated} (skipped: ${m.skipped})`,
     `- native completion: ${fmt(m.byRuntime.native)}`,
-    `- ${baselineRuntime} completion: ${fmt(m.byRuntime[baselineRuntime])}`,
-    `- parityGap (baseline − native): ${m.parityGap == null ? 'n/a' : `${Math.round(m.parityGap * 100)}pp`}`,
     ''
   ];
   if (m.skipped > 0 && m.evaluated === 0) {
     lines.push('> All runs skipped. Implement scripts/agent-eval-driver.mjs and set provider credentials to evaluate.', '');
   }
-  lines.push('## Per-dimension completion (native / baseline)', '');
+  lines.push('## Per-dimension completion (native)', '');
   for (const [dimension, rates] of Object.entries(m.perDimension)) {
-    lines.push(`- ${dimension}: ${fmt(rates.native)} / ${fmt(rates.baseline)}`);
+    lines.push(`- ${dimension}: ${fmt(rates.native)}`);
   }
   lines.push('');
   for (const result of report.results) {
@@ -219,7 +211,7 @@ async function main() {
 
   for (const taskFile of taskFiles) {
     const task = await readJson(taskFile);
-    const runtimes = (task.runtimes ?? ['native', baselineRuntime]).filter((runtime) => !args.runtime || runtime === args.runtime);
+    const runtimes = (task.runtimes ?? ['native']).filter((runtime) => !args.runtime || runtime === args.runtime);
     const runs = [];
     for (const runtime of runtimes) {
       runs.push(await runTaskOnRuntime(task, runtime));
@@ -234,9 +226,6 @@ async function main() {
   await writeFile(join(reportDir, 'latest-report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   await writeFile(join(reportDir, 'latest-report.md'), renderMarkdown(report), 'utf8');
   console.log(`Agent eval: evaluated ${metrics.evaluated}, skipped ${metrics.skipped}. Report: ${join(reportDir, 'latest-report.md')}`);
-  if (metrics.parityGap != null) {
-    console.log(`parityGap (baseline − native): ${Math.round(metrics.parityGap * 100)}pp`);
-  }
 }
 
 await main();

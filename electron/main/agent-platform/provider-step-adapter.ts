@@ -5,8 +5,7 @@ import type {
   RuntimeUsage
 } from '../../../shared/types';
 import type { OpenAiCompatibleToolCall, OpenAiCompatibleToolStepResult } from '../openai-compatible-types';
-import type { ClaudeResultEvent } from './claude/types';
-import { normalizeAiSdkUsage, normalizeClaudeSdkUsage, normalizeOpenAiUsage } from './usage';
+import { normalizeAiSdkUsage, normalizeOpenAiUsage } from './usage';
 
 interface ProviderStepAdapterOptions {
   providerId?: string;
@@ -28,15 +27,16 @@ interface AiSdkProviderStepLike {
 }
 
 function normalizeInput(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
-export function normalizeAgentCoreProviderFinishReason(raw: string | undefined, options: {
-  hasToolCalls?: boolean;
-  isError?: boolean;
-} = {}): AgentCoreProviderFinishReason {
+export function normalizeAgentCoreProviderFinishReason(
+  raw: string | undefined,
+  options: {
+    hasToolCalls?: boolean;
+    isError?: boolean;
+  } = {}
+): AgentCoreProviderFinishReason {
   if (options.isError) {
     return 'error';
   }
@@ -47,7 +47,13 @@ export function normalizeAgentCoreProviderFinishReason(raw: string | undefined, 
   if (!value) {
     return 'unknown';
   }
-  if (value === 'stop' || value === 'end_turn' || value === 'success' || value === 'complete' || value === 'completed') {
+  if (
+    value === 'stop' ||
+    value === 'end_turn' ||
+    value === 'success' ||
+    value === 'complete' ||
+    value === 'completed'
+  ) {
     return 'stop';
   }
   if (value === 'length' || value === 'max_tokens' || value === 'max_output_tokens' || value === 'model_length') {
@@ -98,10 +104,12 @@ export function openAiCompatibleStepToAgentCoreProviderStepResult(
     finishReason: normalizeAgentCoreProviderFinishReason(step.finishReason ?? step.rawFinishReason, {
       hasToolCalls: step.toolCalls.length > 0
     }),
-    usage: usageOrUndefined(normalizeOpenAiUsage(step.usage, {
-      provider: options.providerId,
-      model: options.model
-    })),
+    usage: usageOrUndefined(
+      normalizeOpenAiUsage(step.usage, {
+        provider: options.providerId,
+        model: options.model
+      })
+    ),
     warnings: step.toolCallRepair ? [`tool_call_repair:${step.toolCallRepair.type}`] : undefined,
     rawMetadata: {
       rawFinishReason: step.rawFinishReason ?? step.finishReason,
@@ -125,35 +133,14 @@ export function aiSdkStepToAgentCoreProviderStepResult(
     finishReason: normalizeAgentCoreProviderFinishReason(step.finishReason, {
       hasToolCalls: toolCalls.length > 0
     }),
-    usage: usageOrUndefined(normalizeAiSdkUsage(step.usage as Parameters<typeof normalizeAiSdkUsage>[0], {
-      provider: options.providerId,
-      model: options.model
-    })),
+    usage: usageOrUndefined(
+      normalizeAiSdkUsage(step.usage as Parameters<typeof normalizeAiSdkUsage>[0], {
+        provider: options.providerId,
+        model: options.model
+      })
+    ),
     rawMetadata: {
       rawFinishReason: step.finishReason
-    }
-  };
-}
-
-export function claudeResultEventToAgentCoreProviderStepResult(
-  event: ClaudeResultEvent | undefined,
-  options: ProviderStepAdapterOptions = {}
-): AgentCoreProviderStepResult {
-  return {
-    text: event?.result,
-    toolCalls: [],
-    finishReason: normalizeAgentCoreProviderFinishReason(event?.terminal_reason ?? event?.subtype, {
-      isError: Boolean(event?.is_error)
-    }),
-    usage: usageOrUndefined(normalizeClaudeSdkUsage(event?.usage as Parameters<typeof normalizeClaudeSdkUsage>[0], {
-      provider: options.providerId,
-      model: options.model
-    })),
-    rawMetadata: {
-      subtype: event?.subtype,
-      terminalReason: event?.terminal_reason,
-      sessionId: event?.session_id,
-      isError: event?.is_error
     }
   };
 }

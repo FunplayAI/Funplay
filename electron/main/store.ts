@@ -26,7 +26,8 @@ import {
   clearFileCheckpointEntryRecords,
   listFileCheckpointEntryRecords,
   upsertFileCheckpointEntryRecord,
-  type FileCheckpointEntry
+  type FileCheckpointEntry,
+  type UpsertFileCheckpointEntryInput
 } from './store-internal/file-checkpoints';
 import { parseJson } from './store-internal/json';
 import { appendPermissionAuditRecord, expirePendingPermissionAuditRecords } from './store-internal/permission-audits';
@@ -64,14 +65,20 @@ import {
   upsertRuntimeRunRecord,
   type UpsertRuntimeRunInput
 } from './store-internal/runtime-runs';
+import {
+  getSubagentRunRecord,
+  listSubagentRunRecords,
+  markRunningSubagentRunRecordsInterrupted,
+  upsertSubagentRunRecord,
+  type SubagentRunRecord,
+  type UpsertSubagentRunInput
+} from './store-internal/subagent-runs';
 import { runMigrations } from './store-internal/migrations';
 import { persistStateSync } from './store-internal/state-persistence';
 import { restoreSessionWritePermissionGrant } from './agent-platform/permission-session-store';
 
-export type {
-  PersistedRuntimeRunRecord,
-  PersistedRuntimeRunRequest
-} from './store-internal/row-types';
+export type { PersistedRuntimeRunRecord, PersistedRuntimeRunRequest } from './store-internal/row-types';
+export type { SubagentRunRecord } from './store-internal/subagent-runs';
 
 let db: Database.Database | null = null;
 let memoryState: AppState = {
@@ -123,9 +130,10 @@ function normalizeAgentSettingsForCurrentDefaults(settings: AgentSettings | unde
   return {
     ...DEFAULT_AGENT_SETTINGS,
     ...(settings ?? {}),
-    permissionMode: settings?.permissionMode === 'ask'
-      ? 'full-access'
-      : settings?.permissionMode ?? DEFAULT_AGENT_SETTINGS.permissionMode
+    permissionMode:
+      settings?.permissionMode === 'ask'
+        ? 'full-access'
+        : (settings?.permissionMode ?? DEFAULT_AGENT_SETTINGS.permissionMode)
   };
 }
 
@@ -138,30 +146,29 @@ export async function initializeStore(userDataPath: string, defaultProjectDirect
   db = new Database(databasePath);
   runMigrations(db);
   markPendingRuntimeRunsInterruptedOnStartup(db);
+  markRunningSubagentRunRecordsInterrupted(db);
   expirePendingPermissionAuditRecords(db, new Date().toISOString());
 
-  const unitySettingsRow = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(SETTINGS_KEYS.unity) as SettingRow | undefined;
-  const aiSettingsRow = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(SETTINGS_KEYS.ai) as SettingRow | undefined;
-  const agentSettingsRow = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(SETTINGS_KEYS.agent) as SettingRow | undefined;
-  const mcpSettingsRow = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(SETTINGS_KEYS.mcp) as SettingRow | undefined;
-  const assetGenerationProvidersRow = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(SETTINGS_KEYS.assetGenerationProviders) as SettingRow | undefined;
+  const unitySettingsRow = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(SETTINGS_KEYS.unity) as
+    | SettingRow
+    | undefined;
+  const aiSettingsRow = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(SETTINGS_KEYS.ai) as
+    | SettingRow
+    | undefined;
+  const agentSettingsRow = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(SETTINGS_KEYS.agent) as
+    | SettingRow
+    | undefined;
+  const mcpSettingsRow = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(SETTINGS_KEYS.mcp) as
+    | SettingRow
+    | undefined;
+  const assetGenerationProvidersRow = db
+    .prepare('SELECT value_json FROM app_settings WHERE key = ?')
+    .get(SETTINGS_KEYS.assetGenerationProviders) as SettingRow | undefined;
 
-  const unitySettings = parseJson<UnitySettings>(
-    unitySettingsRow?.value_json,
-    defaultSettings
-  );
-  const aiSettings = parseJson(
-    aiSettingsRow?.value_json,
-    DEFAULT_AI_SETTINGS
-  );
-  const agentSettings = parseJson<AgentSettings>(
-    agentSettingsRow?.value_json,
-    DEFAULT_AGENT_SETTINGS
-  );
-  const mcpSettings = parseJson(
-    mcpSettingsRow?.value_json,
-    DEFAULT_MCP_SETTINGS
-  );
+  const unitySettings = parseJson<UnitySettings>(unitySettingsRow?.value_json, defaultSettings);
+  const aiSettings = parseJson(aiSettingsRow?.value_json, DEFAULT_AI_SETTINGS);
+  const agentSettings = parseJson<AgentSettings>(agentSettingsRow?.value_json, DEFAULT_AGENT_SETTINGS);
+  const mcpSettings = parseJson(mcpSettingsRow?.value_json, DEFAULT_MCP_SETTINGS);
   const rawAssetGenerationProviders = parseJson<AssetGenerationProviderConfig[]>(
     assetGenerationProvidersRow?.value_json,
     []
@@ -169,13 +176,18 @@ export async function initializeStore(userDataPath: string, defaultProjectDirect
   const rawProviders = readProviders(db);
   const storedPlugins = readMcpPlugins(db);
   const rawProjects = readProjects(db);
-  const sessionRows = db.prepare('SELECT * FROM chat_sessions ORDER BY updated_at DESC, created_at DESC').all() as SessionRow[];
-  const messageRows = db.prepare('SELECT rowid AS storage_rowid, * FROM messages ORDER BY session_id, sort_order ASC').all() as MessageRow[];
+  const sessionRows = db
+    .prepare('SELECT * FROM chat_sessions ORDER BY updated_at DESC, created_at DESC')
+    .all() as SessionRow[];
+  const messageRows = db
+    .prepare('SELECT rowid AS storage_rowid, * FROM messages ORDER BY session_id, sort_order ASC')
+    .all() as MessageRow[];
   const agentRunRows = db.prepare('SELECT * FROM agent_runs ORDER BY finished_at DESC').all() as AgentRunRow[];
 
   await migrateProviderSecretsFromProviders(rawProviders);
   const hydratedProviders = await hydrateProvidersWithSecrets(rawProviders);
-  const hydratedAssetGenerationProviders = await hydrateAssetGenerationProvidersWithSecrets(rawAssetGenerationProviders);
+  const hydratedAssetGenerationProviders =
+    await hydrateAssetGenerationProvidersWithSecrets(rawAssetGenerationProviders);
   const normalizedProjects = hydrateProjects(rawProjects).map((project) => {
     const projectSessionRows = sessionRows.filter((row) => row.project_id === project.id);
     const projectMessageRows = messageRows.filter((row) => row.project_id === project.id);
@@ -251,7 +263,10 @@ export function getAgentSettings(): AgentSettings {
   return memoryState.agentSettings;
 }
 
-export function tryRecordMcpToolSnapshots(inputs: UpsertMcpToolSnapshotInput[], scope?: McpToolSnapshotScope): McpToolSnapshot[] {
+export function tryRecordMcpToolSnapshots(
+  inputs: UpsertMcpToolSnapshotInput[],
+  scope?: McpToolSnapshotScope
+): McpToolSnapshot[] {
   const database = getOptionalDb();
   return database ? recordMcpToolSnapshotRecords(database, inputs, scope) : [];
 }
@@ -271,7 +286,9 @@ export function listMcpRawAudits(pluginId?: string): McpRawAuditEntry[] {
   return listMcpRawAuditRecords(requireDb(), pluginId);
 }
 
-export async function patchAiSettings(partial: Partial<Omit<AiSettings, 'webSearch'>> & { webSearch?: Partial<AiSettings['webSearch']> }): Promise<AiSettings> {
+export async function patchAiSettings(
+  partial: Partial<Omit<AiSettings, 'webSearch'>> & { webSearch?: Partial<AiSettings['webSearch']> }
+): Promise<AiSettings> {
   memoryState = {
     ...memoryState,
     aiSettings: {
@@ -319,12 +336,26 @@ export function listRuntimeRuns(projectId?: string): ReturnType<typeof listRunti
   return listRuntimeRunRecords(requireDb(), projectId);
 }
 
-export function upsertFileCheckpointEntry(record: {
-  snapshotId: string;
-  filePath: string;
-  existed: boolean;
-  content?: string;
-}): void {
+// Subagent run accessors tolerate an uninitialized store (getOptionalDb): the
+// native runtime also runs in tests/processes that never call initializeStore.
+export function tryUpsertSubagentRun(record: UpsertSubagentRunInput): void {
+  const database = getOptionalDb();
+  if (database) {
+    upsertSubagentRunRecord(database, record);
+  }
+}
+
+export function getSubagentRun(id: string): SubagentRunRecord | undefined {
+  const database = getOptionalDb();
+  return database ? getSubagentRunRecord(database, id) : undefined;
+}
+
+export function listSubagentRuns(parentSessionId?: string): SubagentRunRecord[] {
+  const database = getOptionalDb();
+  return database ? listSubagentRunRecords(database, parentSessionId) : [];
+}
+
+export function upsertFileCheckpointEntry(record: UpsertFileCheckpointEntryInput): void {
   upsertFileCheckpointEntryRecord(requireDb(), record);
 }
 

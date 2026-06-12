@@ -2,12 +2,19 @@
   "id": "example-multi-file-rename",
   "title": "跨多文件重命名并扩展函数签名（多文件重构）",
   "description": "考察工具协调与长程:一个函数被多个文件引用,要求重命名+扩展签名并更新所有调用点。需要搜索引用、跨文件精确编辑,不破坏现有行为。",
-  "dimensions": ["tool_reliability", "long_horizon", "planning"],
-  "runtimes": ["native", "claude-code-sdk"],
+  "dimensions": [
+    "tool_reliability",
+    "long_horizon",
+    "planning"
+  ],
+  "runtimes": [
+    "native"
+  ],
   "prompt": "把 src/money.js 里的 fmt 函数重命名为 formatMoney，并新增第二个参数 symbol（默认 '$'）。更新 src/receipt.js 和 src/summary.js 中所有对它的引用。确保 npm test 全部通过。",
   "provider": {
-    "native": { "envKey": "FUNPLAY_EVAL_NATIVE" },
-    "claude-code-sdk": { "envKey": "FUNPLAY_EVAL_CLAUDE" }
+    "native": {
+      "envKey": "FUNPLAY_EVAL_NATIVE"
+    }
   },
   "workspace": {
     "files": [
@@ -34,7 +41,16 @@
     ]
   },
   "acceptance": [
-    { "id": "npm-test", "kind": "test", "command": "npm test", "required": true, "timeoutMs": 30000 }
+    {
+      "id": "npm-test",
+      "kind": "test",
+      "command": "npm test",
+      "required": true,
+      "timeoutMs": 30000
+    }
   ],
-  "budget": { "maxSteps": 120, "timeoutMs": 240000 }
+  "budget": {
+    "maxSteps": 120,
+    "timeoutMs": 240000
+  }
 }

@@ -1384,22 +1384,6 @@ function App(): JSX.Element {
     return result;
   }
 
-  async function handleImportClaudeSession(sdkSessionId: string): Promise<void> {
-    if (!selectedProjectView) {
-      return;
-    }
-    const result = await window.funplay.importClaudeCliSession(selectedProjectView.id, sdkSessionId);
-    setProjects((current) => current.map((project) => (project.id === result.project.id ? result.project : project)));
-    setLocalActiveSessionByProject((current) => ({
-      ...current,
-      [result.project.id]: result.sessionId
-    }));
-    setSessionDrafts((current) => ({ ...current, [result.sessionId]: '' }));
-    setSessionAttachments((current) => ({ ...current, [result.sessionId]: [] }));
-    setShowAppSettingsModal(false);
-    setSection('agent');
-  }
-
   if (isLoading) {
     return (
       <UiLanguageProvider language={uiPreferences.language}>
@@ -1930,7 +1914,6 @@ function App(): JSX.Element {
           onSendRawMcpRequest={handleSendRawMcpRequest}
           onReconnectMcpPlugin={() => void handleReconnectMcpPlugin(selectedGlobalMcpPlugin)}
           onStopMcpPlugin={() => void handleStopMcpPlugin(selectedGlobalMcpPlugin)}
-          onImportClaudeSession={handleImportClaudeSession}
           onRefreshMemoryFiles={refreshProjectMemoryFiles}
           onSelectMemoryFile={loadProjectMemoryFile}
           onChangeMemoryDraft={setMemoryDraft}

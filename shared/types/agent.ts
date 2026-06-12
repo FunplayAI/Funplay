@@ -5,11 +5,9 @@ import type {
   AgentRuntimeReportId,
   AgentRunResumeStrategy,
   AgentOperationStatus,
-  ProjectSessionRuntimeId,
   AgentTaskGraph,
   AgentVerificationReport,
-  ClaudeContextSummaryCoverage,
-  NativeContextSummaryCoverage,
+  NativeContextSummaryCoverage
 } from './project';
 import type {
   AgentToolArtifact,
@@ -27,6 +25,50 @@ import type {
   AgentCoreStateTransitionRecord,
   AgentCoreStateMachineSnapshot
 } from './agent-core';
+
+export type AgentPermissionRuleAction = 'allow' | 'deny' | 'ask';
+export type AgentPermissionRuleScope = 'session' | 'project';
+export type AgentPermissionRuleSource = 'user_decision' | 'settings';
+
+/**
+ * Argument-level permission rule. Matching semantics:
+ * - toolName matches exactly, or '*' matches any tool.
+ * - commandPrefix matches when any extracted impact command starts with it after
+ *   shell-aware normalization (trim + collapse whitespace), on a token boundary.
+ * - pathGlob matches when ALL extracted impact paths match the glob ('**' crosses
+ *   directories, '*' stays within one path segment).
+ * - A rule with neither commandPrefix nor pathGlob matches any invocation of the tool.
+ */
+export interface AgentPermissionRule {
+  id: string;
+  toolName: string | '*';
+  commandPrefix?: string;
+  pathGlob?: string;
+  action: AgentPermissionRuleAction;
+  scope: AgentPermissionRuleScope;
+  createdAt: string;
+  source: AgentPermissionRuleSource;
+}
+
+export type AgentPermissionDecision = 'allow' | 'allow_session' | 'deny';
+
+export interface AgentPermissionRuleSeed {
+  toolName: string;
+  commandPrefix?: string;
+  pathGlob?: string;
+  action?: AgentPermissionRuleAction;
+  scope?: AgentPermissionRuleScope;
+}
+
+export interface AgentPermissionDecisionPayload {
+  decision: AgentPermissionDecision;
+  /** Legacy blanket behavior: always allow this tool for the session instead of a scoped rule. */
+  alwaysAllowTool?: boolean;
+  rule?: AgentPermissionRuleSeed;
+}
+
+/** IPC decision input: the bare decision string (current renderer) or an extended payload. */
+export type AgentPermissionDecisionInput = AgentPermissionDecision | AgentPermissionDecisionPayload;
 
 export type AgentRuntimeCapabilityKey =
   | 'conversation'
@@ -612,7 +654,7 @@ export interface AgentRuntimeEvent {
   providerStep?: AgentCoreProviderStepResult;
   contextSummary?: {
     summary: string;
-    coverage?: ClaudeContextSummaryCoverage | NativeContextSummaryCoverage | Record<string, unknown>;
+    coverage?: NativeContextSummaryCoverage | Record<string, unknown>;
     runtimeId?: AgentRuntimeReportId;
     sourceStageId?: string;
   };
