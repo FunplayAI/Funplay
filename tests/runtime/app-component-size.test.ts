@@ -35,8 +35,9 @@ const BASELINES: Record<string, number> = {
   // Claude runtime removal dropped handleImportClaudeSession and related wiring;
   // runtime-strategy selector removal dropped onChangeRuntimeStrategy + passthroughs;
   // UI-fix pass removed dead imports + sessionRuntimeId passdown;
-  // G-refactor: clearSessionScopedState helper + useAssetGenerationProviders hook.
-  'src/App.tsx': 1925,
+  // G-refactor: clearSessionScopedState helper + useAssetGenerationProviders hook;
+  // UI-rewrite phase 1: per-session composer state moved to sessionComposerStore (Zustand).
+  'src/App.tsx': 1916,
   // ConversationMessage.tsx split into transcript/* modules by U47-3 — now 317 lines.
   // tool-activity.tsx split into tool/* modules by U47-4 — now 452 lines.
   // AgentChatView.tsx split into agent/* modules by U47-5 — now 371 lines.

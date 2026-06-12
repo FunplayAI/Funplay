@@ -6,6 +6,7 @@ import { useAppNotifications } from './hooks/useAppNotifications';
 import { useAppUpdateStatus } from './hooks/useAppUpdateStatus';
 import { useProviderManager } from './hooks/useProviderManager';
 import { useAssetGenerationProviders } from './hooks/useAssetGenerationProviders';
+import { useSessionComposerStore } from './stores/sessionComposerStore';
 import { useNotificationTasks } from './hooks/useNotificationTasks';
 import { useProjectMemory } from './hooks/useProjectMemory';
 import { useChatFileOpeners, useFileInspector } from './hooks/useFileInspector';
@@ -119,10 +120,18 @@ function App(): JSX.Element {
   const [settings, setSettings] = useState<UnitySettings>(emptySettings);
   const [settingsDraft, setSettingsDraft] = useState(emptySettings);
   const [selectedProjectId, setSelectedProjectId] = useState('');
-  const [sessionDrafts, setSessionDrafts] = useState<Record<string, string>>({});
-  const [sessionAttachments, setSessionAttachments] = useState<Record<string, PromptAttachment[]>>({});
-  const [sessionComposerErrors, setSessionComposerErrors] = useState<Record<string, string>>({});
-  const [queuedPromptsBySession, setQueuedPromptsBySession] = useState<Record<string, QueuedPromptItem[]>>({});
+  // Per-session composer state now lives in the Zustand session-composer store.
+  // The store setters share the React Dispatch<SetStateAction> shape, so call
+  // sites and the hooks that receive them work unchanged.
+  const sessionDrafts = useSessionComposerStore((store) => store.drafts);
+  const setSessionDrafts = useSessionComposerStore((store) => store.setDrafts);
+  const sessionAttachments = useSessionComposerStore((store) => store.attachments);
+  const setSessionAttachments = useSessionComposerStore((store) => store.setAttachments);
+  const sessionComposerErrors = useSessionComposerStore((store) => store.composerErrors);
+  const setSessionComposerErrors = useSessionComposerStore((store) => store.setComposerErrors);
+  const queuedPromptsBySession = useSessionComposerStore((store) => store.queuedPrompts);
+  const setQueuedPromptsBySession = useSessionComposerStore((store) => store.setQueuedPrompts);
+  const clearSessionScopedState = useSessionComposerStore((store) => store.clearSessionScoped);
   const [localActiveSessionByProject, setLocalActiveSessionByProject] = useState<Record<string, string>>({});
   const [projectFiles, setProjectFiles] = useState<ProjectFileEntry[]>([]);
   const [deleteProjectSourceFiles, setDeleteProjectSourceFiles] = useState(false);
@@ -139,24 +148,6 @@ function App(): JSX.Element {
       () => undefined
     );
     return next;
-  }
-
-  // Single source of truth for tearing down the per-session draft/attachment/
-  // error/queue records when a session (or all of a project's sessions) is
-  // deleted, so the four Record<string, …> maps never drift out of sync.
-  function clearSessionScopedState(sessionIds: string[]): void {
-    if (sessionIds.length === 0) {
-      return;
-    }
-    const removeKeys = <T,>(record: Record<string, T>): Record<string, T> => {
-      const next = { ...record };
-      sessionIds.forEach((id) => delete next[id]);
-      return next;
-    };
-    setSessionDrafts(removeKeys);
-    setSessionAttachments(removeKeys);
-    setSessionComposerErrors(removeKeys);
-    setQueuedPromptsBySession(removeKeys);
   }
 
   const [onboardingProjectPath, setOnboardingProjectPath] = useState('~/Downloads');
