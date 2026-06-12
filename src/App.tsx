@@ -7,6 +7,7 @@ import { useAppUpdateStatus } from './hooks/useAppUpdateStatus';
 import { useProviderManager } from './hooks/useProviderManager';
 import { useAssetGenerationProviders } from './hooks/useAssetGenerationProviders';
 import { useSessionComposerStore } from './stores/sessionComposerStore';
+import { useUiShellStore, type WorkspaceSection } from './stores/uiShellStore';
 import { useNotificationTasks } from './hooks/useNotificationTasks';
 import { useProjectMemory } from './hooks/useProjectMemory';
 import { useChatFileOpeners, useFileInspector } from './hooks/useFileInspector';
@@ -79,8 +80,6 @@ import { DeleteProjectModal } from './components/modals/DeleteProjectModal';
 import { SessionChangesPanel, RestoreCheckpointModal } from './components/modals/SessionChangesPanel';
 import { NotificationToastStack } from './components/shared/NotificationToastStack';
 
-type AppMode = 'welcome' | 'onboarding' | 'workspace';
-type WorkspaceSection = 'agent' | 'settings' | 'assets';
 type SessionRuntimeUpdate = {
   runtimeId?: ProjectSessionRuntimeId;
   providerId?: string;
@@ -98,15 +97,15 @@ const emptySettings: UnitySettings = {
 };
 
 function App(): JSX.Element {
-  const [appMode, setAppMode] = useState<AppMode>('welcome');
-  const [section, setSection] = useState<WorkspaceSection>('agent');
-  const [projectSettingsTab, setProjectSettingsTab] = useState<ProjectSettingsTab>('engine');
-  const [showAppSettingsModal, setShowAppSettingsModal] = useState(false);
-  const [appSettingsInitialTab, setAppSettingsInitialTab] = useState<AppSettingsTab>('appearance');
+  // App-shell navigation + lifecycle UI state lives in the Zustand ui-shell store.
+  // App is the root and re-renders on any of these, so it subscribes to the whole slice.
+  const {
+    appMode, setAppMode, section, setSection, projectSettingsTab, setProjectSettingsTab,
+    showAppSettingsModal, setShowAppSettingsModal, appSettingsInitialTab, setAppSettingsInitialTab,
+    isLoading, setIsLoading, bootstrapError, setBootstrapError
+  } = useUiShellStore();
   const [showDeleteProjectModal, setShowDeleteProjectModal] = useState(false);
   const [projectPendingDelete, setProjectPendingDelete] = useState<Project | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [bootstrapError, setBootstrapError] = useState('');
   const [isDeletingProject, setIsDeletingProject] = useState(false);
 
   const [projects, setProjects] = useState<Project[]>([]);
