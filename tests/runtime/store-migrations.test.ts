@@ -664,6 +664,47 @@ test('v12 migration drops claude provider columns and migrates persisted runtime
   }
 });
 
+test('v13 migration adds binary-safe columns to file_checkpoints and keeps legacy rows', () => {
+  const db = new Database(':memory:');
+  try {
+    runMigrations(db);
+    db.exec('PRAGMA user_version = 12');
+    db.exec('ALTER TABLE file_checkpoints DROP COLUMN is_binary');
+    db.exec('ALTER TABLE file_checkpoints DROP COLUMN byte_length');
+    db.exec('ALTER TABLE file_checkpoints DROP COLUMN content_hash');
+    db.exec('ALTER TABLE file_checkpoints DROP COLUMN too_large');
+    db.prepare('INSERT INTO file_checkpoints (snapshot_id, file_path, existed, content) VALUES (?, ?, ?, ?)')
+      .run('snapshot_v13_legacy', 'src/main.ts', 1, 'console.log(1);');
+    assert.equal(readVersion(db), 12);
+
+    runMigrations(db);
+
+    assert.equal(readVersion(db), LATEST_VERSION);
+    const columns = (db.prepare("PRAGMA table_info('file_checkpoints')").all() as Array<{ name: string }>)
+      .map((column) => column.name);
+    for (const expected of ['is_binary', 'byte_length', 'content_hash', 'too_large']) {
+      assert.ok(columns.includes(expected), `expected file_checkpoints.${expected} after v13 migration`);
+    }
+
+    const row = db
+      .prepare('SELECT content, is_binary, byte_length, content_hash, too_large FROM file_checkpoints WHERE snapshot_id = ?')
+      .get('snapshot_v13_legacy') as {
+        content: string;
+        is_binary: number;
+        byte_length: number | null;
+        content_hash: string | null;
+        too_large: number;
+      };
+    assert.equal(row.content, 'console.log(1);');
+    assert.equal(row.is_binary, 0);
+    assert.equal(row.byte_length, null);
+    assert.equal(row.content_hash, null);
+    assert.equal(row.too_large, 0);
+  } finally {
+    db.close();
+  }
+});
+
 test('initial migration declares all expected tables', () => {
   // Documents the expected baseline so future migrations have a clear contract.
   const initial = MIGRATIONS.find((migration) => migration.version === 1);

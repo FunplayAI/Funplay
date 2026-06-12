@@ -18,7 +18,7 @@ import {
   shouldRetryNativeProviderStep,
   waitForNativeProviderStepRetry
 } from './provider-step';
-import { createNativeRuntimeSystemPrompt } from './prompt';
+import { createNativeToolLoopSystemPrompt } from './tool-loop-prompt';
 import { createProviderRuntimeEventAdapter, type ProviderRuntimeController } from '../provider-runtime-events';
 import { createNativeAiSdkToolEventAdapter } from './ai-sdk-tool-event-adapter';
 import type { NativeToolLoopCallbacks } from './tool-loop-controller';
@@ -45,6 +45,35 @@ export interface NativeAiSdkProviderStepResult {
   responseMessages: ModelMessage[];
   finalCandidate: string;
   providerStep: AgentCoreProviderStepResult;
+}
+
+const ANTHROPIC_EPHEMERAL_CACHE_CONTROL = {
+  anthropic: {
+    cacheControl: {
+      type: 'ephemeral' as const
+    }
+  }
+};
+
+// Marks the LAST message of a request with an Anthropic prompt-cache breakpoint.
+// The source messages are never mutated — each step gets a fresh shallow copy of
+// the tail so exactly one history breakpoint exists per request and the stored
+// transcript stays clean for the next step's prefix reuse.
+export function applyNativeAnthropicTailCacheBreakpoint(messages: ModelMessage[]): ModelMessage[] {
+  if (messages.length === 0) {
+    return messages;
+  }
+  const last = messages[messages.length - 1];
+  return [
+    ...messages.slice(0, -1),
+    {
+      ...last,
+      providerOptions: {
+        ...last.providerOptions,
+        ...ANTHROPIC_EPHEMERAL_CACHE_CONTROL
+      }
+    } as ModelMessage
+  ];
 }
 
 function collectAiSdkEditFailureRecoveries(
@@ -115,6 +144,19 @@ export async function runNativeAiSdkProviderStep(input: {
     stepIndex: input.loopState.stepCount,
     emitStage: input.callbacks?.emitStage
   });
+  // Static per run: deterministic given (params, tool definitions), so the bytes
+  // are identical across consecutive steps and providers can prefix-cache it.
+  const systemPrompt = createNativeToolLoopSystemPrompt(input.params, {
+    toolDefinitions: input.toolPool.definitions
+  });
+  const useAnthropicCacheBreakpoints = provider.protocol === 'anthropic';
+  const system = useAnthropicCacheBreakpoints
+    ? {
+        role: 'system' as const,
+        content: systemPrompt,
+        providerOptions: ANTHROPIC_EPHEMERAL_CACHE_CONTROL
+      }
+    : systemPrompt;
   let result: ReturnType<typeof streamText> | undefined;
   let sawProviderOutput = false;
   for (let attempt = 0; attempt <= NATIVE_PROVIDER_STEP_MAX_RETRIES; attempt += 1) {
@@ -128,19 +170,26 @@ export async function runNativeAiSdkProviderStep(input: {
     try {
       result = streamText({
         model: input.model,
-        system: createNativeRuntimeSystemPrompt(input.params.uiLanguage),
+        system,
         messages: input.loopState.messages,
         tools: input.toolPool.toolSet,
         activeTools: [...input.toolPool.names],
         toolChoice: 'auto',
         prepareStep: ({ messages, stepNumber }) => {
           const dynamicInstructionMessage = input.instructionTracker.formatDynamicInstructionMessage();
-          if (!dynamicInstructionMessage || stepNumber === 0) {
+          const baseMessages =
+            dynamicInstructionMessage && stepNumber > 0
+              ? withDynamicInstructionMessage(messages, dynamicInstructionMessage)
+              : messages;
+          const stepMessages = useAnthropicCacheBreakpoints
+            ? applyNativeAnthropicTailCacheBreakpoint(baseMessages)
+            : baseMessages;
+          if (stepMessages === messages) {
             return undefined;
           }
 
           return {
-            messages: withDynamicInstructionMessage(messages, dynamicInstructionMessage)
+            messages: stepMessages
           };
         },
         stopWhen: () => input.loopState.stepCount >= input.maxSteps,

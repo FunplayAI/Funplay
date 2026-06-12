@@ -30,7 +30,7 @@ import {
   type ProviderRuntimeController,
   type ProviderRuntimeEvent
 } from '../provider-runtime-events';
-import { createNativeRuntimeSystemPrompt } from './prompt';
+import { createNativeToolLoopSystemPrompt } from './tool-loop-prompt';
 import type { NativeToolLoopCallbacks } from './tool-loop-controller';
 import type { NativeToolLoopState } from './tool-loop-state';
 import type { NativeProcessTextStepStream, NativeProcessTextStream } from './tool-loop-process-stream';
@@ -102,7 +102,11 @@ export async function runOpenAiCompatibleProviderStep(input: {
     try {
       stepResult = await generateOpenAiCompatibleStreamingToolStep({
           provider,
-          system: createNativeRuntimeSystemPrompt(input.params.uiLanguage),
+          // Static per run (deterministic given params + tool definitions), so
+          // upstream prefix caching keeps hitting across steps.
+          system: createNativeToolLoopSystemPrompt(input.params, {
+            toolDefinitions: input.toolPool.definitions
+          }),
           messages: stepMessages,
           tools: input.toolPool.openAiCompatibleTools,
           maxOutputTokens: input.maxOutputTokens,

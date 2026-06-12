@@ -1,3 +1,4 @@
+import type { AgentPermissionRule } from './agent';
 import type { AgentToolArtifact, AgentToolBrowserResult, AgentToolTerminalResult, ChatMessage } from './chat';
 import type { AssetGenerationJob, AssetGenerationPreset } from './asset-generation';
 import type { McpPluginBindings, UnityHealthResult, PlatformChoice, ProjectSetupMode, EngineProjectDimension, McpPluginKind } from './unity';
@@ -192,6 +193,8 @@ export interface ContextSummaryAudit {
 export interface SessionWritePermissionGrant {
   tools: string[];
   mcpTools?: string[];
+  /** Argument-scoped session rules. Absent on grants persisted before rules existed. */
+  rules?: AgentPermissionRule[];
   grantedAt: number;
   expiresAt: number;
   runtimeId?: ProjectSessionRuntimeId;

@@ -1,6 +1,7 @@
 import type { GenericAgentRuntimeParams } from './types';
 import type { AgentToolDefinition, AgentToolRisk } from './tool-registry';
-import type { AgentPermissionImpact } from '../../../shared/types';
+import type { AgentPermissionImpact, AgentPermissionRule } from '../../../shared/types';
+import { toProjectRelativePermissionPath } from './permission-session-store';
 
 export type AgentToolPermissionDecision = 'allow' | 'deny';
 
@@ -25,6 +26,82 @@ export interface AgentToolPermissionRequest {
   detail?: string;
   risk?: AgentToolRisk;
   mcp?: NonNullable<AgentPermissionImpact['mcp']>;
+}
+
+function normalizeCommandForRuleMatch(command: string): string {
+  return command.trim().replace(/\s+/g, ' ');
+}
+
+function commandPrefixMatches(commands: string[] | undefined, prefix: string): boolean {
+  if (!commands?.length) {
+    return false;
+  }
+  const normalizedPrefix = normalizeCommandForRuleMatch(prefix);
+  return commands.some((command) => {
+    const normalized = normalizeCommandForRuleMatch(command);
+    return normalized === normalizedPrefix || normalized.startsWith(`${normalizedPrefix} `);
+  });
+}
+
+/** Minimal glob: '**' crosses directory separators, '*' stays within one segment. */
+export function matchesPermissionPathGlob(path: string, glob: string): boolean {
+  const crossSegment = '\u0001';
+  const escaped = glob
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*\*/g, crossSegment)
+    .replace(/\*/g, '[^/]*')
+    .replace(/\u0001/g, '.*');
+  return new RegExp(`^${escaped}$`).test(path);
+}
+
+function pathGlobMatches(paths: string[] | undefined, glob: string, projectPath?: string): boolean {
+  if (!paths?.length) {
+    return false;
+  }
+  return paths.every((path) => matchesPermissionPathGlob(toProjectRelativePermissionPath(path, projectPath), glob));
+}
+
+function ruleMatches(
+  rule: AgentPermissionRule,
+  toolName: string,
+  impact: AgentPermissionImpact,
+  projectPath?: string
+): boolean {
+  if (rule.toolName !== '*' && rule.toolName !== toolName) {
+    return false;
+  }
+  if (rule.commandPrefix && !commandPrefixMatches(impact.commands, rule.commandPrefix)) {
+    return false;
+  }
+  if (rule.pathGlob && !pathGlobMatches(impact.paths, rule.pathGlob, projectPath)) {
+    return false;
+  }
+  return true;
+}
+
+/** Deny wins over allow; 'ask' rules never short-circuit (they fall through to the prompt). */
+export function evaluatePermissionRules(
+  rules: AgentPermissionRule[] | undefined,
+  toolName: string,
+  impact: AgentPermissionImpact,
+  projectPath?: string
+): 'allow' | 'deny' | undefined {
+  if (!rules?.length) {
+    return undefined;
+  }
+  let allowed = false;
+  for (const rule of rules) {
+    if (!ruleMatches(rule, toolName, impact, projectPath)) {
+      continue;
+    }
+    if (rule.action === 'deny') {
+      return 'deny';
+    }
+    if (rule.action === 'allow') {
+      allowed = true;
+    }
+  }
+  return allowed ? 'allow' : undefined;
 }
 
 function isToolPreApproved(context: AgentPermissionContext, toolName: string, mcpPermissionKey?: string): boolean {
@@ -175,6 +252,16 @@ export async function resolveAgentToolPermission(
     return 'deny';
   }
 
+  const ruleVerdict = evaluatePermissionRules(
+    context.permission.rules,
+    request.tool.name,
+    buildPermissionImpact(request),
+    context.permission.projectPath
+  );
+  if (ruleVerdict === 'deny') {
+    return 'deny';
+  }
+
   if (context.permission.mode === 'read-only' && !PLAN_CONFIRMABLE_TOOL_NAMES.has(request.tool.name)) {
     return 'deny';
   }
@@ -193,6 +280,10 @@ export async function resolveAgentToolPermission(
     });
 
     return decision === 'allow' || decision === 'allow_session' ? 'allow' : 'deny';
+  }
+
+  if (ruleVerdict === 'allow') {
+    return 'allow';
   }
 
   if (isToolPreApproved(context, request.tool.name, request.mcp?.permissionKey)) {

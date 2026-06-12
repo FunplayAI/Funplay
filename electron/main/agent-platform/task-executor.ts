@@ -8,7 +8,12 @@ import {
 import type { GameAgentRun, GameAgentStep, McpPlugin, Project, RuntimeUsage } from '../../../shared/types';
 import { makeId, nowIso } from '../../../shared/utils';
 import { getAgentSettings } from '../store';
-import { hasSessionWritePermission, listSessionMcpToolPermissionKeys, listSessionWritePermissionTools } from './permission-session-store';
+import {
+  hasSessionWritePermission,
+  listSessionMcpToolPermissionKeys,
+  listSessionPermissionRules,
+  listSessionWritePermissionTools
+} from './permission-session-store';
 import { buildGenericWorkspaceContext } from './context';
 import { resolveGenericAgentRuntime } from './runtime-registry';
 import { supportsGenericAgentRuntimeCapability } from './runtime-capabilities';
@@ -288,7 +293,9 @@ export async function executeGenericConversation(task: GenericAgentConversationT
       allowWriteTools: permissionMode === 'full-access',
       allowSessionWriteTools: hasSessionWritePermission(activeSession.id, undefined, permissionGrantContext),
       allowedWriteTools: permissionMode === 'full-access' ? ['*'] : sessionWriteTools,
-      allowedMcpTools: sessionMcpTools
+      allowedMcpTools: sessionMcpTools,
+      rules: listSessionPermissionRules(activeSession.id, permissionGrantContext),
+      projectPath: currentProject.engine?.projectPath
     },
     activeRunId: task.activeRunId,
     turnId: task.userMessageId,

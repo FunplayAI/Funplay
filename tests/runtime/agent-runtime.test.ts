@@ -9511,20 +9511,22 @@ test('native tool-loop messages append current prompt after active session histo
   const messages = buildNativeToolLoopMessages({
     project: projectWithHistory,
     sessionId: activeSession.id,
-    currentPrompt: '当前工作区上下文：\n用户消息：继续推进',
-    maxHistoryMessages: 1
+    currentPrompt: '当前工作区上下文：\n用户消息：继续推进'
   });
 
   assert.deepEqual(
     messages.map((message) => message.role),
-    ['assistant', 'user']
+    ['user', 'assistant', 'user']
   );
-  const currentMessage = messages[1];
+  // The dynamic block must stay a separate tail message (never merged into a
+  // transcript user message) so emitted prefixes stay byte-stable across turns.
+  const currentMessage = messages[2];
   assert.equal(currentMessage?.role, 'user');
   assert.match(String(currentMessage?.content), /继续推进/);
+  assert.doesNotMatch(String(currentMessage?.content), /旧问题/);
 });
 
-test('native tool-loop messages microcompact older tool results while preserving tool pairing', () => {
+test('native tool-loop messages keep older tool results verbatim while under context budget', () => {
   const createdAt = new Date().toISOString();
   const project = buildProject('/tmp/funplay-runtime-test');
   const activeSession = getActiveProjectSession(project);
@@ -9598,9 +9600,7 @@ test('native tool-loop messages microcompact older tool results while preserving
   const messages = buildNativeToolLoopMessages({
     project: projectWithHistory,
     sessionId: activeSession.id,
-    currentPrompt: '当前工作区上下文：\n用户消息：继续推进',
-    maxHistoryMessages: 4,
-    fullDetailRecentMessages: 2
+    currentPrompt: '当前工作区上下文：\n用户消息：继续推进'
   });
 
   assert.deepEqual(
@@ -9609,10 +9609,11 @@ test('native tool-loop messages microcompact older tool results while preserving
   );
   assert.match(JSON.stringify(messages[1]), /read_file/);
   assert.match(JSON.stringify(messages[1]), /src\/App\.tsx/);
-  assert.match(JSON.stringify(messages[2]), /Native tool result compacted/);
-  assert.match(JSON.stringify(messages[2]), /START_/);
-  assert.match(JSON.stringify(messages[2]), /chars omitted/);
-  assert.equal(JSON.stringify(messages).includes(longToolOutput), false);
+  // Retention is budget-driven: while the session is under the compaction
+  // trigger, older tool results are replayed verbatim instead of being squeezed
+  // through the old always-on summary transform.
+  assert.equal(JSON.stringify(messages[2]).includes('Native tool result compacted'), false);
+  assert.equal(JSON.stringify(messages[2]).includes(longToolOutput), true);
   assert.match(String(messages[4]?.content), /近期回答/);
 });
 
@@ -9764,8 +9765,7 @@ test('native tool-loop messages include native summary and skip covered rowid hi
   const messages = buildNativeToolLoopMessages({
     project: projectWithSummary,
     sessionId: activeSession.id,
-    currentPrompt: 'current prompt',
-    maxHistoryMessages: 8
+    currentPrompt: 'current prompt'
   });
 
   assert.match(String(messages[0]?.content), /covered native summary/);

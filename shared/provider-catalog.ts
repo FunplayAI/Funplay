@@ -203,7 +203,7 @@ export const AI_PROVIDER_PRESETS: AiProviderPreset[] = [
     baseUrl: 'https://api.moonshot.cn/v1',
     defaultModel: 'kimi-k2.6',
     availableModels: [
-      { modelId: 'kimi-k2.6', displayName: 'Kimi K2.6', capabilities: { reasoning: true, toolUse: true, vision: true } },
+      { modelId: 'kimi-k2.6', displayName: 'Kimi K2.6', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 262_144 } },
       { modelId: 'kimi-k2.5', displayName: 'Kimi K2.5', capabilities: { reasoning: true, toolUse: true, vision: true, contextWindow: 262_144, maxOutputTokens: 32_768 } }
     ],
     openAiCompatible: {

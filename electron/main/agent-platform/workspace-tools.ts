@@ -2449,6 +2449,9 @@ export async function executeAgentToolAction(
         throw new Error('当前运行没有可用的文件 checkpoint。');
       }
       const result = await previewFileCheckpointChanges(project, options.checkpointSnapshotId);
+      const tooLargeLine = result.tooLargeFiles.length
+        ? `Too large to checkpoint (no diff available): ${result.tooLargeFiles.join(', ')}`
+        : '';
       return {
         ok: true,
         summary:
@@ -2457,6 +2460,7 @@ export async function executeAgentToolAction(
                 `Checkpoint: ${result.snapshotId}`,
                 `Changed files: ${result.changedFiles.length}`,
                 result.skippedFiles.length ? `Skipped files: ${result.skippedFiles.join(', ')}` : '',
+                tooLargeLine,
                 '',
                 ...result.changedFiles.map((file, index) =>
                   [`## ${index + 1}. ${file.path} (${file.status})`, file.diffPreview].join('\n')
@@ -2464,7 +2468,9 @@ export async function executeAgentToolAction(
               ]
                 .filter((line) => line !== '')
                 .join('\n')
-            : `Checkpoint: ${result.snapshotId}\nNo file changes recorded.`
+            : [`Checkpoint: ${result.snapshotId}`, 'No file changes recorded.', tooLargeLine]
+                .filter((line) => line !== '')
+                .join('\n')
       };
     }
 
@@ -2478,7 +2484,10 @@ export async function executeAgentToolAction(
         summary: [
           `Restored checkpoint: ${options.checkpointSnapshotId}`,
           `Restored files: ${result.restoredFiles.length ? result.restoredFiles.join(', ') : 'none'}`,
-          result.skippedFiles.length ? `Skipped files: ${result.skippedFiles.join(', ')}` : ''
+          result.skippedFiles.length ? `Skipped files: ${result.skippedFiles.join(', ')}` : '',
+          result.tooLargeFiles.length
+            ? `Not restored (file exceeded the checkpoint size cap, rollback is a no-op): ${result.tooLargeFiles.join(', ')}`
+            : ''
         ]
           .filter((line) => line !== '')
           .join('\n'),

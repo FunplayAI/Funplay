@@ -2,9 +2,12 @@ import type {
   AgentVerificationTrigger,
   AiProviderApiMode,
   GameAgentStep,
-  ProjectSession
+  NativeContextSummaryCoverage,
+  ProjectSession,
+  RuntimeUsage
 } from '../../../../shared/types';
 import { inferOpenAiCompatibleApiMode } from '../../../../shared/provider-catalog';
+import { ensureProjectSessions } from '../../../../shared/project-sessions';
 import { makeId } from '../../../../shared/utils';
 import { runGenericAgentLoop } from '../agent-loop';
 import { buildNativeRuntimePluginProbeSummary, buildNativeRuntimeThinkingPrelude } from './prompt';
@@ -20,8 +23,10 @@ import { emitReplyAsDeltas, runNativeDirectChatReply } from './direct-reply';
 import type { GenericAgentRuntimeParams, GenericAgentRuntimeResult } from '../types';
 import {
   applyNativeContextPatchToProject,
+  computeNativeSessionTranscriptChars,
   prepareNativeContextHandoff,
-  prepareNativeContextHandoffWithModelSummary
+  prepareNativeContextHandoffWithModelSummary,
+  recordNativeSessionTokenBaseline
 } from './context-handoff';
 import {
   classifyNativeRuntimeError,
@@ -153,6 +158,60 @@ function runtimeLocalize(params: Pick<GenericAgentRuntimeParams, 'uiLanguage'>, 
   return params.uiLanguage === 'en-US' ? en : zh;
 }
 
+// Pre-stage gating: the synthetic workspace/plugin observation stages run on the
+// first turn of a session and afterwards only when change detection says the
+// snapshot is stale (plugin set changed, file tree / project index changed, or a
+// compaction moved the coverage boundary).
+const workspaceObservationSignaturesBySession = new Map<string, string>();
+const WORKSPACE_OBSERVATION_SIGNATURE_CACHE_LIMIT = 64;
+
+export function computeNativeWorkspaceObservationSignature(
+  params: Pick<GenericAgentRuntimeParams, 'context'>,
+  compactionCoverage?: Pick<NativeContextSummaryCoverage, 'boundaryRowId' | 'boundaryOrdinal'>
+): string {
+  const index = params.context.projectContextIndex;
+  return JSON.stringify({
+    plugins: params.context.toolContext.plugins
+      .map((plugin) => `${plugin.id}:${plugin.kind}:${plugin.enabled ? 1 : 0}:${plugin.hasEndpoint ? 1 : 0}`)
+      .sort(),
+    // generatedAt is excluded: it changes every run even when nothing else did.
+    // recentFiles/entrypoints/scripts capture actual file-tree and config drift.
+    contextIndex: index ? { ...index, generatedAt: undefined } : undefined,
+    compactionBoundary: [compactionCoverage?.boundaryRowId ?? null, compactionCoverage?.boundaryOrdinal ?? null]
+  });
+}
+
+export function shouldRunNativeWorkspaceObservation(sessionId: string | undefined, signature: string): boolean {
+  if (!sessionId) {
+    return true;
+  }
+  return workspaceObservationSignaturesBySession.get(sessionId) !== signature;
+}
+
+export function recordNativeWorkspaceObservation(sessionId: string | undefined, signature: string): void {
+  if (!sessionId) {
+    return;
+  }
+  if (
+    !workspaceObservationSignaturesBySession.has(sessionId) &&
+    workspaceObservationSignaturesBySession.size >= WORKSPACE_OBSERVATION_SIGNATURE_CACHE_LIMIT
+  ) {
+    const oldest = workspaceObservationSignaturesBySession.keys().next().value;
+    if (oldest !== undefined) {
+      workspaceObservationSignaturesBySession.delete(oldest);
+    }
+  }
+  workspaceObservationSignaturesBySession.set(sessionId, signature);
+}
+
+export function resetNativeWorkspaceObservationGate(sessionId?: string): void {
+  if (sessionId) {
+    workspaceObservationSignaturesBySession.delete(sessionId);
+    return;
+  }
+  workspaceObservationSignaturesBySession.clear();
+}
+
 function createFallbackReply(
   params: GenericAgentRuntimeParams,
   providerMissing: boolean,
@@ -190,128 +249,6 @@ function createFallbackReply(
   ]
     .filter(Boolean)
     .join('\n');
-}
-
-function trimDetail(value: string, maxLength = 4000): string {
-  const normalized = value.trim();
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-  return `${normalized.slice(0, Math.max(0, maxLength - 1))}…`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function stringifyErrorField(value: unknown): string | undefined {
-  if (value == null) {
-    return undefined;
-  }
-  if (typeof value === 'string') {
-    return value.trim() ? trimDetail(value) : '<empty>';
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-  try {
-    return trimDetail(JSON.stringify(value, null, 2));
-  } catch {
-    return undefined;
-  }
-}
-
-function readErrorField(record: Record<string, unknown>, keys: string[]): unknown {
-  for (const key of keys) {
-    if (record[key] != null) {
-      return record[key];
-    }
-  }
-  return undefined;
-}
-
-function extractProviderErrorDetail(error: unknown, provider?: GenericAgentRuntimeParams['provider']): string {
-  const lines: string[] = [];
-  const errorRecord = isRecord(error) ? error : undefined;
-  const causeRecord = errorRecord && isRecord(errorRecord.cause) ? errorRecord.cause : undefined;
-
-  if (provider) {
-    lines.push(`Provider: ${provider.name}`);
-    lines.push(`Model: ${provider.model}`);
-    lines.push(`Protocol: ${provider.protocol}`);
-    if (provider.protocol === 'openai-compatible') {
-      lines.push(`API Mode: ${inferOpenAiCompatibleApiMode(provider)}`);
-    }
-  }
-
-  const message =
-    (error instanceof Error ? error.message : undefined) ||
-    stringifyErrorField(readErrorField(errorRecord ?? {}, ['message', 'error', 'detail'])) ||
-    'Unknown error';
-  lines.push(`Message: ${message}`);
-
-  const statusCode = stringifyErrorField(
-    readErrorField(errorRecord ?? {}, ['statusCode', 'status', 'responseStatusCode']) ??
-      readErrorField(causeRecord ?? {}, ['statusCode', 'status', 'responseStatusCode'])
-  );
-  if (statusCode) {
-    lines.push(`Status: ${statusCode}`);
-  }
-
-  const errorCode = stringifyErrorField(
-    readErrorField(errorRecord ?? {}, ['code', 'errorCode', 'type']) ??
-      readErrorField(causeRecord ?? {}, ['code', 'errorCode', 'type'])
-  );
-  if (errorCode) {
-    lines.push(`Code: ${errorCode}`);
-  }
-
-  const requestId = stringifyErrorField(
-    readErrorField(errorRecord ?? {}, ['requestId']) ?? readErrorField(causeRecord ?? {}, ['requestId'])
-  );
-  if (requestId) {
-    lines.push(`Request ID: ${requestId}`);
-  }
-
-  const requestUrl = stringifyErrorField(
-    readErrorField(errorRecord ?? {}, ['requestUrl', 'url']) ?? readErrorField(causeRecord ?? {}, ['requestUrl', 'url'])
-  );
-  if (requestUrl) {
-    lines.push(`Request URL: ${requestUrl}`);
-  }
-
-  const requestBody = stringifyErrorField(
-    readErrorField(errorRecord ?? {}, ['requestBody']) ?? readErrorField(causeRecord ?? {}, ['requestBody'])
-  );
-  if (requestBody !== undefined) {
-    lines.push('Request Body:');
-    lines.push(requestBody);
-  }
-
-  const responseBody = stringifyErrorField(
-    readErrorField(errorRecord ?? {}, ['responseBody', 'body', 'data', 'responseText']) ??
-      readErrorField(causeRecord ?? {}, ['responseBody', 'body', 'data', 'responseText'])
-  );
-  if (responseBody !== undefined) {
-    lines.push('Response Body:');
-    lines.push(responseBody);
-  }
-
-  const causeMessage = stringifyErrorField(readErrorField(causeRecord ?? {}, ['message', 'error', 'detail']));
-  if (causeMessage && causeMessage !== message) {
-    lines.push(`Cause: ${causeMessage}`);
-  }
-
-  return trimDetail(lines.join('\n'), 6000);
-}
-
-function summarizeProviderErrorDetail(detail: string): string {
-  const messageLine = detail
-    .split('\n')
-    .find((line) => line.startsWith('Message:'))
-    ?.replace(/^Message:\s*/, '')
-    .trim();
-  return messageLine || detail.split('\n')[0] || 'Unknown error';
 }
 
 function createPermissionDeniedReply(): string {
@@ -612,6 +549,35 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
     onAgentCoreParts: outputCollector.onAgentCoreParts,
     onLifecycleHook: (hook) => params.emitRuntimeEvent?.({ type: 'lifecycle_hook', hook })
   };
+  const nativeContextSessionId = params.context.activeSessionId;
+  // First provider usage report of the run becomes the session token baseline:
+  // provider-reported prompt tokens are exact for everything sent so far, so the
+  // next turn's context estimate only needs chars/4 for the delta.
+  let usageBaselineRecorded = false;
+  const recordFirstUsageBaseline = (usage: RuntimeUsage): void => {
+    if (usageBaselineRecorded || !nativeContextSessionId || usage.inputTokens <= 0) {
+      return;
+    }
+    const session = ensureProjectSessions(runtimeParams.project).sessions.find(
+      (item) => item.id === nativeContextSessionId
+    );
+    if (!session) {
+      return;
+    }
+    usageBaselineRecorded = true;
+    recordNativeSessionTokenBaseline(
+      nativeContextSessionId,
+      usage,
+      computeNativeSessionTranscriptChars(session, params.message)
+    );
+  };
+  runtimeParams = {
+    ...runtimeParams,
+    onUsage: (usage) => {
+      recordFirstUsageBaseline(usage);
+      outputCollector.onUsage(usage);
+    }
+  };
   let sessionRuntimePatch: Partial<NonNullable<ProjectSession['runtimeOverrides']>> | undefined;
   let sideEffectToolExecuted = false;
   let activeVerificationTrigger: AgentVerificationTrigger | undefined;
@@ -885,7 +851,6 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
     }
   });
 
-  const nativeContextSessionId = params.context.activeSessionId;
   const nativeContextHandoff = await prepareNativeContextHandoffWithModelSummary({
     project: params.project,
     sessionId: nativeContextSessionId,
@@ -1044,6 +1009,18 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
     });
     const canApplyWorkspaceWrites = isWritePermissionAllowed(writePermission);
 
+    const sessionAfterHandoff = nativeContextSessionId
+      ? ensureProjectSessions(runtimeParams.project).sessions.find((item) => item.id === nativeContextSessionId)
+      : undefined;
+    const workspaceObservationSignature = computeNativeWorkspaceObservationSignature(
+      runtimeParams,
+      nativeContextHandoff?.coverage ?? sessionAfterHandoff?.runtimeOverrides?.nativeContextSummaryCoverage
+    );
+    const runWorkspaceObservation = shouldRunNativeWorkspaceObservation(
+      nativeContextSessionId,
+      workspaceObservationSignature
+    );
+
     const loopState = await runGenericAgentLoop({
       initialState: {
         accumulated: '',
@@ -1072,6 +1049,19 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
         {
           id: 'observe_workspace',
           run: async (state) => {
+            if (!runWorkspaceObservation) {
+              emitStage({
+                stageId: 'stage:workspace_observation',
+                title: '整理工作区观察',
+                target: 'stage:workspace_observation',
+                status: 'completed',
+                summary: '工作区上下文未变化，已复用上一轮观测快照。',
+                input: {
+                  reused: true
+                }
+              });
+              return state;
+            }
             emitStage({
               stageId: 'stage:workspace_observation',
               title: '整理工作区观察',
@@ -1132,6 +1122,19 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
         {
           id: 'observe_plugins',
           run: async (state) => {
+            if (!runWorkspaceObservation) {
+              emitStage({
+                stageId: 'stage:plugin_observation',
+                title: '采集插件观测',
+                target: 'stage:plugin_observation',
+                status: 'completed',
+                summary: '插件集合未变化，已复用上一轮观测快照。',
+                input: {
+                  reused: true
+                }
+              });
+              return state;
+            }
             emitStage({
               stageId: 'stage:plugin_observation',
               title: '采集插件观测',
@@ -1152,6 +1155,7 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
                 status: 'completed',
                 summary: '已完成所有可观测插件的结果采集。'
               });
+              recordNativeWorkspaceObservation(nativeContextSessionId, workspaceObservationSignature);
             } catch (error) {
               emitStage({
                 stageId: 'stage:plugin_observation',
@@ -1202,7 +1206,6 @@ export async function runNativeConversationTurn(params: GenericAgentRuntimeParam
             let toolLoopFinalSummary = '';
             try {
               if (useNativeToolLoop) {
-                const exposeWriteTools = shouldExposeNativeWriteTools(params, canApplyWorkspaceWrites, toolPolicy);
                 const exposeWriteToolBucket = shouldExposeNativeWriteToolBucket(
                   params,
                   canApplyWorkspaceWrites,

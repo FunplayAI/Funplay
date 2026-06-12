@@ -16,6 +16,7 @@ import type {
   AgentUserInputOption,
   AgentUserInputResponse,
   AgentPermissionImpact,
+  AgentPermissionRule,
   PromptAttachment,
   AiProvider,
   AgentPermissionMode,
@@ -345,6 +346,10 @@ export interface GenericAgentRuntimeParams {
     allowSessionWriteTools: boolean;
     allowedWriteTools?: string[];
     allowedMcpTools?: string[];
+    /** Argument-level rules (deny > allow > pre-approval); evaluated by the permission broker. */
+    rules?: AgentPermissionRule[];
+    /** Project root used to normalize impact paths for pathGlob rule matching. */
+    projectPath?: string;
   };
   activeRunId?: string;
   lifecycleHooks?: AgentLifecycleHookConfig;

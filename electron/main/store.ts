@@ -26,7 +26,8 @@ import {
   clearFileCheckpointEntryRecords,
   listFileCheckpointEntryRecords,
   upsertFileCheckpointEntryRecord,
-  type FileCheckpointEntry
+  type FileCheckpointEntry,
+  type UpsertFileCheckpointEntryInput
 } from './store-internal/file-checkpoints';
 import { parseJson } from './store-internal/json';
 import { appendPermissionAuditRecord, expirePendingPermissionAuditRecords } from './store-internal/permission-audits';
@@ -319,12 +320,7 @@ export function listRuntimeRuns(projectId?: string): ReturnType<typeof listRunti
   return listRuntimeRunRecords(requireDb(), projectId);
 }
 
-export function upsertFileCheckpointEntry(record: {
-  snapshotId: string;
-  filePath: string;
-  existed: boolean;
-  content?: string;
-}): void {
+export function upsertFileCheckpointEntry(record: UpsertFileCheckpointEntryInput): void {
   upsertFileCheckpointEntryRecord(requireDb(), record);
 }
 

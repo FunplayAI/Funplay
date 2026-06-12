@@ -486,6 +486,18 @@ const removeClaudeRuntime: Migration = {
   }
 };
 
+const binarySafeFileCheckpoints: Migration = {
+  version: 13,
+  description: 'Binary-safe file checkpoints: binary flag, byte length, content hash dedup, too-large marker',
+  up(database) {
+    // Existing rows are plain UTF-8 text snapshots; defaults keep them loading as text.
+    addColumnIfMissing(database, 'file_checkpoints', 'is_binary', 'INTEGER NOT NULL DEFAULT 0');
+    addColumnIfMissing(database, 'file_checkpoints', 'byte_length', 'INTEGER');
+    addColumnIfMissing(database, 'file_checkpoints', 'content_hash', 'TEXT');
+    addColumnIfMissing(database, 'file_checkpoints', 'too_large', 'INTEGER NOT NULL DEFAULT 0');
+  }
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   initial,
   usageTracking,
@@ -498,7 +510,8 @@ export const MIGRATIONS: readonly Migration[] = [
   mcpToolSnapshots,
   mcpRawAudits,
   assetGenerationProjectLedger,
-  removeClaudeRuntime
+  removeClaudeRuntime,
+  binarySafeFileCheckpoints
 ];
 
 function readUserVersion(database: Database.Database): number {
