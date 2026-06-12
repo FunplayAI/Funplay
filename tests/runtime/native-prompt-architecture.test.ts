@@ -32,10 +32,12 @@ import {
 import { applyNativeAnthropicTailCacheBreakpoint } from '../../electron/main/agent-platform/native/ai-sdk-provider-step.ts';
 import { buildProject } from './test-helpers.ts';
 
-function buildRuntimeParams(overrides: {
-  message?: string;
-  plugins?: GenericAgentRuntimeParams['context']['toolContext']['plugins'];
-} = {}): GenericAgentRuntimeParams {
+function buildRuntimeParams(
+  overrides: {
+    message?: string;
+    plugins?: GenericAgentRuntimeParams['context']['toolContext']['plugins'];
+  } = {}
+): GenericAgentRuntimeParams {
   const project = buildProject();
   return {
     project,
@@ -93,10 +95,13 @@ function buildRuntimeParams(overrides: {
   };
 }
 
-function buildToolDefinition(name: string, options: {
-  canonicalName?: string;
-  usageHint?: string;
-} = {}): NativeRuntimeToolDefinition {
+function buildToolDefinition(
+  name: string,
+  options: {
+    canonicalName?: string;
+    usageHint?: string;
+  } = {}
+): NativeRuntimeToolDefinition {
   return {
     name,
     title: `${name} tool`,

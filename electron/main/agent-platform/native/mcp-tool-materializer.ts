@@ -46,10 +46,7 @@ function truncateToolNameSegment(value: string, maxLength: number): string {
 }
 
 function makeMcpToolName(plugin: McpPlugin, mcpTool: UnityMcpTool, usedNames: Set<string>): string {
-  const serverSlug = truncateToolNameSegment(
-    sanitizeToolNameSegment(plugin.name || plugin.id, 'server'),
-    22
-  );
+  const serverSlug = truncateToolNameSegment(sanitizeToolNameSegment(plugin.name || plugin.id, 'server'), 22);
   const toolSlug = sanitizeToolNameSegment(mcpTool.name, 'tool');
   const basePrefix = `mcp__${serverSlug}__`;
   const availableToolLength = Math.max(8, MAX_OPENAI_TOOL_NAME_LENGTH - basePrefix.length);
@@ -111,10 +108,11 @@ function compactMcpClassifierValue(value: unknown, maxChars = MCP_CLASSIFIER_PRE
     };
   }
   if (typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value as Record<string, unknown>).slice(0, 16).map(([key, item]) => [
-      key,
-      compactMcpClassifierValue(item, Math.floor(maxChars / 2))
-    ]));
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .slice(0, 16)
+        .map(([key, item]) => [key, compactMcpClassifierValue(item, Math.floor(maxChars / 2))])
+    );
   }
   return String(value);
 }
@@ -127,21 +125,29 @@ function mcpJsonSize(value: unknown): number {
   }
 }
 
-function mapDynamicMcpResultToProtocolResult(result: WorkspaceToolActionResult): ReturnType<NonNullable<NativeRuntimeToolDefinition['mapToolResultToProtocolResult']>> {
+function mapDynamicMcpResultToProtocolResult(
+  result: WorkspaceToolActionResult
+): ReturnType<NonNullable<NativeRuntimeToolDefinition['mapToolResultToProtocolResult']>> {
   const mcp = result.mcp;
   return {
-    content: compactMcpText([
-      mcp ? `MCP operation: ${mcp.operation}` : '',
-      mcp ? `Target: ${mcp.target}` : '',
-      mcp?.exposedName ? `Exposed name: ${mcp.exposedName}` : '',
-      mcp?.pluginId ? `Plugin: ${mcp.pluginId}` : '',
-      mcp?.policySummary ? `Policy: ${mcp.policySummary}` : '',
-      mcp ? `Schema guard: ${mcp.schemaGuard}` : '',
-      mcp?.argsSize !== undefined ? `Args size: ${mcp.argsSize}` : '',
-      mcp?.contentPartCount !== undefined ? `Content parts: ${mcp.contentPartCount}` : '',
-      mcp?.failureKind ? `Failure: ${mcp.failureKind}` : '',
-      result.summary
-    ].filter(Boolean).join('\n'), MCP_PROTOCOL_RESULT_MAX_CHARS, 'mcp protocol result'),
+    content: compactMcpText(
+      [
+        mcp ? `MCP operation: ${mcp.operation}` : '',
+        mcp ? `Target: ${mcp.target}` : '',
+        mcp?.exposedName ? `Exposed name: ${mcp.exposedName}` : '',
+        mcp?.pluginId ? `Plugin: ${mcp.pluginId}` : '',
+        mcp?.policySummary ? `Policy: ${mcp.policySummary}` : '',
+        mcp ? `Schema guard: ${mcp.schemaGuard}` : '',
+        mcp?.argsSize !== undefined ? `Args size: ${mcp.argsSize}` : '',
+        mcp?.contentPartCount !== undefined ? `Content parts: ${mcp.contentPartCount}` : '',
+        mcp?.failureKind ? `Failure: ${mcp.failureKind}` : '',
+        result.summary
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      MCP_PROTOCOL_RESULT_MAX_CHARS,
+      'mcp protocol result'
+    ),
     isError: result.isError,
     failureKind: result.mcp?.failureKind,
     media: result.media,
@@ -155,7 +161,11 @@ function mapDynamicMcpResultToProtocolResult(result: WorkspaceToolActionResult):
   };
 }
 
-function toNativeMcpToolDefinition(plugin: McpPlugin, mcpTool: UnityMcpTool, usedNames: Set<string>): NativeRuntimeToolDefinition | undefined {
+function toNativeMcpToolDefinition(
+  plugin: McpPlugin,
+  mcpTool: UnityMcpTool,
+  usedNames: Set<string>
+): NativeRuntimeToolDefinition | undefined {
   const policy = resolveMcpToolPolicy(plugin, mcpTool.name);
   if (policy.permission === 'deny') {
     return undefined;
@@ -167,7 +177,9 @@ function toNativeMcpToolDefinition(plugin: McpPlugin, mcpTool: UnityMcpTool, use
     `Original MCP tool name: ${mcpTool.name}.`,
     `Policy: ${policy.summary}.`,
     mcpTool.description ?? ''
-  ].filter(Boolean).join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return {
     name,
@@ -187,7 +199,8 @@ function toNativeMcpToolDefinition(plugin: McpPlugin, mcpTool: UnityMcpTool, use
       usageHint: policy.readOnly
         ? `Read ${mcpTool.name} through ${plugin.name}.`
         : `Call ${mcpTool.name} through ${plugin.name}; host policy and permission apply.`,
-      failureHint: 'If this direct MCP tool disappears, list MCP tools and retry through call_mcp_tool with the original MCP name.'
+      failureHint:
+        'If this direct MCP tool disappears, list MCP tools and retry through call_mcp_tool with the original MCP name.'
     },
     mcp: {
       permissionKey: makeSessionMcpToolPermissionKey(plugin.id, mcpTool.name),
@@ -199,21 +212,23 @@ function toNativeMcpToolDefinition(plugin: McpPlugin, mcpTool: UnityMcpTool, use
       risk: policy.riskPolicy
     },
     userFacingName: () => title,
-    getActivityDescription: () => policy.readOnly
-      ? `Reading MCP tool ${plugin.name} / ${mcpTool.name}`
-      : `Calling MCP tool ${plugin.name} / ${mcpTool.name}`,
+    getActivityDescription: () =>
+      policy.readOnly
+        ? `Reading MCP tool ${plugin.name} / ${mcpTool.name}`
+        : `Calling MCP tool ${plugin.name} / ${mcpTool.name}`,
     getToolUseSummary: () => `${plugin.name} / ${mcpTool.name}`,
     render: () => ({
       title,
       summary: policy.summary,
-      activity: policy.readOnly
-        ? `Reading MCP tool ${mcpTool.name}`
-        : `Calling MCP tool ${mcpTool.name}`
+      activity: policy.readOnly ? `Reading MCP tool ${mcpTool.name}` : `Calling MCP tool ${mcpTool.name}`
     }),
     progress: (_input, context) => ({
-      activity: context.phase === 'running'
-        ? (policy.readOnly ? `Reading MCP tool ${mcpTool.name}` : `Calling MCP tool ${mcpTool.name}`)
-        : `${context.phase} ${mcpTool.name}`,
+      activity:
+        context.phase === 'running'
+          ? policy.readOnly
+            ? `Reading MCP tool ${mcpTool.name}`
+            : `Calling MCP tool ${mcpTool.name}`
+          : `${context.phase} ${mcpTool.name}`,
       summary: policy.summary
     }),
     toAutoClassifierInput: (input) => ({
@@ -227,35 +242,31 @@ function toNativeMcpToolDefinition(plugin: McpPlugin, mcpTool: UnityMcpTool, use
       argsSize: mcpJsonSize(input),
       args: compactMcpClassifierValue(input)
     }),
-    getPermissionDetail: (input) => [
-      `工具：${title}`,
-      `MCP 原名：${mcpTool.name}`,
-      `策略：${policy.summary}`,
-      `参数：${compactMcpText(JSON.stringify(compactMcpClassifierValue(input), null, 2), 1200, 'mcp permission detail')}`
-    ].join('\n'),
+    getPermissionDetail: (input) =>
+      [
+        `工具：${title}`,
+        `MCP 原名：${mcpTool.name}`,
+        `策略：${policy.summary}`,
+        `参数：${compactMcpText(JSON.stringify(compactMcpClassifierValue(input), null, 2), 1200, 'mcp permission detail')}`
+      ].join('\n'),
     mapToolResultToProtocolResult: (result) => mapDynamicMcpResultToProtocolResult(result),
-    extractSearchText: (result) => [
-      title,
-      policy.summary,
-      result.summary,
-      result.mcp?.target ? `MCP target: ${result.mcp.target}` : ''
-    ].filter(Boolean).join('\n'),
+    extractSearchText: (result) =>
+      [title, policy.summary, result.summary, result.mcp?.target ? `MCP target: ${result.mcp.target}` : '']
+        .filter(Boolean)
+        .join('\n'),
     isConcurrencySafe: () => policy.readOnly,
-    classifySideEffect: () => policy.readOnly
-      ? {
-          kind: 'none',
-          confidence: 'none',
-          evidence: []
-        }
-      : {
-          kind: 'external',
-          confidence: 'medium',
-          evidence: [
-            'tool:mcp',
-            `plugin:${plugin.id}`,
-            `mcp:${mcpTool.name}`
-          ]
-        },
+    classifySideEffect: () =>
+      policy.readOnly
+        ? {
+            kind: 'none',
+            confidence: 'none',
+            evidence: []
+          }
+        : {
+            kind: 'external',
+            confidence: 'medium',
+            evidence: ['tool:mcp', `plugin:${plugin.id}`, `mcp:${mcpTool.name}`]
+          },
     toAction: (input) => ({
       type: 'call_mcp_tool',
       pluginId: plugin.id,
@@ -272,31 +283,35 @@ export async function materializeNativeMcpTools(input: {
   plugins?: McpPlugin[];
   abortSignal?: AbortSignal;
 }): Promise<NativeMcpMaterializationResult> {
-  const plugins = (input.plugins ?? []).filter((plugin) =>
-    plugin.enabled && (plugin.transport === 'stdio' ? Boolean(plugin.command?.trim()) : Boolean(plugin.baseUrl.trim()))
+  const plugins = (input.plugins ?? []).filter(
+    (plugin) =>
+      plugin.enabled &&
+      (plugin.transport === 'stdio' ? Boolean(plugin.command?.trim()) : Boolean(plugin.baseUrl.trim()))
   );
   const usedNames = new Set<string>();
   const tools: NativeRuntimeToolDefinition[] = [];
   const failures: NativeMcpMaterializationFailure[] = [];
 
-  const results = await Promise.all(plugins.map(async (plugin) => {
-    try {
-      const mcpTools = await listUnityTools(plugin, input.abortSignal);
-      return {
-        plugin,
-        mcpTools
-      };
-    } catch (error) {
-      return {
-        plugin,
-        failure: {
-          pluginId: plugin.id,
-          pluginName: plugin.name,
-          message: error instanceof Error ? error.message : 'MCP tools/list failed.'
-        }
-      };
-    }
-  }));
+  const results = await Promise.all(
+    plugins.map(async (plugin) => {
+      try {
+        const mcpTools = await listUnityTools(plugin, input.abortSignal);
+        return {
+          plugin,
+          mcpTools
+        };
+      } catch (error) {
+        return {
+          plugin,
+          failure: {
+            pluginId: plugin.id,
+            pluginName: plugin.name,
+            message: error instanceof Error ? error.message : 'MCP tools/list failed.'
+          }
+        };
+      }
+    })
+  );
 
   const discoveredAt = nowIso();
   for (const result of results) {

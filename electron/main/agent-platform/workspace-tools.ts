@@ -1298,7 +1298,9 @@ async function runWorkspaceCommand(
         `工作目录：${relativeCwd}`,
         spawnSpec.statusLine ?? '',
         '完成后退出码与输出尾部会自动注入后续步骤；也可用 terminal_read 轮询输出、terminal_stop 终止该 job。'
-      ].filter(Boolean).join('\n'),
+      ]
+        .filter(Boolean)
+        .join('\n'),
       command: {
         command,
         cwd: relativeCwd,
@@ -2080,7 +2082,11 @@ export async function executeAgentToolAction(
         // Image files cannot be text-decoded; return them as media so a
         // vision-capable model can see them (a follow-up image turn is injected
         // by the tool loop). Non-vision models get the summary note instead.
-        const { absolutePath, relativePath, size } = await readWorkspaceFileBytes(project, action.path, MAX_MEDIA_BYTES);
+        const { absolutePath, relativePath, size } = await readWorkspaceFileBytes(
+          project,
+          action.path,
+          MAX_MEDIA_BYTES
+        );
         return {
           ok: true,
           summary: `图像文件 ${relativePath}（${imageMime}, ${size} bytes）。如模型支持视觉，将随后附上图像内容。`,

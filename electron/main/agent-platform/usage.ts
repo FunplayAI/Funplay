@@ -34,7 +34,10 @@ function safeNumber(value: number | undefined | null): number {
   return value;
 }
 
-export function normalizeAiSdkUsage(usage: AiSdkUsageLike | null | undefined, options: NormalizeOptions = {}): RuntimeUsage | null {
+export function normalizeAiSdkUsage(
+  usage: AiSdkUsageLike | null | undefined,
+  options: NormalizeOptions = {}
+): RuntimeUsage | null {
   if (!usage) {
     return null;
   }
@@ -44,9 +47,8 @@ export function normalizeAiSdkUsage(usage: AiSdkUsageLike | null | undefined, op
   const cacheReadTokens = safeNumber(usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens);
   const cacheCreationTokens = safeNumber(usage.inputTokenDetails?.cacheWriteTokens);
   const reportedTotal = safeNumber(usage.totalTokens);
-  const totalTokens = reportedTotal > 0
-    ? reportedTotal
-    : inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens;
+  const totalTokens =
+    reportedTotal > 0 ? reportedTotal : inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens;
 
   if (totalTokens === 0) {
     return null;

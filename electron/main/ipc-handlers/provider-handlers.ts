@@ -58,7 +58,10 @@ export function registerProviderHandlers(ipcMain: IpcMain, ctx: HandlerContext):
 
   ipcMain.handle('providers:setDefault', async (_, providerId: unknown) => {
     const state = ctx.getState();
-    const aiSettings = setDefaultProvider(state, validateIpcInput(providerIdSchema, providerId, 'providers:setDefault'));
+    const aiSettings = setDefaultProvider(
+      state,
+      validateIpcInput(providerIdSchema, providerId, 'providers:setDefault')
+    );
     await ctx.setState({ ...state });
     return aiSettings;
   });
@@ -97,7 +100,9 @@ export function registerProviderHandlers(ipcMain: IpcMain, ctx: HandlerContext):
           `Context window: ${formatTokenLimit(tokenLimits.effectiveContextWindowTokens)}`,
           `Max output: ${formatTokenLimit(tokenLimits.effectiveMaxOutputTokens)}`,
           `Runtime strategy: ${runtimeStrategy}`
-        ].filter(Boolean).join('\n'),
+        ]
+          .filter(Boolean)
+          .join('\n'),
         testedAt
       };
     } catch (error) {
@@ -116,7 +121,9 @@ export function registerProviderHandlers(ipcMain: IpcMain, ctx: HandlerContext):
           `Context window: ${formatTokenLimit(tokenLimits.effectiveContextWindowTokens)}`,
           `Max output: ${formatTokenLimit(tokenLimits.effectiveMaxOutputTokens)}`,
           `Runtime strategy: ${getAgentSettings().runtimeStrategy}`
-        ].filter(Boolean).join('\n'),
+        ]
+          .filter(Boolean)
+          .join('\n'),
         testedAt
       };
     }

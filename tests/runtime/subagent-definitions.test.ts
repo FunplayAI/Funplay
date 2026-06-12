@@ -12,7 +12,12 @@ import {
   resolveNativeSubagentToolPoolMode
 } from '../../electron/main/agent-platform/native/subagent-definitions.ts';
 
-async function writeDefinition(root: string, dir: '.claude' | '.funplay', fileName: string, content: string): Promise<string> {
+async function writeDefinition(
+  root: string,
+  dir: '.claude' | '.funplay',
+  fileName: string,
+  content: string
+): Promise<string> {
   const directory = join(root, dir, 'agents');
   await mkdir(directory, { recursive: true });
   const path = join(directory, fileName);
@@ -48,16 +53,7 @@ test('parseSubagentDefinitionContent reads frontmatter name, description, tools,
 
 test('parseSubagentDefinitionContent supports yaml list tools, comma strings, and filters unknown families', () => {
   const yamlList = parseSubagentDefinitionContent({
-    content: [
-      '---',
-      'name: yaml-agent',
-      'tools:',
-      '  - read',
-      '  - web',
-      '  - terminal',
-      '---',
-      'body'
-    ].join('\n'),
+    content: ['---', 'name: yaml-agent', 'tools:', '  - read', '  - web', '  - terminal', '---', 'body'].join('\n'),
     sourcePath: '/tmp/agents/yaml-agent.md',
     source: 'funplay'
   });
@@ -87,9 +83,19 @@ test('listSubagentDefinitions loads both directories and .funplay wins name conf
   const root = await mkdtemp(join(tmpdir(), 'funplay-subagent-defs-'));
   try {
     resetSubagentDefinitionCache();
-    await writeDefinition(root, '.claude', 'reviewer.md', ['---', 'name: reviewer', 'model: claude-model', '---', 'claude body'].join('\n'));
+    await writeDefinition(
+      root,
+      '.claude',
+      'reviewer.md',
+      ['---', 'name: reviewer', 'model: claude-model', '---', 'claude body'].join('\n')
+    );
     await writeDefinition(root, '.claude', 'scout.md', ['---', 'name: scout', '---', 'scout body'].join('\n'));
-    await writeDefinition(root, '.funplay', 'reviewer.md', ['---', 'name: Reviewer', 'model: funplay-model', '---', 'funplay body'].join('\n'));
+    await writeDefinition(
+      root,
+      '.funplay',
+      'reviewer.md',
+      ['---', 'name: Reviewer', 'model: funplay-model', '---', 'funplay body'].join('\n')
+    );
 
     const definitions = listSubagentDefinitions(root);
     assert.deepEqual(definitions.map((definition) => definition.name).sort(), ['Reviewer', 'scout']);
@@ -150,10 +156,7 @@ test('resolveNativeSubagentModel resolves against the provider model list', () =
   const provider = {
     model: 'parent-model',
     upstreamModel: 'parent-upstream',
-    availableModels: [
-      { modelId: 'sub-model', upstreamModelId: 'sub-upstream' },
-      { modelId: 'Other-Model' }
-    ]
+    availableModels: [{ modelId: 'sub-model', upstreamModelId: 'sub-upstream' }, { modelId: 'Other-Model' }]
   };
 
   const parent = resolveNativeSubagentModel(provider, undefined);

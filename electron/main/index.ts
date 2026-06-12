@@ -5,15 +5,8 @@ import { initializeStore, getState, setState } from './store';
 import { initializePptxPreviewRenderer } from './pptx-preview-renderer';
 import { disposeProjectFileWatchers, syncProjectFileWatchers } from './project-file-watcher';
 import { disposePersistentTerminals } from './agent-platform/persistent-terminal-store';
-import {
-  initializeNotificationService,
-  sendAppNotification
-} from './notification-service';
-import {
-  getAppUpdateStatus,
-  initializeAppUpdateService,
-  scheduleStartupUpdateCheck
-} from './update-service';
+import { initializeNotificationService, sendAppNotification } from './notification-service';
+import { getAppUpdateStatus, initializeAppUpdateService, scheduleStartupUpdateCheck } from './update-service';
 import { initializeProviderSecretStore } from './provider-secret-store';
 import { initializeAssetGenerationSecretStore } from './asset-generation-secret-store';
 import { installSessionSecurity, secureBrowserWindow } from './security';
@@ -60,9 +53,9 @@ const completionBadgeTracker = createSessionCompletionBadgeTracker({
 function isPromptStreamCompletedEvent(payload: unknown): payload is Extract<PromptStreamEvent, { type: 'completed' }> {
   return Boolean(
     payload &&
-      typeof payload === 'object' &&
-      (payload as { type?: unknown }).type === 'completed' &&
-      typeof (payload as { sessionId?: unknown }).sessionId === 'string'
+    typeof payload === 'object' &&
+    (payload as { type?: unknown }).type === 'completed' &&
+    typeof (payload as { sessionId?: unknown }).sessionId === 'string'
   );
 }
 
@@ -109,7 +102,9 @@ function recordPromptStreamCompletionForBadge(payload: unknown): void {
 }
 
 function resolvePreloadPath(): string {
-  const candidates = ['../preload/index.js', '../preload/index.mjs'].map((relativePath) => join(__dirname, relativePath));
+  const candidates = ['../preload/index.js', '../preload/index.mjs'].map((relativePath) =>
+    join(__dirname, relativePath)
+  );
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
 }
 

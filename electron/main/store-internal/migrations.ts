@@ -6,7 +6,12 @@ export interface Migration {
   up(database: Database.Database): void;
 }
 
-function addColumnIfMissing(database: Database.Database, tableName: string, columnName: string, definition: string): void {
+function addColumnIfMissing(
+  database: Database.Database,
+  tableName: string,
+  columnName: string,
+  definition: string
+): void {
   const columns = database.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
   if (!columns.some((column) => column.name === columnName)) {
     database.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
@@ -461,7 +466,9 @@ const removeClaudeRuntime: Migration = {
         const settings = JSON.parse(agentSettingsRow.value_json) as Record<string, unknown>;
         if (settings && typeof settings === 'object' && settings.runtimeStrategy === LEGACY_CLAUDE_RUNTIME_ID) {
           settings.runtimeStrategy = 'native';
-          database.prepare('UPDATE app_settings SET value_json = ? WHERE key = ?').run(JSON.stringify(settings), 'agent_settings');
+          database
+            .prepare('UPDATE app_settings SET value_json = ? WHERE key = ?')
+            .run(JSON.stringify(settings), 'agent_settings');
         }
       } catch {
         // Malformed settings JSON: leave as-is; runtime defaults take over at load time.

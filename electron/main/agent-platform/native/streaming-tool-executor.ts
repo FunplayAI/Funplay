@@ -298,9 +298,10 @@ async function appendToolResultImageMessage(input: {
     });
     return;
   }
-  const note = droppedCount > 0
-    ? `以下为工具 ${input.toolName} 返回的图像（另有 ${droppedCount} 张因数量/大小上限被跳过）：`
-    : `以下为工具 ${input.toolName} 返回的图像：`;
+  const note =
+    droppedCount > 0
+      ? `以下为工具 ${input.toolName} 返回的图像（另有 ${droppedCount} 张因数量/大小上限被跳过）：`
+      : `以下为工具 ${input.toolName} 返回的图像：`;
   input.state.messages.push({
     role: 'user',
     content: note,

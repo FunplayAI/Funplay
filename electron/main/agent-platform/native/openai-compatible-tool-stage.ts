@@ -1,13 +1,7 @@
 import { ProjectInstructionTracker } from '../project-instruction-tracker';
 import type { OpenAiCompatibleToolCall } from '../../openai-compatible-client';
-import {
-  createNativeOpenAiToolInvocations,
-  executeNativeStreamingToolPlan
-} from './streaming-tool-executor';
-import type {
-  NativeRunControllerToolResult,
-  NativeToolLoopCallbacks
-} from './tool-loop-controller';
+import { createNativeOpenAiToolInvocations, executeNativeStreamingToolPlan } from './streaming-tool-executor';
+import type { NativeRunControllerToolResult, NativeToolLoopCallbacks } from './tool-loop-controller';
 import type { NativeToolLoopState } from './tool-loop-state';
 import type { NativeToolPool } from './tool-pool';
 import type { NativeEditFailureRecovery } from './continuation-policy';

@@ -1,11 +1,78 @@
-import type { Project, CreateProjectInput, DeleteProjectResult, ProjectFileEntry, ProjectFileContent, ProjectAgentPolicy, ProjectSessionRuntimeId, ProjectSessionEffort, AgentPermissionMode, ProjectMemoryFileSummary, ProjectMemoryFileContent, ProjectMemoryClearScope, SessionCheckpointPreview, ProjectHtmlPreviewServerResult, ProjectHtmlPreviewServerStopResult } from './project';
-import type { AiProvider, AiSettings, AiProviderInput, AiProviderModelListRequest, AiProviderModelListResult, AiTestResult, AiProviderAuthStyle, AgentSettings, WebSearchSettings, WebResearchMetrics, WebSearchQualityReport } from './provider';
-import type { McpConnectionSnapshot, McpPlugin, McpRawAuditEntry, McpRawRequestResult, McpSettings, McpToolSnapshot, UnitySettings, UnityHealthResult, UnityMcpServerInfo, UnityMcpTool, UnityMcpCallResult, UnityMcpResource, UnityMcpPrompt, UnityMcpPromptResult, UnityMcpResourceTemplate, UnityMcpCompletionResult, McpPluginKind, McpPluginInput, PlatformChoice, ProjectSetupMode, EngineProjectDimension, EnvironmentDiagnostics, EnvironmentActionKind, EnvironmentActionResult, EnvironmentTask, InstalledUnityEditorOption, FolderPickerResult } from './unity';
-import type { AgentRuntimeCapabilityReport, AgentRuntimeStatus, AgentReplayLog, AgentSkillCatalogResult, AgentSkillRegistrySnapshot } from './agent';
+import type {
+  Project,
+  CreateProjectInput,
+  DeleteProjectResult,
+  ProjectFileEntry,
+  ProjectFileContent,
+  ProjectAgentPolicy,
+  ProjectSessionRuntimeId,
+  ProjectSessionEffort,
+  AgentPermissionMode,
+  ProjectMemoryFileSummary,
+  ProjectMemoryFileContent,
+  ProjectMemoryClearScope,
+  SessionCheckpointPreview,
+  ProjectHtmlPreviewServerResult,
+  ProjectHtmlPreviewServerStopResult
+} from './project';
+import type {
+  AiProvider,
+  AiSettings,
+  AiProviderInput,
+  AiProviderModelListRequest,
+  AiProviderModelListResult,
+  AiTestResult,
+  AiProviderAuthStyle,
+  AgentSettings,
+  WebSearchSettings,
+  WebResearchMetrics,
+  WebSearchQualityReport
+} from './provider';
+import type {
+  McpConnectionSnapshot,
+  McpPlugin,
+  McpRawAuditEntry,
+  McpRawRequestResult,
+  McpSettings,
+  McpToolSnapshot,
+  UnitySettings,
+  UnityHealthResult,
+  UnityMcpServerInfo,
+  UnityMcpTool,
+  UnityMcpCallResult,
+  UnityMcpResource,
+  UnityMcpPrompt,
+  UnityMcpPromptResult,
+  UnityMcpResourceTemplate,
+  UnityMcpCompletionResult,
+  McpPluginKind,
+  McpPluginInput,
+  PlatformChoice,
+  ProjectSetupMode,
+  EngineProjectDimension,
+  EnvironmentDiagnostics,
+  EnvironmentActionKind,
+  EnvironmentActionResult,
+  EnvironmentTask,
+  InstalledUnityEditorOption,
+  FolderPickerResult
+} from './unity';
+import type {
+  AgentRuntimeCapabilityReport,
+  AgentRuntimeStatus,
+  AgentReplayLog,
+  AgentSkillCatalogResult,
+  AgentSkillRegistrySnapshot
+} from './agent';
 import type { PromptStreamEvent, PromptStreamHandle, AgentUserInputResponse } from './stream';
 import type { PromptAttachment, PromptAttachmentImportItem } from './chat';
 import type { AppNotification, AppUpdateSnapshot, ScheduledNotificationTask, RuntimeDoctorResult } from './app';
-import type { AssetGenerationProviderConfig, AssetGenerationProviderInput, AssetGenerationProviderProfile, AssetGenerationRequest } from './asset-generation';
+import type {
+  AssetGenerationProviderConfig,
+  AssetGenerationProviderInput,
+  AssetGenerationProviderProfile,
+  AssetGenerationRequest
+} from './asset-generation';
 
 export interface AppState {
   settings: UnitySettings;
@@ -61,7 +128,10 @@ export interface FunPlayApi {
   listProjectFiles: (projectId: string) => Promise<ProjectFileEntry[]>;
   listAssetGenerationProviders: () => Promise<AssetGenerationProviderProfile[]>;
   createAssetGenerationProvider: (input: AssetGenerationProviderInput) => Promise<AssetGenerationProviderConfig>;
-  updateAssetGenerationProvider: (providerId: string, input: AssetGenerationProviderInput) => Promise<AssetGenerationProviderConfig>;
+  updateAssetGenerationProvider: (
+    providerId: string,
+    input: AssetGenerationProviderInput
+  ) => Promise<AssetGenerationProviderConfig>;
   deleteAssetGenerationProvider: (providerId: string) => Promise<{ success: true }>;
   generateAsset: (projectId: string, input: AssetGenerationRequest) => Promise<Project>;
   importGeneratedAsset: (projectId: string, jobId: string) => Promise<Project>;
@@ -93,11 +163,20 @@ export interface FunPlayApi {
     }
   ) => Promise<Project>;
   sendPrompt: (projectId: string, message: string) => Promise<Project>;
-  startPromptStream: (projectId: string, message: string, sessionId?: string, attachments?: PromptAttachment[], uiLanguage?: 'zh-CN' | 'en-US') => Promise<PromptStreamHandle>;
+  startPromptStream: (
+    projectId: string,
+    message: string,
+    sessionId?: string,
+    attachments?: PromptAttachment[],
+    uiLanguage?: 'zh-CN' | 'en-US'
+  ) => Promise<PromptStreamHandle>;
   importPromptAttachments: (projectId: string, items: PromptAttachmentImportItem[]) => Promise<PromptAttachment[]>;
   getPathForFile: (file: File) => string;
   cancelPromptStream: (streamId: string) => Promise<{ success: true }>;
-  respondPromptPermission: (requestId: string, decision: 'allow' | 'allow_session' | 'deny') => Promise<{ success: true }>;
+  respondPromptPermission: (
+    requestId: string,
+    decision: 'allow' | 'allow_session' | 'deny'
+  ) => Promise<{ success: true }>;
   respondPromptUserInput: (requestId: string, response: AgentUserInputResponse) => Promise<{ success: true }>;
   onPromptStreamEvent: (listener: (event: PromptStreamEvent) => void) => () => void;
   onProjectFileTreeChanged: (listener: (event: import('./project').ProjectFileTreeChangedEvent) => void) => () => void;
@@ -148,7 +227,11 @@ export interface FunPlayApi {
   getMcpServerInfo: (pluginId?: string) => Promise<UnityMcpServerInfo>;
   listMcpToolSnapshots: (pluginId?: string) => Promise<McpToolSnapshot[]>;
   listMcpRawAudits: (pluginId?: string) => Promise<McpRawAuditEntry[]>;
-  sendRawMcpRequest: (pluginId: string, method: string, params?: Record<string, unknown>) => Promise<McpRawRequestResult>;
+  sendRawMcpRequest: (
+    pluginId: string,
+    method: string,
+    params?: Record<string, unknown>
+  ) => Promise<McpRawRequestResult>;
   listMcpTools: (pluginId?: string) => Promise<UnityMcpTool[]>;
   callMcpTool: (toolName: string, args?: Record<string, unknown>, pluginId?: string) => Promise<UnityMcpCallResult>;
   listMcpResources: (pluginId?: string) => Promise<UnityMcpResource[]>;
@@ -187,8 +270,22 @@ export interface FunPlayApi {
   setDefaultProvider: (providerId: string) => Promise<AiSettings>;
   listProviderModels: (input: AiProviderModelListRequest) => Promise<AiProviderModelListResult>;
   testProvider: (providerId: string) => Promise<AiTestResult>;
-  runRuntimeDoctor: (input?: { providerId?: string; projectId?: string; live?: boolean }) => Promise<RuntimeDoctorResult>;
-  runProviderDoctor: (providerId: string, input?: { projectId?: string; live?: boolean }) => Promise<RuntimeDoctorResult>;
-  repairProviderDiagnostic: (input: { actionId: string; providerId?: string; projectId?: string; sessionId?: string; authStyle?: AiProviderAuthStyle; url?: string }) => Promise<{ success: true; stateChanged: boolean }>;
+  runRuntimeDoctor: (input?: {
+    providerId?: string;
+    projectId?: string;
+    live?: boolean;
+  }) => Promise<RuntimeDoctorResult>;
+  runProviderDoctor: (
+    providerId: string,
+    input?: { projectId?: string; live?: boolean }
+  ) => Promise<RuntimeDoctorResult>;
+  repairProviderDiagnostic: (input: {
+    actionId: string;
+    providerId?: string;
+    projectId?: string;
+    sessionId?: string;
+    authStyle?: AiProviderAuthStyle;
+    url?: string;
+  }) => Promise<{ success: true; stateChanged: boolean }>;
   exportRuntimeDiagnostics: (input?: { providerId?: string; projectId?: string; live?: boolean }) => Promise<string>;
 }

@@ -315,7 +315,13 @@ export interface GenericAgentWorkspaceContext {
     truncated?: boolean;
   }>;
   workspaceEvidence?: Array<{
-    kind: 'message_path' | 'recent_file' | 'entrypoint' | 'session_summary' | 'related_session' | 'verification_failure_file';
+    kind:
+      | 'message_path'
+      | 'recent_file'
+      | 'entrypoint'
+      | 'session_summary'
+      | 'related_session'
+      | 'verification_failure_file';
     source: string;
     path?: string;
     title?: string;

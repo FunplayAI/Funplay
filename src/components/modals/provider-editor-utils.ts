@@ -1,5 +1,12 @@
 import { AI_PROVIDER_PRESETS, inferOpenAiCompatibleApiMode } from '../../../shared/provider-catalog';
-import type { AiProvider, AiProviderApiMode, AiProviderAuthStyle, AiProviderInput, AiProviderModel, AiProviderProtocol } from '../../../shared/types';
+import type {
+  AiProvider,
+  AiProviderApiMode,
+  AiProviderAuthStyle,
+  AiProviderInput,
+  AiProviderModel,
+  AiProviderProtocol
+} from '../../../shared/types';
 import { localize } from '../../i18n';
 
 export type ProviderDraft = AiProviderInput & { presetId: string };
@@ -56,11 +63,14 @@ export function createProviderDraft(provider: AiProvider | null): ProviderDraft 
     : emptyProviderDraft;
 }
 
-export function createProviderInputFromDraft(draft: ProviderDraft, options?: { modelFallback?: string }): AiProviderInput {
+export function createProviderInputFromDraft(
+  draft: ProviderDraft,
+  options?: { modelFallback?: string }
+): AiProviderInput {
   return {
     name: draft.name,
     protocol: draft.protocol,
-    apiMode: draft.protocol === 'openai-compatible' ? draft.apiMode ?? 'chat' : undefined,
+    apiMode: draft.protocol === 'openai-compatible' ? (draft.apiMode ?? 'chat') : undefined,
     authStyle: draft.authStyle,
     baseUrl: draft.baseUrl,
     apiKey: draft.apiKey,
@@ -79,7 +89,10 @@ export function createProviderInputFromDraft(draft: ProviderDraft, options?: { m
   };
 }
 
-export function mergeProviderModelCandidates(current: AiProviderModel[] | undefined, fetched: AiProviderModel[]): AiProviderModel[] {
+export function mergeProviderModelCandidates(
+  current: AiProviderModel[] | undefined,
+  fetched: AiProviderModel[]
+): AiProviderModel[] {
   const byId = new Map<string, AiProviderModel>();
   for (const model of [...(current ?? []), ...fetched]) {
     const modelId = model.modelId.trim();
@@ -96,7 +109,9 @@ export function mergeProviderModelCandidates(current: AiProviderModel[] | undefi
 }
 
 export function formatStringRecord(input?: Record<string, string>): string {
-  return Object.entries(input ?? {}).map(([key, value]) => `${key}=${value}`).join('\n');
+  return Object.entries(input ?? {})
+    .map(([key, value]) => `${key}=${value}`)
+    .join('\n');
 }
 
 export function parseStringRecord(input: string): Record<string, string> | undefined {
@@ -106,9 +121,7 @@ export function parseStringRecord(input: string): Record<string, string> | undef
     .filter(Boolean)
     .map((line) => {
       const separator = line.indexOf('=');
-      return separator >= 0
-        ? [line.slice(0, separator).trim(), line.slice(separator + 1).trim()]
-        : [line, ''];
+      return separator >= 0 ? [line.slice(0, separator).trim(), line.slice(separator + 1).trim()] : [line, ''];
     })
     .filter(([key, value]) => key && value);
   return entries.length ? Object.fromEntries(entries) : undefined;
@@ -131,16 +144,37 @@ export function formatCompactTokenLimit(value: number | undefined): string {
 export function describeProviderPreset(language: 'zh-CN' | 'en-US', presetId: string, fallback: string): string {
   const map: Record<string, { zh: string; en: string }> = {
     openai: { zh: '官方 OpenAI API，适合通用文本生成。', en: 'Official OpenAI API for general text generation.' },
-    openrouter: { zh: '统一代理多家模型，适合快速尝试不同模型。', en: 'A unified gateway for many models, great for quick experimentation.' },
+    openrouter: {
+      zh: '统一代理多家模型，适合快速尝试不同模型。',
+      en: 'A unified gateway for many models, great for quick experimentation.'
+    },
     anthropic: { zh: '原生 Anthropic 协议。', en: 'Native Anthropic protocol.' },
     gemini: { zh: 'Google Gemini 官方 API。', en: 'Official Google Gemini API.' },
     deepseek: { zh: '适合低成本文本与推理场景。', en: 'Good for low-cost text and reasoning workloads.' },
-    'qwen-dashscope': { zh: '阿里云百炼 OpenAI 兼容通道，默认使用千问系列模型。', en: 'Alibaba Cloud Model Studio OpenAI-compatible gateway for Qwen models.' },
-    'kimi-moonshot': { zh: 'Moonshot Kimi OpenAI Chat Completions 兼容通道。', en: 'Moonshot Kimi OpenAI-compatible Chat Completions gateway.' },
-    'zhipu-glm': { zh: '智谱 GLM OpenAI Chat Completions 兼容通道。', en: 'Zhipu GLM OpenAI-compatible Chat Completions gateway.' },
-    siliconflow: { zh: '硅基流动模型聚合通道，适合接入多种国内外开源模型。', en: 'SiliconFlow model gateway for many domestic and international open models.' },
-    'xiaomi-mimo': { zh: '小米 MiMo OpenAI Chat Completions 兼容通道，支持流式工具调用和 reasoning_content。', en: 'Xiaomi MiMo OpenAI-compatible Chat Completions gateway with streamed tools and reasoning_content.' },
-    'custom-openai': { zh: '任意兼容 OpenAI Chat/Responses 风格接口的端点。', en: 'Any endpoint compatible with OpenAI Chat or Responses style APIs.' }
+    'qwen-dashscope': {
+      zh: '阿里云百炼 OpenAI 兼容通道，默认使用千问系列模型。',
+      en: 'Alibaba Cloud Model Studio OpenAI-compatible gateway for Qwen models.'
+    },
+    'kimi-moonshot': {
+      zh: 'Moonshot Kimi OpenAI Chat Completions 兼容通道。',
+      en: 'Moonshot Kimi OpenAI-compatible Chat Completions gateway.'
+    },
+    'zhipu-glm': {
+      zh: '智谱 GLM OpenAI Chat Completions 兼容通道。',
+      en: 'Zhipu GLM OpenAI-compatible Chat Completions gateway.'
+    },
+    siliconflow: {
+      zh: '硅基流动模型聚合通道，适合接入多种国内外开源模型。',
+      en: 'SiliconFlow model gateway for many domestic and international open models.'
+    },
+    'xiaomi-mimo': {
+      zh: '小米 MiMo OpenAI Chat Completions 兼容通道，支持流式工具调用和 reasoning_content。',
+      en: 'Xiaomi MiMo OpenAI-compatible Chat Completions gateway with streamed tools and reasoning_content.'
+    },
+    'custom-openai': {
+      zh: '任意兼容 OpenAI Chat/Responses 风格接口的端点。',
+      en: 'Any endpoint compatible with OpenAI Chat or Responses style APIs.'
+    }
   };
   return map[presetId] ? localize(language, map[presetId].zh, map[presetId].en) : fallback;
 }
@@ -162,7 +196,11 @@ export function providerApiKeyHint(language: 'zh-CN' | 'en-US', presetId: string
   return map[presetId] ? localize(language, map[presetId].zh, map[presetId].en) : fallback;
 }
 
-export function formatPresetProtocol(language: 'zh-CN' | 'en-US', protocol: AiProviderProtocol, apiMode?: AiProviderApiMode): string {
+export function formatPresetProtocol(
+  language: 'zh-CN' | 'en-US',
+  protocol: AiProviderProtocol,
+  apiMode?: AiProviderApiMode
+): string {
   if (protocol === 'openai-compatible') {
     return apiMode === 'responses'
       ? localize(language, 'OpenAI 兼容 / Responses', 'OpenAI Compatible / Responses')
@@ -179,5 +217,5 @@ export function formatPresetProtocol(language: 'zh-CN' | 'en-US', protocol: AiPr
 }
 
 export function authStyleForProtocol(protocol: AiProviderProtocol, current?: AiProviderAuthStyle): AiProviderAuthStyle {
-  return protocol === 'bedrock' || protocol === 'vertex' ? 'env_only' : current ?? 'api_key';
+  return protocol === 'bedrock' || protocol === 'vertex' ? 'env_only' : (current ?? 'api_key');
 }

@@ -89,7 +89,17 @@ test('worker subagent pools expose write/command tools while investigator stays 
   const investigatorNames = listNativeWorkspaceToolNames(resolveNativeSubagentToolPoolMode({ mode: 'investigator' }));
   assert.ok(investigatorNames.includes('read_file'));
   assert.ok(investigatorNames.includes('web_search'));
-  for (const forbidden of ['write_file', 'edit_file', 'run_command', 'terminal_start', 'ask_user', 'run_subagent', 'run_subagents', 'subagent_start', 'subagent_status']) {
+  for (const forbidden of [
+    'write_file',
+    'edit_file',
+    'run_command',
+    'terminal_start',
+    'ask_user',
+    'run_subagent',
+    'run_subagents',
+    'subagent_start',
+    'subagent_status'
+  ]) {
     assert.equal(investigatorNames.includes(forbidden), false, `investigator must not expose ${forbidden}`);
   }
 
@@ -97,20 +107,29 @@ test('worker subagent pools expose write/command tools while investigator stays 
   assert.ok(workerNames.includes('write_file'));
   assert.ok(workerNames.includes('edit_file'));
   assert.ok(workerNames.includes('run_command'));
-  for (const forbidden of ['checkpoint_rollback', 'ask_user', 'run_subagent', 'run_subagents', 'subagent_start', 'subagent_status']) {
+  for (const forbidden of [
+    'checkpoint_rollback',
+    'ask_user',
+    'run_subagent',
+    'run_subagents',
+    'subagent_start',
+    'subagent_status'
+  ]) {
     assert.equal(workerNames.includes(forbidden), false, `worker must not expose ${forbidden}`);
   }
 
-  const restrictedNames = listNativeWorkspaceToolNames(resolveNativeSubagentToolPoolMode({
-    mode: 'worker',
-    definition: {
-      name: 'writer',
-      tools: ['read', 'write'],
-      systemPrompt: '',
-      sourcePath: '/tmp/agents/writer.md',
-      source: 'claude'
-    }
-  }));
+  const restrictedNames = listNativeWorkspaceToolNames(
+    resolveNativeSubagentToolPoolMode({
+      mode: 'worker',
+      definition: {
+        name: 'writer',
+        tools: ['read', 'write'],
+        systemPrompt: '',
+        sourcePath: '/tmp/agents/writer.md',
+        source: 'claude'
+      }
+    })
+  );
   assert.ok(restrictedNames.includes('write_file'));
   assert.equal(restrictedNames.includes('run_command'), false);
   assert.equal(restrictedNames.includes('web_search'), false);
@@ -189,7 +208,15 @@ test('subagent definitions thread system prompt addition, model, and worker mode
     await mkdir(agentsDir, { recursive: true });
     await writeFile(
       join(agentsDir, 'builder.md'),
-      ['---', 'name: builder', 'description: 项目改造工人', 'tools: [read, write]', 'model: def-model', '---', '永远先列出计划，再动手修改。'].join('\n'),
+      [
+        '---',
+        'name: builder',
+        'description: 项目改造工人',
+        'tools: [read, write]',
+        'model: def-model',
+        '---',
+        '永远先列出计划，再动手修改。'
+      ].join('\n'),
       'utf8'
     );
 

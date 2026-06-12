@@ -98,15 +98,18 @@ export function computeHttpRetryDelayMs(attempt: number, retryAfterMs: number | 
   return Math.round(exponential / 2 + Math.random() * (exponential / 2));
 }
 
-export function createApiError(message: string, options?: {
-  statusCode?: number;
-  code?: string;
-  apiMode?: AiProviderApiMode;
-  requestUrl?: string;
-  requestBody?: unknown;
-  responseBody?: unknown;
-  cause?: unknown;
-}): OpenAiCompatibleError {
+export function createApiError(
+  message: string,
+  options?: {
+    statusCode?: number;
+    code?: string;
+    apiMode?: AiProviderApiMode;
+    requestUrl?: string;
+    requestBody?: unknown;
+    responseBody?: unknown;
+    cause?: unknown;
+  }
+): OpenAiCompatibleError {
   const error = new Error(message) as OpenAiCompatibleError;
   error.cause = options?.cause;
   error.statusCode = options?.statusCode;
@@ -159,7 +162,9 @@ function stringifyFetchFailure(error: unknown): string {
           typeof item.name === 'string' ? item.name : undefined,
           typeof item.message === 'string' ? item.message : undefined,
           readFetchErrorCode(item)
-        ].filter(Boolean).join(' ');
+        ]
+          .filter(Boolean)
+          .join(' ');
       }
       return String(item);
     })
@@ -346,7 +351,7 @@ async function fetchOpenAiCompatible(
 
 function readRetryAfterMs(response: Response, body: unknown): number | undefined {
   const header = response.headers.get('retry-after');
-  const bodyRetryAfter = isRecord(body) ? body.retry_after ?? body.retryAfter : undefined;
+  const bodyRetryAfter = isRecord(body) ? (body.retry_after ?? body.retryAfter) : undefined;
   const candidates = [header, bodyRetryAfter];
   for (const candidate of candidates) {
     if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= 0) {
@@ -371,11 +376,13 @@ function isRetryableHttpBody(body: unknown): boolean {
   if (!isRecord(body)) {
     return false;
   }
-  return body.retryable === true ||
+  return (
+    body.retryable === true ||
     body.cloudflare_error === true ||
     body.error_name === 'origin_bad_gateway' ||
     body.error_name === 'origin_unavailable' ||
-    body.error_name === 'origin_dns_error';
+    body.error_name === 'origin_dns_error'
+  );
 }
 
 function isNonRetryableProviderBody(body: unknown): boolean {
@@ -563,7 +570,10 @@ export function consumeSseEvent(
     if (event.type === 'response.output_text.done' && typeof event.text === 'string') {
       state.doneText = event.text;
     }
-    if ((event.type === 'response.output_item.added' || event.type === 'response.output_item.done') && isRecord(event.item)) {
+    if (
+      (event.type === 'response.output_item.added' || event.type === 'response.output_item.done') &&
+      isRecord(event.item)
+    ) {
       mergeResponsesOutputItem(state, getResponsesOutputIndex(event), event.item);
     }
     if (event.type === 'response.function_call_arguments.delta') {
@@ -596,21 +606,22 @@ export function finalizeResponsesSseState(state: {
   const synthesizedOutput = [...state.outputItems.entries()]
     .sort(([left], [right]) => left - right)
     .map(([, item]) => item);
-  const output = finalOutput.length > 0
-    ? [
-        ...finalOutput,
-        ...synthesizedOutput.filter((item) => {
-          const itemId = typeof item.id === 'string' ? item.id : undefined;
-          const callId = typeof item.call_id === 'string' ? item.call_id : undefined;
-          return !finalOutput.some((existing) => {
-            if (!isRecord(existing)) {
-              return false;
-            }
-            return (itemId && existing.id === itemId) || (callId && existing.call_id === callId);
-          });
-        })
-      ]
-    : synthesizedOutput;
+  const output =
+    finalOutput.length > 0
+      ? [
+          ...finalOutput,
+          ...synthesizedOutput.filter((item) => {
+            const itemId = typeof item.id === 'string' ? item.id : undefined;
+            const callId = typeof item.call_id === 'string' ? item.call_id : undefined;
+            return !finalOutput.some((existing) => {
+              if (!isRecord(existing)) {
+                return false;
+              }
+              return (itemId && existing.id === itemId) || (callId && existing.call_id === callId);
+            });
+          })
+        ]
+      : synthesizedOutput;
   return {
     text: outputText,
     responseBody: {
@@ -626,7 +637,10 @@ export function finalizeResponsesSseState(state: {
   };
 }
 
-export function parseResponsesSseText(sseText: string, onDelta?: (delta: string, accumulated: string) => void): ResponsesSseParseResult {
+export function parseResponsesSseText(
+  sseText: string,
+  onDelta?: (delta: string, accumulated: string) => void
+): ResponsesSseParseResult {
   const events: Record<string, unknown>[] = [];
   let eventName = '';
   let dataLines: string[] = [];
@@ -946,68 +960,98 @@ export async function postResponsesStream(
       }
       const contentType = response.headers.get('content-type') ?? '';
 
-    if (contentType.includes('text/event-stream') && response.body) {
-      if (!response.ok) {
-        const responseText = await response.text();
-        const responseBody = parseMaybeJson(responseText);
-        if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_MAX_RETRIES) {
-          await waitForRetry(computeHttpRetryDelayMs(attempt, readRetryAfterMs(response, responseBody)), requestSignal);
-          continue;
+      if (contentType.includes('text/event-stream') && response.body) {
+        if (!response.ok) {
+          const responseText = await response.text();
+          const responseBody = parseMaybeJson(responseText);
+          if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_MAX_RETRIES) {
+            await waitForRetry(
+              computeHttpRetryDelayMs(attempt, readRetryAfterMs(response, responseBody)),
+              requestSignal
+            );
+            continue;
+          }
+          throw createApiError(
+            createHttpResponseErrorMessage(
+              'OpenAI-compatible streaming request failed',
+              response.status,
+              responseBody,
+              attempt
+            ),
+            {
+              statusCode: response.status,
+              code: readErrorCode(responseBody),
+              apiMode: 'responses',
+              requestUrl: url,
+              requestBody: body,
+              responseBody
+            }
+          );
         }
-        throw createApiError(createHttpResponseErrorMessage('OpenAI-compatible streaming request failed', response.status, responseBody, attempt), {
-          statusCode: response.status,
-          code: readErrorCode(responseBody),
-          apiMode: 'responses',
-          requestUrl: url,
-          requestBody: body,
-          responseBody
-        });
-      }
 
-      const decoder = new TextDecoder();
-      const reader = response.body.getReader();
-      let buffer = '';
-      let eventName = '';
-      let dataLines: string[] = [];
-      const state = {
-        events: [] as Record<string, unknown>[],
-        text: '',
-        doneText: '',
-        finalResponse: undefined as Record<string, unknown> | undefined,
-        outputItems: new Map<number, ResponsesSseOutputItem>()
-      };
+        const decoder = new TextDecoder();
+        const reader = response.body.getReader();
+        let buffer = '';
+        let eventName = '';
+        let dataLines: string[] = [];
+        const state = {
+          events: [] as Record<string, unknown>[],
+          text: '',
+          doneText: '',
+          finalResponse: undefined as Record<string, unknown> | undefined,
+          outputItems: new Map<number, ResponsesSseOutputItem>()
+        };
 
-      const flush = (): void => {
-        consumeSseEvent(eventName, dataLines, state, onDelta);
-        dataLines = [];
-        eventName = '';
-      };
+        const flush = (): void => {
+          consumeSseEvent(eventName, dataLines, state, onDelta);
+          dataLines = [];
+          eventName = '';
+        };
 
-      while (true) {
-        let chunk: ReadableStreamReadResult<Uint8Array>;
-        try {
-          chunk = await readSseChunk(reader, {
-            chunkTimeoutMs,
-            abortSignal: requestSignal,
-            apiMode: 'responses',
-            requestUrl: url,
-            requestBody: body
-          });
-        } catch (error) {
-          rethrowProviderRequestTimeout(error, requestAbort, {
-            apiMode: 'responses',
-            requestUrl: url,
-            requestBody: body
-          });
+        while (true) {
+          let chunk: ReadableStreamReadResult<Uint8Array>;
+          try {
+            chunk = await readSseChunk(reader, {
+              chunkTimeoutMs,
+              abortSignal: requestSignal,
+              apiMode: 'responses',
+              requestUrl: url,
+              requestBody: body
+            });
+          } catch (error) {
+            rethrowProviderRequestTimeout(error, requestAbort, {
+              apiMode: 'responses',
+              requestUrl: url,
+              requestBody: body
+            });
+          }
+          const { done, value } = chunk;
+          buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+
+          let separatorIndex = buffer.search(/\r?\n\r?\n/);
+          while (separatorIndex >= 0) {
+            const chunk = buffer.slice(0, separatorIndex);
+            buffer = buffer.slice(separatorIndex + (buffer[separatorIndex] === '\r' ? 4 : 2));
+            for (const line of chunk.split(/\r?\n/)) {
+              if (line.startsWith('event:')) {
+                eventName = line.slice('event:'.length).trim();
+                continue;
+              }
+              if (line.startsWith('data:')) {
+                dataLines.push(line.slice('data:'.length).trimStart());
+              }
+            }
+            flush();
+            separatorIndex = buffer.search(/\r?\n\r?\n/);
+          }
+
+          if (done) {
+            break;
+          }
         }
-        const { done, value } = chunk;
-        buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
 
-        let separatorIndex = buffer.search(/\r?\n\r?\n/);
-        while (separatorIndex >= 0) {
-          const chunk = buffer.slice(0, separatorIndex);
-          buffer = buffer.slice(separatorIndex + (buffer[separatorIndex] === '\r' ? 4 : 2));
-          for (const line of chunk.split(/\r?\n/)) {
+        if (buffer.trim() || dataLines.length) {
+          for (const line of buffer.split(/\r?\n/)) {
             if (line.startsWith('event:')) {
               eventName = line.slice('event:'.length).trim();
               continue;
@@ -1017,57 +1061,50 @@ export async function postResponsesStream(
             }
           }
           flush();
-          separatorIndex = buffer.search(/\r?\n\r?\n/);
         }
 
-        if (done) {
-          break;
-        }
+        return finalizeResponsesSseState(state);
       }
 
-      if (buffer.trim() || dataLines.length) {
-        for (const line of buffer.split(/\r?\n/)) {
-          if (line.startsWith('event:')) {
-            eventName = line.slice('event:'.length).trim();
-            continue;
+      const responseText = await response.text();
+      const responseBody = parseMaybeJson(responseText);
+
+      if (!response.ok) {
+        if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_MAX_RETRIES) {
+          await waitForRetry(computeHttpRetryDelayMs(attempt, readRetryAfterMs(response, responseBody)), requestSignal);
+          continue;
+        }
+        throw createApiError(
+          createHttpResponseErrorMessage(
+            'OpenAI-compatible streaming request failed',
+            response.status,
+            responseBody,
+            attempt
+          ),
+          {
+            statusCode: response.status,
+            code: readErrorCode(responseBody),
+            apiMode: 'responses',
+            requestUrl: url,
+            requestBody: body,
+            responseBody
           }
-          if (line.startsWith('data:')) {
-            dataLines.push(line.slice('data:'.length).trimStart());
-          }
-        }
-        flush();
+        );
       }
 
-      return finalizeResponsesSseState(state);
-    }
-
-    const responseText = await response.text();
-    const responseBody = parseMaybeJson(responseText);
-
-    if (!response.ok) {
-      if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_MAX_RETRIES) {
-        await waitForRetry(computeHttpRetryDelayMs(attempt, readRetryAfterMs(response, responseBody)), requestSignal);
-        continue;
+      if (
+        contentType.includes('text/event-stream') ||
+        responseText.includes('\nevent:') ||
+        responseText.startsWith('event:')
+      ) {
+        return parseResponsesSseText(responseText, onDelta);
       }
-      throw createApiError(createHttpResponseErrorMessage('OpenAI-compatible streaming request failed', response.status, responseBody, attempt), {
-        statusCode: response.status,
-        code: readErrorCode(responseBody),
-        apiMode: 'responses',
-        requestUrl: url,
-        requestBody: body,
+
+      return {
+        text: extractTextFromResponsesBody(responseBody),
         responseBody
-      });
+      };
     }
-
-    if (contentType.includes('text/event-stream') || responseText.includes('\nevent:') || responseText.startsWith('event:')) {
-      return parseResponsesSseText(responseText, onDelta);
-    }
-
-    return {
-      text: extractTextFromResponsesBody(responseBody),
-      responseBody
-    };
-  }
 
     throw createApiError('OpenAI-compatible streaming request failed after retry attempts.', {
       apiMode: 'responses',
@@ -1248,22 +1285,25 @@ function finalizeChatCompletionsSseState(state: {
       usage: state.usage,
       stream: {
         eventCount: state.events.length,
-        events: state.events.map((event) => ({
-          id: event.id,
-          model: event.model,
-          usage: event.usage,
-          finishReason: getFirstChoiceFinishReason(event),
-          delta: (() => {
-            const delta = getFirstChoiceDelta(event);
-            return delta
-              ? {
-                  contentLength: typeof delta.content === 'string' ? delta.content.length : undefined,
-                  reasoningLength: typeof delta.reasoning_content === 'string' ? delta.reasoning_content.length : undefined,
-                  toolCallCount: Array.isArray(delta.tool_calls) ? delta.tool_calls.length : undefined
-                }
-              : undefined;
-          })()
-        })).slice(0, 80)
+        events: state.events
+          .map((event) => ({
+            id: event.id,
+            model: event.model,
+            usage: event.usage,
+            finishReason: getFirstChoiceFinishReason(event),
+            delta: (() => {
+              const delta = getFirstChoiceDelta(event);
+              return delta
+                ? {
+                    contentLength: typeof delta.content === 'string' ? delta.content.length : undefined,
+                    reasoningLength:
+                      typeof delta.reasoning_content === 'string' ? delta.reasoning_content.length : undefined,
+                    toolCallCount: Array.isArray(delta.tool_calls) ? delta.tool_calls.length : undefined
+                  }
+                : undefined;
+            })()
+          }))
+          .slice(0, 80)
       }
     }
   };
@@ -1338,123 +1378,146 @@ export async function postChatCompletionsStream(
       }
       const contentType = response.headers.get('content-type') ?? '';
 
-    if (contentType.includes('text/event-stream') && response.body) {
-      if (!response.ok) {
-        const responseText = await response.text();
-        const responseBody = parseMaybeJson(responseText);
-        if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_MAX_RETRIES) {
-          await waitForRetry(computeHttpRetryDelayMs(attempt, readRetryAfterMs(response, responseBody)), requestSignal);
-          continue;
+      if (contentType.includes('text/event-stream') && response.body) {
+        if (!response.ok) {
+          const responseText = await response.text();
+          const responseBody = parseMaybeJson(responseText);
+          if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_MAX_RETRIES) {
+            await waitForRetry(
+              computeHttpRetryDelayMs(attempt, readRetryAfterMs(response, responseBody)),
+              requestSignal
+            );
+            continue;
+          }
+          throw createApiError(
+            createHttpResponseErrorMessage(
+              'OpenAI-compatible chat streaming request failed',
+              response.status,
+              responseBody,
+              attempt
+            ),
+            {
+              statusCode: response.status,
+              code: readErrorCode(responseBody),
+              apiMode: 'chat',
+              requestUrl: url,
+              requestBody: body,
+              responseBody
+            }
+          );
         }
-        throw createApiError(createHttpResponseErrorMessage('OpenAI-compatible chat streaming request failed', response.status, responseBody, attempt), {
-          statusCode: response.status,
-          code: readErrorCode(responseBody),
-          apiMode: 'chat',
-          requestUrl: url,
-          requestBody: body,
-          responseBody
-        });
-      }
 
-      const decoder = new TextDecoder();
-      const reader = response.body.getReader();
-      let buffer = '';
-      let dataLines: string[] = [];
-      const state = {
-        events: [] as Record<string, unknown>[],
-        text: '',
-        reasoningContent: '',
-        thinkSplit: createThinkStreamSplitState(),
-        toolCalls: new Map<number, ChatToolCallDeltaState>(),
-        finishReason: undefined as string | undefined,
-        usage: undefined as unknown,
-        id: undefined as string | undefined,
-        model: undefined as string | undefined,
-        created: undefined as unknown
-      };
+        const decoder = new TextDecoder();
+        const reader = response.body.getReader();
+        let buffer = '';
+        let dataLines: string[] = [];
+        const state = {
+          events: [] as Record<string, unknown>[],
+          text: '',
+          reasoningContent: '',
+          thinkSplit: createThinkStreamSplitState(),
+          toolCalls: new Map<number, ChatToolCallDeltaState>(),
+          finishReason: undefined as string | undefined,
+          usage: undefined as unknown,
+          id: undefined as string | undefined,
+          model: undefined as string | undefined,
+          created: undefined as unknown
+        };
 
-      const flush = (): void => {
-        consumeChatCompletionsSseEvent(dataLines, state, onDelta, onReasoningDelta);
-        dataLines = [];
-      };
+        const flush = (): void => {
+          consumeChatCompletionsSseEvent(dataLines, state, onDelta, onReasoningDelta);
+          dataLines = [];
+        };
 
-      while (true) {
-        let chunk: ReadableStreamReadResult<Uint8Array>;
-        try {
-          chunk = await readSseChunk(reader, {
-            chunkTimeoutMs,
-            abortSignal: requestSignal,
-            apiMode: 'chat',
-            requestUrl: url,
-            requestBody: body
-          });
-        } catch (error) {
-          rethrowProviderRequestTimeout(error, requestAbort, {
-            apiMode: 'chat',
-            requestUrl: url,
-            requestBody: body
-          });
+        while (true) {
+          let chunk: ReadableStreamReadResult<Uint8Array>;
+          try {
+            chunk = await readSseChunk(reader, {
+              chunkTimeoutMs,
+              abortSignal: requestSignal,
+              apiMode: 'chat',
+              requestUrl: url,
+              requestBody: body
+            });
+          } catch (error) {
+            rethrowProviderRequestTimeout(error, requestAbort, {
+              apiMode: 'chat',
+              requestUrl: url,
+              requestBody: body
+            });
+          }
+          const { done, value } = chunk;
+          buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+
+          let separatorIndex = buffer.search(/\r?\n\r?\n/);
+          while (separatorIndex >= 0) {
+            const chunk = buffer.slice(0, separatorIndex);
+            buffer = buffer.slice(separatorIndex + (buffer[separatorIndex] === '\r' ? 4 : 2));
+            for (const line of chunk.split(/\r?\n/)) {
+              if (line.startsWith('data:')) {
+                dataLines.push(line.slice('data:'.length).trimStart());
+              }
+            }
+            flush();
+            separatorIndex = buffer.search(/\r?\n\r?\n/);
+          }
+
+          if (done) {
+            break;
+          }
         }
-        const { done, value } = chunk;
-        buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
 
-        let separatorIndex = buffer.search(/\r?\n\r?\n/);
-        while (separatorIndex >= 0) {
-          const chunk = buffer.slice(0, separatorIndex);
-          buffer = buffer.slice(separatorIndex + (buffer[separatorIndex] === '\r' ? 4 : 2));
-          for (const line of chunk.split(/\r?\n/)) {
+        if (buffer.trim() || dataLines.length) {
+          for (const line of buffer.split(/\r?\n/)) {
             if (line.startsWith('data:')) {
               dataLines.push(line.slice('data:'.length).trimStart());
             }
           }
           flush();
-          separatorIndex = buffer.search(/\r?\n\r?\n/);
         }
 
-        if (done) {
-          break;
-        }
+        return finalizeChatCompletionsSseState(state);
       }
 
-      if (buffer.trim() || dataLines.length) {
-        for (const line of buffer.split(/\r?\n/)) {
-          if (line.startsWith('data:')) {
-            dataLines.push(line.slice('data:'.length).trimStart());
+      const responseText = await response.text();
+      const responseBody = parseMaybeJson(responseText);
+      if (!response.ok) {
+        if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_MAX_RETRIES) {
+          await waitForRetry(computeHttpRetryDelayMs(attempt, readRetryAfterMs(response, responseBody)), requestSignal);
+          continue;
+        }
+        throw createApiError(
+          createHttpResponseErrorMessage(
+            'OpenAI-compatible chat streaming request failed',
+            response.status,
+            responseBody,
+            attempt
+          ),
+          {
+            statusCode: response.status,
+            code: readErrorCode(responseBody),
+            apiMode: 'chat',
+            requestUrl: url,
+            requestBody: body,
+            responseBody
           }
-        }
-        flush();
+        );
       }
 
-      return finalizeChatCompletionsSseState(state);
-    }
-
-    const responseText = await response.text();
-    const responseBody = parseMaybeJson(responseText);
-    if (!response.ok) {
-      if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_MAX_RETRIES) {
-        await waitForRetry(computeHttpRetryDelayMs(attempt, readRetryAfterMs(response, responseBody)), requestSignal);
-        continue;
+      if (
+        contentType.includes('text/event-stream') ||
+        responseText.includes('\ndata:') ||
+        responseText.startsWith('data:')
+      ) {
+        return parseChatCompletionsSseText(responseText, onDelta, onReasoningDelta);
       }
-      throw createApiError(createHttpResponseErrorMessage('OpenAI-compatible chat streaming request failed', response.status, responseBody, attempt), {
-        statusCode: response.status,
-        code: readErrorCode(responseBody),
-        apiMode: 'chat',
-        requestUrl: url,
-        requestBody: body,
+
+      return {
+        text: extractTextFromChatChoices(responseBody),
+        reasoningContent: extractReasoningFromChatChoices(responseBody),
         responseBody
-      });
+      };
     }
-
-    if (contentType.includes('text/event-stream') || responseText.includes('\ndata:') || responseText.startsWith('data:')) {
-      return parseChatCompletionsSseText(responseText, onDelta, onReasoningDelta);
-    }
-
-    return {
-      text: extractTextFromChatChoices(responseBody),
-      reasoningContent: extractReasoningFromChatChoices(responseBody),
-      responseBody
-    };
-  }
 
     throw createApiError('OpenAI-compatible chat streaming request failed after retry attempts.', {
       apiMode: 'chat',
@@ -1523,7 +1586,10 @@ function summarizeAnthropicSseEvent(event: Record<string, unknown>): Record<stri
   };
 }
 
-function getAnthropicBlockState(state: AnthropicMessagesSseState, index: unknown): AnthropicContentBlockState | undefined {
+function getAnthropicBlockState(
+  state: AnthropicMessagesSseState,
+  index: unknown
+): AnthropicContentBlockState | undefined {
   return typeof index === 'number' ? state.blocks.get(index) : undefined;
 }
 
@@ -1617,7 +1683,9 @@ function consumeAnthropicMessagesSseEvent(
       state.error = {
         type: typeof errorRecord?.type === 'string' ? errorRecord.type : undefined,
         message:
-          typeof errorRecord?.message === 'string' ? errorRecord.message : 'Anthropic-compatible stream reported an error.'
+          typeof errorRecord?.message === 'string'
+            ? errorRecord.message
+            : 'Anthropic-compatible stream reported an error.'
       };
     }
     // content_block_stop / message_stop / ping carry no state beyond the event log.
@@ -1652,7 +1720,8 @@ export function normalizeAnthropicMessagesUsage(usage: unknown): Record<string, 
   if (!isRecord(usage)) {
     return undefined;
   }
-  const readCount = (value: unknown): number => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0);
+  const readCount = (value: unknown): number =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
   const inputTokens = readCount(usage.input_tokens);
   const cacheReadTokens = readCount(usage.cache_read_input_tokens);
   const cacheCreationTokens = readCount(usage.cache_creation_input_tokens);
@@ -1809,17 +1878,28 @@ export async function postAnthropicMessagesStream(
           const responseText = await response.text();
           const responseBody = parseMaybeJson(responseText);
           if (shouldRetryHttpResponse(response.status, responseBody) && attempt < HTTP_MAX_RETRIES) {
-            await waitForRetry(computeHttpRetryDelayMs(attempt, readRetryAfterMs(response, responseBody)), requestSignal);
+            await waitForRetry(
+              computeHttpRetryDelayMs(attempt, readRetryAfterMs(response, responseBody)),
+              requestSignal
+            );
             continue;
           }
-          throw createApiError(createHttpResponseErrorMessage('Anthropic-compatible streaming request failed', response.status, responseBody, attempt), {
-            statusCode: response.status,
-            code: readErrorCode(responseBody),
-            apiMode: 'anthropic-messages',
-            requestUrl: url,
-            requestBody: body,
-            responseBody
-          });
+          throw createApiError(
+            createHttpResponseErrorMessage(
+              'Anthropic-compatible streaming request failed',
+              response.status,
+              responseBody,
+              attempt
+            ),
+            {
+              statusCode: response.status,
+              code: readErrorCode(responseBody),
+              apiMode: 'anthropic-messages',
+              requestUrl: url,
+              requestBody: body,
+              responseBody
+            }
+          );
         }
 
         const decoder = new TextDecoder();
@@ -1905,17 +1985,29 @@ export async function postAnthropicMessagesStream(
           await waitForRetry(computeHttpRetryDelayMs(attempt, readRetryAfterMs(response, responseBody)), requestSignal);
           continue;
         }
-        throw createApiError(createHttpResponseErrorMessage('Anthropic-compatible streaming request failed', response.status, responseBody, attempt), {
-          statusCode: response.status,
-          code: readErrorCode(responseBody),
-          apiMode: 'anthropic-messages',
-          requestUrl: url,
-          requestBody: body,
-          responseBody
-        });
+        throw createApiError(
+          createHttpResponseErrorMessage(
+            'Anthropic-compatible streaming request failed',
+            response.status,
+            responseBody,
+            attempt
+          ),
+          {
+            statusCode: response.status,
+            code: readErrorCode(responseBody),
+            apiMode: 'anthropic-messages',
+            requestUrl: url,
+            requestBody: body,
+            responseBody
+          }
+        );
       }
 
-      if (contentType.includes('text/event-stream') || responseText.includes('\nevent:') || responseText.startsWith('event:')) {
+      if (
+        contentType.includes('text/event-stream') ||
+        responseText.includes('\nevent:') ||
+        responseText.startsWith('event:')
+      ) {
         const result = parseAnthropicMessagesSseText(responseText, onDelta, onReasoningDelta);
         throwAnthropicMessagesStreamError(result, {
           requestUrl: url,
@@ -1957,7 +2049,9 @@ export function extractReasoningFromAnthropicMessageBody(body: unknown): string 
   }
   return body.content
     .map((block) =>
-      isRecord(block) && (block.type === 'thinking' || block.type === 'redacted_thinking') && typeof block.thinking === 'string'
+      isRecord(block) &&
+      (block.type === 'thinking' || block.type === 'redacted_thinking') &&
+      typeof block.thinking === 'string'
         ? block.thinking
         : ''
     )

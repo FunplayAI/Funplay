@@ -1,18 +1,8 @@
-import type {
-  OpenAiCompatibleToolMessage,
-  OpenAiCompatibleToolStepResult
-} from '../../openai-compatible-client';
+import type { OpenAiCompatibleToolMessage, OpenAiCompatibleToolStepResult } from '../../openai-compatible-client';
 import type { AgentCoreProviderStepResult } from '../../../../shared/types';
-import {
-  generateOpenAiCompatibleStreamingToolStep
-} from '../../openai-compatible-client';
-import {
-  openAiCompatibleStepToAgentCoreProviderStepResult
-} from '../provider-step-adapter';
-import {
-  DYNAMIC_PROJECT_INSTRUCTIONS_MARKER,
-  ProjectInstructionTracker
-} from '../project-instruction-tracker';
+import { generateOpenAiCompatibleStreamingToolStep } from '../../openai-compatible-client';
+import { openAiCompatibleStepToAgentCoreProviderStepResult } from '../provider-step-adapter';
+import { DYNAMIC_PROJECT_INSTRUCTIONS_MARKER, ProjectInstructionTracker } from '../project-instruction-tracker';
 import type { GenericAgentRuntimeParams } from '../types';
 import { normalizeOpenAiUsage } from '../usage';
 import { emitRuntimeStatus, emitRuntimeUsage } from '../runtime-event-emitter';
@@ -46,7 +36,9 @@ function withDynamicOpenAiCompatibleInstructionMessage(
   content: string
 ): OpenAiCompatibleToolMessage[] {
   return [
-    ...messages.filter((message) => message.role !== 'user' || !message.content.startsWith(DYNAMIC_PROJECT_INSTRUCTIONS_MARKER)),
+    ...messages.filter(
+      (message) => message.role !== 'user' || !message.content.startsWith(DYNAMIC_PROJECT_INSTRUCTIONS_MARKER)
+    ),
     {
       role: 'user',
       content
@@ -80,7 +72,7 @@ export async function runOpenAiCompatibleProviderStep(input: {
       input.processTextStream.emitRealtimeDelta(delta, accumulated, input.stepStream);
     },
     onThinkingDelta: (delta, accumulated) => {
-      input.state.thinking = accumulated || (input.state.thinking + delta);
+      input.state.thinking = accumulated || input.state.thinking + delta;
       input.callbacks?.emitThinking?.(delta, input.state.thinking);
     }
   });
@@ -97,38 +89,42 @@ export async function runOpenAiCompatibleProviderStep(input: {
   let stepResult: Awaited<ReturnType<typeof generateOpenAiCompatibleStreamingToolStep>> | undefined;
   let sawProviderOutput = false;
   for (let attempt = 0; attempt <= NATIVE_PROVIDER_STEP_MAX_RETRIES; attempt += 1) {
-    emitRuntimeStatus(input.params, 'thinking', attempt === 0 ? '正在思考中...' : `Provider 正在重试第 ${attempt} 次...`);
+    emitRuntimeStatus(
+      input.params,
+      'thinking',
+      attempt === 0 ? '正在思考中...' : `Provider 正在重试第 ${attempt} 次...`
+    );
     const stepAbort = createNativeProviderStepAbort(input.params.abortSignal, provider);
     try {
       stepResult = await generateOpenAiCompatibleStreamingToolStep({
-          provider,
-          // Static per run (deterministic given params + tool definitions), so
-          // upstream prefix caching keeps hitting across steps.
-          system: createNativeToolLoopSystemPrompt(input.params, {
-            toolDefinitions: input.toolPool.definitions
-          }),
-          messages: stepMessages,
-          tools: input.toolPool.openAiCompatibleTools,
-          maxOutputTokens: input.maxOutputTokens,
-          effort: input.params.context.sessionEffort,
-          abortSignal: stepAbort.signal,
-          onDelta: (delta, accumulated) => {
-            sawProviderOutput = true;
-            eventObserver.observe({
-              type: 'text_delta',
-              delta,
-              accumulated
-            });
-          },
-          onReasoningDelta: (delta, accumulated) => {
-            sawProviderOutput = true;
-            eventObserver.observe({
-              type: 'thinking_delta',
-              delta,
-              accumulated
-            });
-          }
-        });
+        provider,
+        // Static per run (deterministic given params + tool definitions), so
+        // upstream prefix caching keeps hitting across steps.
+        system: createNativeToolLoopSystemPrompt(input.params, {
+          toolDefinitions: input.toolPool.definitions
+        }),
+        messages: stepMessages,
+        tools: input.toolPool.openAiCompatibleTools,
+        maxOutputTokens: input.maxOutputTokens,
+        effort: input.params.context.sessionEffort,
+        abortSignal: stepAbort.signal,
+        onDelta: (delta, accumulated) => {
+          sawProviderOutput = true;
+          eventObserver.observe({
+            type: 'text_delta',
+            delta,
+            accumulated
+          });
+        },
+        onReasoningDelta: (delta, accumulated) => {
+          sawProviderOutput = true;
+          eventObserver.observe({
+            type: 'thinking_delta',
+            delta,
+            accumulated
+          });
+        }
+      });
       break;
     } catch (error) {
       const normalizedError = normalizeNativeProviderStepError(
@@ -136,12 +132,14 @@ export async function runOpenAiCompatibleProviderStep(input: {
         stepAbort,
         'Native OpenAI-compatible provider step'
       );
-      if (shouldRetryNativeProviderStep({
-        error: normalizedError,
-        attempt,
-        sawProviderOutput,
-        abortSignal: input.params.abortSignal
-      })) {
+      if (
+        shouldRetryNativeProviderStep({
+          error: normalizedError,
+          attempt,
+          sawProviderOutput,
+          abortSignal: input.params.abortSignal
+        })
+      ) {
         const retryDelayMs = getNativeProviderStepRetryDelayMs(attempt);
         const retryNumber = attempt + 1;
         const reason = `OpenAI-compatible provider step 失败，准备重试 ${retryNumber}/${NATIVE_PROVIDER_STEP_MAX_RETRIES}。`;
@@ -153,7 +151,11 @@ export async function runOpenAiCompatibleProviderStep(input: {
           retryDelayMs,
           error: describeNativeProviderStepError(normalizedError)
         });
-        emitRuntimeStatus(input.params, 'thinking', `Provider 请求不稳定，${Math.round(retryDelayMs / 1000)}s 后重试 ${retryNumber}/${NATIVE_PROVIDER_STEP_MAX_RETRIES}...`);
+        emitRuntimeStatus(
+          input.params,
+          'thinking',
+          `Provider 请求不稳定，${Math.round(retryDelayMs / 1000)}s 后重试 ${retryNumber}/${NATIVE_PROVIDER_STEP_MAX_RETRIES}...`
+        );
         await waitForNativeProviderStepRetry(retryDelayMs, input.params.abortSignal);
         continue;
       }
@@ -169,9 +171,9 @@ export async function runOpenAiCompatibleProviderStep(input: {
   input.state.finishReason = stepResult.finishReason;
   input.state.usage = stepResult.usage;
   const providerStep = openAiCompatibleStepToAgentCoreProviderStepResult(stepResult, {
-      providerId: provider.id,
-      model: provider.model
-    });
+    providerId: provider.id,
+    model: provider.model
+  });
   const stepUsage = normalizeOpenAiUsage(stepResult.usage, {
     provider: provider.id,
     model: provider.model

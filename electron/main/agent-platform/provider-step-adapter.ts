@@ -27,15 +27,16 @@ interface AiSdkProviderStepLike {
 }
 
 function normalizeInput(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
 }
 
-export function normalizeAgentCoreProviderFinishReason(raw: string | undefined, options: {
-  hasToolCalls?: boolean;
-  isError?: boolean;
-} = {}): AgentCoreProviderFinishReason {
+export function normalizeAgentCoreProviderFinishReason(
+  raw: string | undefined,
+  options: {
+    hasToolCalls?: boolean;
+    isError?: boolean;
+  } = {}
+): AgentCoreProviderFinishReason {
   if (options.isError) {
     return 'error';
   }
@@ -46,7 +47,13 @@ export function normalizeAgentCoreProviderFinishReason(raw: string | undefined, 
   if (!value) {
     return 'unknown';
   }
-  if (value === 'stop' || value === 'end_turn' || value === 'success' || value === 'complete' || value === 'completed') {
+  if (
+    value === 'stop' ||
+    value === 'end_turn' ||
+    value === 'success' ||
+    value === 'complete' ||
+    value === 'completed'
+  ) {
     return 'stop';
   }
   if (value === 'length' || value === 'max_tokens' || value === 'max_output_tokens' || value === 'model_length') {
@@ -97,10 +104,12 @@ export function openAiCompatibleStepToAgentCoreProviderStepResult(
     finishReason: normalizeAgentCoreProviderFinishReason(step.finishReason ?? step.rawFinishReason, {
       hasToolCalls: step.toolCalls.length > 0
     }),
-    usage: usageOrUndefined(normalizeOpenAiUsage(step.usage, {
-      provider: options.providerId,
-      model: options.model
-    })),
+    usage: usageOrUndefined(
+      normalizeOpenAiUsage(step.usage, {
+        provider: options.providerId,
+        model: options.model
+      })
+    ),
     warnings: step.toolCallRepair ? [`tool_call_repair:${step.toolCallRepair.type}`] : undefined,
     rawMetadata: {
       rawFinishReason: step.rawFinishReason ?? step.finishReason,
@@ -124,10 +133,12 @@ export function aiSdkStepToAgentCoreProviderStepResult(
     finishReason: normalizeAgentCoreProviderFinishReason(step.finishReason, {
       hasToolCalls: toolCalls.length > 0
     }),
-    usage: usageOrUndefined(normalizeAiSdkUsage(step.usage as Parameters<typeof normalizeAiSdkUsage>[0], {
-      provider: options.providerId,
-      model: options.model
-    })),
+    usage: usageOrUndefined(
+      normalizeAiSdkUsage(step.usage as Parameters<typeof normalizeAiSdkUsage>[0], {
+        provider: options.providerId,
+        model: options.model
+      })
+    ),
     rawMetadata: {
       rawFinishReason: step.finishReason
     }

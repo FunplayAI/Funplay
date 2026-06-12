@@ -1,9 +1,21 @@
 import type { AgentPermissionRule } from './agent';
 import type { AgentToolArtifact, AgentToolBrowserResult, AgentToolTerminalResult, ChatMessage } from './chat';
 import type { AssetGenerationJob, AssetGenerationPreset } from './asset-generation';
-import type { McpPluginBindings, UnityHealthResult, PlatformChoice, ProjectSetupMode, EngineProjectDimension, McpPluginKind } from './unity';
+import type {
+  McpPluginBindings,
+  UnityHealthResult,
+  PlatformChoice,
+  ProjectSetupMode,
+  EngineProjectDimension,
+  McpPluginKind
+} from './unity';
 
-export type GameTemplateId = 'generic-workspace' | 'engine-game-prototype' | '2d-roguelike' | 'narrative-adventure' | 'topdown-action';
+export type GameTemplateId =
+  | 'generic-workspace'
+  | 'engine-game-prototype'
+  | '2d-roguelike'
+  | 'narrative-adventure'
+  | 'topdown-action';
 export type TaskPhase = 'Concept' | 'Content' | 'Unity' | 'Validation';
 export type TaskStatus = 'pending' | 'in_progress' | 'done';
 export type AssetType = 'character' | 'environment' | 'ui' | 'audio' | 'vfx';
@@ -34,12 +46,7 @@ export type AgentTaskSubagentMode = 'single' | 'parallel' | 'background';
 export type AgentTaskSubagentStatus = 'pending' | 'running' | 'completed' | 'failed';
 export type AgentVerificationCheckKind = 'command' | 'build' | 'test' | 'browser' | 'mcp' | 'manual';
 export type AgentVerificationStatus = 'pending' | 'running' | 'passed' | 'failed' | 'skipped';
-export type AgentVerificationTrigger =
-  | 'manual'
-  | 'timeline'
-  | 'tool_result'
-  | 'active_write'
-  | 'active_engine';
+export type AgentVerificationTrigger = 'manual' | 'timeline' | 'tool_result' | 'active_write' | 'active_engine';
 export type ProjectMemoryFileKind = 'longterm' | 'daily' | 'note';
 export type ProjectMemoryEntryKind = 'user_preference' | 'project_fact' | 'decision' | 'task_state';
 export type ProjectMemoryClearScope = 'file' | 'daily' | 'all';

@@ -86,7 +86,7 @@ export function serializeProviderRecord(provider: AiProvider): ProviderStructure
     provider_meta_json: JSON.stringify(normalizeProviderMeta(provider.providerMeta) ?? {}),
     context_window_tokens: normalizeProviderContextWindowTokens(provider.contextWindowTokens) ?? null,
     max_output_tokens: normalizeProviderMaxOutputTokens(provider.maxOutputTokens) ?? null,
-    request_timeout_ms: provider.requestTimeoutMs === false ? null : provider.requestTimeoutMs ?? null,
+    request_timeout_ms: provider.requestTimeoutMs === false ? null : (provider.requestTimeoutMs ?? null),
     request_timeout_disabled: provider.requestTimeoutMs === false ? 1 : 0,
     chunk_timeout_ms: provider.chunkTimeoutMs ?? null,
     enabled: provider.enabled ? 1 : 0,
@@ -116,12 +116,17 @@ function hydrateProviderFromStructuredRow(row: ProviderStructuredRow): AiProvide
     model: row.model,
     upstreamModel: row.upstream_model ?? defaults.upstreamModel,
     headers: normalizeStringRecord(parseJson<Record<string, string>>(row.headers_json, {})) ?? defaults.headers,
-    envOverrides: normalizeStringRecord(parseJson<Record<string, string>>(row.env_overrides_json, {})) ?? defaults.envOverrides,
-    availableModels: normalizeProviderModels(parseJson<AiProviderModel[]>(row.available_models_json, [])) ?? defaults.availableModels,
+    envOverrides:
+      normalizeStringRecord(parseJson<Record<string, string>>(row.env_overrides_json, {})) ?? defaults.envOverrides,
+    availableModels:
+      normalizeProviderModels(parseJson<AiProviderModel[]>(row.available_models_json, [])) ?? defaults.availableModels,
     providerMeta: normalizeProviderMeta(parseJson<AiProviderMeta>(row.provider_meta_json, {})) ?? defaults.providerMeta,
     contextWindowTokens: normalizeProviderContextWindowTokens(row.context_window_tokens ?? undefined),
     maxOutputTokens: normalizeProviderMaxOutputTokens(row.max_output_tokens ?? undefined),
-    requestTimeoutMs: row.request_timeout_disabled === 1 ? false : normalizeProviderRequestTimeoutMs(row.request_timeout_ms ?? undefined),
+    requestTimeoutMs:
+      row.request_timeout_disabled === 1
+        ? false
+        : normalizeProviderRequestTimeoutMs(row.request_timeout_ms ?? undefined),
     chunkTimeoutMs: normalizeProviderChunkTimeoutMs(row.chunk_timeout_ms ?? undefined),
     enabled: row.enabled === 1,
     isDefault: row.is_default === 1,
@@ -262,7 +267,9 @@ function hydrateProjectFromStructuredRow(row: ProjectStructuredRow): Project {
       compressedFrom: 0,
       updatedAt: row.updated_at
     }),
-    currentExecutionPlan: row.current_execution_plan_json ? parseJson(row.current_execution_plan_json, undefined) : undefined,
+    currentExecutionPlan: row.current_execution_plan_json
+      ? parseJson(row.current_execution_plan_json, undefined)
+      : undefined,
     lastExecutedPlan: row.last_executed_plan_json ? parseJson(row.last_executed_plan_json, undefined) : undefined
   };
 }
@@ -295,7 +302,11 @@ function hydrateSessionRuntimeOverrides(raw: string | null): ProjectSession['run
   return Object.keys(normalized).length > 0 ? (normalized as ProjectSession['runtimeOverrides']) : undefined;
 }
 
-export function hydrateProjectSessionsFromRows(project: Project, sessionRows: SessionRow[], messageRows: MessageRow[]): Project {
+export function hydrateProjectSessionsFromRows(
+  project: Project,
+  sessionRows: SessionRow[],
+  messageRows: MessageRow[]
+): Project {
   if (sessionRows.length === 0) {
     return project;
   }
@@ -316,9 +327,10 @@ export function hydrateProjectSessionsFromRows(project: Project, sessionRows: Se
       content: row.content,
       createdAt: row.created_at,
       ordinal: row.sort_order,
-      storageRowId: typeof row.storage_rowid === 'number' && Number.isFinite(row.storage_rowid)
-        ? Math.floor(row.storage_rowid)
-        : undefined,
+      storageRowId:
+        typeof row.storage_rowid === 'number' && Number.isFinite(row.storage_rowid)
+          ? Math.floor(row.storage_rowid)
+          : undefined,
       metadata: row.metadata_json ? parseJson(row.metadata_json, undefined) : undefined
     });
     messagesBySession.set(row.session_id, next);
@@ -403,25 +415,31 @@ export function hydrateProjects(projects: Project[]): Project[] {
         enrichedProject.memory.designDirectives.length > 0
           ? enrichedProject.memory
           : deriveProjectMemory(enrichedProject),
-      contextSummary:
-        enrichedProject.contextSummary.projectBrief
-          ? enrichedProject.contextSummary
-          : deriveProjectContextSummary(enrichedProject)
+      contextSummary: enrichedProject.contextSummary.projectBrief
+        ? enrichedProject.contextSummary
+        : deriveProjectContextSummary(enrichedProject)
     };
   });
 }
 
 export function readProjects(database: Database.Database): Project[] {
-  return (database.prepare('SELECT * FROM projects ORDER BY updated_at DESC, created_at DESC').all() as ProjectStructuredRow[])
-    .map((row) => hydrateProjectFromStructuredRow(row));
+  return (
+    database.prepare('SELECT * FROM projects ORDER BY updated_at DESC, created_at DESC').all() as ProjectStructuredRow[]
+  ).map((row) => hydrateProjectFromStructuredRow(row));
 }
 
 export function readProviders(database: Database.Database): AiProvider[] {
-  return (database.prepare('SELECT * FROM providers ORDER BY updated_at DESC, created_at DESC').all() as ProviderStructuredRow[])
-    .map((row) => hydrateProviderFromStructuredRow(row));
+  return (
+    database
+      .prepare('SELECT * FROM providers ORDER BY updated_at DESC, created_at DESC')
+      .all() as ProviderStructuredRow[]
+  ).map((row) => hydrateProviderFromStructuredRow(row));
 }
 
 export function readMcpPlugins(database: Database.Database): McpPlugin[] {
-  return (database.prepare('SELECT * FROM mcp_plugins ORDER BY updated_at DESC, created_at DESC').all() as McpPluginStructuredRow[])
-    .map((row) => hydrateMcpPluginFromStructuredRow(row));
+  return (
+    database
+      .prepare('SELECT * FROM mcp_plugins ORDER BY updated_at DESC, created_at DESC')
+      .all() as McpPluginStructuredRow[]
+  ).map((row) => hydrateMcpPluginFromStructuredRow(row));
 }

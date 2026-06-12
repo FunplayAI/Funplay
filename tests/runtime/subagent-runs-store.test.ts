@@ -16,8 +16,9 @@ function readVersion(db: Database.Database): number {
 }
 
 function listTables(db: Database.Database): string[] {
-  return (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as Array<{ name: string }>)
-    .map((row) => row.name);
+  return (
+    db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as Array<{ name: string }>
+  ).map((row) => row.name);
 }
 
 test('v14 migration creates the subagent_runs table', () => {
@@ -27,8 +28,9 @@ test('v14 migration creates the subagent_runs table', () => {
     assert.equal(readVersion(db), LATEST_VERSION);
     assert.ok(listTables(db).includes('subagent_runs'));
 
-    const columns = (db.prepare("PRAGMA table_info('subagent_runs')").all() as Array<{ name: string }>)
-      .map((column) => column.name);
+    const columns = (db.prepare("PRAGMA table_info('subagent_runs')").all() as Array<{ name: string }>).map(
+      (column) => column.name
+    );
     for (const expected of [
       'id',
       'parent_session_id',
@@ -110,7 +112,10 @@ test('subagent run records round-trip through upsert, get, and list', () => {
     });
 
     const sessionA = listSubagentRunRecords(db, 'session_a');
-    assert.deepEqual(sessionA.map((record) => record.id), ['subagent_round_trip']);
+    assert.deepEqual(
+      sessionA.map((record) => record.id),
+      ['subagent_round_trip']
+    );
     const all = listSubagentRunRecords(db);
     assert.equal(all.length, 2);
     assert.equal(all[0]?.id, 'subagent_other_session', 'expected newest record first');

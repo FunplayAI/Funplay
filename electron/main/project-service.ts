@@ -23,7 +23,12 @@ import type {
   ProjectSession,
   SessionCheckpointPreview
 } from '../../shared/types';
-import { ensureEngineProjectMcpBinding, resolveProjectPluginByKind, resolveProjectPlugins, updateProjectMcpServers } from './mcp-plugin-service';
+import {
+  ensureEngineProjectMcpBinding,
+  resolveProjectPluginByKind,
+  resolveProjectPlugins,
+  updateProjectMcpServers
+} from './mcp-plugin-service';
 import { executeGenericAgentTask as executeAgentTask } from './agent-platform/task-executor';
 import { resolveAgentProvider } from './agent-platform/provider-resolver';
 import { refreshProjectContext } from './game-context-manager';
@@ -65,7 +70,11 @@ async function ensureGenericProjectDirectory(input: CreateProjectInput): Promise
   await mkdir(resolveUserPath(input.engine.projectPath), { recursive: true });
 }
 
-export function resolveProjectChatContext(state: AppState, projectId: string, targetSessionId?: string): ResolvedProjectChatContext {
+export function resolveProjectChatContext(
+  state: AppState,
+  projectId: string,
+  targetSessionId?: string
+): ResolvedProjectChatContext {
   const index = state.projects.findIndex((project) => project.id === projectId);
   if (index === -1) {
     throw new Error('Project not found.');
@@ -113,10 +122,13 @@ export function commitProjectChatResponse(
 ): Project {
   const currentWithSessions = ensureProjectSessions(resolved.current);
   const activeSession =
-    currentWithSessions.sessions.find((session) => session.id === targetSessionId) ?? getActiveProjectSession(currentWithSessions);
+    currentWithSessions.sessions.find((session) => session.id === targetSessionId) ??
+    getActiveProjectSession(currentWithSessions);
   const previousUserMessageCount = activeSession.chat.filter((item) => item.role === 'user').length;
   const nextTitle =
-    activeSession.autoTitle && previousUserMessageCount === 0 ? deriveSessionTitleFromPrompt(message) : activeSession.title;
+    activeSession.autoTitle && previousUserMessageCount === 0
+      ? deriveSessionTitleFromPrompt(message)
+      : activeSession.title;
   const nextProject = replaceProjectSession(
     updated,
     {
@@ -150,9 +162,7 @@ export async function createProject(state: AppState, input: CreateProjectInput):
     qa: activeQaPlugin?.id,
     custom: activeCustomPlugin?.id
   };
-  const effectiveProvider = defaultProvider
-    ? { ...defaultProvider }
-    : undefined;
+  const effectiveProvider = defaultProvider ? { ...defaultProvider } : undefined;
 
   if (input.engine?.platform === 'web') {
     if (seeded.engine?.projectPath) {
@@ -172,7 +182,9 @@ export async function createProject(state: AppState, input: CreateProjectInput):
     project: seeded,
     input,
     provider: effectiveProvider,
-    mcpPlugins: [activeEnginePlugin, activeAssetPlugin, activeQaPlugin, activeCustomPlugin].filter(Boolean) as McpPlugin[],
+    mcpPlugins: [activeEnginePlugin, activeAssetPlugin, activeQaPlugin, activeCustomPlugin].filter(
+      Boolean
+    ) as McpPlugin[],
     enginePlugin: activeEnginePlugin,
     assetPlugin: activeAssetPlugin,
     qaPlugin: activeQaPlugin,
@@ -335,7 +347,11 @@ export function addSessionCheckpointSnapshot(
   return updated;
 }
 
-export async function restoreSessionCheckpoint(state: AppState, projectId: string, snapshotId: string): Promise<Project> {
+export async function restoreSessionCheckpoint(
+  state: AppState,
+  projectId: string,
+  snapshotId: string
+): Promise<Project> {
   const index = state.projects.findIndex((project) => project.id === projectId);
   if (index === -1) {
     throw new Error('Project not found.');
@@ -388,16 +404,17 @@ export async function restoreSessionCheckpoint(state: AppState, projectId: strin
   let restoredFileSummary = '';
   try {
     const result = await restoreFileCheckpoint(project, snapshot.id);
-    restoredFileSummary = result.restoredFiles.length > 0
-      ? `已同步恢复 ${result.restoredFiles.length} 个被 Agent 写入过的文件。`
-      : '';
+    restoredFileSummary =
+      result.restoredFiles.length > 0 ? `已同步恢复 ${result.restoredFiles.length} 个被 Agent 写入过的文件。` : '';
   } catch {
     restoredFileSummary = '';
   }
 
   const restoreSummary = [
     `已恢复到检查点“${snapshot.note}”。`,
-    checkpoint.triggerUserMessageId ? '你可以从标记的那条用户消息继续往下推进。' : '你可以从当前恢复后的会话状态继续往下推进。',
+    checkpoint.triggerUserMessageId
+      ? '你可以从标记的那条用户消息继续往下推进。'
+      : '你可以从当前恢复后的会话状态继续往下推进。',
     restoredFileSummary
   ].join('\n');
 
@@ -414,7 +431,11 @@ export async function restoreSessionCheckpoint(state: AppState, projectId: strin
   return updated;
 }
 
-export async function previewSessionCheckpoint(state: AppState, projectId: string, snapshotId: string): Promise<SessionCheckpointPreview> {
+export async function previewSessionCheckpoint(
+  state: AppState,
+  projectId: string,
+  snapshotId: string
+): Promise<SessionCheckpointPreview> {
   const index = state.projects.findIndex((project) => project.id === projectId);
   if (index === -1) {
     throw new Error('Project not found.');
@@ -452,14 +473,21 @@ export async function previewSessionCheckpoint(state: AppState, projectId: strin
     checkpointMessageCount: checkpointChat.length,
     addedMessages: Math.max(0, currentChat.length - checkpointChat.length),
     removedMessages: Math.max(0, checkpointChat.length - currentChat.length),
-    currentLatestPreview: currentChat.length > 0 ? getChatMessageContextText(currentChat[currentChat.length - 1], 180) : undefined,
-    checkpointLatestPreview: checkpointChat.length > 0 ? getChatMessageContextText(checkpointChat[checkpointChat.length - 1], 180) : undefined,
+    currentLatestPreview:
+      currentChat.length > 0 ? getChatMessageContextText(currentChat[currentChat.length - 1], 180) : undefined,
+    checkpointLatestPreview:
+      checkpointChat.length > 0 ? getChatMessageContextText(checkpointChat[checkpointChat.length - 1], 180) : undefined,
     fileChanges,
     skippedFileChanges
   };
 }
 
-export function updateProjectMcpConfig(state: AppState, projectId: string, kind: McpPluginKind, pluginId: string): Project {
+export function updateProjectMcpConfig(
+  state: AppState,
+  projectId: string,
+  kind: McpPluginKind,
+  pluginId: string
+): Project {
   const index = state.projects.findIndex((project) => project.id === projectId);
   if (index === -1) {
     throw new Error('Project not found.');
@@ -479,7 +507,7 @@ export function updateProjectMcpConfig(state: AppState, projectId: string, kind:
     : currentServers.filter((id) => id !== current.mcpBindings?.[kind]);
   const updated: Project = {
     ...current,
-    mcpPluginId: kind === 'engine' ? (pluginId || undefined) : current.mcpPluginId,
+    mcpPluginId: kind === 'engine' ? pluginId || undefined : current.mcpPluginId,
     mcpBindings: {
       ...(current.mcpBindings ?? {}),
       servers: nextServers,
@@ -599,8 +627,14 @@ function normalizeProjectAgentSkills(skills: ProjectAgentSkill[]): ProjectAgentS
       repositoryUrl: skill.repositoryUrl?.trim() || undefined,
       repositoryRef: skill.repositoryRef?.trim() || undefined,
       version: skill.version?.trim() || undefined,
-      dependencies: skill.dependencies?.map((item) => item.trim()).filter(Boolean).slice(0, 40),
-      examples: skill.examples?.map((item) => item.trim()).filter(Boolean).slice(0, 40),
+      dependencies: skill.dependencies
+        ?.map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 40),
+      examples: skill.examples
+        ?.map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 40),
       createdAt: skill.createdAt,
       updatedAt: skill.updatedAt
     }))
@@ -629,18 +663,14 @@ export function updateProjectAgentPolicy(
 
   const updatedAt = new Date().toISOString();
   const current = ensureProjectSessions(state.projects[index]);
-  const skills = policy.skills !== undefined
-    ? normalizeProjectAgentSkills(policy.skills)
-    : current.agentPolicy?.skills;
+  const skills = policy.skills !== undefined ? normalizeProjectAgentSkills(policy.skills) : current.agentPolicy?.skills;
   const nextPolicy = {
     ...(current.agentPolicy ?? {}),
     ...policy,
     skills,
     updatedAt
   };
-  const hasPolicy =
-    Boolean(nextPolicy.permissionMode) ||
-    Boolean(nextPolicy.skills?.length);
+  const hasPolicy = Boolean(nextPolicy.permissionMode) || Boolean(nextPolicy.skills?.length);
   const updated: Project = {
     ...current,
     agentPolicy: hasPolicy ? nextPolicy : undefined,
@@ -766,7 +796,7 @@ export function deleteProjectSession(state: AppState, projectId: string, session
   const remainingSessions = current.sessions.filter((session) => session.id !== sessionId);
   const nextSessions = remainingSessions.length > 0 ? remainingSessions : [buildFreshSession(current)];
   const nextActiveSessionId =
-    current.activeSessionId === sessionId ? nextSessions[0].id : current.activeSessionId ?? nextSessions[0].id;
+    current.activeSessionId === sessionId ? nextSessions[0].id : (current.activeSessionId ?? nextSessions[0].id);
   const updated = syncProjectChatFromActiveSession({
     ...current,
     updatedAt: new Date().toISOString(),

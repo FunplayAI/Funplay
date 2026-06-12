@@ -16,7 +16,10 @@ import {
 import { getAgentToolDefinition } from '../../electron/main/agent-platform/tool-registry.ts';
 import { resolveNativeToolPermission } from '../../electron/main/agent-platform/native/tool-permission.ts';
 import { createNativeWorkspaceTools } from '../../electron/main/agent-platform/native/tool-adapter.ts';
-import { executeAgentToolAction, executeWorkspaceToolAction } from '../../electron/main/agent-platform/workspace-tools.ts';
+import {
+  executeAgentToolAction,
+  executeWorkspaceToolAction
+} from '../../electron/main/agent-platform/workspace-tools.ts';
 import {
   consumePendingBackgroundCommandNotices,
   drainBackgroundCommandNoticeMessage,
@@ -45,21 +48,24 @@ test('buildSandboxProfile snapshots the workspace-write policy with network allo
     allowNetwork: true,
     extraWritePaths: ['/tmp/funplay-tmp', '/Users/dev/Library/Application Support/Funplay']
   });
-  assert.equal(profile, [
-    '(version 1)',
-    '(allow default)',
-    '(deny file-write*)',
-    '(allow file-write*',
-    '  (literal "/dev/null")',
-    '  (literal "/dev/stdout")',
-    '  (literal "/dev/stderr")',
-    '  (literal "/dev/tty")',
-    '  (literal "/dev/dtracehelper")',
-    '  (subpath "/work/proj")',
-    '  (subpath "/tmp/funplay-tmp")',
-    '  (subpath "/private/tmp/funplay-tmp")',
-    '  (subpath "/Users/dev/Library/Application Support/Funplay"))'
-  ].join('\n'));
+  assert.equal(
+    profile,
+    [
+      '(version 1)',
+      '(allow default)',
+      '(deny file-write*)',
+      '(allow file-write*',
+      '  (literal "/dev/null")',
+      '  (literal "/dev/stdout")',
+      '  (literal "/dev/stderr")',
+      '  (literal "/dev/tty")',
+      '  (literal "/dev/dtracehelper")',
+      '  (subpath "/work/proj")',
+      '  (subpath "/tmp/funplay-tmp")',
+      '  (subpath "/private/tmp/funplay-tmp")',
+      '  (subpath "/Users/dev/Library/Application Support/Funplay"))'
+    ].join('\n')
+  );
 });
 
 test('buildSandboxProfile no-network variant appends a network deny rule', () => {
@@ -67,19 +73,22 @@ test('buildSandboxProfile no-network variant appends a network deny rule', () =>
     projectPath: '/work/proj',
     allowNetwork: false
   });
-  assert.equal(profile, [
-    '(version 1)',
-    '(allow default)',
-    '(deny file-write*)',
-    '(allow file-write*',
-    '  (literal "/dev/null")',
-    '  (literal "/dev/stdout")',
-    '  (literal "/dev/stderr")',
-    '  (literal "/dev/tty")',
-    '  (literal "/dev/dtracehelper")',
-    '  (subpath "/work/proj"))',
-    '(deny network*)'
-  ].join('\n'));
+  assert.equal(
+    profile,
+    [
+      '(version 1)',
+      '(allow default)',
+      '(deny file-write*)',
+      '(allow file-write*',
+      '  (literal "/dev/null")',
+      '  (literal "/dev/stdout")',
+      '  (literal "/dev/stderr")',
+      '  (literal "/dev/tty")',
+      '  (literal "/dev/dtracehelper")',
+      '  (subpath "/work/proj"))',
+      '(deny network*)'
+    ].join('\n')
+  );
 });
 
 test('buildSandboxProfile escapes quotes and backslashes and dedupes write roots', () => {
@@ -143,7 +152,10 @@ test('run_command schema enforces the raised 600000ms timeout bound and new flag
   assert.equal(definition.inputSchema.safeParse({ command: 'npm test', timeoutMs: 600_001 }).success, false);
   assert.equal(definition.inputSchema.safeParse({ command: 'npm test', timeoutMs: 999 }).success, false);
   assert.equal(definition.inputSchema.safeParse({ command: 'npm test' }).success, true);
-  assert.equal(definition.inputSchema.safeParse({ command: 'npm test', background: true, unsandboxed: true }).success, true);
+  assert.equal(
+    definition.inputSchema.safeParse({ command: 'npm test', background: true, unsandboxed: true }).success,
+    true
+  );
 
   const action = definition.toAction({
     command: 'npm test',
@@ -166,30 +178,39 @@ test('run_command validateInput rejects unsandboxed outside full-access mode', a
   assert.ok(definition);
   const project = buildProject();
 
-  const denied = await definition.validateInput?.({ command: 'ls', unsandboxed: true }, {
-    project,
-    permissionMode: 'ask',
-    toolName: 'run_command',
-    readOnly: false
-  });
+  const denied = await definition.validateInput?.(
+    { command: 'ls', unsandboxed: true },
+    {
+      project,
+      permissionMode: 'ask',
+      toolName: 'run_command',
+      readOnly: false
+    }
+  );
   assert.equal(denied?.ok, false);
   assert.match(denied?.summary ?? '', /full-access/);
   assert.match(denied?.recoveryHint ?? '', /unsandboxed/);
 
-  const allowed = await definition.validateInput?.({ command: 'ls', unsandboxed: true }, {
-    project,
-    permissionMode: 'full-access',
-    toolName: 'run_command',
-    readOnly: false
-  });
+  const allowed = await definition.validateInput?.(
+    { command: 'ls', unsandboxed: true },
+    {
+      project,
+      permissionMode: 'full-access',
+      toolName: 'run_command',
+      readOnly: false
+    }
+  );
   assert.equal(allowed, undefined);
 
-  const withoutFlag = await definition.validateInput?.({ command: 'ls' }, {
-    project,
-    permissionMode: 'ask',
-    toolName: 'run_command',
-    readOnly: false
-  });
+  const withoutFlag = await definition.validateInput?.(
+    { command: 'ls' },
+    {
+      project,
+      permissionMode: 'ask',
+      toolName: 'run_command',
+      readOnly: false
+    }
+  );
   assert.equal(withoutFlag, undefined);
 });
 
@@ -385,11 +406,13 @@ test('darwin smoke: /bin/echo runs under sandbox-exec with a generated profile',
     child.stdout.on('data', (data: Buffer) => stdout.push(data));
     child.stderr.on('data', (data: Buffer) => stderr.push(data));
     child.on('error', reject);
-    child.on('close', (code) => resolve({
-      code,
-      stdout: Buffer.concat(stdout).toString('utf8'),
-      stderr: Buffer.concat(stderr).toString('utf8')
-    }));
+    child.on('close', (code) =>
+      resolve({
+        code,
+        stdout: Buffer.concat(stdout).toString('utf8'),
+        stderr: Buffer.concat(stderr).toString('utf8')
+      })
+    );
   });
   assert.equal(result.code, 0, result.stderr);
   assert.match(result.stdout, /sandbox-smoke-ok/);
@@ -404,36 +427,48 @@ test('darwin smoke: run_command enforces workspace-write sandbox per permission 
   const deniedPath = join(homedir(), `funplay-sandbox-denied-${Date.now()}`);
   try {
     const project = buildProject(projectPath);
-    const inside = await executeAgentToolAction(project, {
-      type: 'run_command',
-      command: 'printf sandboxed-ok && touch inside.txt',
-      timeoutMs: 15_000
-    }, {
-      permissionMode: 'ask'
-    });
+    const inside = await executeAgentToolAction(
+      project,
+      {
+        type: 'run_command',
+        command: 'printf sandboxed-ok && touch inside.txt',
+        timeoutMs: 15_000
+      },
+      {
+        permissionMode: 'ask'
+      }
+    );
     assert.equal(inside.ok, true, inside.summary);
     assert.match(inside.summary, /沙箱：workspace-write/);
     assert.match(inside.summary, /sandboxed-ok/);
     assert.equal(existsSync(join(projectPath, 'inside.txt')), true);
 
-    const denied = await executeAgentToolAction(project, {
-      type: 'run_command',
-      command: `touch '${deniedPath}'`,
-      timeoutMs: 15_000
-    }, {
-      permissionMode: 'ask'
-    });
+    const denied = await executeAgentToolAction(
+      project,
+      {
+        type: 'run_command',
+        command: `touch '${deniedPath}'`,
+        timeoutMs: 15_000
+      },
+      {
+        permissionMode: 'ask'
+      }
+    );
     assert.equal(denied.ok, false);
     assert.equal(existsSync(deniedPath), false);
     assert.match(denied.summary, /unsandboxed:true/);
 
-    const readOnly = await executeAgentToolAction(project, {
-      type: 'run_command',
-      command: 'printf plan-ok',
-      timeoutMs: 15_000
-    }, {
-      permissionMode: 'read-only'
-    });
+    const readOnly = await executeAgentToolAction(
+      project,
+      {
+        type: 'run_command',
+        command: 'printf plan-ok',
+        timeoutMs: 15_000
+      },
+      {
+        permissionMode: 'read-only'
+      }
+    );
     assert.equal(readOnly.ok, true, readOnly.summary);
     assert.match(readOnly.summary, /沙箱：workspace-write（已禁用网络）/);
   } finally {

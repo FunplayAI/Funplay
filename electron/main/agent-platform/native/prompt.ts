@@ -1,6 +1,10 @@
 import type { GenericAgentRuntimeParams } from '../types';
 import { FUNPLAY_HTML_PREVIEW_CAPABILITY_PROMPT_ZH } from '../preview-capabilities';
-import { createResponseLanguageContextLine, createResponseLanguageInstruction, type RuntimeUiLanguage } from '../response-language';
+import {
+  createResponseLanguageContextLine,
+  createResponseLanguageInstruction,
+  type RuntimeUiLanguage
+} from '../response-language';
 
 export interface NativeRuntimeWorkspaceEvidence {
   fileTreeSummary?: string;
@@ -46,7 +50,9 @@ function formatResumeContext(params: GenericAgentRuntimeParams): string {
         transaction.checkpoint
           ? `- checkpoint: ${transaction.checkpoint.policy}${transaction.checkpoint.status ? `/${transaction.checkpoint.status}` : ''}${transaction.checkpoint.snapshotId ? ` snapshot=${transaction.checkpoint.snapshotId}` : ''}`
           : ''
-      ].filter(Boolean).join('\n')
+      ]
+        .filter(Boolean)
+        .join('\n')
     : '';
 
   return [
@@ -70,24 +76,26 @@ function formatResumeContext(params: GenericAgentRuntimeParams): string {
     '恢复规则：',
     '- 当前运行是在中断或失败后继续，不是全新任务。',
     '- 如果 lastToolBoundary.status 是 completed，把该工具视为已经完成；不要重复执行同一个工具，除非用户请求或后续检查证明必须重试。',
-    transaction ? '- 如果恢复工具事务摘要显示 status 为 completed，把该 transactionId/toolUseId 视为 host 已经落盘的完成边界；不要为了“补写”而重复执行同一工具。' : '',
+    transaction
+      ? '- 如果恢复工具事务摘要显示 status 为 completed，把该 transactionId/toolUseId 视为 host 已经落盘的完成边界；不要为了“补写”而重复执行同一工具。'
+      : '',
     '- 如果文件已恢复到 checkpoint，先基于当前文件状态继续，不要假设中断后的外部修改仍存在。',
     '- 优先从上一个工具边界之后继续推进，并在最终回复中说明恢复后的处理结果。',
     transactionSummary
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function formatWorkspaceEvidenceItem(item: GenericWorkspaceEvidenceItem, index: number): string {
   const label = item.title ?? item.path ?? item.kind;
   return [
     `## Evidence ${index + 1}: ${label}${item.truncated ? ' (truncated)' : ''}`,
-    [
-      `kind=${item.kind}`,
-      `source=${item.source}`,
-      item.path ? `path=${item.path}` : ''
-    ].filter(Boolean).join(' · '),
+    [`kind=${item.kind}`, `source=${item.source}`, item.path ? `path=${item.path}` : ''].filter(Boolean).join(' · '),
     item.excerpt
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function formatStructuredWorkspaceEvidence(params: GenericAgentRuntimeParams): string {
@@ -108,10 +116,7 @@ function formatProjectInstructionsSection(params: GenericAgentRuntimeParams): st
         '',
         '项目级 Agent 指令（来自工作区文件，优先遵守）：',
         ...params.context.projectInstructions.map((instruction) =>
-          [
-            `## ${instruction.path}${instruction.truncated ? ' (truncated)' : ''}`,
-            instruction.content
-          ].join('\n')
+          [`## ${instruction.path}${instruction.truncated ? ' (truncated)' : ''}`, instruction.content].join('\n')
         )
       ].join('\n\n')
     : '';
@@ -141,7 +146,9 @@ function formatEnabledSkillsSection(params: GenericAgentRuntimeParams): string {
             skill.examples?.length ? ['示例：', ...skill.examples.map((example) => `- ${example}`)].join('\n') : '',
             '执行准则：',
             skill.instruction
-          ].filter(Boolean).join('\n')
+          ]
+            .filter(Boolean)
+            .join('\n')
         )
       ].join('\n\n')
     : '';
@@ -163,7 +170,9 @@ function formatActiveSkillsSection(params: GenericAgentRuntimeParams): string {
             skill.allowedTools?.length ? `建议工具：${skill.allowedTools.join(', ')}` : '',
             '执行准则：',
             skill.instruction
-          ].filter(Boolean).join('\n')
+          ]
+            .filter(Boolean)
+            .join('\n')
         )
       ].join('\n\n')
     : '';
@@ -183,9 +192,13 @@ function formatSkillIndexSection(params: GenericAgentRuntimeParams): string {
             `可调用：user=${skill.userInvocable ? 'yes' : 'no'} model=${skill.modelInvocable ? 'yes' : 'no'}`,
             `信任：${skill.trustLevel} · 验证：${skill.verificationStatus}`,
             `权限策略：${skill.permissionPolicy}`,
-            skill.declaredScripts?.length ? `声明脚本：${skill.declaredScripts.length} 个（不能直接执行，需普通工具权限）` : '',
+            skill.declaredScripts?.length
+              ? `声明脚本：${skill.declaredScripts.length} 个（不能直接执行，需普通工具权限）`
+              : '',
             skill.allowedTools?.length ? `建议工具：${skill.allowedTools.join(', ')}` : ''
-          ].filter(Boolean).join('\n')
+          ]
+            .filter(Boolean)
+            .join('\n')
         )
       ].join('\n\n')
     : '';
@@ -213,7 +226,9 @@ export function formatNativeRuntimeEnvironmentBlock(context: GenericAgentRuntime
         : '- Git 状态快照：工作区干净'
       : '',
     git?.recentCommits ? `- 最近提交${git.recentCommitsTruncated ? '（已截断）' : ''}：\n${git.recentCommits}` : ''
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 export function createNativeRuntimeSystemPrompt(uiLanguage?: RuntimeUiLanguage): string {
@@ -267,7 +282,9 @@ export function createNativeRuntimeDynamicContextPrompt(params: GenericAgentRunt
     formatSkillIndexSection(params),
     '',
     `用户消息：${params.message}`
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 export function createNativeRuntimeUserPrompt(
@@ -323,8 +340,9 @@ export function createNativeRuntimeUserPrompt(
             [
               `## Turn ${index + 1}`,
               turn.userMessage ? `User:\n${turn.userMessage}` : '',
-              ...turn.assistantMessages.map((message, messageIndex) =>
-                `Assistant ${messageIndex + 1}${message.intent ? ` (${message.intent})` : ''}:\n${message.content}`
+              ...turn.assistantMessages.map(
+                (message, messageIndex) =>
+                  `Assistant ${messageIndex + 1}${message.intent ? ` (${message.intent})` : ''}:\n${message.content}`
               )
             ]
               .filter(Boolean)
@@ -332,9 +350,7 @@ export function createNativeRuntimeUserPrompt(
           )
         ].join('\n\n')
       : '',
-    workspaceEvidence?.fileTreeSummary
-      ? ['', '工作区文件树摘要：', workspaceEvidence.fileTreeSummary].join('\n')
-      : '',
+    workspaceEvidence?.fileTreeSummary ? ['', '工作区文件树摘要：', workspaceEvidence.fileTreeSummary].join('\n') : '',
     workspaceEvidence?.directorySummaries.length
       ? [
           '',

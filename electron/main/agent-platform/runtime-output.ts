@@ -4,11 +4,7 @@ import type {
   ChatMessageMetadata,
   ProjectSessionRuntimeId
 } from '../../../shared/types';
-import type {
-  GenericAgentRuntimeParams,
-  GenericAgentRuntimeOutputEvent,
-  GenericAgentRuntimeResult
-} from './types';
+import type { GenericAgentRuntimeParams, GenericAgentRuntimeOutputEvent, GenericAgentRuntimeResult } from './types';
 import type { ConversationOperationStageEvent } from './operation-log';
 import { createRuntimeEventResultProjection } from './runtime-event-result';
 

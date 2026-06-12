@@ -1,5 +1,19 @@
-import { ensureProjectSessions, getActiveProjectSession, replaceProjectSession } from '../../../shared/project-sessions';
-import type { AgentPermissionImpact, AgentRuntimeResumeContext, AgentUserInputResponse, AppState, ProjectSessionRuntimeId, PromptAttachment, PromptStreamEvent, PromptStreamHandle, Project } from '../../../shared/types';
+import {
+  ensureProjectSessions,
+  getActiveProjectSession,
+  replaceProjectSession
+} from '../../../shared/project-sessions';
+import type {
+  AgentPermissionImpact,
+  AgentRuntimeResumeContext,
+  AgentUserInputResponse,
+  AppState,
+  ProjectSessionRuntimeId,
+  PromptAttachment,
+  PromptStreamEvent,
+  PromptStreamHandle,
+  Project
+} from '../../../shared/types';
 import { makeId, nowIso } from '../../../shared/utils';
 import {
   DEFAULT_SESSION_WRITE_PERMISSION_TOOLS,
@@ -17,22 +31,13 @@ import {
   removePersistedRun,
   unregisterActiveRun
 } from './run-registry';
-import {
-  cancelPendingPermissionsForStream,
-  resolvePendingPermission
-} from './permission-registry';
-import {
-  cancelPendingUserInputsForStream,
-  resolvePendingUserInput
-} from './user-input-registry';
+import { cancelPendingPermissionsForStream, resolvePendingPermission } from './permission-registry';
+import { cancelPendingUserInputsForStream, resolvePendingUserInput } from './user-input-registry';
 import { createStateAdapter } from './state-adapter';
 import { getState, setState } from '../store';
 import type { StreamContext } from './stream-types';
 import { createRuntimeEventSink } from './runtime-event-sink';
-import {
-  makePermissionHandlers,
-  makeUserInputHandlers
-} from './stream-interactions';
+import { makePermissionHandlers, makeUserInputHandlers } from './stream-interactions';
 import {
   deleteActiveStream,
   finalizeStream,
@@ -41,10 +46,7 @@ import {
   processStreamError,
   registerActiveStream
 } from './stream-lifecycle';
-import {
-  buildResumeContextForRun,
-  restoreFilesForResume
-} from './stream-resume';
+import { buildResumeContextForRun, restoreFilesForResume } from './stream-resume';
 
 function formatPromptWithAttachments(message: string, attachments?: PromptAttachment[]): string {
   const prompt = message.trim();
@@ -54,11 +56,7 @@ function formatPromptWithAttachments(message: string, attachments?: PromptAttach
 
   const attachmentLines = attachments.map((attachment, index) => {
     const targetPath = attachment.relativePath || attachment.path;
-    const meta = [
-      attachment.kind,
-      attachment.mimeType,
-      `${attachment.size} bytes`
-    ].filter(Boolean).join(', ');
+    const meta = [attachment.kind, attachment.mimeType, `${attachment.size} bytes`].filter(Boolean).join(', ');
     return `${index + 1}. ${attachment.name} -> ${targetPath}${meta ? ` (${meta})` : ''}`;
   });
 
@@ -462,10 +460,7 @@ export async function respondToAgentPermissionRequest(
   return { success: true };
 }
 
-export function respondToAgentUserInputRequest(
-  requestId: string,
-  response: AgentUserInputResponse
-): { success: true } {
+export function respondToAgentUserInputRequest(requestId: string, response: AgentUserInputResponse): { success: true } {
   resolvePendingUserInput(requestId, response);
   return { success: true };
 }

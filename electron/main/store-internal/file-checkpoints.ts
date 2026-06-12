@@ -42,7 +42,8 @@ export function upsertFileCheckpointEntryRecord(
   record: UpsertFileCheckpointEntryInput
 ): void {
   database
-    .prepare(`
+    .prepare(
+      `
       INSERT INTO file_checkpoints (
         snapshot_id,
         file_path,
@@ -60,7 +61,8 @@ export function upsertFileCheckpointEntryRecord(
         byte_length = excluded.byte_length,
         content_hash = excluded.content_hash,
         too_large = excluded.too_large
-    `)
+    `
+    )
     .run(
       record.snapshotId,
       record.filePath,
@@ -75,10 +77,12 @@ export function upsertFileCheckpointEntryRecord(
 
 export function listFileCheckpointEntryRecords(database: Database.Database, snapshotId: string): FileCheckpointEntry[] {
   const rows = database
-    .prepare(`
+    .prepare(
+      `
       SELECT file_path, existed, content, is_binary, byte_length, content_hash, too_large
       FROM file_checkpoints WHERE snapshot_id = ? ORDER BY file_path ASC
-    `)
+    `
+    )
     .all(snapshotId) as FileCheckpointRow[];
 
   // Rows captured as per-run dedup references carry only content_hash; resolve them
@@ -93,8 +97,8 @@ export function listFileCheckpointEntryRecords(database: Database.Database, snap
   return rows.map((row) => {
     const isBinary = row.is_binary === 1;
     const tooLarge = row.too_large === 1;
-    const content = row.content
-      ?? (!tooLarge && row.content_hash ? blobsByKey.get(blobKey(isBinary, row.content_hash)) : undefined);
+    const content =
+      row.content ?? (!tooLarge && row.content_hash ? blobsByKey.get(blobKey(isBinary, row.content_hash)) : undefined);
     return {
       path: row.file_path,
       existed: row.existed === 1,

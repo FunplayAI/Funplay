@@ -1,8 +1,5 @@
 import type { AiProvider, AiProviderApiMode } from '../../shared/types';
-import {
-  resolveOpenAiCompatibleProviderProfile,
-  resolveProviderEffortLevel
-} from '../../shared/provider-catalog';
+import { resolveOpenAiCompatibleProviderProfile, resolveProviderEffortLevel } from '../../shared/provider-catalog';
 import { materializeNativeProvider } from './agent-platform/provider-resolver';
 import type {
   OpenAiCompatibleTextResult,
@@ -21,11 +18,7 @@ import {
   postChatCompletionsStream,
   postResponsesStream
 } from './openai-compatible-transport';
-import {
-  AnthropicMessagesAdapter,
-  ChatCompletionsAdapter,
-  ResponsesAdapter
-} from './openai-compatible-adapters';
+import { AnthropicMessagesAdapter, ChatCompletionsAdapter, ResponsesAdapter } from './openai-compatible-adapters';
 import {
   applyOpenAiCompatibleRequestBodyTransforms,
   repairOpenAiCompatibleToolCalls,
@@ -79,10 +72,14 @@ function resolveBaseUrl(provider: AiProvider): string {
 function resolveApiMode(provider: AiProvider): AiProviderApiMode {
   const profile = resolveOpenAiCompatibleProviderProfile(provider);
   if (profile.apiMode === 'responses' && !profile.supportsResponses) {
-    throw new Error(`Provider ${provider.name} does not support the OpenAI-compatible Responses API. Switch this provider to Chat Completions mode.`);
+    throw new Error(
+      `Provider ${provider.name} does not support the OpenAI-compatible Responses API. Switch this provider to Chat Completions mode.`
+    );
   }
   if (profile.apiMode === 'chat' && !profile.supportsChatCompletions) {
-    throw new Error(`Provider ${provider.name} does not support OpenAI-compatible Chat Completions mode. Switch this provider to Responses mode.`);
+    throw new Error(
+      `Provider ${provider.name} does not support OpenAI-compatible Chat Completions mode. Switch this provider to Responses mode.`
+    );
   }
   return profile.apiMode;
 }
@@ -137,7 +134,12 @@ function summarizeResponseBody(body: unknown): unknown {
           finishReason: choice.finish_reason,
           textPreview: typeof choice.text === 'string' ? truncateText(choice.text, 240) : undefined,
           messageRole: message?.role,
-          messageContentType: message?.content == null ? String(message?.content) : Array.isArray(message?.content) ? 'array' : typeof message?.content,
+          messageContentType:
+            message?.content == null
+              ? String(message?.content)
+              : Array.isArray(message?.content)
+                ? 'array'
+                : typeof message?.content,
           messageContentPreview: typeof message?.content === 'string' ? truncateText(message.content, 240) : undefined,
           reasoningPreview:
             typeof message?.reasoning_content === 'string'
@@ -225,7 +227,9 @@ function postOpenAiCompatibleStream(input: {
   );
 }
 
-export async function generateOpenAiCompatibleStreamingToolStep(input: GenerateOpenAiCompatibleToolStepInput): Promise<OpenAiCompatibleToolStepResult> {
+export async function generateOpenAiCompatibleStreamingToolStep(
+  input: GenerateOpenAiCompatibleToolStepInput
+): Promise<OpenAiCompatibleToolStepResult> {
   const provider = materializeNativeProvider(input.provider);
   const apiMode = resolveApiMode(provider);
   const adapter = createProtocolAdapter(apiMode);
@@ -259,19 +263,18 @@ export async function generateOpenAiCompatibleStreamingToolStep(input: GenerateO
     toolCalls.length === 0 && parsed.text.includes('[Tool]')
       ? repairTextualOpenAiCompatibleToolCalls(parsed.text, input.tools)
       : undefined;
-  const normalizedToolCalls = toolCalls.length > 0 ? toolCalls : textualToolRepair?.toolCalls ?? [];
-  const normalizedText = toolCalls.length > 0 ? parsed.text : textualToolRepair?.text ?? parsed.text;
+  const normalizedToolCalls = toolCalls.length > 0 ? toolCalls : (textualToolRepair?.toolCalls ?? []);
+  const normalizedText = toolCalls.length > 0 ? parsed.text : (textualToolRepair?.text ?? parsed.text);
   const responseOutputItems =
     apiMode === 'responses' && isRecord(streamResult.responseBody) && Array.isArray(streamResult.responseBody.output)
       ? streamResult.responseBody.output
       : undefined;
-  const streamReasoningContent = isRecord(streamResult) && typeof streamResult.reasoningContent === 'string'
-    ? streamResult.reasoningContent
-    : undefined;
+  const streamReasoningContent =
+    isRecord(streamResult) && typeof streamResult.reasoningContent === 'string'
+      ? streamResult.reasoningContent
+      : undefined;
   const reasoningContent =
-    apiMode === 'chat'
-      ? (parsed.reasoningContent ?? streamReasoningContent) || undefined
-      : parsed.reasoningContent;
+    apiMode === 'chat' ? (parsed.reasoningContent ?? streamReasoningContent) || undefined : parsed.reasoningContent;
 
   return {
     ...parsed,
@@ -292,7 +295,9 @@ export async function generateOpenAiCompatibleStreamingToolStep(input: GenerateO
   };
 }
 
-export async function generateOpenAiCompatibleText(input: GenerateOpenAiCompatibleTextInput): Promise<OpenAiCompatibleTextResult> {
+export async function generateOpenAiCompatibleText(
+  input: GenerateOpenAiCompatibleTextInput
+): Promise<OpenAiCompatibleTextResult> {
   const provider = materializeNativeProvider(input.provider);
   const apiMode = resolveApiMode(provider);
   const adapter = createProtocolAdapter(apiMode);

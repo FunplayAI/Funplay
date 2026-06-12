@@ -1,4 +1,11 @@
-import type { TaskPhase, AssetType, GameAgentOperationType, AgentPermissionMode, AgentRuntimeStrategy, ProjectSessionEffort } from './project';
+import type {
+  TaskPhase,
+  AssetType,
+  GameAgentOperationType,
+  AgentPermissionMode,
+  AgentRuntimeStrategy,
+  ProjectSessionEffort
+} from './project';
 import type { McpPluginKind } from './unity';
 
 export type AiProviderProtocol = 'openai-compatible' | 'anthropic' | 'google' | 'bedrock' | 'vertex';

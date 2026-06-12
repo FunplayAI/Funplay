@@ -4,7 +4,15 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import Database from 'better-sqlite3';
-import { getState, initializeStore, listMcpRawAudits, listMcpToolSnapshots, setState, tryAppendMcpRawAudit, tryRecordMcpToolSnapshots } from '../../electron/main/store.ts';
+import {
+  getState,
+  initializeStore,
+  listMcpRawAudits,
+  listMcpToolSnapshots,
+  setState,
+  tryAppendMcpRawAudit,
+  tryRecordMcpToolSnapshots
+} from '../../electron/main/store.ts';
 import { DB_FILE_NAME, SETTINGS_KEYS } from '../../electron/main/store-internal/constants.ts';
 import { MIGRATIONS, runMigrations } from '../../electron/main/store-internal/migrations.ts';
 
@@ -26,8 +34,9 @@ const EXPECTED_TABLES = [
 ];
 
 function listTables(db: Database.Database): string[] {
-  return (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as Array<{ name: string }>)
-    .map((row) => row.name);
+  return (
+    db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all() as Array<{ name: string }>
+  ).map((row) => row.name);
 }
 
 function readVersion(db: Database.Database): number {
@@ -64,7 +73,9 @@ test('runMigrations adopts a pre-versioned database without losing data', () => 
     runMigrations(db);
 
     assert.equal(readVersion(db), LATEST_VERSION);
-    const seeded = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get('seed') as { value_json: string } | undefined;
+    const seeded = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get('seed') as
+      | { value_json: string }
+      | undefined;
     assert.equal(seeded?.value_json, '{"hello":"world"}');
   } finally {
     db.close();
@@ -82,7 +93,9 @@ test('runMigrations is idempotent when the database is already at the latest ver
     runMigrations(db);
 
     assert.equal(readVersion(db), versionAfterFirstRun);
-    const persisted = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get('persist') as { value_json: string } | undefined;
+    const persisted = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get('persist') as
+      | { value_json: string }
+      | undefined;
     assert.equal(persisted?.value_json, '"keep me"');
   } finally {
     db.close();
@@ -288,24 +301,26 @@ test('stdio MCP plugin launch config persists across store restart', async () =>
     await initializeStore(userDataPath);
     await setState({
       ...getState(),
-      mcpPlugins: [{
-        id: 'plugin_stdio',
-        name: 'Stdio MCP',
-        kind: 'custom',
-        transport: 'stdio',
-        baseUrl: '',
-        command: '/usr/local/bin/example-mcp',
-        args: ['--project', '/tmp/demo'],
-        cwd: '/tmp',
-        env: {
-          MCP_TOKEN: 'redacted'
-        },
-        enabled: true,
-        isDefault: false,
-        notes: '',
-        createdAt: timestamp,
-        updatedAt: timestamp
-      }]
+      mcpPlugins: [
+        {
+          id: 'plugin_stdio',
+          name: 'Stdio MCP',
+          kind: 'custom',
+          transport: 'stdio',
+          baseUrl: '',
+          command: '/usr/local/bin/example-mcp',
+          args: ['--project', '/tmp/demo'],
+          cwd: '/tmp',
+          env: {
+            MCP_TOKEN: 'redacted'
+          },
+          enabled: true,
+          isDefault: false,
+          notes: '',
+          createdAt: timestamp,
+          updatedAt: timestamp
+        }
+      ]
     });
 
     await initializeStore(userDataPath);
@@ -331,30 +346,32 @@ test('MCP tool policy config persists across store restart', async () => {
     await initializeStore(userDataPath);
     await setState({
       ...getState(),
-      mcpPlugins: [{
-        id: 'plugin_policy',
-        name: 'Policy MCP',
-        kind: 'custom',
-        transport: 'http',
-        baseUrl: 'http://127.0.0.1:9000/mcp',
-        defaultToolPermission: 'ask',
-        defaultToolRisk: 'write',
-        toolPolicies: {
-          'safe.read': {
-            permission: 'allow',
-            risk: 'read',
-            notes: 'safe read tool'
+      mcpPlugins: [
+        {
+          id: 'plugin_policy',
+          name: 'Policy MCP',
+          kind: 'custom',
+          transport: 'http',
+          baseUrl: 'http://127.0.0.1:9000/mcp',
+          defaultToolPermission: 'ask',
+          defaultToolRisk: 'write',
+          toolPolicies: {
+            'safe.read': {
+              permission: 'allow',
+              risk: 'read',
+              notes: 'safe read tool'
+            },
+            'danger.write': {
+              permission: 'deny'
+            }
           },
-          'danger.write': {
-            permission: 'deny'
-          }
-        },
-        enabled: true,
-        isDefault: false,
-        notes: '',
-        createdAt: timestamp,
-        updatedAt: timestamp
-      }]
+          enabled: true,
+          isDefault: false,
+          notes: '',
+          createdAt: timestamp,
+          updatedAt: timestamp
+        }
+      ]
     });
 
     await initializeStore(userDataPath);
@@ -376,71 +393,86 @@ test('MCP tool snapshots persist schema hash, exposed mapping, and change state'
 
   try {
     await initializeStore(userDataPath);
-    const first = tryRecordMcpToolSnapshots([{
-      pluginId: 'plugin_snapshot',
-      pluginName: 'Snapshot MCP',
-      originalName: 'unity.echo',
-      exposedName: 'mcp__snapshot_mcp__unity_echo',
-      description: 'Echo tool',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          value: { type: 'string' }
+    const first = tryRecordMcpToolSnapshots(
+      [
+        {
+          pluginId: 'plugin_snapshot',
+          pluginName: 'Snapshot MCP',
+          originalName: 'unity.echo',
+          exposedName: 'mcp__snapshot_mcp__unity_echo',
+          description: 'Echo tool',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              value: { type: 'string' }
+            }
+          },
+          policySummary: 'MCP policy inferred: permission=ask, risk=write',
+          discoveredAt
         }
-      },
-      policySummary: 'MCP policy inferred: permission=ask, risk=write',
-      discoveredAt
-    }], {
-      pluginId: 'plugin_snapshot',
-      pluginName: 'Snapshot MCP',
-      discoveredAt
-    });
+      ],
+      {
+        pluginId: 'plugin_snapshot',
+        pluginName: 'Snapshot MCP',
+        discoveredAt
+      }
+    );
 
     assert.equal(first[0]?.changeKind, 'added');
     assert.equal(first[0]?.exposedName, 'mcp__snapshot_mcp__unity_echo');
     assert.equal(first[0]?.schemaHash.length, 64);
 
-    const second = tryRecordMcpToolSnapshots([{
-      pluginId: 'plugin_snapshot',
-      pluginName: 'Snapshot MCP',
-      originalName: 'unity.echo',
-      exposedName: 'mcp__snapshot_mcp__unity_echo',
-      description: 'Echo tool',
-      inputSchema: {
-        properties: {
-          value: { type: 'string' }
-        },
-        type: 'object'
-      },
-      policySummary: 'MCP policy inferred: permission=ask, risk=write',
-      discoveredAt
-    }], {
-      pluginId: 'plugin_snapshot',
-      pluginName: 'Snapshot MCP',
-      discoveredAt
-    });
+    const second = tryRecordMcpToolSnapshots(
+      [
+        {
+          pluginId: 'plugin_snapshot',
+          pluginName: 'Snapshot MCP',
+          originalName: 'unity.echo',
+          exposedName: 'mcp__snapshot_mcp__unity_echo',
+          description: 'Echo tool',
+          inputSchema: {
+            properties: {
+              value: { type: 'string' }
+            },
+            type: 'object'
+          },
+          policySummary: 'MCP policy inferred: permission=ask, risk=write',
+          discoveredAt
+        }
+      ],
+      {
+        pluginId: 'plugin_snapshot',
+        pluginName: 'Snapshot MCP',
+        discoveredAt
+      }
+    );
 
     assert.equal(second[0]?.changeKind, 'unchanged');
 
-    const third = tryRecordMcpToolSnapshots([{
-      pluginId: 'plugin_snapshot',
-      pluginName: 'Snapshot MCP',
-      originalName: 'unity.echo',
-      exposedName: 'mcp__snapshot_mcp__unity_echo',
-      description: 'Echo tool',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          value: { type: 'number' }
+    const third = tryRecordMcpToolSnapshots(
+      [
+        {
+          pluginId: 'plugin_snapshot',
+          pluginName: 'Snapshot MCP',
+          originalName: 'unity.echo',
+          exposedName: 'mcp__snapshot_mcp__unity_echo',
+          description: 'Echo tool',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              value: { type: 'number' }
+            }
+          },
+          policySummary: 'MCP policy inferred: permission=ask, risk=write',
+          discoveredAt
         }
-      },
-      policySummary: 'MCP policy inferred: permission=ask, risk=write',
-      discoveredAt
-    }], {
-      pluginId: 'plugin_snapshot',
-      pluginName: 'Snapshot MCP',
-      discoveredAt
-    });
+      ],
+      {
+        pluginId: 'plugin_snapshot',
+        pluginName: 'Snapshot MCP',
+        discoveredAt
+      }
+    );
 
     assert.equal(third[0]?.changeKind, 'changed');
 
@@ -495,24 +527,26 @@ test('provider custom token limits persist across store restart', async () => {
         ...getState().aiSettings,
         defaultProviderId: 'provider_custom_limits'
       },
-      providers: [{
-        id: 'provider_custom_limits',
-        name: 'Custom Limits',
-        protocol: 'openai-compatible',
-        apiMode: 'chat',
-        authStyle: 'api_key',
-        baseUrl: 'https://example.com/v1',
-        apiKey: '',
-        hasStoredApiKey: false,
-        model: 'custom-model',
-        contextWindowTokens: 500_000,
-        maxOutputTokens: 131_072,
-        enabled: true,
-        isDefault: true,
-        notes: '',
-        createdAt: timestamp,
-        updatedAt: timestamp
-      }]
+      providers: [
+        {
+          id: 'provider_custom_limits',
+          name: 'Custom Limits',
+          protocol: 'openai-compatible',
+          apiMode: 'chat',
+          authStyle: 'api_key',
+          baseUrl: 'https://example.com/v1',
+          apiKey: '',
+          hasStoredApiKey: false,
+          model: 'custom-model',
+          contextWindowTokens: 500_000,
+          maxOutputTokens: 131_072,
+          enabled: true,
+          isDefault: true,
+          notes: '',
+          createdAt: timestamp,
+          updatedAt: timestamp
+        }
+      ]
     });
 
     await initializeStore(userDataPath);
@@ -585,10 +619,12 @@ test('v12 migration drops claude provider columns and migrates persisted runtime
     db.exec("ALTER TABLE providers ADD COLUMN claude_role_models_json TEXT NOT NULL DEFAULT '{}'");
     db.exec('ALTER TABLE providers ADD COLUMN sdk_proxy_only INTEGER NOT NULL DEFAULT 0');
     db.exec('PRAGMA foreign_keys = OFF');
-    db.prepare(`
+    db.prepare(
+      `
       INSERT INTO chat_sessions (id, project_id, title, auto_title, created_at, updated_at, runtime_json, is_active)
       VALUES (?, ?, ?, 0, ?, ?, ?, 0)
-    `).run(
+    `
+    ).run(
       'session_legacy_claude',
       'project_legacy',
       'Legacy session',
@@ -613,10 +649,12 @@ test('v12 migration drops claude provider columns and migrates persisted runtime
         runtimeStrategy: 'claude-code-sdk'
       })
     );
-    db.prepare(`
+    db.prepare(
+      `
       INSERT INTO runtime_runs (id, kind, project_id, status, started_at, updated_at, request_json)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
+    `
+    ).run(
       'run_legacy_claude',
       'conversation',
       'project_legacy',
@@ -634,15 +672,16 @@ test('v12 migration drops claude provider columns and migrates persisted runtime
     runMigrations(db);
 
     assert.equal(readVersion(db), LATEST_VERSION);
-    const providerColumns = (db.prepare("PRAGMA table_info('providers')").all() as Array<{ name: string }>)
-      .map((column) => column.name);
+    const providerColumns = (db.prepare("PRAGMA table_info('providers')").all() as Array<{ name: string }>).map(
+      (column) => column.name
+    );
     assert.equal(providerColumns.includes('claude_code_compatible'), false);
     assert.equal(providerColumns.includes('claude_role_models_json'), false);
     assert.equal(providerColumns.includes('sdk_proxy_only'), false);
 
-    const sessionRow = db.prepare('SELECT runtime_json FROM chat_sessions WHERE id = ?').get('session_legacy_claude') as
-      | { runtime_json: string | null }
-      | undefined;
+    const sessionRow = db
+      .prepare('SELECT runtime_json FROM chat_sessions WHERE id = ?')
+      .get('session_legacy_claude') as { runtime_json: string | null } | undefined;
     const overrides = JSON.parse(sessionRow?.runtime_json ?? '{}') as Record<string, unknown>;
     assert.equal(overrides.runtimeId, 'native');
     assert.equal(overrides.model, 'claude-sonnet-4-6');
@@ -653,7 +692,10 @@ test('v12 migration drops claude provider columns and migrates persisted runtime
     const settingsRow = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(SETTINGS_KEYS.agent) as
       | { value_json: string }
       | undefined;
-    assert.equal((JSON.parse(settingsRow?.value_json ?? '{}') as { runtimeStrategy?: string }).runtimeStrategy, 'native');
+    assert.equal(
+      (JSON.parse(settingsRow?.value_json ?? '{}') as { runtimeStrategy?: string }).runtimeStrategy,
+      'native'
+    );
 
     const runRow = db.prepare('SELECT request_json FROM runtime_runs WHERE id = ?').get('run_legacy_claude') as
       | { request_json: string }
@@ -673,28 +715,35 @@ test('v13 migration adds binary-safe columns to file_checkpoints and keeps legac
     db.exec('ALTER TABLE file_checkpoints DROP COLUMN byte_length');
     db.exec('ALTER TABLE file_checkpoints DROP COLUMN content_hash');
     db.exec('ALTER TABLE file_checkpoints DROP COLUMN too_large');
-    db.prepare('INSERT INTO file_checkpoints (snapshot_id, file_path, existed, content) VALUES (?, ?, ?, ?)')
-      .run('snapshot_v13_legacy', 'src/main.ts', 1, 'console.log(1);');
+    db.prepare('INSERT INTO file_checkpoints (snapshot_id, file_path, existed, content) VALUES (?, ?, ?, ?)').run(
+      'snapshot_v13_legacy',
+      'src/main.ts',
+      1,
+      'console.log(1);'
+    );
     assert.equal(readVersion(db), 12);
 
     runMigrations(db);
 
     assert.equal(readVersion(db), LATEST_VERSION);
-    const columns = (db.prepare("PRAGMA table_info('file_checkpoints')").all() as Array<{ name: string }>)
-      .map((column) => column.name);
+    const columns = (db.prepare("PRAGMA table_info('file_checkpoints')").all() as Array<{ name: string }>).map(
+      (column) => column.name
+    );
     for (const expected of ['is_binary', 'byte_length', 'content_hash', 'too_large']) {
       assert.ok(columns.includes(expected), `expected file_checkpoints.${expected} after v13 migration`);
     }
 
     const row = db
-      .prepare('SELECT content, is_binary, byte_length, content_hash, too_large FROM file_checkpoints WHERE snapshot_id = ?')
+      .prepare(
+        'SELECT content, is_binary, byte_length, content_hash, too_large FROM file_checkpoints WHERE snapshot_id = ?'
+      )
       .get('snapshot_v13_legacy') as {
-        content: string;
-        is_binary: number;
-        byte_length: number | null;
-        content_hash: string | null;
-        too_large: number;
-      };
+      content: string;
+      is_binary: number;
+      byte_length: number | null;
+      content_hash: string | null;
+      too_large: number;
+    };
     assert.equal(row.content, 'console.log(1);');
     assert.equal(row.is_binary, 0);
     assert.equal(row.byte_length, null);

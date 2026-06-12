@@ -13,10 +13,7 @@ import { emitRuntimeLifecycleHook, emitRuntimeUsage } from '../runtime-event-emi
 import type { GenericAgentRuntimeParams } from '../types';
 import { normalizeAiSdkUsage, normalizeOpenAiUsage } from '../usage';
 import type { WorkspaceToolAction, WorkspaceToolActionResult } from '../workspace-tools';
-import {
-  createNativeProviderStepAbort,
-  rethrowNativeProviderStepTimeout
-} from './provider-step';
+import { createNativeProviderStepAbort, rethrowNativeProviderStepTimeout } from './provider-step';
 import { createNativeRuntimeSystemPrompt, createNativeRuntimeUserPrompt } from './prompt';
 import {
   findSubagentDefinition,
@@ -94,7 +91,9 @@ function pruneBackgroundSubagentTasks(): void {
   }
   const removable = [...backgroundSubagentTasks.values()]
     .filter((task) => task.status !== 'running')
-    .sort((left, right) => Date.parse(left.finishedAt ?? left.startedAt) - Date.parse(right.finishedAt ?? right.startedAt));
+    .sort(
+      (left, right) => Date.parse(left.finishedAt ?? left.startedAt) - Date.parse(right.finishedAt ?? right.startedAt)
+    );
   for (const task of removable) {
     if (backgroundSubagentTasks.size <= NATIVE_BACKGROUND_SUBAGENT_MAX_RECORDS) {
       return;
@@ -159,7 +158,9 @@ function buildSubagentSystemPrompt(params: GenericAgentRuntimeParams, definition
     definition?.systemPrompt
       ? ['', `子 Agent 定义附加指令（${definition.name}）：`, definition.systemPrompt].join('\n')
       : ''
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function buildSubagentPrompt(
@@ -210,7 +211,10 @@ function buildSubagentPrompt(
     .join('\n');
 }
 
-function buildSubagentFinalPrompt(action: Extract<WorkspaceToolAction, { type: 'run_subagent' }>, maxSteps: number): string {
+function buildSubagentFinalPrompt(
+  action: Extract<WorkspaceToolAction, { type: 'run_subagent' }>,
+  maxSteps: number
+): string {
   return [
     `子任务模型轮次预算已经到达 ${maxSteps} 轮。`,
     '现在不要再调用任何工具，只基于上面的工具结果给主 Agent 返回可用结论。',
@@ -220,7 +224,9 @@ function buildSubagentFinalPrompt(action: Extract<WorkspaceToolAction, { type: '
     action.task,
     action.scope ? `调查范围：${action.scope}` : '',
     action.expectedOutput ? `期望输出：${action.expectedOutput}` : ''
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function buildSubagentSummaryHeader(
@@ -251,24 +257,28 @@ async function emitNativeSubagentStopHook(
   trigger: Omit<AgentLifecycleHookTrigger, 'event' | 'runId' | 'projectId' | 'sessionId'>
 ): Promise<void> {
   try {
-    await runAgentLifecycleHooks(params.lifecycleHooks, {
-      event: 'SubagentStop',
-      runId: params.activeRunId,
-      projectId: params.project.id,
-      sessionId: params.context.activeSessionId,
-      ...trigger
-    }, {
-      project: params.project,
-      permissionContext: {
-        permission: params.permission,
-        requestPermission: params.requestPermission
+    await runAgentLifecycleHooks(
+      params.lifecycleHooks,
+      {
+        event: 'SubagentStop',
+        runId: params.activeRunId,
+        projectId: params.project.id,
+        sessionId: params.context.activeSessionId,
+        ...trigger
       },
-      cwd: params.context.runtimeEnvironment?.workingDirectory ?? params.context.projectPath,
-      checkpointSnapshotId: params.checkpointSnapshotId,
-      abortSignal: params.abortSignal,
-      emitHook: (hook) => emitRuntimeLifecycleHook(params, hook),
-      emitStage: params.onStage
-    });
+      {
+        project: params.project,
+        permissionContext: {
+          permission: params.permission,
+          requestPermission: params.requestPermission
+        },
+        cwd: params.context.runtimeEnvironment?.workingDirectory ?? params.context.projectPath,
+        checkpointSnapshotId: params.checkpointSnapshotId,
+        abortSignal: params.abortSignal,
+        emitHook: (hook) => emitRuntimeLifecycleHook(params, hook),
+        emitStage: params.onStage
+      }
+    );
   } catch (error) {
     params.onStage?.({
       stageId: `stage:lifecycle_hook:SubagentStop:error:${makeId('hook')}`,
@@ -331,18 +341,15 @@ export async function runNativeSubagent(
       let stepResult: Awaited<ReturnType<typeof generateOpenAiCompatibleStreamingToolStep>>;
       try {
         stepResult = await generateOpenAiCompatibleStreamingToolStep({
-            provider: subagentProvider,
-            system: systemPrompt,
-            messages,
-            tools: compatibleToolDefinitions,
-            maxOutputTokens: 2048,
-            abortSignal: stepAbort.signal
-          })
-          .catch((error: unknown) => rethrowNativeProviderStepTimeout(
-            error,
-            stepAbort,
-            'Native subagent provider step'
-          ));
+          provider: subagentProvider,
+          system: systemPrompt,
+          messages,
+          tools: compatibleToolDefinitions,
+          maxOutputTokens: 2048,
+          abortSignal: stepAbort.signal
+        }).catch((error: unknown) =>
+          rethrowNativeProviderStepTimeout(error, stepAbort, 'Native subagent provider step')
+        );
       } finally {
         stepAbort.dispose();
       }
@@ -388,24 +395,21 @@ export async function runNativeSubagent(
       const finalAbort = createNativeProviderStepAbort(params.abortSignal, subagentProvider);
       try {
         const finalResult = await generateOpenAiCompatibleStreamingToolStep({
-            provider: subagentProvider,
-            system: systemPrompt,
-            messages: [
-              ...messages,
-              {
-                role: 'user',
-                content: buildSubagentFinalPrompt(action, maxSteps)
-              }
-            ],
-            tools: [],
-            maxOutputTokens: 2048,
-            abortSignal: finalAbort.signal
-          })
-          .catch((error: unknown) => rethrowNativeProviderStepTimeout(
-            error,
-            finalAbort,
-            'Native subagent final summary provider step'
-          ));
+          provider: subagentProvider,
+          system: systemPrompt,
+          messages: [
+            ...messages,
+            {
+              role: 'user',
+              content: buildSubagentFinalPrompt(action, maxSteps)
+            }
+          ],
+          tools: [],
+          maxOutputTokens: 2048,
+          abortSignal: finalAbort.signal
+        }).catch((error: unknown) =>
+          rethrowNativeProviderStepTimeout(error, finalAbort, 'Native subagent final summary provider step')
+        );
         finishReason = finalResult.finishReason ?? finishReason;
         const finalUsage = normalizeOpenAiUsage(finalResult.usage, {
           provider: subagentProvider.id,
@@ -478,11 +482,7 @@ export async function runNativeSubagent(
       }
     }
   } catch (error) {
-    rethrowNativeProviderStepTimeout(
-      error,
-      subagentAbort,
-      'Native subagent provider step'
-    );
+    rethrowNativeProviderStepTimeout(error, subagentAbort, 'Native subagent provider step');
   } finally {
     subagentAbort.dispose();
   }
@@ -497,9 +497,7 @@ export async function runNativeSubagent(
   try {
     const steps = await result.steps;
     const lastStep = steps[steps.length - 1];
-    assistantMessage = lastStep && lastStep.toolCalls.length === 0
-      ? lastStep.text.trim()
-      : '';
+    assistantMessage = lastStep && lastStep.toolCalls.length === 0 ? lastStep.text.trim() : '';
     responseMessages = steps.flatMap((step) => step.response.messages);
   } catch {
     assistantMessage = assistantMessage.trim();
@@ -524,11 +522,9 @@ export async function runNativeSubagent(
         ],
         maxOutputTokens: 2048,
         abortSignal: finalAbort.signal
-      }).catch((error: unknown) => rethrowNativeProviderStepTimeout(
-        error,
-        finalAbort,
-        'Native subagent final summary provider step'
-      ));
+      }).catch((error: unknown) =>
+        rethrowNativeProviderStepTimeout(error, finalAbort, 'Native subagent final summary provider step')
+      );
       finishReason = finalResult.finishReason ?? finishReason;
       const finalUsage = normalizeAiSdkUsage(finalResult.usage, {
         provider: subagentProvider.id,
@@ -573,17 +569,19 @@ export async function runNativeParallelSubagents(
     NATIVE_SUBAGENT_MAX_STEPS,
     Math.max(1, action.maxSteps ?? NATIVE_SUBAGENT_DEFAULT_MAX_STEPS)
   );
-  const results = await Promise.allSettled(tasks.map((task, index) =>
-    runNativeSubagent(params, {
-      type: 'run_subagent',
-      task: task.task,
-      scope: task.scope,
-      expectedOutput: task.expectedOutput,
-      agent: task.agent,
-      mode: action.mode,
-      maxSteps
-    }).then((result) => ({ index, task, result }))
-  ));
+  const results = await Promise.allSettled(
+    tasks.map((task, index) =>
+      runNativeSubagent(params, {
+        type: 'run_subagent',
+        task: task.task,
+        scope: task.scope,
+        expectedOutput: task.expectedOutput,
+        agent: task.agent,
+        mode: action.mode,
+        maxSteps
+      }).then((result) => ({ index, task, result }))
+    )
+  );
 
   const summaries = results.map((settled, index) => {
     if (settled.status === 'rejected') {
@@ -600,9 +598,13 @@ export async function runNativeParallelSubagents(
       settled.value.task.scope ? `Scope: ${settled.value.task.scope}` : '',
       '',
       settled.value.result.summary
-    ].filter((line) => line !== '').join('\n');
+    ]
+      .filter((line) => line !== '')
+      .join('\n');
   });
-  const failedCount = results.filter((result) => result.status === 'rejected' || (result.status === 'fulfilled' && !result.value.result.ok)).length;
+  const failedCount = results.filter(
+    (result) => result.status === 'rejected' || (result.status === 'fulfilled' && !result.value.result.ok)
+  ).length;
 
   return {
     ok: failedCount === 0,
@@ -613,7 +615,9 @@ export async function runNativeParallelSubagents(
       action.mode === 'worker' ? 'Mode: worker' : '',
       '',
       summaries.join('\n\n')
-    ].filter((line) => line !== '').join('\n')
+    ]
+      .filter((line) => line !== '')
+      .join('\n')
   };
 }
 
@@ -692,67 +696,69 @@ export async function startNativeBackgroundSubagent(
     mode: action.mode,
     model: action.model,
     maxSteps
-  }).then((result) => {
-    const status = result.ok ? 'completed' as const : 'failed' as const;
-    const current = backgroundSubagentTasks.get(id) ?? taskRecord;
-    current.status = status;
-    current.finishedAt = new Date().toISOString();
-    current.summary = result.summary;
-    current.error = result.isError ? result.summary : undefined;
-    persistBackgroundSubagentTask(current, status);
-    enqueueNativeSubagentCompletionNotice({
-      projectId: params.project.id,
-      sessionId: params.context.activeSessionId,
-      notice: buildBackgroundSubagentCompletionNotice(current, status, result.summary)
+  })
+    .then((result) => {
+      const status = result.ok ? ('completed' as const) : ('failed' as const);
+      const current = backgroundSubagentTasks.get(id) ?? taskRecord;
+      current.status = status;
+      current.finishedAt = new Date().toISOString();
+      current.summary = result.summary;
+      current.error = result.isError ? result.summary : undefined;
+      persistBackgroundSubagentTask(current, status);
+      enqueueNativeSubagentCompletionNotice({
+        projectId: params.project.id,
+        sessionId: params.context.activeSessionId,
+        notice: buildBackgroundSubagentCompletionNotice(current, status, result.summary)
+      });
+      void emitNativeSubagentStopHook(params, {
+        toolName: 'subagent_start',
+        status,
+        metadata: {
+          taskId: id,
+          name: action.name,
+          agent: action.agent,
+          mode: current.mode,
+          task: action.task,
+          scope: action.scope,
+          expectedOutput: action.expectedOutput,
+          maxSteps,
+          ok: result.ok,
+          isError: result.isError,
+          summary: result.summary
+        }
+      });
+    })
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      const current = backgroundSubagentTasks.get(id) ?? taskRecord;
+      current.status = 'failed';
+      current.finishedAt = new Date().toISOString();
+      current.error = message;
+      current.summary = message;
+      persistBackgroundSubagentTask(current, 'failed');
+      enqueueNativeSubagentCompletionNotice({
+        projectId: params.project.id,
+        sessionId: params.context.activeSessionId,
+        notice: buildBackgroundSubagentCompletionNotice(current, 'failed', message)
+      });
+      void emitNativeSubagentStopHook(params, {
+        toolName: 'subagent_start',
+        status: 'failed',
+        metadata: {
+          taskId: id,
+          name: action.name,
+          agent: action.agent,
+          mode: current.mode,
+          task: action.task,
+          scope: action.scope,
+          expectedOutput: action.expectedOutput,
+          maxSteps,
+          ok: false,
+          isError: true,
+          summary: message
+        }
+      });
     });
-    void emitNativeSubagentStopHook(params, {
-      toolName: 'subagent_start',
-      status,
-      metadata: {
-        taskId: id,
-        name: action.name,
-        agent: action.agent,
-        mode: current.mode,
-        task: action.task,
-        scope: action.scope,
-        expectedOutput: action.expectedOutput,
-        maxSteps,
-        ok: result.ok,
-        isError: result.isError,
-        summary: result.summary
-      }
-    });
-  }).catch((error) => {
-    const message = error instanceof Error ? error.message : String(error);
-    const current = backgroundSubagentTasks.get(id) ?? taskRecord;
-    current.status = 'failed';
-    current.finishedAt = new Date().toISOString();
-    current.error = message;
-    current.summary = message;
-    persistBackgroundSubagentTask(current, 'failed');
-    enqueueNativeSubagentCompletionNotice({
-      projectId: params.project.id,
-      sessionId: params.context.activeSessionId,
-      notice: buildBackgroundSubagentCompletionNotice(current, 'failed', message)
-    });
-    void emitNativeSubagentStopHook(params, {
-      toolName: 'subagent_start',
-      status: 'failed',
-      metadata: {
-        taskId: id,
-        name: action.name,
-        agent: action.agent,
-        mode: current.mode,
-        task: action.task,
-        scope: action.scope,
-        expectedOutput: action.expectedOutput,
-        maxSteps,
-        ok: false,
-        isError: true,
-        summary: message
-      }
-    });
-  });
 
   return {
     ok: true,
@@ -766,7 +772,9 @@ export async function startNativeBackgroundSubagent(
       `Max steps: ${maxSteps}`,
       'Use subagent_status with this taskId to read progress or the final result.',
       '任务记录已持久化；完成时会在下一次工具结果中附带完成通知。'
-    ].filter((line) => line !== '').join('\n')
+    ]
+      .filter((line) => line !== '')
+      .join('\n')
   };
 }
 
@@ -826,7 +834,9 @@ function formatSubagentStatusView(view: NativeSubagentStatusView): string {
     view.task ? `Task: ${view.task}` : '',
     view.scope ? `Scope: ${view.scope}` : '',
     view.summary ? ['', truncateSubagentOutput(view.summary)].join('\n') : ''
-  ].filter((line) => line !== '').join('\n');
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
 }
 
 export async function readNativeBackgroundSubagentStatus(

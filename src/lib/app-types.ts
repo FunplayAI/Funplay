@@ -1,5 +1,15 @@
 export type ProjectSettingsTab = 'engine' | 'agent' | 'runs' | 'usage' | 'mcp' | 'skills';
-export type AppSettingsTab = 'appearance' | 'language' | 'agent' | 'provider' | 'asset-provider' | 'mcp' | 'web-search' | 'memory' | 'notifications' | 'about';
+export type AppSettingsTab =
+  | 'appearance'
+  | 'language'
+  | 'agent'
+  | 'provider'
+  | 'asset-provider'
+  | 'mcp'
+  | 'web-search'
+  | 'memory'
+  | 'notifications'
+  | 'about';
 export type ThemePreference = 'system' | 'light' | 'dark';
 export interface UiPreferences {
   theme: ThemePreference;

@@ -1,10 +1,12 @@
-import type {
-  AssistantContent,
-  ModelMessage,
-  ToolContent
-} from 'ai';
+import type { AssistantContent, ModelMessage, ToolContent } from 'ai';
 import { ensureProjectSessions } from '../../../shared/project-sessions';
-import type { AgentCoreMessagePart, ChatMessage, Project, ProjectSession, PromptAttachment } from '../../../shared/types';
+import type {
+  AgentCoreMessagePart,
+  ChatMessage,
+  Project,
+  ProjectSession,
+  PromptAttachment
+} from '../../../shared/types';
 import { filterNativeMessagesAfterSummaryBoundary } from './native/context-handoff';
 
 type AssistantContentPart = Exclude<AssistantContent, string>[number];
@@ -122,11 +124,7 @@ function formatPromptAttachmentsForModel(attachments: PromptAttachment[] | undef
 
   const lines = attachments.map((attachment, index) => {
     const targetPath = attachment.relativePath || attachment.path;
-    const meta = [
-      attachment.kind,
-      attachment.mimeType,
-      `${attachment.size} bytes`
-    ].filter(Boolean).join(', ');
+    const meta = [attachment.kind, attachment.mimeType, `${attachment.size} bytes`].filter(Boolean).join(', ');
     return `${index + 1}. ${attachment.name} -> ${targetPath}${meta ? ` (${meta})` : ''}`;
   });
 
@@ -155,9 +153,7 @@ function sortAgentCoreParts(parts: AgentCoreMessagePart[] | undefined): AgentCor
 }
 
 function getAssistantMessageAgentCoreParts(message: ChatMessage): AgentCoreMessagePart[] {
-  return message.role === 'assistant'
-    ? sortAgentCoreParts(message.metadata?.agentCoreParts)
-    : [];
+  return message.role === 'assistant' ? sortAgentCoreParts(message.metadata?.agentCoreParts) : [];
 }
 
 function createTextPart(text: string): AssistantContentPart {
@@ -174,14 +170,12 @@ function createReasoningPart(text: string): AssistantContentPart {
   };
 }
 
-function createOrphanToolResultText(part: Extract<AgentCoreMessagePart, { kind: 'tool_result' | 'tool_error' }>): AssistantContentPart {
+function createOrphanToolResultText(
+  part: Extract<AgentCoreMessagePart, { kind: 'tool_result' | 'tool_error' }>
+): AssistantContentPart {
   const content = part.kind === 'tool_error' ? part.error : part.content;
   return createTextPart(
-    [
-      `[Unmatched Tool Result] ${part.toolUseId}`,
-      part.kind === 'tool_error' ? 'Status: error' : '',
-      content
-    ]
+    [`[Unmatched Tool Result] ${part.toolUseId}`, part.kind === 'tool_error' ? 'Status: error' : '', content]
       .filter(hasText)
       .join('\n')
   );
@@ -212,8 +206,9 @@ function appendAssistantMessageFromAgentCoreParts(
 ): void {
   const completedToolUseIds = new Set(
     parts
-      .filter((part): part is Extract<AgentCoreMessagePart, { kind: 'tool_result' | 'tool_error' }> =>
-        part.kind === 'tool_result' || part.kind === 'tool_error'
+      .filter(
+        (part): part is Extract<AgentCoreMessagePart, { kind: 'tool_result' | 'tool_error' }> =>
+          part.kind === 'tool_result' || part.kind === 'tool_error'
       )
       .map((part) => part.toolUseId)
   );
@@ -317,14 +312,19 @@ export function buildNativeToolLoopMessages(options: BuildModelMessagesOptions):
   const session = selectProjectSession(options.project, options.sessionId);
   const nativeContextSummary = session?.runtimeOverrides?.nativeContextSummary?.trim();
   const history = nativeContextSummary
-    ? filterNativeMessagesAfterSummaryBoundary(session?.chat ?? [], session?.runtimeOverrides?.nativeContextSummaryCoverage)
+    ? filterNativeMessagesAfterSummaryBoundary(
+        session?.chat ?? [],
+        session?.runtimeOverrides?.nativeContextSummaryCoverage
+      )
     : (session?.chat ?? []);
   const messages = [
     ...(nativeContextSummary
-      ? [{
-          role: 'user' as const,
-          content: `Native runtime long-context summary:\n${nativeContextSummary}`
-        }]
+      ? [
+          {
+            role: 'user' as const,
+            content: `Native runtime long-context summary:\n${nativeContextSummary}`
+          }
+        ]
       : []),
     ...buildModelMessagesFromChat(history)
   ];

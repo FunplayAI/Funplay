@@ -43,7 +43,8 @@ function mapSubagentRunRow(row: SubagentRunRow): SubagentRunRecord {
 
 export function upsertSubagentRunRecord(database: Database.Database, record: UpsertSubagentRunInput): void {
   database
-    .prepare(`
+    .prepare(
+      `
       INSERT INTO subagent_runs (
         id,
         parent_session_id,
@@ -61,7 +62,8 @@ export function upsertSubagentRunRecord(database: Database.Database, record: Ups
         prompt = excluded.prompt,
         finished_at = excluded.finished_at,
         result_summary = excluded.result_summary
-    `)
+    `
+    )
     .run(
       record.id,
       record.parentSessionId ?? null,
@@ -75,7 +77,8 @@ export function upsertSubagentRunRecord(database: Database.Database, record: Ups
 
   if (record.status !== 'running') {
     database
-      .prepare(`
+      .prepare(
+        `
         DELETE FROM subagent_runs
         WHERE status != 'running'
           AND id NOT IN (
@@ -85,7 +88,8 @@ export function upsertSubagentRunRecord(database: Database.Database, record: Ups
             ORDER BY started_at DESC
             LIMIT ${SUBAGENT_RUN_FINISHED_KEEP_LIMIT}
           )
-      `)
+      `
+      )
       .run();
   }
 }
@@ -114,13 +118,15 @@ export function listSubagentRunRecords(
  */
 export function markRunningSubagentRunRecordsInterrupted(database: Database.Database): void {
   database
-    .prepare(`
+    .prepare(
+      `
       UPDATE subagent_runs
       SET
         status = 'interrupted',
         finished_at = COALESCE(finished_at, ?),
         result_summary = COALESCE(result_summary, 'Application restarted before the background subagent completed.')
       WHERE status = 'running'
-    `)
+    `
+    )
     .run(new Date().toISOString());
 }

@@ -1,4 +1,11 @@
-import type { AiProvider, AiProviderInput, AiProviderMeta, AiProviderModel, AiSettings, AppState } from '../../shared/types';
+import type {
+  AiProvider,
+  AiProviderInput,
+  AiProviderMeta,
+  AiProviderModel,
+  AiSettings,
+  AppState
+} from '../../shared/types';
 import {
   getProviderPresetDefaults,
   inferOpenAiCompatibleApiMode,
@@ -73,7 +80,11 @@ export async function createProvider(state: AppState, input: AiProviderInput): P
     name: input.name.trim(),
     protocol: input.protocol,
     apiMode: input.protocol === 'openai-compatible' ? inferOpenAiCompatibleApiMode(input) : undefined,
-    authStyle: normalizeProviderAuthStyle({ authStyle: input.authStyle ?? presetDefaults.authStyle, protocol: input.protocol, baseUrl: input.baseUrl }),
+    authStyle: normalizeProviderAuthStyle({
+      authStyle: input.authStyle ?? presetDefaults.authStyle,
+      protocol: input.protocol,
+      baseUrl: input.baseUrl
+    }),
     baseUrl: input.baseUrl.trim(),
     apiKey: secret,
     hasStoredApiKey: Boolean(secret),
@@ -116,7 +127,8 @@ export async function updateProvider(state: AppState, providerId: string, input:
   const current = state.providers[index];
   const nextSecret = input.apiKey.trim() || current.apiKey.trim();
   const presetDefaults = getProviderPresetDefaults(input);
-  const availableModels = normalizeProviderModels(input.availableModels) ?? current.availableModels ?? presetDefaults.availableModels;
+  const availableModels =
+    normalizeProviderModels(input.availableModels) ?? current.availableModels ?? presetDefaults.availableModels;
   const upstreamModel = resolveProviderUpstreamModel({
     model: input.model.trim(),
     upstreamModel: input.upstreamModel?.trim() || current.upstreamModel || presetDefaults.upstreamModel,
@@ -126,7 +138,10 @@ export async function updateProvider(state: AppState, providerId: string, input:
     ...current,
     name: input.name.trim(),
     protocol: input.protocol,
-    apiMode: input.protocol === 'openai-compatible' ? inferOpenAiCompatibleApiMode({ ...input, apiMode: input.apiMode ?? current.apiMode }) : undefined,
+    apiMode:
+      input.protocol === 'openai-compatible'
+        ? inferOpenAiCompatibleApiMode({ ...input, apiMode: input.apiMode ?? current.apiMode })
+        : undefined,
     authStyle: normalizeProviderAuthStyle({
       authStyle: input.authStyle ?? current.authStyle ?? presetDefaults.authStyle,
       protocol: input.protocol,

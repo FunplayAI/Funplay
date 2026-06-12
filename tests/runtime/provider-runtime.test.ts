@@ -66,7 +66,10 @@ test('project MCP servers combine global and project-scoped entries', () => {
 
   assert.deepEqual(updated.mcpBindings.servers, [globalPlugin.id, localPlugin.id]);
   assert.equal(updated.mcpBindings.engine, localPlugin.id);
-  assert.deepEqual(resolveProjectPlugins(state, updated).map((plugin) => plugin.id), [globalPlugin.id, localPlugin.id]);
+  assert.deepEqual(
+    resolveProjectPlugins(state, updated).map((plugin) => plugin.id),
+    [globalPlugin.id, localPlugin.id]
+  );
 
   deleteMcpPlugin(state, localPlugin.id);
   assert.equal(state.projects[0].mcpBindings.servers?.includes(localPlugin.id), false);

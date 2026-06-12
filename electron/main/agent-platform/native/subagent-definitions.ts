@@ -82,10 +82,7 @@ function splitFrontmatter(content: string): {
 
 function cleanScalar(value: string): string {
   const trimmed = value.trim();
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
     return trimmed.slice(1, -1).trim();
   }
   return trimmed;
@@ -94,11 +91,7 @@ function cleanScalar(value: string): string {
 function parseScalar(value: string): string | string[] {
   const trimmed = cleanScalar(value);
   if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-    return trimmed
-      .slice(1, -1)
-      .split(',')
-      .map(cleanScalar)
-      .filter(Boolean);
+    return trimmed.slice(1, -1).split(',').map(cleanScalar).filter(Boolean);
   }
   return trimmed;
 }
@@ -151,7 +144,10 @@ function getFrontmatterList(frontmatter: Record<string, string | string[]>, key:
     return value.filter(Boolean);
   }
   if (typeof value === 'string' && value.trim()) {
-    return value.split(/\s*,\s*/).map(cleanScalar).filter(Boolean);
+    return value
+      .split(/\s*,\s*/)
+      .map(cleanScalar)
+      .filter(Boolean);
   }
   return [];
 }

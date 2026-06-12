@@ -93,7 +93,14 @@ export interface AgentToolMcpResult {
   argsSize?: number;
   contentPartCount?: number;
   schemaGuard: 'passed' | 'failed';
-  failureKind?: 'missing_plugin' | 'invalid_uri' | 'invalid_tool_name' | 'args_too_large' | 'permission_denied' | 'timeout' | 'unknown';
+  failureKind?:
+    | 'missing_plugin'
+    | 'invalid_uri'
+    | 'invalid_tool_name'
+    | 'args_too_large'
+    | 'permission_denied'
+    | 'timeout'
+    | 'unknown';
 }
 
 export interface AgentToolArtifact {

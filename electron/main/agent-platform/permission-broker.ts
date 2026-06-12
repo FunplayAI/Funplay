@@ -131,34 +131,33 @@ const PLAN_CONFIRMABLE_TOOL_NAMES = new Set([
 
 function formatPermissionDetail(request: AgentToolPermissionRequest): string {
   const impact = buildPermissionImpact(request);
-  return request.detail ??
+  return (
+    request.detail ??
     [
       `工具：${request.tool.name}`,
       `权限策略：${request.tool.permissionPolicy}`,
       `检查点策略：${request.tool.checkpointPolicy}`,
       impact.paths?.length ? `路径：${impact.paths.join(' · ')}` : '',
       impact.commands?.length ? `命令：${impact.commands.join(' · ')}` : '',
-      request.tool.name === 'run_command' ? `沙箱：${describeRunCommandSandboxStatus(request.input?.unsandboxed === true)}` : '',
-      impact.mcp?.pluginName || impact.mcp?.pluginId ? `MCP Server：${impact.mcp.pluginName ?? impact.mcp.pluginId}` : '',
+      request.tool.name === 'run_command'
+        ? `沙箱：${describeRunCommandSandboxStatus(request.input?.unsandboxed === true)}`
+        : '',
+      impact.mcp?.pluginName || impact.mcp?.pluginId
+        ? `MCP Server：${impact.mcp.pluginName ?? impact.mcp.pluginId}`
+        : '',
       impact.mcp?.toolName ? `MCP Tool：${impact.mcp.toolName}` : '',
       impact.mcp?.permission ? `MCP 策略：${impact.mcp.permission}/${impact.mcp.risk ?? 'infer'}` : '',
       impact.cwd ? `目录：${impact.cwd}` : '',
       impact.reason ? `原因：${impact.reason}` : '',
       impact.inputSummary?.length ? `输入摘要：${impact.inputSummary.join('；')}` : '',
       '允许后，本轮才会执行该写入型或高风险工具。'
-    ].filter(Boolean).join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n')
+  );
 }
 
-const LARGE_INPUT_KEYS = new Set([
-  'content',
-  'data',
-  'base64',
-  'patch',
-  'oldText',
-  'newText',
-  'edits',
-  'input'
-]);
+const LARGE_INPUT_KEYS = new Set(['content', 'data', 'base64', 'patch', 'oldText', 'newText', 'edits', 'input']);
 
 function readInputString(input: Record<string, unknown> | undefined, key: string): string | undefined {
   const value = input?.[key];
@@ -178,7 +177,8 @@ function collectInputStrings(input: Record<string, unknown> | undefined, keys: s
         if (typeof item === 'string' && item.trim()) {
           values.push(item.trim());
         } else if (item && typeof item === 'object') {
-          const path = readInputString(item as Record<string, unknown>, 'path') ??
+          const path =
+            readInputString(item as Record<string, unknown>, 'path') ??
             readInputString(item as Record<string, unknown>, 'filePath');
           if (path) {
             values.push(path);
@@ -246,7 +246,10 @@ export async function resolveAgentToolPermission(
   context: AgentPermissionContext | undefined,
   request: AgentToolPermissionRequest
 ): Promise<AgentToolPermissionDecision> {
-  if (request.tool.permissionPolicy === 'always' || (request.tool.readOnly && request.tool.permissionPolicy !== 'ask')) {
+  if (
+    request.tool.permissionPolicy === 'always' ||
+    (request.tool.readOnly && request.tool.permissionPolicy !== 'ask')
+  ) {
     return 'allow';
   }
 

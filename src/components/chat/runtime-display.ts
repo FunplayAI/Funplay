@@ -43,18 +43,16 @@ const DEVELOPER_RUNTIME_PATTERNS = [
 
 export function isDeveloperRuntimeStage(stage: RuntimeStageLike): boolean {
   return isDeveloperRuntimeText(
-    [
-      stage.stageId,
-      stage.phase,
-      stage.target,
-      stage.title,
-      stage.summary,
-      stage.errorMessage
-    ].filter(Boolean).join('\n')
+    [stage.stageId, stage.phase, stage.target, stage.title, stage.summary, stage.errorMessage]
+      .filter(Boolean)
+      .join('\n')
   );
 }
 
-export function getVisibleRuntimeStages<TStage extends RuntimeStageLike>(stages: TStage[], developerMode: boolean): TStage[] {
+export function getVisibleRuntimeStages<TStage extends RuntimeStageLike>(
+  stages: TStage[],
+  developerMode: boolean
+): TStage[] {
   if (developerMode) {
     return stages;
   }

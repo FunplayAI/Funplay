@@ -159,7 +159,9 @@ function makeParsedResponse(text: string, body: unknown): OpenAiCompatibleParsed
   };
 }
 
-function getChatTokenParameter(request: OpenAiCompatibleRequest | OpenAiCompatibleToolStepRequest): 'max_tokens' | 'max_completion_tokens' {
+function getChatTokenParameter(
+  request: OpenAiCompatibleRequest | OpenAiCompatibleToolStepRequest
+): 'max_tokens' | 'max_completion_tokens' {
   return resolveOpenAiCompatibleChatTokenParameter({
     name: request.provider.name,
     protocol: request.provider.protocol,
@@ -437,12 +439,7 @@ export class ResponsesAdapter implements OpenAiCompatibleProtocolAdapter {
         }
         const parsedArguments = parseToolArguments(item.arguments);
         return {
-          id:
-            typeof item.call_id === 'string'
-              ? item.call_id
-              : typeof item.id === 'string'
-                ? item.id
-                : `call_${index}`,
+          id: typeof item.call_id === 'string' ? item.call_id : typeof item.id === 'string' ? item.id : `call_${index}`,
           name,
           ...parsedArguments
         };
@@ -623,12 +620,11 @@ export class AnthropicMessagesAdapter implements OpenAiCompatibleProtocolAdapter
             tools: request.tools.map((toolDefinition) => ({
               name: toolDefinition.name,
               description: toolDefinition.description,
-              input_schema:
-                normalizeOpenAiCompatibleToolParameters(toolDefinition.parameters, {
-                  provider: request.provider,
-                  model: request.model,
-                  apiMode: 'anthropic-messages'
-                }) ?? { type: 'object', properties: {} }
+              input_schema: normalizeOpenAiCompatibleToolParameters(toolDefinition.parameters, {
+                provider: request.provider,
+                model: request.model,
+                apiMode: 'anthropic-messages'
+              }) ?? { type: 'object', properties: {} }
             }))
           }
         : {}),

@@ -5,10 +5,7 @@ import type {
   RuntimeDiagnosticSeverity,
   RuntimeRecoveryAction
 } from '../../../shared/types';
-import {
-  recordActiveRunStreamDelta,
-  updateActiveRunStatus
-} from './run-registry';
+import { recordActiveRunStreamDelta, updateActiveRunStatus } from './run-registry';
 import {
   makeStageHandler,
   makeToolResultHandler,
@@ -101,7 +98,8 @@ function emitStageSideEvent(ctx: StreamContext, stage: StageEvent): void {
       sessionId: ctx.sessionId,
       message: stage.summary || '上下文已压缩。',
       boundaryOrdinal: typeof stage.input?.boundaryOrdinal === 'number' ? stage.input.boundaryOrdinal : undefined,
-      coveredMessageCount: typeof stage.input?.coveredMessageCount === 'number' ? stage.input.coveredMessageCount : undefined,
+      coveredMessageCount:
+        typeof stage.input?.coveredMessageCount === 'number' ? stage.input.coveredMessageCount : undefined,
       startedAt: ctx.startedAt
     });
   }
@@ -127,9 +125,7 @@ export function createRuntimeEventSink(ctx: StreamContext, options: RuntimeEvent
       metadata = mergeMetadata(metadata, stageMetadataPatch(stage));
     },
     extraDispatchFields: (stage) => metadataDispatchFields(stageMetadataPatch(stage)),
-    onAfterDispatch: options.emitStageSideEvents
-      ? (stage) => emitStageSideEvent(ctx, stage)
-      : undefined
+    onAfterDispatch: options.emitStageSideEvents ? (stage) => emitStageSideEvent(ctx, stage) : undefined
   });
 
   const onStatus = (phase: GenericAgentPhase, statusMessage: string): void => {

@@ -82,13 +82,7 @@ export interface ResolvedSandboxedCommandShell {
 const MACOS_SANDBOX_EXEC_PATH = '/usr/bin/sandbox-exec';
 
 /** Device nodes shells and common CLIs write to even for read-only work. */
-const SEATBELT_WRITABLE_DEVICE_LITERALS = [
-  '/dev/null',
-  '/dev/stdout',
-  '/dev/stderr',
-  '/dev/tty',
-  '/dev/dtracehelper'
-];
+const SEATBELT_WRITABLE_DEVICE_LITERALS = ['/dev/null', '/dev/stdout', '/dev/stderr', '/dev/tty', '/dev/dtracehelper'];
 
 function escapeSeatbeltString(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -148,9 +142,14 @@ export function buildSandboxProfile(policy: CommandSandboxPolicy): string {
 export function buildBwrapArgs(policy: CommandSandboxPolicy, shell: string, shellArgs: string[]): string[] {
   const writeRoots = uniqueNonEmpty([policy.projectPath, ...(policy.extraWritePaths ?? [])]);
   return [
-    '--ro-bind', '/', '/',
-    '--dev-bind', '/dev', '/dev',
-    '--proc', '/proc',
+    '--ro-bind',
+    '/',
+    '/',
+    '--dev-bind',
+    '/dev',
+    '/dev',
+    '--proc',
+    '/proc',
     ...writeRoots.flatMap((root) => ['--bind', root, root]),
     ...(policy.allowNetwork ? [] : ['--unshare-net']),
     '--die-with-parent',
@@ -176,7 +175,12 @@ function findExecutableOnPath(binary: string): string | undefined {
 function probeCommandSandboxCapability(): CommandSandboxCapability {
   if (process.platform === 'darwin') {
     if (existsSync(MACOS_SANDBOX_EXEC_PATH)) {
-      return { kind: 'seatbelt', available: true, detail: MACOS_SANDBOX_EXEC_PATH, binaryPath: MACOS_SANDBOX_EXEC_PATH };
+      return {
+        kind: 'seatbelt',
+        available: true,
+        detail: MACOS_SANDBOX_EXEC_PATH,
+        binaryPath: MACOS_SANDBOX_EXEC_PATH
+      };
     }
     return { kind: 'none', available: false, detail: '未找到 sandbox-exec' };
   }

@@ -53,13 +53,12 @@ function resolveExplicitRuntime(runtimeId: GenericAgentRuntimeId): GenericAgentR
   return runtime;
 }
 
-export function resolveGenericAgentRuntime(input?: GenericAgentRuntimeId | GenericAgentRuntimeResolveOptions): GenericAgentRuntime {
+export function resolveGenericAgentRuntime(
+  input?: GenericAgentRuntimeId | GenericAgentRuntimeResolveOptions
+): GenericAgentRuntime {
   ensureInitialized();
 
-  const options: GenericAgentRuntimeResolveOptions =
-    typeof input === 'string'
-      ? { runtimeId: input }
-      : input ?? {};
+  const options: GenericAgentRuntimeResolveOptions = typeof input === 'string' ? { runtimeId: input } : (input ?? {});
   const runtimeId = options.runtimeId;
 
   if (runtimeId) {

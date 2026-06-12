@@ -16,37 +16,40 @@ test('provider step adapter normalizes finish reasons', () => {
 });
 
 test('OpenAI-compatible provider step maps to Agent Core provider step result', () => {
-  const step = openAiCompatibleStepToAgentCoreProviderStepResult({
-    text: '需要读文件',
-    reasoningContent: 'think',
-    finishReason: 'stop',
-    usage: {
-      prompt_tokens: 10,
-      completion_tokens: 5,
-      total_tokens: 15,
-      prompt_tokens_details: {
-        cached_tokens: 3
-      }
-    },
-    requestUrl: 'https://example.test/v1/chat/completions',
-    requestBody: {},
-    responseBody: {},
-    toolCalls: [
-      {
-        id: 'call_1',
-        name: 'read_file',
-        arguments: {
-          path: 'README.md'
+  const step = openAiCompatibleStepToAgentCoreProviderStepResult(
+    {
+      text: '需要读文件',
+      reasoningContent: 'think',
+      finishReason: 'stop',
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+        prompt_tokens_details: {
+          cached_tokens: 3
         }
-      }
-    ],
-    streamed: true,
-    responseId: 'resp_1',
-    responseModelId: 'model_1'
-  }, {
-    providerId: 'provider_1',
-    model: 'model_1'
-  });
+      },
+      requestUrl: 'https://example.test/v1/chat/completions',
+      requestBody: {},
+      responseBody: {},
+      toolCalls: [
+        {
+          id: 'call_1',
+          name: 'read_file',
+          arguments: {
+            path: 'README.md'
+          }
+        }
+      ],
+      streamed: true,
+      responseId: 'resp_1',
+      responseModelId: 'model_1'
+    },
+    {
+      providerId: 'provider_1',
+      model: 'model_1'
+    }
+  );
 
   assert.equal(step.finishReason, 'tool_calls');
   assert.equal(step.text, '需要读文件');
@@ -67,27 +70,30 @@ test('OpenAI-compatible provider step maps to Agent Core provider step result', 
 });
 
 test('AI SDK provider step maps tool calls and usage', () => {
-  const step = aiSdkStepToAgentCoreProviderStepResult({
-    text: 'done',
-    finishReason: 'stop',
-    usage: {
-      inputTokens: 7,
-      outputTokens: 4,
-      totalTokens: 11
-    },
-    toolCalls: [
-      {
-        toolCallId: 'tool_1',
-        toolName: 'find_files',
-        input: {
-          query: '*.ts'
+  const step = aiSdkStepToAgentCoreProviderStepResult(
+    {
+      text: 'done',
+      finishReason: 'stop',
+      usage: {
+        inputTokens: 7,
+        outputTokens: 4,
+        totalTokens: 11
+      },
+      toolCalls: [
+        {
+          toolCallId: 'tool_1',
+          toolName: 'find_files',
+          input: {
+            query: '*.ts'
+          }
         }
-      }
-    ]
-  }, {
-    providerId: 'provider_ai_sdk',
-    model: 'claude-test'
-  });
+      ]
+    },
+    {
+      providerId: 'provider_ai_sdk',
+      model: 'claude-test'
+    }
+  );
 
   assert.equal(step.finishReason, 'tool_calls');
   assert.equal(step.toolCalls[0]?.name, 'find_files');

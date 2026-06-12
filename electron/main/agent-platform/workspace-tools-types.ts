@@ -623,7 +623,10 @@ export function normalizeWorkspaceFilePath(filePath: string): string {
   return normalized;
 }
 
-function resolveWorkspaceFilePath(rootPath: string, filePath: string): {
+function resolveWorkspaceFilePath(
+  rootPath: string,
+  filePath: string
+): {
   absolutePath: string;
   relativePath: string;
 } {
@@ -632,11 +635,15 @@ function resolveWorkspaceFilePath(rootPath: string, filePath: string): {
     throw new Error('非法文件路径。');
   }
 
-  const absolutePath = isAbsolute(trimmed)
-    ? resolve(trimmed)
-    : resolve(rootPath, normalizeWorkspaceFilePath(filePath));
+  const absolutePath = isAbsolute(trimmed) ? resolve(trimmed) : resolve(rootPath, normalizeWorkspaceFilePath(filePath));
   const relativePath = relative(rootPath, absolutePath).replaceAll('\\', '/');
-  if (!relativePath || relativePath === '.' || relativePath.startsWith('../') || relativePath === '..' || isAbsolute(relativePath)) {
+  if (
+    !relativePath ||
+    relativePath === '.' ||
+    relativePath.startsWith('../') ||
+    relativePath === '..' ||
+    isAbsolute(relativePath)
+  ) {
     throw new Error('非法文件路径。');
   }
   return {
@@ -645,7 +652,10 @@ function resolveWorkspaceFilePath(rootPath: string, filePath: string): {
   };
 }
 
-function resolveReadableLocalFilePath(rootPath: string, filePath: string): {
+function resolveReadableLocalFilePath(
+  rootPath: string,
+  filePath: string
+): {
   absolutePath: string;
   relativePath: string;
 } {
@@ -675,7 +685,11 @@ function resolveReadableLocalFilePath(rootPath: string, filePath: string): {
   };
 }
 
-export async function readWorkspaceFileBytes(project: Project, filePath: string, maxBytes: number): Promise<{
+export async function readWorkspaceFileBytes(
+  project: Project,
+  filePath: string,
+  maxBytes: number
+): Promise<{
   rootPath: string;
   absolutePath: string;
   relativePath: string;

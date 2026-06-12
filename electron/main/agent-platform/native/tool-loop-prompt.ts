@@ -4,23 +4,25 @@ import { createResponseLanguageInstruction } from '../response-language';
 import { createNativeRuntimeDynamicContextPrompt, formatNativeRuntimeEnvironmentBlock } from './prompt';
 import type { NativeRuntimeToolDefinition } from './tool-adapter';
 
-export function createNativeToolLoopPermissionInstructions(params: Pick<GenericAgentRuntimeParams, 'permission'>, options: {
-  includeWriteTools: boolean;
-  includeMcpToolCalls: boolean;
-  includeCommandTools: boolean;
-}): string[] {
+export function createNativeToolLoopPermissionInstructions(
+  params: Pick<GenericAgentRuntimeParams, 'permission'>,
+  options: {
+    includeWriteTools: boolean;
+    includeMcpToolCalls: boolean;
+    includeCommandTools: boolean;
+  }
+): string[] {
   const hasSideEffectTools = options.includeWriteTools || options.includeMcpToolCalls || options.includeCommandTools;
 
-  const modeLine =
-    hasSideEffectTools
-      ? params.permission.mode === 'read-only'
-        ? '当前界面模式：Plan。工具列表由 host 生成，实际权限只在工具执行点判定。'
-        : '当前界面模式：Build。工具列表由 host 生成，实际权限只在工具执行点判定。'
-      : params.permission.mode === 'read-only'
-        ? '当前界面模式：Plan。工具列表由 host 生成，实际权限只在工具执行点判定。'
-        : params.permission.mode === 'ask'
-          ? '当前界面模式：Build。工具列表由 host 生成，实际权限只在工具执行点判定。'
-          : '当前界面模式：Build。工具列表由 host 生成，实际权限只在工具执行点判定。';
+  const modeLine = hasSideEffectTools
+    ? params.permission.mode === 'read-only'
+      ? '当前界面模式：Plan。工具列表由 host 生成，实际权限只在工具执行点判定。'
+      : '当前界面模式：Build。工具列表由 host 生成，实际权限只在工具执行点判定。'
+    : params.permission.mode === 'read-only'
+      ? '当前界面模式：Plan。工具列表由 host 生成，实际权限只在工具执行点判定。'
+      : params.permission.mode === 'ask'
+        ? '当前界面模式：Build。工具列表由 host 生成，实际权限只在工具执行点判定。'
+        : '当前界面模式：Build。工具列表由 host 生成，实际权限只在工具执行点判定。';
 
   const writeLine = options.includeWriteTools
     ? 'create_directory、write_file、edit_file、multi_edit、patch_file 等项目写入工具出现在工具列表中；当用户任务需要实际修改项目时应调用对应工具，host 会在执行点完成权限、checkpoint 和拒绝处理。不要根据模式自行声称工具被禁用。'
@@ -39,9 +41,10 @@ function formatToolPromptLine(toolName: string, definition?: NativeRuntimeToolDe
   if (!definition) {
     return `- ${toolName}`;
   }
-  const canonical = definition.toolLanguage?.canonicalName && definition.toolLanguage.canonicalName !== definition.name
-    ? `；Claude-like：${definition.toolLanguage.canonicalName}`
-    : '';
+  const canonical =
+    definition.toolLanguage?.canonicalName && definition.toolLanguage.canonicalName !== definition.name
+      ? `；Claude-like：${definition.toolLanguage.canonicalName}`
+      : '';
   const hint = definition.toolLanguage?.usageHint ? `；${definition.toolLanguage.usageHint}` : '';
   return `- ${definition.name} — ${definition.title}${canonical}${hint}`;
 }
@@ -84,11 +87,7 @@ function formatNativeToolLanguageGuide(definitions: NativeRuntimeToolDefinition[
   if (lines.length === 0) {
     return [];
   }
-  return [
-    '',
-    'Native 工具语言（按 Claude Code 心智模型选择，再调用右侧真实工具名）：',
-    ...lines
-  ];
+  return ['', 'Native 工具语言（按 Claude Code 心智模型选择，再调用右侧真实工具名）：', ...lines];
 }
 
 export interface NativeToolLoopSystemPromptOptions {
@@ -191,12 +190,16 @@ export function createNativeToolLoopSystemPrompt(
 // kept for caller compatibility, but all static rule text now lives in
 // createNativeToolLoopSystemPrompt — this returns only the dynamic context block
 // that is appended as the LAST user message of the request.
-export function createNativeToolLoopPrompt(params: GenericAgentRuntimeParams, _toolNames: string[], _options: {
-  includeWriteTools: boolean;
-  includeMcpToolCalls: boolean;
-  includeCommandTools: boolean;
-  dynamicMcpToolNames?: string[];
-  toolDefinitions?: NativeRuntimeToolDefinition[];
-}): string {
+export function createNativeToolLoopPrompt(
+  params: GenericAgentRuntimeParams,
+  _toolNames: string[],
+  _options: {
+    includeWriteTools: boolean;
+    includeMcpToolCalls: boolean;
+    includeCommandTools: boolean;
+    dynamicMcpToolNames?: string[];
+    toolDefinitions?: NativeRuntimeToolDefinition[];
+  }
+): string {
   return createNativeRuntimeDynamicContextPrompt(params);
 }

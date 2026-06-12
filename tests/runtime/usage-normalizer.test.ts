@@ -1,10 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  accumulateUsage,
-  emptyUsageTotals,
-  normalizeAiSdkUsage
-} from '../../electron/main/agent-platform/usage.ts';
+import { accumulateUsage, emptyUsageTotals, normalizeAiSdkUsage } from '../../electron/main/agent-platform/usage.ts';
 
 test('normalizeAiSdkUsage maps detailed input/output and cache fields', () => {
   const usage = normalizeAiSdkUsage(

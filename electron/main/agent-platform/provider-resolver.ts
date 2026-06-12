@@ -125,7 +125,10 @@ function resolveProviderCandidate(options: ResolveProviderForRuntimeOptions): Ai
   return getDefaultProvider(state);
 }
 
-function resolveProviderModel(provider: AiProvider | undefined, options: ResolveProviderForRuntimeOptions): string | undefined {
+function resolveProviderModel(
+  provider: AiProvider | undefined,
+  options: ResolveProviderForRuntimeOptions
+): string | undefined {
   const session = resolveSession(options);
   return (
     options.model?.trim() ||
@@ -221,20 +224,18 @@ export function toNativeProviderConfig(resolved: ResolvedRuntimeProvider): Nativ
     resolved.protocol === 'google' ||
     resolved.protocol === 'bedrock' ||
     resolved.protocol === 'vertex';
-  const canUseEnvOnlyNative = (resolved.protocol === 'bedrock' || resolved.protocol === 'vertex') && resolved.authStyle === 'env_only';
+  const canUseEnvOnlyNative =
+    (resolved.protocol === 'bedrock' || resolved.protocol === 'vertex') && resolved.authStyle === 'env_only';
   const canUseNativeAuth =
     resolved.authStyle === 'api_key' ||
     resolved.authStyle === 'auth_token' ||
     resolved.authStyle === 'custom_header' ||
     canUseEnvOnlyNative;
-  const canUseNative = Boolean(
-    resolved.provider &&
-    canUseNativeProtocol &&
-    canUseNativeAuth
-  );
+  const canUseNative = Boolean(resolved.provider && canUseNativeProtocol && canUseNativeAuth);
   let nativeUnsupportedReason: string | undefined;
   if (!resolved.provider) {
-    nativeUnsupportedReason = 'No AI provider is configured; add and enable a provider before running the native runtime.';
+    nativeUnsupportedReason =
+      'No AI provider is configured; add and enable a provider before running the native runtime.';
   } else if (!canUseNativeProtocol) {
     nativeUnsupportedReason = `Protocol ${resolved.protocol} is not supported by native provider clients.`;
   } else if (!canUseNativeAuth) {

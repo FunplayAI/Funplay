@@ -29,13 +29,61 @@ const BINARY_SNIFF_BYTES = 8192;
 
 // Extension hint for formats that are binary even without NUL bytes in the first 8KB.
 const BINARY_FILE_EXTENSIONS = new Set([
-  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico', '.icns', '.tga', '.psd', '.tif', '.tiff', '.exr', '.hdr',
-  '.fbx', '.blend', '.glb', '.unitypackage', '.bytes', '.ress', '.bin', '.pak', '.bundle',
-  '.wav', '.mp3', '.ogg', '.flac', '.aif', '.aiff', '.m4a',
-  '.mp4', '.mov', '.avi', '.webm', '.mkv',
-  '.ttf', '.otf', '.woff', '.woff2', '.eot',
-  '.zip', '.7z', '.rar', '.gz', '.tar', '.jar', '.apk', '.aab', '.ipa',
-  '.dll', '.so', '.dylib', '.exe', '.pdb', '.wasm',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.bmp',
+  '.ico',
+  '.icns',
+  '.tga',
+  '.psd',
+  '.tif',
+  '.tiff',
+  '.exr',
+  '.hdr',
+  '.fbx',
+  '.blend',
+  '.glb',
+  '.unitypackage',
+  '.bytes',
+  '.ress',
+  '.bin',
+  '.pak',
+  '.bundle',
+  '.wav',
+  '.mp3',
+  '.ogg',
+  '.flac',
+  '.aif',
+  '.aiff',
+  '.m4a',
+  '.mp4',
+  '.mov',
+  '.avi',
+  '.webm',
+  '.mkv',
+  '.ttf',
+  '.otf',
+  '.woff',
+  '.woff2',
+  '.eot',
+  '.zip',
+  '.7z',
+  '.rar',
+  '.gz',
+  '.tar',
+  '.jar',
+  '.apk',
+  '.aab',
+  '.ipa',
+  '.dll',
+  '.so',
+  '.dylib',
+  '.exe',
+  '.pdb',
+  '.wasm',
   '.pdf'
 ]);
 
@@ -81,7 +129,10 @@ function resolveProjectRoot(project: Project): string {
   return resolve(project.engine.projectPath.replace(/^~/, process.env.HOME ?? '~'));
 }
 
-function resolveProjectFilePath(project: Project, filePath: string): {
+function resolveProjectFilePath(
+  project: Project,
+  filePath: string
+): {
   resolvedFilePath: string;
   relativePath: string;
 } {
@@ -128,20 +179,24 @@ function persistSnapshot(snapshotId: string, snapshot: FileSnapshot, options: { 
 }
 
 function getSnapshotMap(snapshotId: string): Map<string, FileSnapshot> {
-  return checkpoints.get(snapshotId) ?? new Map(
-    listFileCheckpointEntries(snapshotId).map((entry) => [
-      entry.path,
-      {
-        path: entry.path,
-        existed: entry.existed,
-        isBinary: entry.isBinary,
-        content: entry.isBinary ? undefined : entry.content,
-        binaryContent: entry.isBinary && entry.content !== undefined ? Buffer.from(entry.content, 'base64') : undefined,
-        byteLength: entry.byteLength,
-        contentHash: entry.contentHash,
-        tooLarge: entry.tooLarge || undefined
-      } satisfies FileSnapshot
-    ])
+  return (
+    checkpoints.get(snapshotId) ??
+    new Map(
+      listFileCheckpointEntries(snapshotId).map((entry) => [
+        entry.path,
+        {
+          path: entry.path,
+          existed: entry.existed,
+          isBinary: entry.isBinary,
+          content: entry.isBinary ? undefined : entry.content,
+          binaryContent:
+            entry.isBinary && entry.content !== undefined ? Buffer.from(entry.content, 'base64') : undefined,
+          byteLength: entry.byteLength,
+          contentHash: entry.contentHash,
+          tooLarge: entry.tooLarge || undefined
+        } satisfies FileSnapshot
+      ])
+    )
   );
 }
 
@@ -303,7 +358,10 @@ export async function recordFileCheckpoint(params: {
   checkpoints.set(params.snapshotId, snapshotMap);
 }
 
-export async function restoreFileCheckpoint(project: Project, snapshotId: string): Promise<{
+export async function restoreFileCheckpoint(
+  project: Project,
+  snapshotId: string
+): Promise<{
   restoredFiles: string[];
   skippedFiles: string[];
   tooLargeFiles: string[];
@@ -352,7 +410,10 @@ export async function restoreFileCheckpoint(project: Project, snapshotId: string
   };
 }
 
-export async function previewFileCheckpointChanges(project: Project, snapshotId: string): Promise<{
+export async function previewFileCheckpointChanges(
+  project: Project,
+  snapshotId: string
+): Promise<{
   snapshotId: string;
   changedFiles: Array<{
     path: string;
@@ -387,7 +448,7 @@ export async function previewFileCheckpointChanges(project: Project, snapshotId:
 
       const isBinary = snapshot.isBinary || (currentBytes !== undefined && looksBinary(relativePath, currentBytes));
       const snapshotBytes = snapshot.isBinary
-        ? snapshot.binaryContent ?? Buffer.alloc(0)
+        ? (snapshot.binaryContent ?? Buffer.alloc(0))
         : Buffer.from(snapshot.content ?? '', 'utf8');
 
       if (!snapshot.existed && currentBytes !== undefined) {
