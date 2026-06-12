@@ -261,13 +261,13 @@ export function AssetProviderEditor(props: {
         onValueChange={(value) => setDraft((current) => ({ ...current, name: value }))}
       />
       <TextField
-        label="Base URL"
+        label={t('基础 URL', 'Base URL')}
         value={draft.baseUrl ?? ''}
         onValueChange={(value) => setDraft((current) => ({ ...current, baseUrl: value }))}
       />
       {draft.adapter !== 'comfyui' ? (
         <TextField
-          label="API Key"
+          label={t('API Key', 'API Key')}
           type="password"
           value={draft.apiKey ?? ''}
           placeholder={props.provider?.hasStoredApiKey ? t('已保存，留空表示不修改', 'Saved. Leave blank to keep unchanged.') : ''}
@@ -284,7 +284,7 @@ export function AssetProviderEditor(props: {
       ) : null}
       {draft.adapter === 'elevenlabs' ? (
         <TextField
-          label="Voice ID"
+          label={t('音色 ID', 'Voice ID')}
           value={draft.voiceId ?? ''}
           helper={t('填写后可生成 voice 类型素材；留空仍可生成音效和音乐。', 'Set this to enable voice assets; leave blank for sound effects and music only.')}
           onValueChange={(value) => setDraft((current) => ({ ...current, voiceId: value }))}

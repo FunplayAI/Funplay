@@ -38,7 +38,7 @@
 
 .fp-button-primary {
   background: linear-gradient(135deg, var(--brand) 0%, #7c3aed 100%);
-  color: #fff;
+  color: var(--fp-button-primary-text);
   box-shadow: 0 10px 24px rgba(79, 70, 229, 0.2);
 }
 
@@ -326,7 +326,7 @@
   width: 14px;
   height: 14px;
   border-radius: 999px;
-  background: #fff;
+  background: var(--fp-switch-thumb-bg);
   box-shadow: 0 2px 5px rgba(15, 23, 42, 0.24);
   transition: transform 160ms ease;
 }
@@ -393,7 +393,7 @@
 
 .fp-badge-success {
   background: rgba(34, 197, 94, 0.12);
-  color: #15803d;
+  color: var(--fp-feedback-success);
 }
 
 .fp-badge-warning {
@@ -468,6 +468,42 @@
   font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.fp-metric-brand {
+  border-color: var(--fp-feedback-brand-border);
+  background: var(--fp-feedback-brand-soft);
+}
+
+.fp-metric-brand strong {
+  color: var(--brand-strong);
+}
+
+.fp-metric-success {
+  border-color: var(--fp-feedback-success-border);
+  background: var(--fp-feedback-success-soft);
+}
+
+.fp-metric-success strong {
+  color: var(--fp-feedback-success);
+}
+
+.fp-metric-warning {
+  border-color: var(--fp-feedback-warning-border);
+  background: var(--fp-feedback-warning-soft);
+}
+
+.fp-metric-warning strong {
+  color: var(--fp-feedback-warning);
+}
+
+.fp-metric-danger {
+  border-color: var(--fp-feedback-danger-border);
+  background: var(--fp-feedback-danger-soft);
+}
+
+.fp-metric-danger strong {
+  color: var(--fp-feedback-danger);
 }
 
 @keyframes fp-spin {
@@ -563,8 +599,8 @@
   display: flex;
   align-items: center;
   padding: 0 20px;
-  background: #20242e;
-  color: #f7f8fb;
+  background: var(--fp-welcome-titlebar-bg);
+  color: var(--fp-welcome-titlebar-text);
   font-size: 14px;
   font-weight: 600;
   -webkit-app-region: drag;

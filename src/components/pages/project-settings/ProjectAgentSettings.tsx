@@ -40,8 +40,8 @@ export function ProjectAgentSettings(props: {
   const activeProviderLabel = props.activeProvider?.name ?? t('本地规划器', 'Local Planner');
   const activeModelLabel = props.sessionModel || props.activeProvider?.model || t('本地规划器', 'Local Planner');
   const permissionOptions: Array<[AgentPermissionMode, string]> = [
-    ['full-access', t('Build', 'Build')],
-    ['read-only', t('Plan', 'Plan')]
+    ['full-access', t('开发', 'Build')],
+    ['read-only', t('规划', 'Plan')]
   ];
   const effortOptions: Array<{ value: ProjectSessionEffort; label: string }> = [
     { value: 'auto', label: t('自动', 'Auto') },
@@ -84,7 +84,7 @@ export function ProjectAgentSettings(props: {
       <Card title={t('当前会话运行', 'Current Session Runtime')}>
         <InfoRow label={t('会话', 'Session')} value={props.activeSession?.title || t('未选择', 'No Session')} />
         <InfoRow
-          label="Provider"
+          label={t('服务商', 'Provider')}
           value={
             providerOverrideActive
               ? activeProviderLabel

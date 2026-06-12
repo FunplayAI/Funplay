@@ -118,10 +118,25 @@
   --fp-accent-primary-soft: rgba(79, 70, 229, 0.12);
 
   /* === Semantic feedback =================================================== */
-  --fp-feedback-success: var(--fp-color-emerald-600);
+  --fp-feedback-success: #15803d;
   --fp-feedback-warning: var(--fp-color-amber-600);
   --fp-feedback-danger: var(--fp-color-rose-600);
   --fp-feedback-info: var(--fp-color-indigo-500);
+
+  /* === Primitive component-role tokens ==================================== */
+  /* Primary button text — inverse on the brand gradient. */
+  --fp-button-primary-text: #fff;
+  /* Switch thumb — inverse knob on the track. */
+  --fp-switch-thumb-bg: #fff;
+  /* Subtle feedback tints for metric-tile tone variants. */
+  --fp-feedback-success-soft: rgba(34, 197, 94, 0.08);
+  --fp-feedback-success-border: rgba(34, 197, 94, 0.22);
+  --fp-feedback-warning-soft: rgba(245, 158, 11, 0.1);
+  --fp-feedback-warning-border: rgba(245, 158, 11, 0.24);
+  --fp-feedback-danger-soft: rgba(239, 68, 68, 0.08);
+  --fp-feedback-danger-border: rgba(239, 68, 68, 0.22);
+  --fp-feedback-brand-soft: rgba(79, 70, 229, 0.08);
+  --fp-feedback-brand-border: rgba(79, 70, 229, 0.22);
 
   /* === Agent state surfaces ============================================== */
   --fp-agent-permission-bg: rgba(255, 247, 237, 0.96);
@@ -220,6 +235,10 @@
   --fp-command-palette-icon-bg: rgba(15, 23, 42, 0.05);
   --fp-command-palette-item-selected-bg: rgba(79, 70, 229, 0.1);
   --fp-command-palette-item-selected-ring: inset 0 0 0 1px rgba(79, 70, 229, 0.16);
+
+  /* Welcome / onboarding titlebar */
+  --fp-welcome-titlebar-bg: #20242e;
+  --fp-welcome-titlebar-text: #f7f8fb;
 
   /* Titlebar */
   --fp-titlebar-bg:
@@ -559,6 +578,21 @@
 
   /* Accent */
   --fp-accent-primary-soft: rgba(129, 140, 248, 0.18);
+
+  /* Feedback (dark) — lighter foregrounds for contrast on dark surfaces. */
+  --fp-feedback-success: #86efac;
+  --fp-feedback-success-soft: rgba(34, 197, 94, 0.14);
+  --fp-feedback-success-border: rgba(34, 197, 94, 0.28);
+  --fp-feedback-warning-soft: rgba(245, 158, 11, 0.16);
+  --fp-feedback-warning-border: rgba(245, 158, 11, 0.3);
+  --fp-feedback-danger-soft: rgba(239, 68, 68, 0.16);
+  --fp-feedback-danger-border: rgba(239, 68, 68, 0.3);
+  --fp-feedback-brand-soft: rgba(129, 140, 248, 0.16);
+  --fp-feedback-brand-border: rgba(129, 140, 248, 0.32);
+
+  /* Welcome / onboarding titlebar (dark) */
+  --fp-welcome-titlebar-bg: #161b27;
+  --fp-welcome-titlebar-text: #f8fafc;
 
   /* Shadow */
   --fp-shadow-5: 0 24px 60px rgba(0, 0, 0, 0.36);

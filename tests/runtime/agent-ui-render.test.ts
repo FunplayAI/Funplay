@@ -2458,7 +2458,7 @@ test('project usage settings focus on token and provider summaries', () => {
 
   assert.match(html, /项目 Token 概览/);
   assert.match(html, /Token 构成/);
-  assert.match(html, /Provider \/ Model/);
+  assert.match(html, /提供商 \/ 模型/);
   assert.match(html, /fp-info-card/);
   assert.equal(html.includes('prototype-card'), false);
   assert.equal(html.includes('恢复入口'), false);
@@ -2575,8 +2575,8 @@ test('project Agent settings render direct session and policy controls', () => {
   assert.match(html, /主会话/);
   assert.match(html, /Xiaomi MiMo/);
   assert.match(html, /mimo-v2\.5-pro/);
-  assert.match(html, /Build/);
-  assert.match(html, /Plan/);
+  assert.match(html, /开发/);
+  assert.match(html, /规划/);
   assert.match(html, /fp-field/);
   assert.match(html, /fp-input/);
   assert.match(html, /fp-button-primary/);
@@ -2699,8 +2699,8 @@ test('web search settings render through the shared UI component system', () => 
 
   assert.match(html, /Web Search/);
   assert.match(html, /默认 Provider/);
-  assert.match(html, /Brave API Key/);
-  assert.match(html, /Bing API Key/);
+  assert.match(html, /Brave API 密钥/);
+  assert.match(html, /Bing API 密钥/);
   assert.match(html, /缓存 TTL/);
   assert.match(html, /fp-select-trigger/);
   assert.match(html, /fp-switch-field/);
@@ -3970,7 +3970,7 @@ test('app settings modal is a semantic dialog and opens directly to provider set
   assert.match(html, /tabindex="-1"/);
   assert.match(html, /aria-current="page"[^>]*class="[^"]*app-settings-nav-item active/);
   assert.match(html, /app-settings-nav-icon/);
-  assert.match(html, /app-settings-nav-copy"><strong>AI Provider/);
+  assert.match(html, /app-settings-nav-copy"><strong>AI 服务商/);
   assert.match(html, /fp-modal app-settings-modal/);
   assert.match(html, /fp-icon-button modal-close-button/);
   assert.match(html, /Xiaomi MiMo/);

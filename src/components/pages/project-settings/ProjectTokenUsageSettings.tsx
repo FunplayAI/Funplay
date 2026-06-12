@@ -57,7 +57,7 @@ export function ProjectTokenUsageSettings(props: {
         />
       </Card>
 
-      <Card title="Provider / Model">
+      <Card title={t('提供商 / 模型', 'Provider / Model')}>
         {props.usage.providerModelGroups.length > 0 ? (
           <div className="project-token-provider-list">
             {props.usage.providerModelGroups.map((group) => (

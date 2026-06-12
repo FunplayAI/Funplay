@@ -203,11 +203,11 @@ export function AppSettingsModal(props: {
   const navItems: Array<{ id: AppSettingsTab; label: string; desc: string; Icon: LucideIcon }> = [
     { id: 'appearance', label: t('外观', 'Appearance'), desc: t('主题与界面外观', 'Theme and window appearance'), Icon: Monitor },
     { id: 'language', label: t('语言', 'Language'), desc: t('界面语言与文案', 'Interface language and copy'), Icon: Languages },
-    { id: 'provider', label: 'AI Provider', desc: t('模型服务与默认渠道', 'Model services and default providers'), Icon: Cloud },
+    { id: 'provider', label: t('AI 服务商', 'AI Provider'), desc: t('模型服务与默认渠道', 'Model services and default providers'), Icon: Cloud },
     { id: 'asset-provider', label: t('素材 Provider', 'Asset Provider'), desc: t('图片、3D 与音频生成', 'Image, 3D, and audio generation'), Icon: Sparkles },
     { id: 'mcp', label: 'MCP', desc: t('全局 MCP Registry', 'Global MCP Registry'), Icon: Plug },
-    { id: 'web-search', label: 'Web Search', desc: t('搜索来源、抽取与评测', 'Sources, extraction, and evaluation'), Icon: Search },
-    { id: 'memory', label: 'Memory', desc: t('浏览、编辑与清理项目记忆', 'Browse, edit, and clear project memory'), Icon: Database },
+    { id: 'web-search', label: t('网页搜索', 'Web Search'), desc: t('搜索来源、抽取与评测', 'Sources, extraction, and evaluation'), Icon: Search },
+    { id: 'memory', label: t('记忆', 'Memory'), desc: t('浏览、编辑与清理项目记忆', 'Browse, edit, and clear project memory'), Icon: Database },
     { id: 'notifications', label: t('通知', 'Notifications'), desc: t('提醒任务与系统通知', 'Reminder tasks and system alerts'), Icon: Bell },
     { id: 'about', label: t('关于', 'About'), desc: t('产品信息与说明', 'Product info and notes'), Icon: Info }
   ];
@@ -352,7 +352,7 @@ export function AppSettingsModal(props: {
             <section className="app-settings-section memory-center-section">
               <div className="memory-center-header">
                 <div>
-                  <strong>Memory</strong>
+                  <strong>{t('记忆', 'Memory')}</strong>
                   <div className="helper-copy">
                     {props.selectedProjectId
                       ? t(
@@ -387,7 +387,7 @@ export function AppSettingsModal(props: {
                   onValueChange={setMemoryQuery}
                   placeholder={t('搜索标题、路径、内容摘要或标签', 'Search title, path, excerpt, or tags')}
                 />
-                <div className="memory-kind-filter" aria-label="Memory kind filter">
+                <div className="memory-kind-filter" aria-label={t('记忆分类筛选', 'Memory kind filter')}>
                   <Button size="compact" variant="ghost" className={!memoryKindFilter ? 'active' : ''} onClick={() => setMemoryKindFilter('')}>
                     {t('全部分类', 'All Kinds')}
                   </Button>
@@ -397,7 +397,7 @@ export function AppSettingsModal(props: {
                     </Button>
                   ))}
                 </div>
-                <div className="memory-tag-filter" aria-label="Memory tag filter">
+                <div className="memory-tag-filter" aria-label={t('记忆标签筛选', 'Memory tag filter')}>
                   <Button size="compact" variant="ghost" className={!memoryTagFilter ? 'active' : ''} onClick={() => setMemoryTagFilter('')}>
                     {t('全部', 'All')}
                   </Button>
@@ -410,7 +410,7 @@ export function AppSettingsModal(props: {
               </div>
 
               <div className="memory-center-layout">
-                <div className="memory-file-list" aria-label="Memory files">
+                <div className="memory-file-list" aria-label={t('记忆文件列表', 'Memory files')}>
                   {filteredMemoryFiles.length > 0 ? (
                     filteredMemoryFiles.map((file) => (
                       <Button

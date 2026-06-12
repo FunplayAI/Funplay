@@ -132,7 +132,7 @@ export function McpRawDiagnosticsCard(props: {
       <div className="helper-copy">{t('只允许只读/诊断类 MCP JSON-RPC 方法；工具执行类方法不会开放。', 'Only read-only diagnostic MCP JSON-RPC methods are allowed; tool execution methods are not exposed.')}</div>
       <SelectField
         className="compact"
-        label="Method"
+        label={t('方法', 'Method')}
         value={method}
         options={rawMcpDiagnosticMethods.map((item) => ({ value: item, label: item }))}
         onValueChange={setMethod}
@@ -140,7 +140,7 @@ export function McpRawDiagnosticsCard(props: {
       />
       <TextAreaField
         className="compact"
-        label="Params JSON"
+        label={t('参数 JSON', 'Params JSON')}
         value={paramsText}
         onValueChange={setParamsText}
       />

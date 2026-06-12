@@ -409,6 +409,7 @@ function SourceEditor(props: {
   value: string;
   onChange: (value: string) => void;
 }): JSX.Element {
+  const language = useUiLanguage();
   const [scroll, setScroll] = useState({ left: 0, top: 0 });
   const lineCount = useMemo(() => Math.max(1, props.value.split('\n').length), [props.value]);
   const highlightedLines = useMemo(
@@ -449,7 +450,7 @@ function SourceEditor(props: {
         <TextAreaField
           className="file-editor-field"
           textareaClassName="file-editor-textarea"
-          label="Source editor"
+          label={localize(language, '源码编辑器', 'Source editor')}
           spellCheck={false}
           wrap="off"
           value={props.value}

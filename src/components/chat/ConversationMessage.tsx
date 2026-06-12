@@ -402,7 +402,7 @@ function useElapsedDuration(startedAt: string | undefined, language: 'zh-CN' | '
 
   useEffect(() => {
     if (!startedAt || Number.isNaN(Date.parse(startedAt))) {
-      return undefined;
+      return;
     }
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(timer);

@@ -38,7 +38,6 @@ export function AgentChatView(props: {
   defaultProviderId?: string;
   sessionProviderId?: string;
   sessionModel?: string;
-  sessionRuntimeId?: ProjectSessionRuntimeId;
   sessionEffort: ProjectSessionEffort;
   rewindSnapshotIds?: Record<string, string | undefined>;
   highlightMessageId?: string;

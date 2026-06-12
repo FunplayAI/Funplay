@@ -15,10 +15,8 @@ import { useAgentRuntimeActivity } from './hooks/useAgentRuntimeActivity';
 import { useAssetGenerationCenter } from './hooks/useAssetGenerationCenter';
 import { usePromptAttachmentImport } from './hooks/usePromptAttachmentImport';
 import { useMcpManager } from './hooks/useMcpManager';
-import { formatProjectDocument } from '../shared/planner';
 import { ensureProjectSessions } from '../shared/project-sessions';
 import {
-  type AgentRuntimeStrategy,
   type AgentPermissionMode,
   type AssetGenerationProviderConfig,
   type AssetGenerationProviderInput,
@@ -36,7 +34,7 @@ import {
   type ProjectSessionRuntimeId,
   type UnitySettings
 } from '../shared/types';
-import { AppShell, StandaloneAppShell } from './components/layout/AppShell';
+import { AppShell } from './components/layout/AppShell';
 import { AgentWorkbench } from './components/layout/AgentWorkbench';
 import { UiLanguageProvider, getDocumentLanguage, localize, useUiLanguage } from './i18n';
 import { dispatchRefreshFileTree, subscribeRefreshFileTree } from './lib/file-tree-events';
@@ -1602,7 +1600,6 @@ function App(): JSX.Element {
                 defaultProviderId={selectedDefaultProvider?.id}
                 sessionProviderId={selectedSessionRuntime?.providerId}
                 sessionModel={selectedSessionRuntime?.model}
-                sessionRuntimeId={selectedSessionRuntime?.runtimeId}
                 sessionEffort={selectedSessionEffort}
                 rewindSnapshotIds={selectedSessionRewindSnapshotIds}
                 highlightMessageId={selectedRestoredCheckpoint?.triggerUserMessageId}

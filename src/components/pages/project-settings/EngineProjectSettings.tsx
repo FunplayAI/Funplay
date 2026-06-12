@@ -39,7 +39,7 @@ export function EngineProjectSettings(props: { project: Project | null }): JSX.E
           value={props.project ? formatProjectStatus(props.project.status) : t('未创建', 'Not Created')}
         />
         <InfoRow
-          label="Bridge / MCP"
+          label={t('引擎连接', 'Bridge / MCP')}
           value={props.project ? buildRuntimeSummary(props.project.runtimeState, props.project.engine?.platform) : t('未检测', 'Not Checked')}
         />
         <InfoRow

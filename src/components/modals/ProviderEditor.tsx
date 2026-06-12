@@ -145,9 +145,9 @@ export function ProviderEditor(props: {
           <span>{apiKeyHint}</span>
         </div>
         <TextField label={localize(language, '名称', 'Name')} value={draft.name} onValueChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
-        <TextField label="Base URL" value={draft.baseUrl} onValueChange={(value) => setDraft((current) => ({ ...current, baseUrl: value }))} />
+        <TextField label={localize(language, '基础 URL', 'Base URL')} value={draft.baseUrl} onValueChange={(value) => setDraft((current) => ({ ...current, baseUrl: value }))} />
         <TextField
-          label="API Key"
+          label={localize(language, 'API Key', 'API Key')}
           value={draft.apiKey}
           placeholder={apiKeyHint}
           onValueChange={(value) => setDraft((current) => ({ ...current, apiKey: value }))}

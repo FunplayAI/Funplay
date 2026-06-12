@@ -33,8 +33,9 @@ const BASELINES: Record<string, number> = {
   // App.tsx: MCP/Unity plugin domain extracted into hooks/useMcpManager.ts (U47 slice);
   // formatQueuedPromptWithAttachments moved to lib/app-helpers.ts.
   // Claude runtime removal dropped handleImportClaudeSession and related wiring;
-  // runtime-strategy selector removal dropped onChangeRuntimeStrategy + passthroughs.
-  'src/App.tsx': 1962,
+  // runtime-strategy selector removal dropped onChangeRuntimeStrategy + passthroughs;
+  // UI-fix pass removed dead imports + sessionRuntimeId passdown.
+  'src/App.tsx': 1959,
   // ConversationMessage.tsx split into transcript/* modules by U47-3 — now 317 lines.
   // tool-activity.tsx split into tool/* modules by U47-4 — now 452 lines.
   // AgentChatView.tsx split into agent/* modules by U47-5 — now 371 lines.

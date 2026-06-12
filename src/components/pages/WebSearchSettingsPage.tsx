@@ -125,7 +125,7 @@ export function WebSearchSettingsPage(props: {
           onValueChange={(provider) => setDraft((current) => ({ ...current, provider: provider as WebSearchSettings['provider'] }))}
         />
         <TextField
-          label="Brave API Key"
+          label={t('Brave API 密钥', 'Brave API Key')}
           type="password"
           value={draft.braveApiKey ?? ''}
           onValueChange={(braveApiKey) => setDraft((current) => ({ ...current, braveApiKey }))}
@@ -133,7 +133,7 @@ export function WebSearchSettingsPage(props: {
           autoComplete="off"
         />
         <TextField
-          label="Bing API Key"
+          label={t('Bing API 密钥', 'Bing API Key')}
           type="password"
           value={draft.bingApiKey ?? ''}
           onValueChange={(bingApiKey) => setDraft((current) => ({ ...current, bingApiKey }))}

@@ -202,24 +202,24 @@ export function McpPluginModal(props: {
       {draft.transport === 'stdio' ? (
         <>
           <TextField
-            label="Command"
+            label={localize(language, '命令', 'Command')}
             value={draft.command ?? ''}
             onValueChange={(value) => setDraft((current) => ({ ...current, command: value }))}
           />
           <TextAreaField
-            label="Arguments"
+            label={localize(language, '参数', 'Arguments')}
             value={draft.argsText}
             placeholder={'--flag\nvalue'}
             helper={localize(language, '每行一个参数。', 'One argument per line.')}
             onValueChange={(value) => setDraft((current) => ({ ...current, argsText: value }))}
           />
           <TextField
-            label="CWD"
+            label={localize(language, 'CWD', 'CWD')}
             value={draft.cwd ?? ''}
             onValueChange={(value) => setDraft((current) => ({ ...current, cwd: value }))}
           />
           <TextAreaField
-            label="Environment"
+            label={localize(language, '环境', 'Environment')}
             value={draft.envText}
             placeholder="KEY=value"
             helper={localize(language, '每行一个 KEY=value。', 'One KEY=value per line.')}
@@ -228,7 +228,7 @@ export function McpPluginModal(props: {
         </>
       ) : (
         <TextField
-          label="Base URL"
+          label={localize(language, '基础 URL', 'Base URL')}
           value={draft.baseUrl}
           onValueChange={(value) => setDraft((current) => ({ ...current, baseUrl: value }))}
         />
@@ -327,6 +327,7 @@ export function McpPluginModal(props: {
 }
 
 export function ModalShell(props: { title: string; subtitle: string; children: ReactNode; className?: string; onClose?: () => void }): JSX.Element {
+  const language = useUiLanguage();
   const titleId = useId();
   const subtitleId = useId();
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -353,7 +354,7 @@ export function ModalShell(props: { title: string; subtitle: string; children: R
             <div className="page-subtitle" id={subtitleId}>{props.subtitle}</div>
           </div>
           {props.onClose ? (
-            <IconButton className="modal-close-button" icon={<X size={16} aria-hidden="true" />} label="Close" onClick={props.onClose} />
+            <IconButton className="modal-close-button" icon={<X size={16} aria-hidden="true" />} label={localize(language, '关闭', 'Close')} onClick={props.onClose} />
           ) : null}
         </div>
         <div className="modal-stack">{props.children}</div>

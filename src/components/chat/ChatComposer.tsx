@@ -453,7 +453,6 @@ export function ChatComposer(props: {
                 className="agent-context-ring"
                 style={{ background: `conic-gradient(var(--brand) ${Math.round(contextUsagePercent * 360)}deg, rgba(148, 163, 184, 0.24) 0deg)` }}
                 aria-label={contextUsageLabel}
-                tabIndex={0}
               >
                 <span />
               </div>
@@ -564,8 +563,8 @@ function PermissionImpactSummary(props: { impact?: AgentPermissionImpact }): JSX
 
   return (
     <div className="agent-permission-impact">
-      {entries.map((entry) => <span key={entry}>{entry}</span>)}
-      {detailEntries.map((entry) => <span key={`detail:${entry}`}>{entry}</span>)}
+      {entries.map((entry, index) => <span key={`impact-${index}`}>{entry}</span>)}
+      {detailEntries.map((entry, index) => <span key={`detail-${index}`}>{entry}</span>)}
     </div>
   );
 }
