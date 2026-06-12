@@ -490,6 +490,10 @@ function isReadOnlyMcpToolResult(
   ) {
     return true;
   }
+  if (typeof result.mcp.readOnly === 'boolean') {
+    return result.mcp.readOnly;
+  }
+  // Legacy results persisted before the structured flag existed only carry the rendered summary.
   return /\brisk=read\b/i.test(result.mcp.policySummary ?? '');
 }
 

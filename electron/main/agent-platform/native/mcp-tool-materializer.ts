@@ -262,7 +262,8 @@ function toNativeMcpToolDefinition(plugin: McpPlugin, mcpTool: UnityMcpTool, use
       toolName: mcpTool.name,
       args: input,
       exposedToolName: name,
-      mcpPolicySummary: policy.summary
+      mcpPolicySummary: policy.summary,
+      mcpPolicyReadOnly: policy.readOnly
     })
   };
 }

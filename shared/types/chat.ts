@@ -87,6 +87,8 @@ export interface AgentToolMcpResult {
   target: string;
   exposedName?: string;
   policySummary?: string;
+  /** Structured read-only flag from the resolved MCP tool policy; authoritative over policySummary text. */
+  readOnly?: boolean;
   timeoutMs: number;
   argsSize?: number;
   contentPartCount?: number;

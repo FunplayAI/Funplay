@@ -498,6 +498,25 @@ const binarySafeFileCheckpoints: Migration = {
   }
 };
 
+const subagentRuns: Migration = {
+  version: 14,
+  description: 'Persist background subagent run records across restarts',
+  up(database) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS subagent_runs (
+        id TEXT PRIMARY KEY,
+        parent_session_id TEXT,
+        status TEXT NOT NULL,
+        agent_name TEXT,
+        prompt TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        result_summary TEXT
+      );
+    `);
+  }
+};
+
 export const MIGRATIONS: readonly Migration[] = [
   initial,
   usageTracking,
@@ -511,7 +530,8 @@ export const MIGRATIONS: readonly Migration[] = [
   mcpRawAudits,
   assetGenerationProjectLedger,
   removeClaudeRuntime,
-  binarySafeFileCheckpoints
+  binarySafeFileCheckpoints,
+  subagentRuns
 ];
 
 function readUserVersion(database: Database.Database): number {

@@ -1,5 +1,6 @@
 import { generateText, type ModelMessage } from 'ai';
 import { createLanguageModel } from '../../ai-provider';
+import { drainBackgroundCommandNoticeMessage } from '../persistent-terminal-store';
 import { buildNativeToolLoopMessages } from '../model-message-builder';
 import { ProjectInstructionTracker } from '../project-instruction-tracker';
 import { createProviderRuntimeController } from '../provider-runtime-events';
@@ -108,6 +109,10 @@ export async function runNativeAiSdkToolLoop(
 
   while (true) {
     params.abortSignal?.throwIfAborted();
+    const backgroundNotice = drainBackgroundCommandNoticeMessage(params.project.id);
+    if (backgroundNotice) {
+      loopState.messages.push({ role: 'user', content: backgroundNotice });
+    }
     if (loopState.stepCount >= maxSteps) {
       providerController.completeRun(`已达到 ${maxSteps} 轮工具循环步数预算上限。`);
       emitCoreStateStage('completed', `工具循环达到 ${maxSteps} 轮步数预算上限，已强制收尾。`);

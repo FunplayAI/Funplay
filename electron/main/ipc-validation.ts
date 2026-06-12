@@ -20,7 +20,9 @@ const projectSetupModeSchema = z.enum(['create', 'import']);
 const engineProjectDimensionSchema = z.enum(['2d', '3d', 'unknown']);
 const gameTemplateIdSchema = z.enum(['generic-workspace', 'engine-game-prototype', '2d-roguelike', 'narrative-adventure', 'topdown-action']);
 const aiProviderProtocolSchema = z.enum(['openai-compatible', 'anthropic', 'google', 'bedrock', 'vertex']);
-const aiProviderApiModeSchema = z.custom<AiProviderApiMode>((value) => ['responses', 'chat'].includes(String(value)));
+const aiProviderApiModeSchema = z.custom<AiProviderApiMode>((value) =>
+  ['responses', 'chat', 'anthropic-messages'].includes(String(value))
+);
 export const aiProviderAuthStyleSchema = z.custom<AiProviderAuthStyle>((value) =>
   ['api_key', 'auth_token', 'env_only', 'custom_header'].includes(String(value))
 );
@@ -107,7 +109,11 @@ const aiProviderModelSchema = z.object({
     maxOutputTokens: z.number().int().min(1).max(1_000_000).optional(),
     supportsEffort: z.boolean().optional(),
     supportedEffortLevels: z.array(projectSessionEffortSchema).optional(),
-    supportsAdaptiveThinking: z.boolean().optional()
+    supportsAdaptiveThinking: z.boolean().optional(),
+    cachingShape: z.enum(['implicit', 'anthropic-explicit', 'none']).optional(),
+    preserveReasoning: z.boolean().optional(),
+    parallelToolCalls: z.boolean().optional(),
+    anthropicEndpoint: z.boolean().optional()
   }).strict().optional()
 }).strict() satisfies z.ZodType<AiProviderModel>;
 const aiProviderMetaSchema = z.object({

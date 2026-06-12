@@ -65,6 +65,14 @@ import {
   upsertRuntimeRunRecord,
   type UpsertRuntimeRunInput
 } from './store-internal/runtime-runs';
+import {
+  getSubagentRunRecord,
+  listSubagentRunRecords,
+  markRunningSubagentRunRecordsInterrupted,
+  upsertSubagentRunRecord,
+  type SubagentRunRecord,
+  type UpsertSubagentRunInput
+} from './store-internal/subagent-runs';
 import { runMigrations } from './store-internal/migrations';
 import { persistStateSync } from './store-internal/state-persistence';
 import { restoreSessionWritePermissionGrant } from './agent-platform/permission-session-store';
@@ -73,6 +81,7 @@ export type {
   PersistedRuntimeRunRecord,
   PersistedRuntimeRunRequest
 } from './store-internal/row-types';
+export type { SubagentRunRecord } from './store-internal/subagent-runs';
 
 let db: Database.Database | null = null;
 let memoryState: AppState = {
@@ -139,6 +148,7 @@ export async function initializeStore(userDataPath: string, defaultProjectDirect
   db = new Database(databasePath);
   runMigrations(db);
   markPendingRuntimeRunsInterruptedOnStartup(db);
+  markRunningSubagentRunRecordsInterrupted(db);
   expirePendingPermissionAuditRecords(db, new Date().toISOString());
 
   const unitySettingsRow = db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(SETTINGS_KEYS.unity) as SettingRow | undefined;
@@ -318,6 +328,25 @@ export function getRuntimeRun(runId: string): ReturnType<typeof getRuntimeRunRec
 
 export function listRuntimeRuns(projectId?: string): ReturnType<typeof listRuntimeRunRecords> {
   return listRuntimeRunRecords(requireDb(), projectId);
+}
+
+// Subagent run accessors tolerate an uninitialized store (getOptionalDb): the
+// native runtime also runs in tests/processes that never call initializeStore.
+export function tryUpsertSubagentRun(record: UpsertSubagentRunInput): void {
+  const database = getOptionalDb();
+  if (database) {
+    upsertSubagentRunRecord(database, record);
+  }
+}
+
+export function getSubagentRun(id: string): SubagentRunRecord | undefined {
+  const database = getOptionalDb();
+  return database ? getSubagentRunRecord(database, id) : undefined;
+}
+
+export function listSubagentRuns(parentSessionId?: string): SubagentRunRecord[] {
+  const database = getOptionalDb();
+  return database ? listSubagentRunRecords(database, parentSessionId) : [];
 }
 
 export function upsertFileCheckpointEntry(record: UpsertFileCheckpointEntryInput): void {

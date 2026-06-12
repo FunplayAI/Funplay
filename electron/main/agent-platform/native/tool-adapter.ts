@@ -9,6 +9,7 @@ import { executeAgentToolAction, type AgentToolExecutionOptions, type WorkspaceT
 import { resolveMcpToolPolicy, type ResolvedMcpToolPolicy } from '../mcp-policy';
 import { makeSessionMcpToolPermissionKey } from '../permission-session-store';
 import { runAgentLifecycleHooks, type AgentLifecycleHookStageEvent } from '../agent-hooks';
+import { consumePendingBackgroundCommandNotices } from '../persistent-terminal-store';
 import type { ProjectInstructionGuardResult } from '../project-instruction-tracker';
 import type { AgentToolFamily } from '../tool-policy';
 
@@ -788,6 +789,7 @@ export function createNativeWorkspaceTools(options: NativeWorkspaceToolAdapterOp
                   abortSignal: options.abortSignal,
                   appState: options.appState,
                   persistAppState: options.persistAppState,
+                  permissionMode: options.permissionContext?.permission.mode,
                   requestUserInput: options.requestMcpUserInput
                 }
               )
@@ -803,6 +805,9 @@ export function createNativeWorkspaceTools(options: NativeWorkspaceToolAdapterOp
             output.isError ? 'failed' : 'completed'
           );
           const appendedContext = [...postToolHooks.appendedContext];
+          // Background run_command completions ride the same appended-context seam as
+          // lifecycle hooks so the model sees them on the next loop step.
+          appendedContext.push(...consumePendingBackgroundCommandNotices(options.project.id));
           if (NATIVE_NOTIFICATION_TOOL_NAMES.has(definition.name)) {
             const notificationHooks = await runWorkspaceToolLifecycleHooks(
               options,

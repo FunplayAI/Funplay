@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { resolveRunCommandShell } from './system-shell';
+import { resolveRunCommandShell, resolveSandboxedRunCommandShell } from './system-shell';
 import { listZipEntries, readZipEntryText } from '../zip-reader';
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
@@ -81,6 +81,7 @@ import {
   readPersistentTerminal,
   readPersistentTerminalMetadata,
   snapshotPersistentTerminalOutput,
+  startBackgroundCommandJob,
   startPersistentTerminal,
   stopPersistentTerminal,
   writePersistentTerminal
@@ -601,6 +602,82 @@ function normalizeCommandTimeout(timeoutMs: number | undefined): number {
   return Math.max(1_000, Math.min(Math.floor(timeoutMs), MAX_COMMAND_TIMEOUT_MS));
 }
 
+let cachedFunplayUserDataWritePaths: string[] | undefined;
+
+/** Funplay user-data dirs that stay writable inside the command sandbox; empty outside Electron. */
+async function resolveFunplayUserDataWritePaths(): Promise<string[]> {
+  if (cachedFunplayUserDataWritePaths) {
+    return cachedFunplayUserDataWritePaths;
+  }
+  let paths: string[] = [];
+  if (process.versions.electron) {
+    try {
+      const { app } = await import('electron');
+      const userDataPath = app.getPath('userData');
+      if (userDataPath) {
+        paths = [userDataPath];
+      }
+    } catch {
+      paths = [];
+    }
+  }
+  cachedFunplayUserDataWritePaths = paths;
+  return paths;
+}
+
+interface ResolvedRunCommandSpawn {
+  shell: string;
+  args: string[];
+  sandboxApplied: boolean;
+  networkAllowed: boolean;
+  /** Model-visible sandbox status line; undefined for internal callers without a permission mode. */
+  statusLine?: string;
+}
+
+/**
+ * Sandbox level derives from the agent permission mode:
+ * read-only → workspace-write + no-network; ask / full-access → workspace-write;
+ * full-access + unsandboxed:true (each run explicitly user-approved upstream) → no sandbox.
+ * Internal callers without a permission mode (lifecycle hooks, verification) keep the
+ * legacy unsandboxed spawn.
+ */
+async function resolveRunCommandSpawn(input: {
+  command: string;
+  rootPath: string;
+  permissionMode?: AgentToolExecutionOptions['permissionMode'];
+  unsandboxed?: boolean;
+}): Promise<ResolvedRunCommandSpawn> {
+  if (!input.permissionMode) {
+    return {
+      ...resolveRunCommandShell(input.command),
+      sandboxApplied: false,
+      networkAllowed: true
+    };
+  }
+  if (input.unsandboxed === true && input.permissionMode === 'full-access') {
+    return {
+      ...resolveRunCommandShell(input.command),
+      sandboxApplied: false,
+      networkAllowed: true,
+      statusLine: '沙箱：已禁用（显式请求）'
+    };
+  }
+  const resolved = resolveSandboxedRunCommandShell(input.command, {
+    projectPath: input.rootPath,
+    allowNetwork: input.permissionMode !== 'read-only',
+    extraWritePaths: [tmpdir(), ...(await resolveFunplayUserDataWritePaths())]
+  });
+  return {
+    shell: resolved.shell,
+    args: resolved.args,
+    sandboxApplied: resolved.sandbox.applied,
+    networkAllowed: resolved.sandbox.networkAllowed,
+    statusLine: resolved.sandbox.applied
+      ? `沙箱：workspace-write${resolved.sandbox.networkAllowed ? '' : '（已禁用网络）'}`
+      : `沙箱：不可用（${resolved.sandbox.detail}），已降级为非沙箱执行`
+  };
+}
+
 function hasShellBackgroundControlOperator(command: string): boolean {
   let quote: '"' | "'" | undefined;
   let escaped = false;
@@ -638,54 +715,6 @@ function hasShellBackgroundControlOperator(command: string): boolean {
     }
   }
   return false;
-}
-
-function stripTrailingShellBackgroundControlOperator(command: string): string | undefined {
-  let quote: '"' | "'" | undefined;
-  let escaped = false;
-  let backgroundIndex = -1;
-  let backgroundCount = 0;
-  for (let index = 0; index < command.length; index += 1) {
-    const char = command[index];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (char === '\\' && quote !== "'") {
-      escaped = true;
-      continue;
-    }
-    if (quote) {
-      if (char === quote) {
-        quote = undefined;
-      }
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      quote = char;
-      continue;
-    }
-    if (char !== '&') {
-      continue;
-    }
-
-    const previous = command[index - 1];
-    const next = command[index + 1];
-    if (previous === '&' || next === '&' || previous === '>' || next === '>') {
-      continue;
-    }
-    if (next === undefined || /\s|[;|)]/.test(next) || previous === undefined || /\s|[;|(<]/.test(previous)) {
-      backgroundIndex = index;
-      backgroundCount += 1;
-    }
-  }
-
-  if (backgroundCount !== 1 || backgroundIndex < 0 || command.slice(backgroundIndex + 1).trim()) {
-    return undefined;
-  }
-
-  const foregroundCommand = command.slice(0, backgroundIndex).trim();
-  return foregroundCommand || undefined;
 }
 
 function stopCommandProcess(child: ChildProcess, signal: NodeJS.Signals): void {
@@ -1223,47 +1252,11 @@ async function runWorkspaceCommand(
     throw new Error('run_command 缺少 command。');
   }
 
-  const { cwdPath, relativeCwd } = resolveCommandCwd(project, action.cwd);
+  const { rootPath, cwdPath, relativeCwd } = resolveCommandCwd(project, action.cwd);
   const timeoutMs = normalizeCommandTimeout(action.timeoutMs);
-  const { shell, args: shellArgs } = resolveRunCommandShell(command);
   if (hasShellBackgroundControlOperator(command)) {
-    const terminalCommand = stripTrailingShellBackgroundControlOperator(command);
-    if (terminalCommand) {
-      const started = startPersistentTerminal(project, {
-        name: 'Background command',
-        command: terminalCommand,
-        cwd: action.cwd
-      });
-      return {
-        ok: true,
-        summary: [
-          'run_command 检测到末尾后台符 &，已改用持久终端启动该任务。',
-          `原命令：${command}`,
-          `终端命令：${terminalCommand}`,
-          `工作目录：${relativeCwd}`,
-          '',
-          started.summary
-        ].join('\n'),
-        command: {
-          command,
-          cwd: relativeCwd,
-          timedOut: false,
-          stdout: started.summary
-        },
-        terminal: {
-          ...started.terminal,
-          command: terminalCommand
-        },
-        artifacts: [
-          {
-            type: 'terminal',
-            title: terminalCommand
-          }
-        ]
-      };
-    }
     const message =
-      'run_command 不执行 shell 后台控制符 &。需要启动 dev server、HTTP server、watch 或长期运行任务时，请改用 terminal_start，然后用 terminal_read 查看输出。';
+      'run_command 不执行 shell 后台控制符 &。需要后台执行会自行结束的命令时，请改用 run_command 的 background:true（完成后退出码与输出尾部会自动注入后续步骤）；dev server、HTTP server、watch 等长期任务请改用 terminal_start，然后用 terminal_read 查看输出。';
     return {
       ok: false,
       isError: true,
@@ -1277,13 +1270,55 @@ async function runWorkspaceCommand(
     };
   }
 
+  const spawnSpec = await resolveRunCommandSpawn({
+    command,
+    rootPath,
+    permissionMode: options.permissionMode,
+    unsandboxed: action.unsandboxed
+  });
+
+  if (action.background === true) {
+    const job = startBackgroundCommandJob(project, {
+      command,
+      cwd: action.cwd,
+      spawn: {
+        shell: spawnSpec.shell,
+        args: spawnSpec.args
+      },
+      sandboxStatus: spawnSpec.statusLine
+    });
+    return {
+      ok: true,
+      summary: [
+        `后台命令已启动。Job ID: ${job.jobId}`,
+        `命令：${command}`,
+        `工作目录：${relativeCwd}`,
+        spawnSpec.statusLine ?? '',
+        '完成后退出码与输出尾部会自动注入后续步骤；也可用 terminal_read 轮询输出、terminal_stop 终止该 job。'
+      ].filter(Boolean).join('\n'),
+      command: {
+        command,
+        cwd: relativeCwd,
+        timedOut: false,
+        stdout: job.summary
+      },
+      terminal: job.terminal,
+      artifacts: [
+        {
+          type: 'terminal',
+          title: command
+        }
+      ]
+    };
+  }
+
   return await new Promise<WorkspaceToolActionResult>((resolveResult) => {
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let timedOut = false;
     let settled = false;
 
-    const child = spawn(shell, shellArgs, {
+    const child = spawn(spawnSpec.shell, spawnSpec.args, {
       cwd: cwdPath,
       env: {
         ...process.env,
@@ -1375,10 +1410,14 @@ async function runWorkspaceCommand(
         summary: [
           `命令：${command}`,
           `工作目录：${relativeCwd}`,
+          spawnSpec.statusLine ?? '',
           `退出码：${code ?? 'none'}`,
           signal ? `信号：${signal}` : '',
           timedOut ? `状态：timeout (${timeoutMs}ms)` : '',
           truncated.truncated ? '输出：已截断' : '',
+          !ok && spawnSpec.sandboxApplied
+            ? `提示：该命令运行在 workspace-write 沙箱中（写入仅限项目目录与临时目录${spawnSpec.networkAllowed ? '' : '，且网络已禁用'}）。若失败源于沙箱限制，可在 full-access 模式用 unsandboxed:true 显式申请豁免。`
+            : '',
           '',
           truncated.output
         ]
@@ -1578,6 +1617,8 @@ function createMcpMetadata(input: {
     metadata.exposedName = input.action.exposedToolName;
   if (input.action.type === 'call_mcp_tool' && input.action.mcpPolicySummary)
     metadata.policySummary = input.action.mcpPolicySummary;
+  if (input.action.type === 'call_mcp_tool' && typeof input.action.mcpPolicyReadOnly === 'boolean')
+    metadata.readOnly = input.action.mcpPolicyReadOnly;
   if (typeof input.argsSize === 'number') metadata.argsSize = input.argsSize;
   if (typeof input.contentPartCount === 'number') metadata.contentPartCount = input.contentPartCount;
   if (input.failureKind) metadata.failureKind = input.failureKind;

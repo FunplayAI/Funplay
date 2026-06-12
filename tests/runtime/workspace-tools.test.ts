@@ -608,11 +608,11 @@ test('workspace run_command executes in project with timeout and cwd guards', as
       command: 'node -e "setInterval(() => {}, 1000)" &',
       timeoutMs: 5_000
     });
-    assert.equal(backgroundResult.ok, true);
-    assert.match(backgroundResult.summary, /已改用持久终端/);
-    assert.equal(backgroundResult.terminal?.status, 'running');
-    assert.equal(backgroundResult.terminal?.command, 'node -e "setInterval(() => {}, 1000)"');
-    assert.equal(backgroundResult.command?.timedOut, false);
+    assert.equal(backgroundResult.ok, false);
+    assert.equal(backgroundResult.isError, true);
+    assert.match(backgroundResult.summary, /已拒绝执行后台命令/);
+    assert.match(backgroundResult.summary, /background:true/);
+    assert.match(backgroundResult.summary, /terminal_start/);
 
     const timeoutResult = await executeWorkspaceToolAction(project, {
       type: 'run_command',

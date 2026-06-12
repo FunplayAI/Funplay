@@ -170,6 +170,17 @@ function diagnosticBase(provider?: AiProvider): Pick<NativeRuntimeDiagnostic, 'p
   };
 }
 
+/** Numeric HTTP status from structured error fields (error or its cause), if present. */
+function readStructuredStatusCode(error: unknown): number | undefined {
+  const errorRecord = isRecord(error) ? error : undefined;
+  const causeRecord = errorRecord && isRecord(errorRecord.cause) ? errorRecord.cause : undefined;
+  const value =
+    readErrorField(errorRecord ?? {}, ['statusCode', 'status', 'responseStatusCode']) ??
+    readErrorField(causeRecord ?? {}, ['statusCode', 'status', 'responseStatusCode']);
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number.parseInt(value, 10) : NaN;
+  return Number.isFinite(parsed) && parsed >= 100 && parsed <= 599 ? parsed : undefined;
+}
+
 export function classifyNativeRuntimeError(input: {
   error?: unknown;
   provider?: AiProvider;
@@ -190,6 +201,37 @@ export function classifyNativeRuntimeError(input: {
       severity: 'error',
       summary: '当前没有可用的 AI Provider。',
       suggestedAction: '到应用设置里配置并测试一个 AI Provider 后重试。'
+    });
+  }
+
+  // Structured status codes are authoritative; message regexes below are the
+  // fallback for transports that surface only flattened error strings.
+  const statusCode = readStructuredStatusCode(input.error);
+  if (statusCode === 429) {
+    return withBase({
+      code: 'native_rate_limited',
+      severity: 'warn',
+      summary: 'Provider 返回限流错误。',
+      suggestedAction: '稍后重试，或切换到额度更充足的 provider/model。'
+    });
+  }
+  if (statusCode === 502 || statusCode === 503 || statusCode === 504 || statusCode === 529) {
+    return withBase({
+      code: 'native_overloaded',
+      severity: 'warn',
+      summary: 'Provider 暂时过载或网关不可用。',
+      suggestedAction: '稍后重试；如果持续失败，请检查 provider 服务状态或切换 provider。'
+    });
+  }
+  if (statusCode === 401 || statusCode === 403) {
+    return withBase({
+      code: 'native_auth_failed',
+      severity: 'error',
+      summary: 'Provider 认证失败。',
+      suggestedAction: '检查 API key/token、账号额度和 provider 的认证方式。',
+      recoveryActions: input.provider.providerMeta?.apiKeyUrl
+        ? [{ label: '打开 API key 页面', url: input.provider.providerMeta.apiKeyUrl }]
+        : undefined
     });
   }
   if (/context.*(too|exceed|exceeded|long|length)|prompt.*too.*long|maximum context|input.*too.*large/.test(message)) {

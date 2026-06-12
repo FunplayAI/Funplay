@@ -1,5 +1,8 @@
 import type { AiProvider, AiProviderApiMode } from '../../shared/types';
-import { resolveOpenAiCompatibleProviderProfile } from '../../shared/provider-catalog';
+import {
+  resolveOpenAiCompatibleProviderProfile,
+  resolveProviderEffortLevel
+} from '../../shared/provider-catalog';
 import { materializeNativeProvider } from './agent-platform/provider-resolver';
 import type {
   OpenAiCompatibleTextResult,
@@ -14,10 +17,12 @@ import {
   isRecord,
   truncateText,
   createApiError,
+  postAnthropicMessagesStream,
   postChatCompletionsStream,
   postResponsesStream
 } from './openai-compatible-transport';
 import {
+  AnthropicMessagesAdapter,
   ChatCompletionsAdapter,
   ResponsesAdapter
 } from './openai-compatible-adapters';
@@ -179,7 +184,45 @@ function withStreamEnabled(body: unknown): unknown {
 }
 
 function createProtocolAdapter(apiMode: AiProviderApiMode): OpenAiCompatibleProtocolAdapter {
-  return apiMode === 'responses' ? new ResponsesAdapter() : new ChatCompletionsAdapter();
+  if (apiMode === 'responses') {
+    return new ResponsesAdapter();
+  }
+  if (apiMode === 'anthropic-messages') {
+    return new AnthropicMessagesAdapter();
+  }
+  return new ChatCompletionsAdapter();
+}
+
+function postOpenAiCompatibleStream(input: {
+  apiMode: AiProviderApiMode;
+  requestUrl: string;
+  provider: AiProvider;
+  requestBody: unknown;
+  abortSignal?: AbortSignal;
+  onDelta?: (delta: string, accumulated: string) => void;
+  onReasoningDelta?: (delta: string, accumulated: string) => void;
+}): Promise<{ text: string; reasoningContent?: string; responseBody: unknown }> {
+  if (input.apiMode === 'responses') {
+    return postResponsesStream(input.requestUrl, input.provider, input.requestBody, input.abortSignal, input.onDelta);
+  }
+  if (input.apiMode === 'anthropic-messages') {
+    return postAnthropicMessagesStream(
+      input.requestUrl,
+      input.provider,
+      input.requestBody,
+      input.abortSignal,
+      input.onDelta,
+      input.onReasoningDelta
+    );
+  }
+  return postChatCompletionsStream(
+    input.requestUrl,
+    input.provider,
+    input.requestBody,
+    input.abortSignal,
+    input.onDelta,
+    input.onReasoningDelta
+  );
 }
 
 export async function generateOpenAiCompatibleStreamingToolStep(input: GenerateOpenAiCompatibleToolStepInput): Promise<OpenAiCompatibleToolStepResult> {
@@ -194,22 +237,21 @@ export async function generateOpenAiCompatibleStreamingToolStep(input: GenerateO
     system: input.system,
     messages: input.messages,
     tools: input.tools,
-    maxOutputTokens: input.maxOutputTokens ?? 4096
+    maxOutputTokens: input.maxOutputTokens ?? 4096,
+    effort: resolveProviderEffortLevel(provider, input.effort)
   };
   const requestBody = withStreamEnabled(
     applyOpenAiCompatibleRequestBodyTransforms(adapter.serializeToolStepRequest(request), request, apiMode)
   );
-  const streamResult =
-    apiMode === 'responses'
-      ? await postResponsesStream(requestUrl, provider, requestBody, input.abortSignal, input.onDelta)
-      : await postChatCompletionsStream(
-          requestUrl,
-          provider,
-          requestBody,
-          input.abortSignal,
-          input.onDelta,
-          input.onReasoningDelta
-        );
+  const streamResult = await postOpenAiCompatibleStream({
+    apiMode,
+    requestUrl,
+    provider,
+    requestBody,
+    abortSignal: input.abortSignal,
+    onDelta: input.onDelta,
+    onReasoningDelta: input.onReasoningDelta
+  });
   const parsed = adapter.parseResponse(streamResult.responseBody);
   const toolCalls = adapter.parseToolCalls(streamResult.responseBody);
   repairOpenAiCompatibleToolCalls(toolCalls, input.tools);
@@ -274,17 +316,15 @@ export async function generateOpenAiCompatibleText(input: GenerateOpenAiCompatib
   const requestBody = withStreamEnabled(
     applyOpenAiCompatibleRequestBodyTransforms(adapter.serializeRequest(request), request, apiMode)
   );
-  const streamResult =
-    apiMode === 'responses'
-      ? await postResponsesStream(requestUrl, provider, requestBody, input.abortSignal, input.onDelta)
-      : await postChatCompletionsStream(
-          requestUrl,
-          provider,
-          requestBody,
-          input.abortSignal,
-          input.onDelta,
-          input.onReasoningDelta
-        );
+  const streamResult = await postOpenAiCompatibleStream({
+    apiMode,
+    requestUrl,
+    provider,
+    requestBody,
+    abortSignal: input.abortSignal,
+    onDelta: input.onDelta,
+    onReasoningDelta: input.onReasoningDelta
+  });
   const parsed = adapter.parseResponse(streamResult.responseBody);
 
   if (!parsed.text.trim()) {

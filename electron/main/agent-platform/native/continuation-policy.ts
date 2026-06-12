@@ -191,25 +191,6 @@ function parseTodoSnapshotFromInput(input: Record<string, unknown> | undefined):
   return createTodoSnapshot(items);
 }
 
-function parseTodoSnapshotFromSummary(summary: string): NativeTodoSnapshot | undefined {
-  const items = summary
-    .split('\n')
-    .map((line): NativeTodoItemSnapshot | undefined => {
-      const match = line.match(/^-\s+\[(pending|in_progress|completed|cancelled)]\s+(.+?)(?:\s+\((high|medium|low)\))?:\s+(.+)$/);
-      if (!match) {
-        return undefined;
-      }
-      return {
-        id: match[2]?.trim() || undefined,
-        content: match[4]?.trim() || '',
-        status: match[1] as NativeTodoItemStatus,
-        priority: normalizeTodoPriority(match[3])
-      };
-    })
-    .filter((item): item is NativeTodoItemSnapshot => Boolean(item?.content));
-  return createTodoSnapshot(items);
-}
-
 export function resolveTodoSnapshotFromToolResult(input: {
   toolName: string;
   toolInput?: Record<string, unknown>;
@@ -219,7 +200,9 @@ export function resolveTodoSnapshotFromToolResult(input: {
   if (input.toolName !== 'update_todo_list' || input.isError) {
     return undefined;
   }
-  return parseTodoSnapshotFromInput(input.toolInput) ?? parseTodoSnapshotFromSummary(input.summary);
+  // The structured tool input is the only source of truth — the rendered
+  // summary text is a display artifact and is never re-parsed host-side.
+  return parseTodoSnapshotFromInput(input.toolInput);
 }
 
 function selectNativeToolLoopSession(project: Project, sessionId?: string): ProjectSession | undefined {

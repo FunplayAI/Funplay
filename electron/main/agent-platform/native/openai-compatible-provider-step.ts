@@ -110,6 +110,7 @@ export async function runOpenAiCompatibleProviderStep(input: {
           messages: stepMessages,
           tools: input.toolPool.openAiCompatibleTools,
           maxOutputTokens: input.maxOutputTokens,
+          effort: input.params.context.sessionEffort,
           abortSignal: stepAbort.signal,
           onDelta: (delta, accumulated) => {
             sawProviderOutput = true;

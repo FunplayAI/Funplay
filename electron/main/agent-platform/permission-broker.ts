@@ -2,6 +2,7 @@ import type { GenericAgentRuntimeParams } from './types';
 import type { AgentToolDefinition, AgentToolRisk } from './tool-registry';
 import type { AgentPermissionImpact, AgentPermissionRule } from '../../../shared/types';
 import { toProjectRelativePermissionPath } from './permission-session-store';
+import { describeRunCommandSandboxStatus } from './system-shell';
 
 export type AgentToolPermissionDecision = 'allow' | 'deny';
 
@@ -137,6 +138,7 @@ function formatPermissionDetail(request: AgentToolPermissionRequest): string {
       `检查点策略：${request.tool.checkpointPolicy}`,
       impact.paths?.length ? `路径：${impact.paths.join(' · ')}` : '',
       impact.commands?.length ? `命令：${impact.commands.join(' · ')}` : '',
+      request.tool.name === 'run_command' ? `沙箱：${describeRunCommandSandboxStatus(request.input?.unsandboxed === true)}` : '',
       impact.mcp?.pluginName || impact.mcp?.pluginId ? `MCP Server：${impact.mcp.pluginName ?? impact.mcp.pluginId}` : '',
       impact.mcp?.toolName ? `MCP Tool：${impact.mcp.toolName}` : '',
       impact.mcp?.permission ? `MCP 策略：${impact.mcp.permission}/${impact.mcp.risk ?? 'infer'}` : '',

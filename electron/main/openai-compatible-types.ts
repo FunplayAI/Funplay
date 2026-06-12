@@ -1,4 +1,5 @@
-import type { AiProvider, AiProviderApiMode } from '../../shared/types';
+import type { AiProvider, AiProviderApiMode, ProjectSessionEffort } from '../../shared/types';
+import type { ResolvedProviderEffortLevel } from '../../shared/provider-catalog';
 
 export interface OpenAiCompatibleTextResult {
   text: string;
@@ -76,6 +77,8 @@ export interface GenerateOpenAiCompatibleToolStepInput {
   messages: OpenAiCompatibleToolMessage[];
   tools: OpenAiCompatibleToolDefinition[];
   maxOutputTokens?: number;
+  /** Session effort request; mapped to a provider reasoning knob only when the catalog declares supportsEffort. */
+  effort?: ProjectSessionEffort;
   abortSignal?: AbortSignal;
   onDelta?: (delta: string, accumulated: string) => void;
   onReasoningDelta?: (delta: string, accumulated: string) => void;
@@ -100,6 +103,8 @@ export interface OpenAiCompatibleToolStepRequest {
   messages: OpenAiCompatibleToolMessage[];
   tools: OpenAiCompatibleToolDefinition[];
   maxOutputTokens: number;
+  /** Capability-clamped effort level (never 'auto'); adapters map it onto their wire format. */
+  effort?: ResolvedProviderEffortLevel;
 }
 
 export interface OpenAiCompatibleParsedResponse {

@@ -1,6 +1,7 @@
 import { stat, readFile } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve } from 'node:path';
 import type {
+  AgentPermissionMode,
   AgentToolArtifact,
   AgentToolBrowserResult,
   AgentToolChangedFile,
@@ -36,7 +37,7 @@ export const MAX_FIND_FILE_RESULTS = 120;
 export const MAX_PROJECT_SEARCH_RESULTS = 50;
 export const MAX_READ_RANGE_LINES = 2000;
 export const DEFAULT_COMMAND_TIMEOUT_MS = 30_000;
-export const MAX_COMMAND_TIMEOUT_MS = 120_000;
+export const MAX_COMMAND_TIMEOUT_MS = 600_000;
 export const MAX_COMMAND_OUTPUT_CHARS = 64_000;
 export const MAX_MEMORY_SEARCH_RESULTS = 10;
 export const MAX_MEMORY_TOOL_CHARS = 12_000;
@@ -328,6 +329,8 @@ export type WorkspaceToolAction =
       command: string;
       cwd?: string;
       timeoutMs?: number;
+      background?: boolean;
+      unsandboxed?: boolean;
       reason?: string;
     }
   | {
@@ -440,6 +443,7 @@ export type WorkspaceToolAction =
       args?: Record<string, unknown>;
       exposedToolName?: string;
       mcpPolicySummary?: string;
+      mcpPolicyReadOnly?: boolean;
     }
   | {
       type: 'funplay_memory_search';
@@ -495,6 +499,9 @@ export type WorkspaceToolAction =
       scope?: string;
       expectedOutput?: string;
       maxSteps?: number;
+      agent?: string;
+      mode?: 'investigator' | 'worker';
+      model?: string;
     }
   | {
       type: 'run_subagents';
@@ -502,8 +509,10 @@ export type WorkspaceToolAction =
         task: string;
         scope?: string;
         expectedOutput?: string;
+        agent?: string;
       }>;
       maxSteps?: number;
+      mode?: 'investigator' | 'worker';
     }
   | {
       type: 'subagent_start';
@@ -512,6 +521,9 @@ export type WorkspaceToolAction =
       scope?: string;
       expectedOutput?: string;
       maxSteps?: number;
+      agent?: string;
+      mode?: 'investigator' | 'worker';
+      model?: string;
     }
   | {
       type: 'subagent_status';
@@ -537,6 +549,8 @@ export interface AgentToolExecutionOptions {
   plugins?: McpPlugin[];
   checkpointSnapshotId?: string;
   abortSignal?: AbortSignal;
+  /** Agent permission mode driving the run_command sandbox level; absent for internal callers (hooks, verification). */
+  permissionMode?: AgentPermissionMode;
   appState?: AppState;
   persistAppState?: (state: AppState) => Promise<void>;
   requestUserInput?: (request: {

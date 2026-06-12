@@ -1,5 +1,7 @@
 import { streamText, type LanguageModel, type ModelMessage } from 'ai';
-import type { AgentCoreProviderStepResult } from '../../../../shared/types';
+import type { ProviderOptions } from '@ai-sdk/provider-utils';
+import type { AgentCoreProviderStepResult, AiProvider, ProjectSessionEffort } from '../../../../shared/types';
+import { resolveProviderEffortLevel, resolveProviderModelMetadata } from '../../../../shared/provider-catalog';
 import { aiSdkStepToAgentCoreProviderStepResult } from '../provider-step-adapter';
 import { ProjectInstructionTracker } from '../project-instruction-tracker';
 import type { GenericAgentRuntimeParams } from '../types';
@@ -54,6 +56,31 @@ const ANTHROPIC_EPHEMERAL_CACHE_CONTROL = {
     }
   }
 };
+
+// Maps the session effort to Anthropic provider options. The AI SDK anthropic
+// options accept effort low/medium/high/max directly; 'xhigh' (an OpenAI-side
+// level) clamps to 'max'. Gated on the catalog declaring supportsEffort so
+// older models never receive an unknown parameter.
+export function buildNativeAiSdkEffortProviderOptions(
+  provider: AiProvider,
+  sessionEffort: ProjectSessionEffort | undefined
+): ProviderOptions | undefined {
+  if (provider.protocol !== 'anthropic') {
+    return undefined;
+  }
+  const resolved = resolveProviderEffortLevel(provider, sessionEffort);
+  if (!resolved) {
+    return undefined;
+  }
+  const effort = resolved === 'xhigh' ? 'max' : resolved;
+  const capabilities = resolveProviderModelMetadata(provider)?.capabilities;
+  return {
+    anthropic: {
+      effort,
+      ...(capabilities?.supportsAdaptiveThinking ? { thinking: { type: 'adaptive' as const } } : {})
+    }
+  };
+}
 
 // Marks the LAST message of a request with an Anthropic prompt-cache breakpoint.
 // The source messages are never mutated — each step gets a fresh shallow copy of
@@ -157,6 +184,7 @@ export async function runNativeAiSdkProviderStep(input: {
         providerOptions: ANTHROPIC_EPHEMERAL_CACHE_CONTROL
       }
     : systemPrompt;
+  const effortProviderOptions = buildNativeAiSdkEffortProviderOptions(provider, input.params.context.sessionEffort);
   let result: ReturnType<typeof streamText> | undefined;
   let sawProviderOutput = false;
   for (let attempt = 0; attempt <= NATIVE_PROVIDER_STEP_MAX_RETRIES; attempt += 1) {
@@ -175,6 +203,7 @@ export async function runNativeAiSdkProviderStep(input: {
         tools: input.toolPool.toolSet,
         activeTools: [...input.toolPool.names],
         toolChoice: 'auto',
+        ...(effortProviderOptions ? { providerOptions: effortProviderOptions } : {}),
         prepareStep: ({ messages, stepNumber }) => {
           const dynamicInstructionMessage = input.instructionTracker.formatDynamicInstructionMessage();
           const baseMessages =

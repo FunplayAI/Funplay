@@ -57,6 +57,8 @@ export interface AgentToolDefinition<TInput extends Record<string, unknown> = Re
   toolLanguage?: AgentToolLanguageMetadata;
   validateInput?: (input: TInput, context: AgentToolValidationContext) => Promise<AgentToolValidationResult | undefined> | AgentToolValidationResult | undefined;
   checkPermissions?: (input: TInput, context: AgentToolPermissionCheckContext) => Promise<WorkspaceToolActionResult | undefined> | WorkspaceToolActionResult | undefined;
+  /** When true for a given input, session/global pre-approvals are bypassed and the user is prompted every time. */
+  requiresExplicitApproval?: (input: Partial<TInput> | undefined) => boolean;
   getPermissionDetail?: (input: TInput, context: AgentToolPermissionCheckContext) => string | undefined;
   isConcurrencySafe?: (input: Partial<TInput> | undefined) => boolean;
   classifySideEffect?: (input: Partial<TInput> | undefined) => AgentToolSideEffectClassification;
