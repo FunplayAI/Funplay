@@ -102,7 +102,7 @@ export function WebSearchSettingsPage(props: {
 
   return (
     <div className="web-search-settings-page">
-      <div className="claude-settings-header">
+      <div className="settings-section-header">
         <div>
           <strong>Web Search</strong>
           <div className="helper-copy">{t('配置搜索 provider、页面抽取 fallback、引用来源和运行指标。', 'Configure search providers, extraction fallback, citation sources, and runtime metrics.')}</div>

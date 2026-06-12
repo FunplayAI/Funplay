@@ -550,7 +550,7 @@ export function AppSettingsModal(props: {
 
           {tab === 'notifications' ? (
             <section className="app-settings-section notification-settings-section">
-              <div className="claude-settings-header">
+              <div className="settings-section-header">
                 <div>
                   <strong>{t('通知与提醒', 'Notifications and Reminders')}</strong>
                   <div className="helper-copy">{t('这里显示 Agent 通过内置通知工具创建的提醒任务。', 'Shows reminder tasks created by the built-in notification tools.')}</div>
@@ -600,7 +600,7 @@ export function AppSettingsModal(props: {
 
           {tab === 'about' ? (
             <section className="app-settings-section">
-              <div className="claude-settings-header">
+              <div className="settings-section-header">
                 <div>
                   <strong>{t('关于 Funplay', 'About Funplay')}</strong>
                   <div className="helper-copy">{t('桌面端 AI 游戏创作工作台。', 'A desktop AI game creation workspace.')}</div>

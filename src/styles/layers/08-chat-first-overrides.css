@@ -1078,7 +1078,6 @@
   background: var(--fp-app-settings-panel-bg);
 }
 
-.app-settings-section.claude-settings-section,
 .app-settings-section.memory-center-section,
 .app-settings-section.notification-settings-section,
 .app-settings-section.provider-settings-embedded,
@@ -1410,11 +1409,7 @@
   gap: 4px;
 }
 
-.claude-settings-section {
-  gap: 14px;
-}
-
-.claude-settings-header {
+.settings-section-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1424,92 +1419,6 @@
 .modal-actions.compact {
   flex: 0 0 auto;
   margin: 0;
-}
-
-.claude-runtime-status,
-.claude-install-list,
-.claude-session-import,
-.claude-session-list {
-  display: grid;
-  gap: 10px;
-}
-
-.claude-runtime-status {
-  padding: 12px;
-  border: 1px solid var(--fp-elevated-card-border);
-  border-radius: 12px;
-  background: var(--fp-elevated-card-bg);
-}
-
-.claude-runtime-status.ready {
-  border-color: rgba(34, 197, 94, 0.18);
-}
-
-.claude-runtime-status.missing {
-  border-color: rgba(245, 158, 11, 0.24);
-}
-
-.claude-install-row,
-.claude-session-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--fp-elevated-card-border);
-  border-radius: 12px;
-  background: var(--fp-elevated-card-bg);
-}
-
-.claude-install-row.selected {
-  border-color: rgba(99, 102, 241, 0.22);
-  background: rgba(99, 102, 241, 0.08);
-}
-
-.claude-install-row span,
-.claude-install-row em {
-  flex: 0 0 auto;
-  color: var(--text-soft);
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 800;
-}
-
-.claude-install-row code {
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  color: var(--text);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.claude-session-copy {
-  min-width: 0;
-  flex: 1 1 auto;
-  display: grid;
-  gap: 4px;
-}
-
-.claude-session-copy strong {
-  overflow: hidden;
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 850;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.claude-session-copy span,
-.claude-session-copy em {
-  overflow: hidden;
-  color: var(--text-soft);
-  font-size: 12px;
-  font-style: normal;
-  line-height: 1.45;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .web-search-settings-page,

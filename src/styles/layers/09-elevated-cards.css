@@ -2,7 +2,6 @@
  * their transparent appearance in light. The 12 selectors with their own
  * light background/border consume the elevated-card tokens directly in their
  * individual rules elsewhere in this file. */
-.claude-install-row,
 .runtime-summary-tile,
 .runtime-card,
 .runtime-capability-panel,
@@ -104,11 +103,6 @@
 :where(.notification-toast-dismiss:hover) {
   background: var(--fp-dark-border-strong);
   color: #fff;
-}
-
-:where(.claude-install-row.selected) {
-  border-color: rgba(129, 140, 248, 0.26);
-  background: var(--fp-dark-info-bg);
 }
 
 :where(.app-settings-nav-item:hover, .app-settings-nav-item.active) {

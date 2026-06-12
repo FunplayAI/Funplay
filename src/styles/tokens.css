@@ -442,10 +442,9 @@
   --fp-asset-status-planned-bg: rgba(107, 114, 128, 0.12);
   --fp-asset-status-planned-text: #6b7280;
 
-  /* Elevated card surfaces — shared by claude-runtime-status, claude-session-row,
-   * runtime-run-row, web-search-quality-panel, web-search-toggle-row labels,
-   * memory-file-row, memory-editor-panel, notification-task-row. Light alpha
-   * normalizes to 0.7 (previously 0.68-0.72). */
+  /* Elevated card surfaces — shared by runtime-run-row, web-search-quality-panel,
+   * web-search-toggle-row labels, memory-file-row, memory-editor-panel,
+   * notification-task-row. Light alpha normalizes to 0.7 (previously 0.68-0.72). */
   --fp-elevated-card-bg: rgba(255, 255, 255, 0.7);
   --fp-elevated-card-bg-empty: transparent;
   --fp-app-update-panel-bg: rgba(248, 250, 252, 0.82);
