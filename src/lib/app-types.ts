@@ -2,7 +2,6 @@ export type ProjectSettingsTab = 'engine' | 'agent' | 'runs' | 'usage' | 'mcp' |
 export type AppSettingsTab =
   | 'appearance'
   | 'language'
-  | 'agent'
   | 'provider'
   | 'asset-provider'
   | 'mcp'

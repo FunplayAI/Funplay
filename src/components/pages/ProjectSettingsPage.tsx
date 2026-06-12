@@ -1,9 +1,7 @@
 import { useMemo, type JSX } from 'react';
 import { Bot, Cpu, Gauge, History, Plug, Sparkles, type LucideIcon } from 'lucide-react';
-import { getProjectSessionRuntimeLabel } from '../../../shared/agent-runtimes';
 import type {
   AgentPermissionMode,
-  AgentRuntimeStrategy,
   AgentRuntimeStatus,
   AgentSkillCatalogItem,
   AgentSkillCatalogResult,
@@ -17,7 +15,6 @@ import type {
   ProjectAgentSkill,
   ProjectSession,
   ProjectSessionEffort,
-  ProjectSessionRuntimeId,
   UnityMcpPrompt,
   UnityMcpResource,
   UnityMcpResourceTemplate,
@@ -58,7 +55,6 @@ export function ProjectSettingsPage(props: {
   connectionStatuses: Record<string, McpConnectionSnapshot>;
   pluginError: string;
   isRefreshing: boolean;
-  globalRuntimeStrategy: AgentRuntimeStrategy;
   projectBindings: ProjectMcpBindingDraft;
   skillDraft: ProjectAgentSkillDraft;
   editingSkillId: string;
@@ -71,7 +67,6 @@ export function ProjectSettingsPage(props: {
   activeSession: ProjectSession | null;
   sessionProviderId?: string;
   sessionModel?: string;
-  sessionRuntimeId?: ProjectSessionRuntimeId;
   sessionEffort: ProjectSessionEffort;
   runtimeStatuses: AgentRuntimeStatus[];
   onUpdateProjectPermissionMode: (permissionMode: AgentPermissionMode) => Promise<void>;
@@ -145,8 +140,10 @@ export function ProjectSettingsPage(props: {
     {
       id: 'agent',
       label: 'Agent',
-      description: t('模型、Runtime 与项目策略', 'Model, runtime, project policy'),
-      badge: props.activeSession ? getProjectSessionRuntimeLabel(props.sessionRuntimeId) : t('未选择', 'No Session'),
+      description: t('模型与项目策略', 'Model and project policy'),
+      badge: props.activeSession
+        ? props.sessionModel || props.activeProvider?.model || t('默认模型', 'Default Model')
+        : t('未选择', 'No Session'),
       Icon: Bot
     },
     {
@@ -237,9 +234,7 @@ export function ProjectSettingsPage(props: {
               activeSession={props.activeSession}
               sessionProviderId={props.sessionProviderId}
               sessionModel={props.sessionModel}
-              sessionRuntimeId={props.sessionRuntimeId}
               sessionEffort={props.sessionEffort}
-              globalRuntimeStrategy={props.globalRuntimeStrategy}
               onUpdatePermissionMode={props.onUpdateProjectPermissionMode}
               onUpdateSessionRuntime={props.onUpdateSessionRuntime}
             />

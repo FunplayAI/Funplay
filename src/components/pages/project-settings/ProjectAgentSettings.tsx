@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useState, type JSX } from 'react';
-import { PROJECT_SESSION_RUNTIME_OPTIONS, getProjectSessionRuntimeLabel } from '../../../../shared/agent-runtimes';
 import type {
   AgentPermissionMode,
-  AgentRuntimeStrategy,
   AiProvider,
   Project,
   ProjectSession,
   ProjectSessionEffort,
   ProjectSessionRuntimeId
 } from '../../../../shared/types';
-import { localize, useUiLanguage, type UiLanguage } from '../../../i18n';
+import { localize, useUiLanguage } from '../../../i18n';
 import { Card, InfoRow } from '../../shared/InfoComponents';
 import { Button, TextField } from '../../ui/index';
 
@@ -28,9 +26,7 @@ export function ProjectAgentSettings(props: {
   activeSession: ProjectSession | null;
   sessionProviderId?: string;
   sessionModel?: string;
-  sessionRuntimeId?: ProjectSessionRuntimeId;
   sessionEffort: ProjectSessionEffort;
-  globalRuntimeStrategy: AgentRuntimeStrategy;
   onUpdatePermissionMode: (permissionMode: AgentPermissionMode) => Promise<void>;
   onUpdateSessionRuntime: (runtime: SessionRuntimeUpdate) => Promise<void>;
 }): JSX.Element {
@@ -43,10 +39,6 @@ export function ProjectAgentSettings(props: {
   );
   const activeProviderLabel = props.activeProvider?.name ?? t('本地规划器', 'Local Planner');
   const activeModelLabel = props.sessionModel || props.activeProvider?.model || t('本地规划器', 'Local Planner');
-  const globalRuntimeLabel = formatRuntimeStrategyLabel(props.globalRuntimeStrategy, language);
-  const runtimeLabel = props.sessionRuntimeId
-    ? getProjectSessionRuntimeLabel(props.sessionRuntimeId)
-    : t(`默认 · ${globalRuntimeLabel}`, `Default · ${globalRuntimeLabel}`);
   const permissionOptions: Array<[AgentPermissionMode, string]> = [
     ['full-access', t('Build', 'Build')],
     ['read-only', t('Plan', 'Plan')]
@@ -100,7 +92,6 @@ export function ProjectAgentSettings(props: {
           }
         />
         <InfoRow label={t('模型', 'Model')} value={activeModelLabel} />
-        <InfoRow label="Runtime" value={runtimeLabel} />
       </Card>
       <Card title={t('模型', 'Model')}>
         <div className="agent-settings-control-stack">
@@ -146,39 +137,6 @@ export function ProjectAgentSettings(props: {
               ))}
             </div>
           ) : null}
-        </div>
-      </Card>
-      <Card title="Runtime">
-        <div className="agent-settings-control-stack">
-          <div className="segmented-options">
-            <Button
-              size="compact"
-              variant="ghost"
-              className={`settings-choice-button ${!props.sessionRuntimeId ? 'active' : ''}`}
-              disabled={!props.activeSession}
-              onClick={() => updateRuntime({ runtimeId: undefined })}
-            >
-              {t('跟随默认', 'Use Default')}
-            </Button>
-            {PROJECT_SESSION_RUNTIME_OPTIONS.map((runtime) => (
-              <Button
-                key={runtime.id}
-                size="compact"
-                variant="ghost"
-                className={`settings-choice-button ${props.sessionRuntimeId === runtime.id ? 'active' : ''}`}
-                disabled={!props.activeSession}
-                onClick={() => updateRuntime({ runtimeId: runtime.id })}
-              >
-                {runtime.label}
-              </Button>
-            ))}
-          </div>
-          <div className="helper-copy">
-            {t(
-              'Native 运行时使用 Funplay 内置多 Provider 工具循环。',
-              'Native runtime uses Funplay built-in multi-provider tool loop.'
-            )}
-          </div>
         </div>
       </Card>
       <Card title={t('智能强度', 'Reasoning Effort')}>
@@ -229,12 +187,4 @@ export function ProjectAgentSettings(props: {
       </Card>
     </div>
   );
-}
-
-function formatRuntimeStrategyLabel(strategy: AgentRuntimeStrategy, language: UiLanguage): string {
-  const labels: Record<AgentRuntimeStrategy, string> = {
-    auto: localize(language, 'Auto', 'Auto'),
-    native: localize(language, 'Native', 'Native')
-  };
-  return labels[strategy];
 }

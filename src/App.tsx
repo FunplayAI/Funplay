@@ -1747,7 +1747,6 @@ function App(): JSX.Element {
               connectionStatuses={mcpConnectionStatuses}
               pluginError={pluginError}
               isRefreshing={isRefreshingPlugin}
-              globalRuntimeStrategy={agentSettings.runtimeStrategy}
               projectBindings={projectBindings}
               skillDraft={skillDraft}
               editingSkillId={editingSkillId}
@@ -1760,7 +1759,6 @@ function App(): JSX.Element {
               activeSession={selectedActiveSession}
               sessionProviderId={selectedSessionRuntime?.providerId}
               sessionModel={selectedSessionRuntime?.model}
-              sessionRuntimeId={selectedSessionRuntime?.runtimeId}
               sessionEffort={selectedSessionEffort}
               runtimeStatuses={agentRuntimeStatuses}
               onSelectProjectMcpPlugin={setSelectedMcpPluginId}
@@ -1847,7 +1845,6 @@ function App(): JSX.Element {
           theme={uiPreferences.theme}
           language={uiPreferences.language}
           developerMode={uiPreferences.developerMode}
-          runtimeStrategy={agentSettings.runtimeStrategy}
           aiSettings={aiSettings}
           providers={providers}
           assetGenerationProviderConfigs={assetGenerationProviderConfigs}
@@ -1880,10 +1877,6 @@ function App(): JSX.Element {
           onChangeTheme={(theme) => setUiPreferences((current) => ({ ...current, theme }))}
           onChangeLanguage={(language) => setUiPreferences((current) => ({ ...current, language }))}
           onChangeDeveloperMode={(developerMode) => setUiPreferences((current) => ({ ...current, developerMode }))}
-          onChangeRuntimeStrategy={async (runtimeStrategy) => {
-            const next = await window.funplay.updateAgentSettings({ runtimeStrategy });
-            setAgentSettings(next);
-          }}
           onUpdateWebSearchSettings={async (settings) => {
             const next = await window.funplay.updateWebSearchSettings(settings);
             setAiSettings(next);

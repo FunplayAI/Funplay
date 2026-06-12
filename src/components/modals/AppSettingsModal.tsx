@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import {
   Bell,
-  Bot,
   Cloud,
   Database,
   Download,
@@ -18,7 +17,6 @@ import {
   type LucideIcon
 } from 'lucide-react';
 import type {
-  AgentRuntimeStrategy,
   AiProvider, AiProviderInput, AiProviderModelListRequest, AiProviderModelListResult, AiSettings,
   AiTestResult,
   AppUpdateSnapshot,
@@ -66,7 +64,6 @@ export function AppSettingsModal(props: {
   theme: ThemePreference;
   language: LanguagePreference;
   developerMode: boolean;
-  runtimeStrategy: AgentRuntimeStrategy;
   aiSettings: AiSettings;
   providers: AiProvider[];
   assetGenerationProviderConfigs?: AssetGenerationProviderConfig[];
@@ -99,7 +96,6 @@ export function AppSettingsModal(props: {
   onChangeTheme: (theme: ThemePreference) => void;
   onChangeLanguage: (language: LanguagePreference) => void;
   onChangeDeveloperMode: (developerMode: boolean) => void;
-  onChangeRuntimeStrategy: (runtimeStrategy: AgentRuntimeStrategy) => void;
   onUpdateWebSearchSettings: (settings: Partial<WebSearchSettings>) => Promise<void>;
   onCreateProvider: (input: AiProviderInput) => Promise<void>;
   onUpdateProvider: (providerId: string, input: AiProviderInput) => Promise<void>;
@@ -207,7 +203,6 @@ export function AppSettingsModal(props: {
   const navItems: Array<{ id: AppSettingsTab; label: string; desc: string; Icon: LucideIcon }> = [
     { id: 'appearance', label: t('外观', 'Appearance'), desc: t('主题与界面外观', 'Theme and window appearance'), Icon: Monitor },
     { id: 'language', label: t('语言', 'Language'), desc: t('界面语言与文案', 'Interface language and copy'), Icon: Languages },
-    { id: 'agent', label: t('Agent', 'Agent'), desc: t('权限模式与开发者模式', 'Permission and developer mode'), Icon: Bot },
     { id: 'provider', label: 'AI Provider', desc: t('模型服务与默认渠道', 'Model services and default providers'), Icon: Cloud },
     { id: 'asset-provider', label: t('素材 Provider', 'Asset Provider'), desc: t('图片、3D 与音频生成', 'Image, 3D, and audio generation'), Icon: Sparkles },
     { id: 'mcp', label: 'MCP', desc: t('全局 MCP Registry', 'Global MCP Registry'), Icon: Plug },
@@ -263,6 +258,13 @@ export function AppSettingsModal(props: {
                   </Button>
                 ))}
               </div>
+              <div className="app-settings-divider" />
+              <SwitchField
+                checked={props.developerMode}
+                onCheckedChange={props.onChangeDeveloperMode}
+                label={t('开发者模式', 'Developer Mode')}
+                description={t('显示运行时阶段、工具边界等调试级运行细节。默认关闭。', 'Show debug-level runtime details such as runtime stages and tool-boundary events. Off by default.')}
+              />
             </section>
           ) : null}
 
@@ -282,32 +284,6 @@ export function AppSettingsModal(props: {
                   </Button>
                 ))}
               </div>
-            </section>
-          ) : null}
-
-          {tab === 'agent' ? (
-            <section className="app-settings-section">
-              <div>
-                <strong>{t('Agent Runtime 偏好', 'Agent Runtime Preference')}</strong>
-                <div className="helper-copy">{t('用于新会话的初始 Runtime；当前会话可在项目 Agent 设置中切换。推荐 Native。', 'Initial runtime for new sessions; the current session can switch it in Project Agent settings. Native is recommended.')}</div>
-              </div>
-              <div className="segmented-options">
-                {([
-                  ['native', 'Native'],
-                  ['auto', 'Auto']
-                ] as Array<[AgentRuntimeStrategy, string]>).map(([strategy, label]) => (
-                  <Button key={strategy} size="sm" variant="secondary" className={`settings-choice-button ${props.runtimeStrategy === strategy ? 'active' : ''}`} onClick={() => props.onChangeRuntimeStrategy(strategy)}>
-                    {label}
-                  </Button>
-                ))}
-              </div>
-              <div className="app-settings-divider" />
-              <SwitchField
-                checked={props.developerMode}
-                onCheckedChange={props.onChangeDeveloperMode}
-                label={t('开发者模式', 'Developer Mode')}
-                description={t('显示运行时阶段、工具边界等调试级运行细节。默认关闭。', 'Show debug-level runtime details such as runtime stages and tool-boundary events. Off by default.')}
-              />
             </section>
           ) : null}
 

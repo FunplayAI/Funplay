@@ -2559,9 +2559,7 @@ test('project Agent settings render direct session and policy controls', () => {
       activeSession,
       sessionProviderId: provider.id,
       sessionModel: 'mimo-v2.5-pro',
-      sessionRuntimeId: 'native',
       sessionEffort: 'high',
-      globalRuntimeStrategy: 'native',
       onUpdatePermissionMode: noopAsync,
       onUpdateSessionRuntime: noopAsync
     })
@@ -2572,10 +2570,11 @@ test('project Agent settings render direct session and policy controls', () => {
   assert.doesNotMatch(html, /项目 Agent 策略/);
   assert.doesNotMatch(html, /全局默认/);
   assert.doesNotMatch(html, /跟随全局默认/);
+  // The runtime selector was removed (single native runtime); the Runtime card no longer renders.
+  assert.doesNotMatch(html, /Native 运行时使用 Funplay/);
   assert.match(html, /主会话/);
   assert.match(html, /Xiaomi MiMo/);
   assert.match(html, /mimo-v2\.5-pro/);
-  assert.match(html, /Native/);
   assert.match(html, /Build/);
   assert.match(html, /Plan/);
   assert.match(html, /fp-field/);
