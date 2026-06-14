@@ -30,3 +30,17 @@ test('setters accept a direct value and an updater (React setState shape)', () =
   store.setIsLoading(false);
   assert.equal(useUiShellStore.getState().isLoading, false);
 });
+
+test('openAppSettings opens the modal on the given tab, defaulting to appearance', () => {
+  useUiShellStore.setState({ showAppSettingsModal: false, appSettingsInitialTab: 'appearance' });
+  useUiShellStore.getState().openAppSettings('provider');
+  let state = useUiShellStore.getState();
+  assert.equal(state.showAppSettingsModal, true);
+  assert.equal(state.appSettingsInitialTab, 'provider');
+
+  useUiShellStore.setState({ showAppSettingsModal: false, appSettingsInitialTab: 'provider' });
+  useUiShellStore.getState().openAppSettings();
+  state = useUiShellStore.getState();
+  assert.equal(state.showAppSettingsModal, true);
+  assert.equal(state.appSettingsInitialTab, 'appearance');
+});

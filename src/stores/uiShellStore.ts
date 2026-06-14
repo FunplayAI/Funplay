@@ -33,6 +33,8 @@ interface UiShellState {
   setAppSettingsInitialTab: Dispatch<SetStateAction<AppSettingsTab>>;
   setIsLoading: Dispatch<SetStateAction<boolean>>;
   setBootstrapError: Dispatch<SetStateAction<string>>;
+  /** Open the app-settings modal pre-selected to a tab (migrated from App.tsx). */
+  openAppSettings: (tab?: AppSettingsTab) => void;
 }
 
 export const useUiShellStore = create<UiShellState>((set) => ({
@@ -52,5 +54,6 @@ export const useUiShellStore = create<UiShellState>((set) => ({
   setAppSettingsInitialTab: (value) =>
     set((state) => ({ appSettingsInitialTab: resolveSetStateAction(value, state.appSettingsInitialTab) })),
   setIsLoading: (value) => set((state) => ({ isLoading: resolveSetStateAction(value, state.isLoading) })),
-  setBootstrapError: (value) => set((state) => ({ bootstrapError: resolveSetStateAction(value, state.bootstrapError) }))
+  setBootstrapError: (value) => set((state) => ({ bootstrapError: resolveSetStateAction(value, state.bootstrapError) })),
+  openAppSettings: (tab = 'appearance') => set({ appSettingsInitialTab: tab, showAppSettingsModal: true })
 }));

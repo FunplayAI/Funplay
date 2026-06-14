@@ -57,7 +57,6 @@ import { getVisibleRuntimeStatusMessage } from './components/chat/runtime-displa
 import { FileInspectorPanel, SidebarPanel } from './components/layout/WorkspacePanels';
 import { McpPluginModal } from './components/settings-modals';
 import type { SessionCheckpointListItem, SessionListState } from './components/layout/SessionManagementPanel';
-import type { AppSettingsTab, ProjectSettingsTab } from './lib/app-types';
 import {
   buildProjectSwitcherItem,
   buildSessionListState,
@@ -97,8 +96,8 @@ function App(): JSX.Element {
   // App is the root and re-renders on any of these, so it subscribes to the whole slice.
   const {
     appMode, setAppMode, section, setSection, projectSettingsTab, setProjectSettingsTab,
-    showAppSettingsModal, setShowAppSettingsModal, appSettingsInitialTab, setAppSettingsInitialTab,
-    isLoading, setIsLoading, bootstrapError, setBootstrapError
+    showAppSettingsModal, setShowAppSettingsModal, appSettingsInitialTab,
+    isLoading, setIsLoading, bootstrapError, setBootstrapError, openAppSettings
   } = useUiShellStore();
   // Project-domain state lives in the Zustand project store.
   const {
@@ -826,11 +825,6 @@ function App(): JSX.Element {
     section,
     projectSettingsTab
   });
-
-  function openAppSettings(tab: AppSettingsTab = 'appearance'): void {
-    setAppSettingsInitialTab(tab);
-    setShowAppSettingsModal(true);
-  }
 
   const sidebarNavItems = [
     { id: 'settings', label: localize(uiPreferences.language, '项目设置', 'Project Settings'), icon: '⚙' },
