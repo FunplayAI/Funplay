@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'rea
 import { useUiPreferences } from './hooks/useUiPreferences';
 import { useWorkspaceLayout } from './hooks/useWorkspaceLayout';
 import { useSelectedProjectView } from './hooks/useSelectedProjectView';
+import { createSessionActions } from './actions/sessionActions';
 import { useAppNotifications } from './hooks/useAppNotifications';
 import { useAppUpdateStatus } from './hooks/useAppUpdateStatus';
 import { useProviderManager } from './hooks/useProviderManager';
@@ -253,6 +254,17 @@ function App(): JSX.Element {
     projects,
     selectedProjectId,
     localActiveSessionByProject
+  });
+  // Session CRUD orchestration lives in a factory (src/actions/sessionActions.ts);
+  // it reads the renderer stores via getState() and only needs the per-render
+  // selected project plus App's serialized-mutation queue.
+  const {
+    createSession: handleCreateSession,
+    renameSession: handleRenameSession,
+    deleteSession: handleDeleteSession
+  } = createSessionActions({
+    getSelectedProject: () => selectedProject,
+    enqueueSessionMutation
   });
   const {
     mcpPlugins,
@@ -1072,25 +1084,6 @@ function App(): JSX.Element {
     }
   }
 
-  async function handleCreateSession(): Promise<void> {
-    if (!selectedProject) {
-      return;
-    }
-    const updated = await enqueueSessionMutation(() => window.funplay.createProjectSession(selectedProject.id));
-    setProjects((current) => current.map((project) => (project.id === updated.id ? updated : project)));
-    const nextSessionId = updated.activeSessionId || updated.sessions[0]?.id;
-    if (nextSessionId) {
-      setLocalActiveSessionByProject((current) => ({
-        ...current,
-        [updated.id]: nextSessionId
-      }));
-      setSessionDrafts((current) => ({ ...current, [nextSessionId]: '' }));
-      setSessionAttachments((current) => ({ ...current, [nextSessionId]: [] }));
-      setSessionComposerErrors((current) => ({ ...current, [nextSessionId]: '' }));
-    }
-    setSection('agent');
-  }
-
   async function handleSelectSession(sessionId: string, projectIdOverride?: string): Promise<void> {
     const targetProject = projectIdOverride
       ? (projects.find((project) => project.id === projectIdOverride) ?? null)
@@ -1146,34 +1139,6 @@ function App(): JSX.Element {
     setProjects((current) =>
       current.map((project) => (project.id === updated.id ? mergeProjectSessionSelection(project, updated) : project))
     );
-    setSection('agent');
-  }
-
-  async function handleRenameSession(sessionId: string, title: string): Promise<void> {
-    if (!selectedProject) {
-      return;
-    }
-    const updated = await enqueueSessionMutation(() =>
-      window.funplay.renameProjectSession(selectedProject.id, sessionId, title)
-    );
-    setProjects((current) =>
-      current.map((project) => (project.id === updated.id ? mergeProjectSessionSelection(project, updated) : project))
-    );
-  }
-
-  async function handleDeleteSession(sessionId: string): Promise<void> {
-    if (!selectedProject) {
-      return;
-    }
-    const updated = await enqueueSessionMutation(() =>
-      window.funplay.deleteProjectSession(selectedProject.id, sessionId)
-    );
-    setProjects((current) => current.map((project) => (project.id === updated.id ? updated : project)));
-    setLocalActiveSessionByProject((current) => ({
-      ...current,
-      [updated.id]: updated.activeSessionId || updated.sessions[0]?.id || ''
-    }));
-    clearSessionScopedState([sessionId]);
     setSection('agent');
   }
 
