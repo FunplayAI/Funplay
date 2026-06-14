@@ -5,6 +5,7 @@ import { useSelectedProjectView } from './hooks/useSelectedProjectView';
 import { createSessionActions } from './actions/sessionActions';
 import { createEnvironmentActions } from './actions/environmentActions';
 import { createPromptStreamActions } from './actions/promptStreamActions';
+import { createProjectNavActions } from './actions/projectNavActions';
 import { useAppNotifications } from './hooks/useAppNotifications';
 import { useAppUpdateStatus } from './hooks/useAppUpdateStatus';
 import { useProviderManager } from './hooks/useProviderManager';
@@ -81,8 +82,8 @@ function App(): JSX.Element {
   // Project-domain state lives in the Zustand project store.
   const {
     projects, setProjects, selectedProjectId, setSelectedProjectId, projectFiles, setProjectFiles,
-    assetLibraryViewByProject, setAssetLibraryViewByProject, showDeleteProjectModal, setShowDeleteProjectModal,
-    projectPendingDelete, setProjectPendingDelete, isDeletingProject, setIsDeletingProject,
+    assetLibraryViewByProject, setAssetLibraryViewByProject, showDeleteProjectModal,
+    projectPendingDelete, isDeletingProject,
     deleteProjectSourceFiles, setDeleteProjectSourceFiles, openDeleteModal, closeDeleteModal,
     refreshProjectRuntimeStateById, retryRefreshProjectRuntimeState
   } = useProjectStore();
@@ -108,7 +109,6 @@ function App(): JSX.Element {
   const setSessionComposerErrors = useSessionComposerStore((store) => store.setComposerErrors);
   const queuedPromptsBySession = useSessionComposerStore((store) => store.queuedPrompts);
   const setQueuedPromptsBySession = useSessionComposerStore((store) => store.setQueuedPrompts);
-  const clearSessionScopedState = useSessionComposerStore((store) => store.clearSessionScoped);
   const localActiveSessionByProject = useSessionStore((store) => store.localActiveSessionByProject);
   const setLocalActiveSessionByProject = useSessionStore((store) => store.setLocalActiveSessionByProject);
 
@@ -744,6 +744,19 @@ function App(): JSX.Element {
     setRightInspectorCollapsed,
     uiPreferences.language
   );
+  // Project navigation + lifecycle orchestration (src/actions/projectNavActions.ts).
+  // Built here, after the file-inspector / mcp / layout hooks that supply its
+  // non-store injects. openProject + handleCreateProject are consumed earlier by
+  // useOnboarding, so App keeps hoisted wrappers (below) that delegate here.
+  const projectNavActions = createProjectNavActions({
+    setSelectedFileId,
+    setSelectedOverlayFile,
+    setRightInspectorCollapsed,
+    getMcpPlugins: () => mcpPlugins,
+    setMcpPlugins,
+    setSelectedMcpPluginId
+  });
+
   const { chatOpenablePaths, handleOpenChatFilePath } = useChatFileOpeners({
     projectFiles,
     virtualProjectFiles,
@@ -851,94 +864,18 @@ function App(): JSX.Element {
     }
   }, [activeStreamSessions, projects, queuedPromptsBySession]);
 
+  // Hoisted wrappers so useOnboarding (above) can take stable references before
+  // projectNavActions is constructed; the bodies live in projectNavActions.ts.
   function openProject(projectId: string): void {
-    const project = projects.find((item) => item.id === projectId);
-    setSelectedProjectId(projectId);
-    if (project) {
-      setLocalActiveSessionByProject((current) => ({
-        ...current,
-        [projectId]: project.activeSessionId || project.sessions[0]?.id || ''
-      }));
-    }
-    setAppMode('workspace');
-    setSection('agent');
-    setSelectedFileId('');
-    setSelectedOverlayFile(null);
-    setRightInspectorCollapsed(true);
-    dispatchRefreshFileTree({ projectId, reason: 'project-opened' });
+    projectNavActions.openProject(projectId);
   }
 
-  async function handleCreateProject(input: CreateProjectInput): Promise<void> {
-    const project = await window.funplay.createProject(input);
-    const shouldBindOnboardingEnginePlugin = input.engine?.platform === 'unity' && onboardingEnginePluginId;
-    const nextProject = shouldBindOnboardingEnginePlugin
-      ? await window.funplay.updateProjectMcpConfig(project.id, 'engine', onboardingEnginePluginId)
-      : project;
-    const enginePluginId = nextProject.mcpBindings.engine;
-    if (
-      (input.engine?.platform === 'unity' || input.engine?.platform === 'cocos') &&
-      enginePluginId &&
-      !mcpPlugins.some((plugin) => plugin.id === enginePluginId)
-    ) {
-      const payload = await window.funplay.bootstrap();
-      setMcpPlugins(payload.mcpPlugins);
-      setSelectedMcpPluginId(enginePluginId);
-    }
-
-    setProjects((current) => [nextProject, ...current.filter((item) => item.id !== nextProject.id)]);
-    setLocalActiveSessionByProject((current) => ({
-      ...current,
-      [nextProject.id]: nextProject.activeSessionId || nextProject.sessions[0]?.id || ''
-    }));
-    setSelectedProjectId(nextProject.id);
-    setRightInspectorCollapsed(true);
-    if (nextProject.engine?.platform === 'unity' || nextProject.engine?.platform === 'cocos') {
-      void retryRefreshProjectRuntimeState(nextProject.id);
-    }
-
-    setAppMode('workspace');
-    setSection('agent');
-    setSelectedFileId('');
-    setSelectedOverlayFile(null);
-    dispatchRefreshFileTree({ projectId: nextProject.id, reason: 'project-created' });
+  function handleCreateProject(input: CreateProjectInput): Promise<void> {
+    return projectNavActions.handleCreateProject(input);
   }
 
-  async function handleDeleteProject(): Promise<void> {
-    if (!projectPendingDelete) {
-      return;
-    }
-
-    setIsDeletingProject(true);
-    try {
-      const result = await window.funplay.deleteProject(projectPendingDelete.id, deleteProjectSourceFiles);
-      setProjects(result.remainingProjects);
-      setLocalActiveSessionByProject((current) => {
-        const next = { ...current };
-        delete next[projectPendingDelete.id];
-        return next;
-      });
-      clearSessionScopedState(projectPendingDelete.sessions.map((session) => session.id));
-
-      if (selectedProjectId === projectPendingDelete.id) {
-        const nextProjectId = result.remainingProjects[0]?.id ?? '';
-        if (nextProjectId) {
-          openProject(nextProjectId);
-        } else {
-          setSelectedProjectId('');
-          setAppMode('welcome');
-          setSection('agent');
-          setSelectedFileId('');
-          setSelectedOverlayFile(null);
-          setProjectFiles([]);
-        }
-      }
-
-      setShowDeleteProjectModal(false);
-      setProjectPendingDelete(null);
-      setDeleteProjectSourceFiles(false);
-    } finally {
-      setIsDeletingProject(false);
-    }
+  function handleDeleteProject(): Promise<void> {
+    return projectNavActions.handleDeleteProject();
   }
 
   async function handleSelectSession(sessionId: string, projectIdOverride?: string): Promise<void> {
