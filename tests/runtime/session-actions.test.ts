@@ -64,16 +64,25 @@ function resetStores(): void {
 // pass-through keeps the test focused on orchestration, not serialization.
 const passthrough = <T>(operation: () => Promise<T>): Promise<T> => operation();
 
+// Build the factory with sensible defaults (selected project = first in the
+// store); override only the dep a given test cares about.
+function makeActions(overrides: Partial<Parameters<typeof createSessionActions>[0]> = {}) {
+  return createSessionActions({
+    getSelectedProject: () => useProjectStore.getState().projects[0] ?? null,
+    getSelectedProjectView: () => useProjectStore.getState().projects[0] ?? null,
+    getSelectedSessionId: () => '',
+    enqueueSessionMutation: passthrough,
+    ...overrides
+  });
+}
+
 test('createSession replaces the project, seeds composer state, and switches to the agent section', async () => {
   resetStores();
   useProjectStore.setState({ projects: [makeProject('p1', [{ id: 's0' }])] });
   const updated = makeProject('p1', [{ id: 's0' }, { id: 's1' }], 's1');
   installFunplay(() => updated);
 
-  const actions = createSessionActions({
-    getSelectedProject: () => useProjectStore.getState().projects[0] ?? null,
-    enqueueSessionMutation: passthrough
-  });
+  const actions = makeActions();
   await actions.createSession();
 
   const projects = useProjectStore.getState().projects;
@@ -90,7 +99,7 @@ test('createSession replaces the project, seeds composer state, and switches to 
 test('createSession is a no-op when no project is selected', async () => {
   resetStores();
   const calls = installFunplay(() => makeProject('p1', [{ id: 's0' }]));
-  const actions = createSessionActions({ getSelectedProject: () => null, enqueueSessionMutation: passthrough });
+  const actions = makeActions({ getSelectedProject: () => null });
   await actions.createSession();
   assert.deepEqual(calls.create, []);
   assert.equal(useUiShellStore.getState().section, 'engine');
@@ -102,10 +111,7 @@ test('renameSession forwards the title and merges the updated project', async ()
   const renamed = makeProject('p1', [{ id: 's1', title: 'New title' }], 's1');
   const calls = installFunplay(() => renamed);
 
-  const actions = createSessionActions({
-    getSelectedProject: () => useProjectStore.getState().projects[0] ?? null,
-    enqueueSessionMutation: passthrough
-  });
+  const actions = makeActions();
   await actions.renameSession('s1', 'New title');
 
   assert.deepEqual(calls.rename, [['p1', 's1', 'New title']]);
@@ -120,10 +126,7 @@ test('deleteSession replaces the project, repoints the active session, and clear
   const afterDelete = makeProject('p1', [{ id: 's0' }], 's0');
   const calls = installFunplay(() => afterDelete);
 
-  const actions = createSessionActions({
-    getSelectedProject: () => useProjectStore.getState().projects[0] ?? null,
-    enqueueSessionMutation: passthrough
-  });
+  const actions = makeActions();
   await actions.deleteSession('s1');
 
   assert.deepEqual(calls.remove, [['p1', 's1']]);
@@ -132,4 +135,62 @@ test('deleteSession replaces the project, repoints the active session, and clear
   // clearSessionScoped drops the deleted session's composer scratch state.
   assert.equal(useSessionComposerStore.getState().drafts.s1, undefined);
   assert.equal(useUiShellStore.getState().section, 'agent');
+});
+
+// updateProjectSessionRuntime stub: resolve with a project, or reject to drive
+// the error path. Returns the recorded call args.
+function installRuntimeFunplay(behavior: { resolve?: Project; reject?: Error }): { args: Array<unknown[]> } {
+  const args: Array<unknown[]> = [];
+  (globalThis as { window?: unknown }).window = {
+    funplay: {
+      updateProjectSessionRuntime: async (...callArgs: unknown[]) => {
+        args.push(callArgs);
+        if (behavior.reject) {
+          throw behavior.reject;
+        }
+        return behavior.resolve;
+      }
+    }
+  };
+  return { args };
+}
+
+test('updateSelectedSessionRuntime patches the active session and merges the result', async () => {
+  resetStores();
+  useProjectStore.setState({ projects: [makeProject('p1', [{ id: 's1', title: 'Old' }], 's1')] });
+  const updated = makeProject('p1', [{ id: 's1', title: 'Patched' }], 's1');
+  const handle = installRuntimeFunplay({ resolve: updated });
+
+  const actions = makeActions({
+    getSelectedProjectView: () => useProjectStore.getState().projects[0] ?? null,
+    getSelectedSessionId: () => 's1'
+  });
+  await actions.updateSelectedSessionRuntime({ model: 'claude-opus-4-8' }, 'fallback');
+
+  assert.deepEqual(handle.args, [['p1', 's1', { model: 'claude-opus-4-8' }]]);
+  const session = useProjectStore.getState().projects[0].sessions.find((entry) => entry.id === 's1');
+  assert.equal(session?.title, 'Patched');
+  assert.equal(useSessionComposerStore.getState().composerErrors.s1, undefined);
+});
+
+test('updateSelectedSessionRuntime surfaces the IPC failure as a composer error (does not throw)', async () => {
+  resetStores();
+  useProjectStore.setState({ projects: [makeProject('p1', [{ id: 's1' }], 's1')] });
+  installRuntimeFunplay({ reject: new Error('runtime rejected') });
+
+  const actions = makeActions({
+    getSelectedProjectView: () => useProjectStore.getState().projects[0] ?? null,
+    getSelectedSessionId: () => 's1'
+  });
+  await actions.updateSelectedSessionRuntime({ effort: 'high' }, 'fallback message');
+
+  assert.equal(useSessionComposerStore.getState().composerErrors.s1, 'runtime rejected');
+});
+
+test('updateSelectedSessionRuntime is a no-op without a selected view or session', async () => {
+  resetStores();
+  const handle = installRuntimeFunplay({ resolve: makeProject('p1', [{ id: 's1' }], 's1') });
+  const actions = makeActions({ getSelectedProjectView: () => null, getSelectedSessionId: () => '' });
+  await actions.updateSelectedSessionRuntime({ model: 'x' }, 'fallback');
+  assert.deepEqual(handle.args, []);
 });

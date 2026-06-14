@@ -1,4 +1,9 @@
-import type { Project } from '../../shared/types';
+import type {
+  AgentPermissionMode,
+  Project,
+  ProjectSessionEffort,
+  ProjectSessionRuntimeId
+} from '../../shared/types';
 import { mergeProjectSessionSelection } from '../lib/app-helpers';
 import { useProjectStore } from '../stores/projectStore';
 import { useSessionStore } from '../stores/sessionStore';
@@ -23,8 +28,20 @@ import { useUiShellStore } from '../stores/uiShellStore';
  * mocked `window.funplay` plus the real stores.
  */
 
+/** The session-runtime fields the project-settings UI can patch on the active session. */
+export type SessionRuntimeUpdate = {
+  runtimeId?: ProjectSessionRuntimeId;
+  providerId?: string;
+  model?: string;
+  permissionMode?: AgentPermissionMode;
+  effort?: ProjectSessionEffort;
+};
+
 interface SessionActionDeps {
   getSelectedProject: () => Project | null;
+  /** The selected project resolved with its session list (for runtime updates). */
+  getSelectedProjectView: () => Project | null;
+  getSelectedSessionId: () => string;
   enqueueSessionMutation: <T>(operation: () => Promise<T>) => Promise<T>;
 }
 
@@ -32,9 +49,15 @@ export interface SessionActions {
   createSession: () => Promise<void>;
   renameSession: (sessionId: string, title: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
+  updateSelectedSessionRuntime: (runtime: SessionRuntimeUpdate, fallbackErrorMessage: string) => Promise<void>;
 }
 
-export function createSessionActions({ getSelectedProject, enqueueSessionMutation }: SessionActionDeps): SessionActions {
+export function createSessionActions({
+  getSelectedProject,
+  getSelectedProjectView,
+  getSelectedSessionId,
+  enqueueSessionMutation
+}: SessionActionDeps): SessionActions {
   async function createSession(): Promise<void> {
     const selectedProject = getSelectedProject();
     if (!selectedProject) {
@@ -90,5 +113,26 @@ export function createSessionActions({ getSelectedProject, enqueueSessionMutatio
     useUiShellStore.getState().setSection('agent');
   }
 
-  return { createSession, renameSession, deleteSession };
+  function updateSelectedSessionRuntime(runtime: SessionRuntimeUpdate, fallbackErrorMessage: string): Promise<void> {
+    const selectedProjectView = getSelectedProjectView();
+    const sessionId = getSelectedSessionId();
+    if (!selectedProjectView || !sessionId) {
+      return Promise.resolve();
+    }
+    const projectId = selectedProjectView.id;
+    return enqueueSessionMutation(() => window.funplay.updateProjectSessionRuntime(projectId, sessionId, runtime))
+      .then((updated) => {
+        useProjectStore.getState().setProjects((current) =>
+          current.map((project) => (project.id === updated.id ? mergeProjectSessionSelection(project, updated) : project))
+        );
+      })
+      .catch((error) => {
+        useSessionComposerStore.getState().setComposerErrors((current) => ({
+          ...current,
+          [sessionId]: error instanceof Error ? error.message : fallbackErrorMessage
+        }));
+      });
+  }
+
+  return { createSession, renameSession, deleteSession, updateSelectedSessionRuntime };
 }

@@ -46,8 +46,9 @@ const BASELINES: Record<string, number> = {
   // phase 8: delete-project modal open/close handlers moved to projectStore actions;
   // phase 9: session CRUD (create/rename/delete) moved to actions/sessionActions.ts factory;
   // phase 10 (slice 1): openAppSettings moved to a uiShellStore action;
-  // phase 10 (slice 2): project runtime-refresh pair moved to projectStore actions.
-  'src/App.tsx': 1765,
+  // phase 10 (slice 2): project runtime-refresh pair moved to projectStore actions;
+  // phase 10 (slice 3): updateSelectedSessionRuntime moved into the sessionActions factory.
+  'src/App.tsx': 1735,
   // ConversationMessage.tsx split into transcript/* modules by U47-3 — now 317 lines.
   // tool-activity.tsx split into tool/* modules by U47-4 — now 452 lines.
   // AgentChatView.tsx split into agent/* modules by U47-5 — now 371 lines.

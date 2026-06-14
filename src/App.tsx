@@ -24,7 +24,6 @@ import { usePromptAttachmentImport } from './hooks/usePromptAttachmentImport';
 import { useMcpManager } from './hooks/useMcpManager';
 import { ensureProjectSessions } from '../shared/project-sessions';
 import {
-  type AgentPermissionMode,
   type AssetGenerationProviderConfig,
   type BootstrapPayload,
   type CreateProjectInput,
@@ -35,9 +34,7 @@ import {
   type PromptAttachment,
   type PromptStreamEvent,
   type ProjectFileEntry,
-  type Project,
-  type ProjectSessionEffort,
-  type ProjectSessionRuntimeId
+  type Project
 } from '../shared/types';
 import { AppShell } from './components/layout/AppShell';
 import { AgentWorkbench } from './components/layout/AgentWorkbench';
@@ -79,15 +76,6 @@ import { AppSettingsModal } from './components/modals/AppSettingsModal';
 import { DeleteProjectModal } from './components/modals/DeleteProjectModal';
 import { SessionChangesPanel, RestoreCheckpointModal } from './components/modals/SessionChangesPanel';
 import { NotificationToastStack } from './components/shared/NotificationToastStack';
-
-type SessionRuntimeUpdate = {
-  runtimeId?: ProjectSessionRuntimeId;
-  providerId?: string;
-  model?: string;
-  permissionMode?: AgentPermissionMode;
-  effort?: ProjectSessionEffort;
-};
-
 
 function App(): JSX.Element {
   // App-shell navigation + lifecycle UI state lives in the Zustand ui-shell store.
@@ -259,9 +247,12 @@ function App(): JSX.Element {
   const {
     createSession: handleCreateSession,
     renameSession: handleRenameSession,
-    deleteSession: handleDeleteSession
+    deleteSession: handleDeleteSession,
+    updateSelectedSessionRuntime
   } = createSessionActions({
     getSelectedProject: () => selectedProject,
+    getSelectedProjectView: () => selectedProjectView ?? null,
+    getSelectedSessionId: () => selectedSessionId ?? '',
     enqueueSessionMutation
   });
   const {
@@ -669,27 +660,6 @@ function App(): JSX.Element {
       }, {});
   }, [selectedProjectView, selectedSessionId]);
 
-  function updateSelectedSessionRuntime(runtime: SessionRuntimeUpdate, fallbackErrorMessage: string): Promise<void> {
-    if (!selectedProjectView || !selectedSessionId) {
-      return Promise.resolve();
-    }
-    const projectId = selectedProjectView.id;
-    const sessionId = selectedSessionId;
-    return enqueueSessionMutation(() => window.funplay.updateProjectSessionRuntime(projectId, sessionId, runtime))
-      .then((updated) => {
-        setProjects((current) =>
-          current.map((project) =>
-            project.id === updated.id ? mergeProjectSessionSelection(project, updated) : project
-          )
-        );
-      })
-      .catch((error) => {
-        setSessionComposerErrors((current) => ({
-          ...current,
-          [sessionId]: error instanceof Error ? error.message : fallbackErrorMessage
-        }));
-      });
-  }
   const selectedSessionLatestCheckpointId = selectedSessionId
     ? selectedProjectSessionCheckpoints[selectedSessionId]?.[0]?.id
     : undefined;
