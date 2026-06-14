@@ -40,8 +40,9 @@ const BASELINES: Record<string, number> = {
   // phase 2: app-shell navigation/lifecycle state moved to uiShellStore;
   // phase 3: project-domain state moved to projectStore;
   // phase 4: session-selection → sessionStore, engine/onboarding setup → engineSetupStore;
-  // phase 5: AgentChatView reads composer state from the store (props removed).
-  'src/App.tsx': 1901,
+  // phase 5: AgentChatView reads composer state from the store (props removed);
+  // phase 6: ProjectSettingsPage reads its tab nav from the ui-shell store.
+  'src/App.tsx': 1899,
   // ConversationMessage.tsx split into transcript/* modules by U47-3 — now 317 lines.
   // tool-activity.tsx split into tool/* modules by U47-4 — now 452 lines.
   // AgentChatView.tsx split into agent/* modules by U47-5 — now 371 lines.

@@ -1670,8 +1670,6 @@ function App(): JSX.Element {
 
           {section === 'settings' ? (
             <ProjectSettingsPage
-              tab={projectSettingsTab}
-              onTabChange={setProjectSettingsTab}
               project={selectedProjectView}
               plugins={mcpPlugins}
               selectedPlugin={projectMcpSelectedPlugin}

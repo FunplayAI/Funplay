@@ -19,6 +19,7 @@ import {
   getMessagePlainText
 } from '../../src/components/chat/ConversationMessage.tsx';
 import { AgentChatView } from '../../src/components/chat/AgentChatView.tsx';
+import { useUiShellStore } from '../../src/stores/uiShellStore.ts';
 import { EngineStatusDialog } from '../../src/components/chat/agent/EngineStatusDialog.tsx';
 import { MessageList } from '../../src/components/chat/MessageList.tsx';
 import {
@@ -3782,10 +3783,9 @@ test('project settings shell marks selected settings category and renders only t
     blueprint: {}
   } as unknown as Project;
 
+  useUiShellStore.setState({ projectSettingsTab: 'engine' });
   const html = renderZh(
     createElement(ProjectSettingsPage, {
-      tab: 'engine',
-      onTabChange: noop,
       project,
       plugins: [],
       selectedPlugin: null,

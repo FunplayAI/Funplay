@@ -22,6 +22,7 @@ import type {
   UnityMcpTool
 } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
+import { useUiShellStore } from '../../stores/uiShellStore';
 import type { ProjectAgentSkillDraft, ProjectMcpBindingDraft, ProjectSettingsTab } from '../../lib/app-types';
 import { formatPlatformLabel } from '../../lib/app-helpers';
 import { Button } from '../ui/index';
@@ -39,8 +40,6 @@ import {
 } from './project-settings/metrics';
 
 export function ProjectSettingsPage(props: {
-  tab: ProjectSettingsTab;
-  onTabChange: (tab: ProjectSettingsTab) => void;
   project: Project | null;
   plugins: McpPlugin[];
   selectedPlugin: McpPlugin | null;
@@ -97,6 +96,9 @@ export function ProjectSettingsPage(props: {
 }): JSX.Element {
   const language = useUiLanguage();
   const t = (zh: string, en: string): string => localize(language, zh, en);
+  // Project-settings tab navigation reads straight from the ui-shell store.
+  const tab = useUiShellStore((store) => store.projectSettingsTab);
+  const onTabChange = useUiShellStore((store) => store.setProjectSettingsTab);
   const projectUsage = useMemo(
     () =>
       buildProjectTokenUsage({
@@ -181,7 +183,7 @@ export function ProjectSettingsPage(props: {
       Icon: Sparkles
     }
   ];
-  const activeItem = settingsNavItems.find((item) => item.id === props.tab) ?? settingsNavItems[0];
+  const activeItem = settingsNavItems.find((item) => item.id === tab) ?? settingsNavItems[0];
 
   return (
     <div className="project-settings-page">
@@ -197,10 +199,10 @@ export function ProjectSettingsPage(props: {
               key={item.id}
               size="compact"
               variant="ghost"
-              className={`project-settings-nav-item ${props.tab === item.id ? 'active' : ''}`}
-              aria-current={props.tab === item.id ? 'page' : undefined}
+              className={`project-settings-nav-item ${tab === item.id ? 'active' : ''}`}
+              aria-current={tab === item.id ? 'page' : undefined}
               title={`${item.label} · ${item.description} · ${item.badge}`}
-              onClick={() => props.onTabChange(item.id)}
+              onClick={() => onTabChange(item.id)}
             >
               <span className="project-settings-nav-icon" aria-hidden="true">
                 <item.Icon size={15} />
@@ -224,8 +226,8 @@ export function ProjectSettingsPage(props: {
         </div>
 
         <div className="project-settings-detail-body">
-          {props.tab === 'engine' ? <EngineProjectSettings project={props.project} /> : null}
-          {props.tab === 'agent' ? (
+          {tab === 'engine' ? <EngineProjectSettings project={props.project} /> : null}
+          {tab === 'agent' ? (
             <ProjectAgentSettings
               project={props.project}
               providers={props.providers}
@@ -239,11 +241,11 @@ export function ProjectSettingsPage(props: {
               onUpdateSessionRuntime={props.onUpdateSessionRuntime}
             />
           ) : null}
-          {props.tab === 'usage' ? <ProjectTokenUsageSettings project={props.project} usage={projectUsage} /> : null}
-          {props.tab === 'runs' ? (
+          {tab === 'usage' ? <ProjectTokenUsageSettings project={props.project} usage={projectUsage} /> : null}
+          {tab === 'runs' ? (
             <ProjectAgentRunsSettings project={props.project} runs={projectRuns} onResumeRun={props.onResumeAgentRun} />
           ) : null}
-          {props.tab === 'mcp' ? (
+          {tab === 'mcp' ? (
             <McpManagementPage
               project={props.project}
               plugins={props.plugins}
@@ -272,7 +274,7 @@ export function ProjectSettingsPage(props: {
               onSendRawMcpRequest={props.onSendRawMcpRequest}
             />
           ) : null}
-          {props.tab === 'skills' ? (
+          {tab === 'skills' ? (
             <SkillsPage
               project={props.project}
               draft={props.skillDraft}
