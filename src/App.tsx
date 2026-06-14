@@ -3,6 +3,7 @@ import { useUiPreferences } from './hooks/useUiPreferences';
 import { useWorkspaceLayout } from './hooks/useWorkspaceLayout';
 import { useSelectedProjectView } from './hooks/useSelectedProjectView';
 import { createSessionActions } from './actions/sessionActions';
+import { createEnvironmentActions } from './actions/environmentActions';
 import { useAppNotifications } from './hooks/useAppNotifications';
 import { useAppUpdateStatus } from './hooks/useAppUpdateStatus';
 import { useProviderManager } from './hooks/useProviderManager';
@@ -27,14 +28,9 @@ import {
   type AssetGenerationProviderConfig,
   type BootstrapPayload,
   type CreateProjectInput,
-  type EngineProjectDimension,
-  type EnvironmentActionKind,
-  type EnvironmentActionResult,
-  type EnvironmentDiagnostics,
   type PromptAttachment,
   type PromptStreamEvent,
-  type ProjectFileEntry,
-  type Project
+  type ProjectFileEntry
 } from '../shared/types';
 import { AppShell } from './components/layout/AppShell';
 import { AgentWorkbench } from './components/layout/AgentWorkbench';
@@ -254,6 +250,12 @@ function App(): JSX.Element {
     getSelectedProjectView: () => selectedProjectView ?? null,
     getSelectedSessionId: () => selectedSessionId ?? '',
     enqueueSessionMutation
+  });
+  // Engine-environment orchestration (src/actions/environmentActions.ts) — diagnose
+  // + run import/open actions against the selected project's engine.
+  const { diagnoseSelectedProjectEnvironment, runSelectedProjectEnvironmentAction } = createEnvironmentActions({
+    getSelectedProject: () => selectedProjectView ?? null,
+    language: uiPreferences.language
   });
   const {
     mcpPlugins,
@@ -1135,50 +1137,6 @@ function App(): JSX.Element {
             : localize(uiPreferences.language, '恢复 Agent 运行失败。', 'Failed to resume the Agent run.')
       }));
     }
-  }
-
-  function buildSelectedProjectEnvironmentInput(project: Project): {
-    platform: Exclude<NonNullable<Project['engine']>['platform'], 'web'>;
-    mode: 'import';
-    dimension: EngineProjectDimension;
-    projectPath: string;
-    enginePluginId?: string;
-    unityEditorVersion?: string;
-  } {
-    if (!project.engine?.projectPath || project.engine.platform === 'web') {
-      throw new Error(
-        localize(uiPreferences.language, '当前项目没有可打开的引擎路径。', 'This project has no engine path to open.')
-      );
-    }
-    return {
-      platform: project.engine.platform,
-      mode: 'import',
-      dimension: project.engine.dimension ?? project.runtimeState?.detectedDimension ?? 'unknown',
-      projectPath: project.engine.projectPath,
-      enginePluginId: project.mcpBindings.engine || project.mcpPluginId,
-      unityEditorVersion: project.engine.unityEditorVersion
-    };
-  }
-
-  async function diagnoseSelectedProjectEnvironment(): Promise<EnvironmentDiagnostics> {
-    if (!selectedProjectView) {
-      throw new Error(localize(uiPreferences.language, '请先选择一个项目。', 'Select a project first.'));
-    }
-    return window.funplay.diagnoseEnvironment(buildSelectedProjectEnvironmentInput(selectedProjectView));
-  }
-
-  async function runSelectedProjectEnvironmentAction(
-    actionId: EnvironmentActionKind
-  ): Promise<EnvironmentActionResult> {
-    if (!selectedProjectView) {
-      throw new Error(localize(uiPreferences.language, '请先选择一个项目。', 'Select a project first.'));
-    }
-    const result = await window.funplay.runEnvironmentAction({
-      ...buildSelectedProjectEnvironmentInput(selectedProjectView),
-      actionId
-    });
-    void retryRefreshProjectRuntimeState(selectedProjectView.id, 6, 1200);
-    return result;
   }
 
   if (isLoading) {
