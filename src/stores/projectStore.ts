@@ -2,6 +2,7 @@ import { type Dispatch, type SetStateAction } from 'react';
 import { create } from 'zustand';
 import type { Project, ProjectFileEntry } from '../../shared/types';
 import type { AssetLibraryViewId } from '../components/pages/AssetsPage';
+import { mergeProjectRuntimeRefresh, shouldUseFastRuntimeRefresh, wait } from '../lib/app-helpers';
 
 /**
  * Project-domain state — the project list, the selected project, its file tree,
@@ -38,9 +39,13 @@ interface ProjectState {
   openDeleteModal: (project: Project) => void;
   /** Close the delete-project modal unless a deletion is already in flight. */
   closeDeleteModal: () => void;
+  /** Pull fresh engine runtime state for one project and merge it into the list. */
+  refreshProjectRuntimeStateById: (projectId: string) => Promise<Project | null>;
+  /** Poll runtime state until the bridge is online (or fast-refresh stops being useful). */
+  retryRefreshProjectRuntimeState: (projectId: string, attempts?: number, delayMs?: number) => Promise<void>;
 }
 
-export const useProjectStore = create<ProjectState>((set) => ({
+export const useProjectStore = create<ProjectState>((set, get) => ({
   projects: [],
   selectedProjectId: '',
   projectFiles: [],
@@ -70,5 +75,31 @@ export const useProjectStore = create<ProjectState>((set) => ({
       state.isDeletingProject
         ? {}
         : { showDeleteProjectModal: false, projectPendingDelete: null, deleteProjectSourceFiles: false }
-    )
+    ),
+  refreshProjectRuntimeStateById: async (projectId) => {
+    const updated = await window.funplay.refreshProjectRuntimeState(projectId);
+    if (!updated) {
+      return null;
+    }
+    get().setProjects((current) =>
+      current.map((project) => (project.id === updated.id ? mergeProjectRuntimeRefresh(project, updated) : project))
+    );
+    return updated;
+  },
+  retryRefreshProjectRuntimeState: async (projectId, attempts = 6, delayMs = 1500) => {
+    for (let index = 0; index < attempts; index += 1) {
+      const updated = await get()
+        .refreshProjectRuntimeStateById(projectId)
+        .catch(() => null);
+      if (updated?.runtimeState?.bridgeHealth?.status === 'online') {
+        return;
+      }
+      if (updated?.runtimeState && !shouldUseFastRuntimeRefresh(updated)) {
+        return;
+      }
+      if (index < attempts - 1) {
+        await wait(delayMs);
+      }
+    }
+  }
 }));

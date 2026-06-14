@@ -64,10 +64,8 @@ import {
   createEmptyProjectSkillDraft,
   formatAbsoluteTime,
   formatQueuedPromptWithAttachments,
-  mergeProjectRuntimeRefresh,
   mergeProjectSessionSelection,
-  shouldUseFastRuntimeRefresh,
-  wait
+  shouldUseFastRuntimeRefresh
 } from './lib/app-helpers';
 import { WelcomeScreen } from './components/pages/WelcomeScreen';
 import { OnboardingScreen } from './components/pages/OnboardingScreen';
@@ -104,7 +102,8 @@ function App(): JSX.Element {
     projects, setProjects, selectedProjectId, setSelectedProjectId, projectFiles, setProjectFiles,
     assetLibraryViewByProject, setAssetLibraryViewByProject, showDeleteProjectModal, setShowDeleteProjectModal,
     projectPendingDelete, setProjectPendingDelete, isDeletingProject, setIsDeletingProject,
-    deleteProjectSourceFiles, setDeleteProjectSourceFiles, openDeleteModal, closeDeleteModal
+    deleteProjectSourceFiles, setDeleteProjectSourceFiles, openDeleteModal, closeDeleteModal,
+    refreshProjectRuntimeStateById, retryRefreshProjectRuntimeState
   } = useProjectStore();
   const {
     assetGenerationProviderConfigs,
@@ -1165,32 +1164,6 @@ function App(): JSX.Element {
             ? error.message
             : localize(uiPreferences.language, '恢复 Agent 运行失败。', 'Failed to resume the Agent run.')
       }));
-    }
-  }
-
-  async function refreshProjectRuntimeStateById(projectId: string): Promise<Project | null> {
-    const updated = await window.funplay.refreshProjectRuntimeState(projectId);
-    if (!updated) {
-      return null;
-    }
-    setProjects((current) =>
-      current.map((project) => (project.id === updated.id ? mergeProjectRuntimeRefresh(project, updated) : project))
-    );
-    return updated;
-  }
-
-  async function retryRefreshProjectRuntimeState(projectId: string, attempts = 6, delayMs = 1500): Promise<void> {
-    for (let index = 0; index < attempts; index += 1) {
-      const updated = await refreshProjectRuntimeStateById(projectId).catch(() => null);
-      if (updated?.runtimeState?.bridgeHealth?.status === 'online') {
-        return;
-      }
-      if (updated?.runtimeState && !shouldUseFastRuntimeRefresh(updated)) {
-        return;
-      }
-      if (index < attempts - 1) {
-        await wait(delayMs);
-      }
     }
   }
 
