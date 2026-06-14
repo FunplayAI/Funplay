@@ -4,6 +4,7 @@ import { useWorkspaceLayout } from './hooks/useWorkspaceLayout';
 import { useSelectedProjectView } from './hooks/useSelectedProjectView';
 import { createSessionActions } from './actions/sessionActions';
 import { createEnvironmentActions } from './actions/environmentActions';
+import { createPromptStreamActions } from './actions/promptStreamActions';
 import { useAppNotifications } from './hooks/useAppNotifications';
 import { useAppUpdateStatus } from './hooks/useAppUpdateStatus';
 import { useProviderManager } from './hooks/useProviderManager';
@@ -28,7 +29,6 @@ import {
   type AssetGenerationProviderConfig,
   type BootstrapPayload,
   type CreateProjectInput,
-  type PromptAttachment,
   type PromptStreamEvent,
   type ProjectFileEntry
 } from '../shared/types';
@@ -38,10 +38,8 @@ import { UiLanguageProvider, getDocumentLanguage, localize, useUiLanguage } from
 import { dispatchRefreshFileTree, subscribeRefreshFileTree } from './lib/file-tree-events';
 import {
   applyPromptStreamEventToManager,
-  getStreamSessionForSession,
   listStreamSessions,
   removeStreamSession,
-  seedStreamSession,
   type StreamSessionState
 } from './lib/stream-session-manager';
 import { AgentChatView } from './components/chat/AgentChatView';
@@ -56,7 +54,6 @@ import {
   buildVirtualProjectFiles,
   createEmptyProjectSkillDraft,
   formatAbsoluteTime,
-  formatQueuedPromptWithAttachments,
   mergeProjectSessionSelection,
   shouldUseFastRuntimeRefresh
 } from './lib/app-helpers';
@@ -104,7 +101,6 @@ function App(): JSX.Element {
   // Per-session composer state now lives in the Zustand session-composer store.
   // The store setters share the React Dispatch<SetStateAction> shape, so call
   // sites and the hooks that receive them work unchanged.
-  const sessionDrafts = useSessionComposerStore((store) => store.drafts);
   const setSessionDrafts = useSessionComposerStore((store) => store.setDrafts);
   const sessionAttachments = useSessionComposerStore((store) => store.attachments);
   const setSessionAttachments = useSessionComposerStore((store) => store.setAttachments);
@@ -322,6 +318,18 @@ function App(): JSX.Element {
   useEffect(() => {
     selectedProjectIdRef.current = selectedProjectId;
   }, [selectedProjectId]);
+
+  // Prompt-stream orchestration (src/actions/promptStreamActions.ts) — submit a
+  // composer message into a new stream, or resume a persisted agent run. Needs
+  // the two App-owned refs (stale-closure guard + the mutation-queue tail it
+  // awaits directly), so it is created here after both refs exist.
+  const { handleSubmitComposer, handleResumeAgentRun } = createPromptStreamActions({
+    getSelectedProjectView: () => selectedProjectView ?? null,
+    getSelectedSessionId: () => selectedSessionId ?? '',
+    language: uiPreferences.language,
+    selectedProjectIdRef,
+    sessionMutationQueueRef
+  });
 
   useEffect(() => {
     if (!selectedProjectView || !activePromptStream || activePromptStream.phase !== 'completed') {
@@ -933,122 +941,6 @@ function App(): JSX.Element {
     }
   }
 
-  function seedPromptHandle(
-    handle: {
-      streamId: string;
-      projectId: string;
-      sessionId: string;
-      startedAt: string;
-      prompt?: string;
-      attachments?: PromptAttachment[];
-      kind?: 'conversation' | 'bootstrap';
-    },
-    fallbackPrompt: string
-  ): void {
-    seedStreamSession({
-      streamId: handle.streamId,
-      projectId: handle.projectId,
-      sessionId: handle.sessionId,
-      prompt: handle.prompt || fallbackPrompt,
-      attachments: handle.attachments,
-      content: '',
-      thinkingContent: '',
-      toolUses: [],
-      toolResults: [],
-      stages: [],
-      activityItems: [],
-      phase: 'starting',
-      kind: handle.kind,
-      statusMessage: localize(
-        uiPreferences.language,
-        '已提交给 AI，正在准备上下文…',
-        'Queued for AI. Preparing context…'
-      ),
-      startedAt: handle.startedAt
-    });
-  }
-
-  async function handleSubmitComposer(
-    content?: string,
-    sessionIdOverride?: string,
-    projectIdOverride?: string
-  ): Promise<void> {
-    const targetProject = projectIdOverride
-      ? projects.find((project) => project.id === projectIdOverride)
-      : selectedProjectView;
-    if (!targetProject) {
-      return;
-    }
-
-    const targetProjectView = ensureProjectSessions(targetProject);
-    const sessionId = sessionIdOverride ?? targetProjectView.activeSessionId ?? targetProjectView.sessions[0]?.id;
-    if (!sessionId) {
-      return;
-    }
-
-    const attachments = sessionAttachments[sessionId] ?? [];
-    const prompt = (content ?? sessionDrafts[sessionId] ?? '').trim();
-    const message =
-      prompt ||
-      (attachments.length
-        ? localize(uiPreferences.language, '请查看附件并继续处理。', 'Please review the attachments and continue.')
-        : '');
-    if (!message && attachments.length === 0) {
-      return;
-    }
-
-    if (getStreamSessionForSession(targetProjectView.id, sessionId)) {
-      useSessionComposerStore
-        .getState()
-        .queuePrompt(sessionId, formatQueuedPromptWithAttachments(message, attachments, uiPreferences.language));
-      setSessionDrafts((current) => ({ ...current, [sessionId]: '' }));
-      setSessionAttachments((current) => ({ ...current, [sessionId]: [] }));
-      return;
-    }
-
-    setSessionComposerErrors((current) => ({ ...current, [sessionId]: '' }));
-    if (targetProjectView.id === selectedProjectIdRef.current) {
-      setLocalActiveSessionByProject((current) => ({
-        ...current,
-        [targetProjectView.id]: sessionId
-      }));
-    }
-    try {
-      await sessionMutationQueueRef.current;
-      const handle = await window.funplay.startPromptStream(
-        targetProjectView.id,
-        message,
-        sessionId,
-        attachments,
-        uiPreferences.language
-      );
-      setSessionDrafts((current) => ({ ...current, [sessionId]: '' }));
-      setSessionAttachments((current) => ({ ...current, [sessionId]: [] }));
-      seedPromptHandle(
-        {
-          ...handle,
-          kind: 'conversation',
-          prompt: handle.prompt || message,
-          attachments
-        },
-        message
-      );
-    } catch (error) {
-      setSessionDrafts((current) => ({ ...current, [sessionId]: message }));
-      setSessionComposerErrors((current) => ({
-        ...current,
-        [sessionId]:
-          error instanceof Error
-            ? error.message
-            : localize(
-                uiPreferences.language,
-                '发送失败，请检查 AI Provider 配置。',
-                'Send failed. Check your AI Provider settings.'
-              )
-      }));
-    }
-  }
-
   async function handleSelectSession(sessionId: string, projectIdOverride?: string): Promise<void> {
     const targetProject = projectIdOverride
       ? (projects.find((project) => project.id === projectIdOverride) ?? null)
@@ -1105,38 +997,6 @@ function App(): JSX.Element {
       current.map((project) => (project.id === updated.id ? mergeProjectSessionSelection(project, updated) : project))
     );
     setSection('agent');
-  }
-
-  async function handleResumeAgentRun(runId: string): Promise<void> {
-    if (!selectedProjectView) {
-      return;
-    }
-
-    try {
-      const handle = await window.funplay.resumeAgentRun(runId);
-      setLocalActiveSessionByProject((current) => ({
-        ...current,
-        [handle.projectId]: handle.sessionId
-      }));
-      setSection('agent');
-      seedPromptHandle(
-        {
-          ...handle,
-          kind: handle.kind,
-          prompt: handle.prompt || localize(uiPreferences.language, '恢复 Agent 运行', 'Resume Agent run')
-        },
-        localize(uiPreferences.language, '恢复 Agent 运行', 'Resume Agent run')
-      );
-    } catch (error) {
-      const sessionId = selectedSessionId || selectedProjectView.sessions[0]?.id || selectedProjectView.id;
-      setSessionComposerErrors((current) => ({
-        ...current,
-        [sessionId]:
-          error instanceof Error
-            ? error.message
-            : localize(uiPreferences.language, '恢复 Agent 运行失败。', 'Failed to resume the Agent run.')
-      }));
-    }
   }
 
   if (isLoading) {
