@@ -55,7 +55,6 @@ import {
   buildVirtualProjectFiles,
   createEmptyProjectSkillDraft,
   formatAbsoluteTime,
-  mergeProjectSessionSelection,
   shouldUseFastRuntimeRefresh
 } from './lib/app-helpers';
 import { WelcomeScreen } from './components/pages/WelcomeScreen';
@@ -240,12 +239,15 @@ function App(): JSX.Element {
     createSession: handleCreateSession,
     renameSession: handleRenameSession,
     deleteSession: handleDeleteSession,
-    updateSelectedSessionRuntime
+    updateSelectedSessionRuntime,
+    handleSelectSession
   } = createSessionActions({
     getSelectedProject: () => selectedProject,
     getSelectedProjectView: () => selectedProjectView ?? null,
     getSelectedSessionId: () => selectedSessionId ?? '',
-    enqueueSessionMutation
+    enqueueSessionMutation,
+    activeSessionSwitchTokenRef,
+    openProject
   });
   // Engine-environment orchestration (src/actions/environmentActions.ts) — diagnose
   // + run import/open actions against the selected project's engine.
@@ -876,64 +878,6 @@ function App(): JSX.Element {
 
   function handleDeleteProject(): Promise<void> {
     return projectNavActions.handleDeleteProject();
-  }
-
-  async function handleSelectSession(sessionId: string, projectIdOverride?: string): Promise<void> {
-    const targetProject = projectIdOverride
-      ? (projects.find((project) => project.id === projectIdOverride) ?? null)
-      : selectedProject;
-    if (!targetProject) {
-      setSection('agent');
-      return;
-    }
-
-    const currentProjectId = targetProject.id;
-    const currentProject = ensureProjectSessions(targetProject);
-    const currentActiveSessionId = localActiveSessionByProject[currentProject.id] || currentProject.activeSessionId;
-    if (currentActiveSessionId === sessionId) {
-      setSection('agent');
-      return;
-    }
-
-    const nextActiveSession = currentProject.sessions.find((session) => session.id === sessionId);
-    if (!nextActiveSession) {
-      return;
-    }
-
-    if (selectedProjectIdRef.current !== currentProjectId) {
-      openProject(currentProjectId);
-    }
-
-    const token = activeSessionSwitchTokenRef.current + 1;
-    activeSessionSwitchTokenRef.current = token;
-    setLocalActiveSessionByProject((current) => ({
-      ...current,
-      [currentProjectId]: sessionId
-    }));
-
-    setProjects((current) =>
-      current.map((project) =>
-        project.id === currentProjectId
-          ? {
-              ...project,
-              activeSessionId: sessionId,
-              chat: [...nextActiveSession.chat]
-            }
-          : project
-      )
-    );
-
-    const updated = await enqueueSessionMutation(() =>
-      window.funplay.setActiveProjectSession(currentProjectId, sessionId)
-    );
-    if (activeSessionSwitchTokenRef.current !== token) {
-      return;
-    }
-
-    setProjects((current) =>
-      current.map((project) => (project.id === updated.id ? mergeProjectSessionSelection(project, updated) : project))
-    );
-    setSection('agent');
   }
 
   if (isLoading) {

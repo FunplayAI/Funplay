@@ -50,8 +50,9 @@ const BASELINES: Record<string, number> = {
   // phase 10 (slice 3): updateSelectedSessionRuntime moved into the sessionActions factory;
   // phase 10 (slice 4): environment diagnose/run + buildInput moved to actions/environmentActions.ts;
   // phase 10 (slice 5): seedPromptHandle + submit/resume moved to actions/promptStreamActions.ts;
-  // phase 10 (slice 6): openProject/create/delete moved to actions/projectNavActions.ts (App keeps thin wrappers).
-  'src/App.tsx': 1490,
+  // phase 10 (slice 6): openProject/create/delete moved to actions/projectNavActions.ts (App keeps thin wrappers);
+  // phase 10 (slice 7): handleSelectSession moved to sessionActions (token ref injected — the last orchestration handler).
+  'src/App.tsx': 1434,
   // ConversationMessage.tsx split into transcript/* modules by U47-3 — now 317 lines.
   // tool-activity.tsx split into tool/* modules by U47-4 — now 452 lines.
   // AgentChatView.tsx split into agent/* modules by U47-5 — now 371 lines.

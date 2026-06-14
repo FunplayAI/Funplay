@@ -72,6 +72,8 @@ function makeActions(overrides: Partial<Parameters<typeof createSessionActions>[
     getSelectedProjectView: () => useProjectStore.getState().projects[0] ?? null,
     getSelectedSessionId: () => '',
     enqueueSessionMutation: passthrough,
+    activeSessionSwitchTokenRef: { current: 0 },
+    openProject: () => undefined,
     ...overrides
   });
 }
@@ -193,4 +195,75 @@ test('updateSelectedSessionRuntime is a no-op without a selected view or session
   const actions = makeActions({ getSelectedProjectView: () => null, getSelectedSessionId: () => '' });
   await actions.updateSelectedSessionRuntime({ model: 'x' }, 'fallback');
   assert.deepEqual(handle.args, []);
+});
+
+// setActiveProjectSession stub; onCall lets a test mutate the switch token mid-flight.
+function installSelectFunplay(reply: Project, onCall?: () => void): { args: Array<[string, string]> } {
+  const args: Array<[string, string]> = [];
+  (globalThis as { window?: unknown }).window = {
+    funplay: {
+      setActiveProjectSession: async (projectId: string, sessionId: string) => {
+        args.push([projectId, sessionId]);
+        onCall?.();
+        return reply;
+      }
+    }
+  };
+  return { args };
+}
+
+test('handleSelectSession switches the active session within the current project', async () => {
+  resetStores();
+  useProjectStore.setState({ projects: [makeProject('p1', [{ id: 's0' }, { id: 's1' }], 's0')], selectedProjectId: 'p1' });
+  const handle = installSelectFunplay(makeProject('p1', [{ id: 's0' }, { id: 's1' }], 's1'));
+  let openProjectCalls = 0;
+
+  await makeActions({ openProject: () => (openProjectCalls += 1) }).handleSelectSession('s1');
+
+  assert.deepEqual(handle.args, [['p1', 's1']]);
+  assert.equal(openProjectCalls, 0); // same project → no re-open
+  assert.equal(useProjectStore.getState().projects[0].activeSessionId, 's1');
+  assert.equal(useSessionStore.getState().localActiveSessionByProject.p1, 's1');
+  assert.equal(useUiShellStore.getState().section, 'agent');
+});
+
+test('handleSelectSession re-opens the project when switching across projects', async () => {
+  resetStores();
+  useProjectStore.setState({
+    projects: [makeProject('p1', [{ id: 's1' }], 's1'), makeProject('p2', [{ id: 's2a' }, { id: 's2b' }], 's2a')],
+    selectedProjectId: 'p1'
+  });
+  installSelectFunplay(makeProject('p2', [{ id: 's2a' }, { id: 's2b' }], 's2b'));
+  const opened: string[] = [];
+
+  await makeActions({ openProject: (id) => opened.push(id) }).handleSelectSession('s2b', 'p2');
+
+  assert.deepEqual(opened, ['p2']);
+  assert.equal(useSessionStore.getState().localActiveSessionByProject.p2, 's2b');
+});
+
+test('handleSelectSession only flips to the agent section when the session is already active', async () => {
+  resetStores();
+  useProjectStore.setState({ projects: [makeProject('p1', [{ id: 's1' }], 's1')], selectedProjectId: 'p1' });
+  const handle = installSelectFunplay(makeProject('p1', [{ id: 's1' }], 's1'));
+
+  await makeActions().handleSelectSession('s1'); // already active
+
+  assert.deepEqual(handle.args, []); // no IPC
+  assert.equal(useUiShellStore.getState().section, 'agent');
+});
+
+test('handleSelectSession drops a superseded switch (stale token guard)', async () => {
+  resetStores();
+  useProjectStore.setState({ projects: [makeProject('p1', [{ id: 's0' }, { id: 's1' }], 's0')], selectedProjectId: 'p1' });
+  const tokenRef = { current: 0 };
+  // A newer switch claims a token while this one is awaiting the IPC.
+  installSelectFunplay(makeProject('p1', [{ id: 's0' }, { id: 's1', title: 'merged' }], 's1'), () => {
+    tokenRef.current += 1;
+  });
+
+  await makeActions({ activeSessionSwitchTokenRef: tokenRef }).handleSelectSession('s1');
+
+  // The post-await merge + section flip are skipped because the token moved on.
+  assert.equal(useUiShellStore.getState().section, 'engine');
 });
