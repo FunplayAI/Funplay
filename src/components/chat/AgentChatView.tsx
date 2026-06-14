@@ -52,13 +52,10 @@ export function AgentChatView(props: {
   activePromptStream: AgentPromptStreamState | null;
   developerMode: boolean;
   isSending: boolean;
-  onComposerChange: (value: string) => void;
   onPickAttachments: () => void;
   onImportAttachments: (files: File[], source: 'paste' | 'drop') => void;
   onRemoveAttachment: (attachmentId: string) => void;
   onSubmit: (content?: string) => void;
-  onQueuePrompt: (content: string) => void;
-  onRemoveQueuedPrompt: (promptId: string) => void;
   onCancelStream: () => void;
   onRespondPermission: (decision: 'allow' | 'allow_session' | 'deny') => void;
   onRespondUserInput: (response: AgentUserInputResponse) => void;
@@ -123,6 +120,12 @@ export function AgentChatView(props: {
   const queuedPrompts = useSessionComposerStore((store) =>
     composerSessionId ? store.queuedPrompts[composerSessionId] ?? EMPTY_QUEUE : EMPTY_QUEUE
   );
+  const updateDraft = useSessionComposerStore((store) => store.updateDraft);
+  const queuePromptAction = useSessionComposerStore((store) => store.queuePrompt);
+  const removeQueuedPromptAction = useSessionComposerStore((store) => store.removeQueuedPrompt);
+  const handleComposerChange = (value: string): void => updateDraft(composerSessionId, value);
+  const handleQueuePrompt = (content: string): void => queuePromptAction(composerSessionId, content);
+  const handleRemoveQueuedPrompt = (promptId: string): void => removeQueuedPromptAction(composerSessionId, promptId);
   const sessionMessages: ChatMessage[] = props.project ? activeSession?.chat ?? props.project.chat : EMPTY_CHAT_MESSAGES;
   const visibleStreamStatusMessage = getVisibleRuntimeStatusMessage(visibleStream?.statusMessage, props.developerMode, language);
   const activeModelLabel = props.provider?.model || t('本地规划器', 'Local Planner');
@@ -251,12 +254,12 @@ export function AgentChatView(props: {
     }
 
     if (props.isSending) {
-      props.onQueuePrompt(prompt || t('请查看附件并继续处理。', 'Please review the attachments and continue.'));
-      props.onComposerChange('');
+      handleQueuePrompt(prompt || t('请查看附件并继续处理。', 'Please review the attachments and continue.'));
+      handleComposerChange('');
       return;
     }
 
-    props.onComposerChange('');
+    handleComposerChange('');
     props.onSubmit(prompt);
   }
 
@@ -291,7 +294,7 @@ export function AgentChatView(props: {
               searchQuery=""
               openablePaths={props.openablePaths}
               emptyActions={emptyChatActions}
-              onSelectEmptyAction={props.onComposerChange}
+              onSelectEmptyAction={handleComposerChange}
               onOpenPath={props.onOpenFilePath}
               rewindSnapshotIds={props.rewindSnapshotIds}
               onRestoreCheckpoint={props.onRestoreCheckpoint}
@@ -333,7 +336,7 @@ export function AgentChatView(props: {
                 activeProviderId={props.provider?.id}
                 sessionProviderId={props.sessionProviderId}
                 permissionMode={props.permissionMode}
-                onDraftChange={props.onComposerChange}
+                onDraftChange={handleComposerChange}
                 onPickAttachments={props.onPickAttachments}
                 onImportAttachments={props.onImportAttachments}
                 onRemoveAttachment={props.onRemoveAttachment}
@@ -343,7 +346,7 @@ export function AgentChatView(props: {
                 onRespondUserInput={props.onRespondUserInput}
                 onUpdateSessionRuntime={props.onUpdateSessionRuntime}
                 onUpdatePermissionMode={props.onUpdatePermissionMode}
-                onRemoveQueuedPrompt={props.onRemoveQueuedPrompt}
+                onRemoveQueuedPrompt={handleRemoveQueuedPrompt}
                 onOpenAppSettings={props.onOpenAppSettings}
                 onOpenProjectAgentSettings={props.onOpenProjectAgentSettings}
                 onOpenEngineStatus={() => setEngineStatusOpen(true)}

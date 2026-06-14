@@ -62,3 +62,39 @@ test('setter identities are stable across state changes (safe for hook deps)', (
   const second = useSessionComposerStore.getState().setDrafts;
   assert.equal(first, second);
 });
+
+test('updateDraft sets the draft and clears that session error', () => {
+  resetStore();
+  const store = useSessionComposerStore.getState();
+  store.setComposerErrors({ s1: 'stale error' });
+  store.updateDraft('s1', 'hello world');
+  const state = useSessionComposerStore.getState();
+  assert.equal(state.drafts.s1, 'hello world');
+  assert.equal(state.composerErrors.s1, '');
+});
+
+test('queuePrompt trims, ignores empty/sessionless, and appends with an id', () => {
+  resetStore();
+  const store = useSessionComposerStore.getState();
+  store.queuePrompt('s1', '  go  ');
+  store.queuePrompt('s1', 'again');
+  store.queuePrompt('s1', '   ');
+  store.queuePrompt('', 'no session');
+  const queue = useSessionComposerStore.getState().queuedPrompts.s1;
+  assert.equal(queue?.length, 2);
+  assert.deepEqual(queue?.map((item) => item.content), ['go', 'again']);
+  assert.match(queue?.[0]?.id ?? '', /^queued_/);
+});
+
+test('removeQueuedPrompt drops the item and deletes the session key when empty', () => {
+  resetStore();
+  const store = useSessionComposerStore.getState();
+  store.queuePrompt('s1', 'a');
+  store.queuePrompt('s1', 'b');
+  const firstId = useSessionComposerStore.getState().queuedPrompts.s1![0].id;
+  store.removeQueuedPrompt('s1', firstId);
+  assert.equal(useSessionComposerStore.getState().queuedPrompts.s1?.length, 1);
+  const lastId = useSessionComposerStore.getState().queuedPrompts.s1![0].id;
+  store.removeQueuedPrompt('s1', lastId);
+  assert.equal('s1' in useSessionComposerStore.getState().queuedPrompts, false);
+});

@@ -971,42 +971,6 @@ function App(): JSX.Element {
     }
   }
 
-  function updateSessionDraft(sessionId: string, value: string): void {
-    setSessionDrafts((current) => ({ ...current, [sessionId]: value }));
-    setSessionComposerErrors((current) => ({ ...current, [sessionId]: '' }));
-  }
-
-  function queuePromptForSession(sessionId: string, content: string): void {
-    const prompt = content.trim();
-    if (!sessionId || !prompt) {
-      return;
-    }
-
-    setQueuedPromptsBySession((current) => ({
-      ...current,
-      [sessionId]: [
-        ...(current[sessionId] ?? []),
-        {
-          id: `queued_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          content: prompt
-        }
-      ]
-    }));
-  }
-
-  function removeQueuedPrompt(sessionId: string, promptId: string): void {
-    setQueuedPromptsBySession((current) => {
-      const nextQueue = (current[sessionId] ?? []).filter((item) => item.id !== promptId);
-      const next = { ...current };
-      if (nextQueue.length > 0) {
-        next[sessionId] = nextQueue;
-      } else {
-        delete next[sessionId];
-      }
-      return next;
-    });
-  }
-
   function seedPromptHandle(
     handle: {
       streamId: string;
@@ -1072,7 +1036,9 @@ function App(): JSX.Element {
     }
 
     if (getStreamSessionForSession(targetProjectView.id, sessionId)) {
-      queuePromptForSession(sessionId, formatQueuedPromptWithAttachments(message, attachments, uiPreferences.language));
+      useSessionComposerStore
+        .getState()
+        .queuePrompt(sessionId, formatQueuedPromptWithAttachments(message, attachments, uiPreferences.language));
       setSessionDrafts((current) => ({ ...current, [sessionId]: '' }));
       setSessionAttachments((current) => ({ ...current, [sessionId]: [] }));
       return;
@@ -1563,11 +1529,6 @@ function App(): JSX.Element {
                 isSending={Boolean(
                   selectedProjectStream && !['completed', 'cancelled', 'error'].includes(selectedProjectStream.phase)
                 )}
-                onComposerChange={(value) => {
-                  if (selectedSessionId) {
-                    updateSessionDraft(selectedSessionId, value);
-                  }
-                }}
                 onPickAttachments={() => void handlePickPromptAttachments()}
                 onImportAttachments={(files, source) => void handleImportPromptAttachmentFiles(files, source)}
                 onRemoveAttachment={(attachmentId) => {
@@ -1639,18 +1600,6 @@ function App(): JSX.Element {
                     { permissionMode: mode },
                     localize(uiPreferences.language, '权限模式更新失败。', 'Failed to update permission mode.')
                   );
-                }}
-                onQueuePrompt={(content) => {
-                  if (!selectedSessionId) {
-                    return;
-                  }
-                  queuePromptForSession(selectedSessionId, content);
-                  updateSessionDraft(selectedSessionId, '');
-                }}
-                onRemoveQueuedPrompt={(promptId) => {
-                  if (selectedSessionId) {
-                    removeQueuedPrompt(selectedSessionId, promptId);
-                  }
                 }}
                 onOpenAppSettings={() => openAppSettings('provider')}
                 onOpenProjectAgentSettings={() => {

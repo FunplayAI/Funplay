@@ -36,6 +36,14 @@ interface SessionComposerState {
   /** Single source of truth for tearing down every per-session map when a
    * session (or all of a project's sessions) is deleted. */
   clearSessionScoped: (sessionIds: string[]) => void;
+  /** Semantic per-session composer actions (migrated out of App.tsx handlers). */
+  updateDraft: (sessionId: string, value: string) => void;
+  queuePrompt: (sessionId: string, content: string) => void;
+  removeQueuedPrompt: (sessionId: string, promptId: string) => void;
+}
+
+function makeQueuedPromptId(): string {
+  return `queued_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export const useSessionComposerStore = create<SessionComposerState>((set) => ({
@@ -57,5 +65,33 @@ export const useSessionComposerStore = create<SessionComposerState>((set) => ({
       composerErrors: removeSessionKeys(state.composerErrors, sessionIds),
       queuedPrompts: removeSessionKeys(state.queuedPrompts, sessionIds)
     }));
-  }
+  },
+  updateDraft: (sessionId, value) =>
+    set((state) => ({
+      drafts: { ...state.drafts, [sessionId]: value },
+      composerErrors: { ...state.composerErrors, [sessionId]: '' }
+    })),
+  queuePrompt: (sessionId, content) => {
+    const prompt = content.trim();
+    if (!sessionId || !prompt) {
+      return;
+    }
+    set((state) => ({
+      queuedPrompts: {
+        ...state.queuedPrompts,
+        [sessionId]: [...(state.queuedPrompts[sessionId] ?? []), { id: makeQueuedPromptId(), content: prompt }]
+      }
+    }));
+  },
+  removeQueuedPrompt: (sessionId, promptId) =>
+    set((state) => {
+      const nextQueue = (state.queuedPrompts[sessionId] ?? []).filter((item) => item.id !== promptId);
+      const next = { ...state.queuedPrompts };
+      if (nextQueue.length > 0) {
+        next[sessionId] = nextQueue;
+      } else {
+        delete next[sessionId];
+      }
+      return { queuedPrompts: next };
+    })
 }));
