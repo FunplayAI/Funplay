@@ -34,6 +34,10 @@ interface ProjectState {
   setProjectPendingDelete: Dispatch<SetStateAction<Project | null>>;
   setIsDeletingProject: Dispatch<SetStateAction<boolean>>;
   setDeleteProjectSourceFiles: Dispatch<SetStateAction<boolean>>;
+  /** Open the delete-project modal for a project (migrated from App.tsx). */
+  openDeleteModal: (project: Project) => void;
+  /** Close the delete-project modal unless a deletion is already in flight. */
+  closeDeleteModal: () => void;
 }
 
 export const useProjectStore = create<ProjectState>((set) => ({
@@ -58,5 +62,13 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setIsDeletingProject: (value) =>
     set((state) => ({ isDeletingProject: resolveSetStateAction(value, state.isDeletingProject) })),
   setDeleteProjectSourceFiles: (value) =>
-    set((state) => ({ deleteProjectSourceFiles: resolveSetStateAction(value, state.deleteProjectSourceFiles) }))
+    set((state) => ({ deleteProjectSourceFiles: resolveSetStateAction(value, state.deleteProjectSourceFiles) })),
+  openDeleteModal: (project) =>
+    set({ projectPendingDelete: project, deleteProjectSourceFiles: false, showDeleteProjectModal: true }),
+  closeDeleteModal: () =>
+    set((state) =>
+      state.isDeletingProject
+        ? {}
+        : { showDeleteProjectModal: false, projectPendingDelete: null, deleteProjectSourceFiles: false }
+    )
 }));

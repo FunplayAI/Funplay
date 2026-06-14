@@ -104,7 +104,7 @@ function App(): JSX.Element {
     projects, setProjects, selectedProjectId, setSelectedProjectId, projectFiles, setProjectFiles,
     assetLibraryViewByProject, setAssetLibraryViewByProject, showDeleteProjectModal, setShowDeleteProjectModal,
     projectPendingDelete, setProjectPendingDelete, isDeletingProject, setIsDeletingProject,
-    deleteProjectSourceFiles, setDeleteProjectSourceFiles
+    deleteProjectSourceFiles, setDeleteProjectSourceFiles, openDeleteModal, closeDeleteModal
   } = useProjectStore();
   const {
     assetGenerationProviderConfigs,
@@ -883,21 +883,6 @@ function App(): JSX.Element {
     dispatchRefreshFileTree({ projectId, reason: 'project-opened' });
   }
 
-  function openDeleteProjectModal(project: Project): void {
-    setProjectPendingDelete(project);
-    setDeleteProjectSourceFiles(false);
-    setShowDeleteProjectModal(true);
-  }
-
-  function closeDeleteProjectModal(): void {
-    if (isDeletingProject) {
-      return;
-    }
-    setShowDeleteProjectModal(false);
-    setProjectPendingDelete(null);
-    setDeleteProjectSourceFiles(false);
-  }
-
   async function handleCreateProject(input: CreateProjectInput): Promise<void> {
     const project = await window.funplay.createProject(input);
     const shouldBindOnboardingEnginePlugin = input.engine?.platform === 'unity' && onboardingEnginePluginId;
@@ -1400,7 +1385,7 @@ function App(): JSX.Element {
         onDeleteProject={(projectId) => {
           const project = projects.find((item) => item.id === projectId);
           if (project) {
-            openDeleteProjectModal(project);
+            openDeleteModal(project);
           }
         }}
         onAddProject={() => {
@@ -1828,7 +1813,7 @@ function App(): JSX.Element {
           deleteSourceFiles={deleteProjectSourceFiles}
           isDeleting={isDeletingProject}
           onChangeDeleteSourceFiles={setDeleteProjectSourceFiles}
-          onClose={closeDeleteProjectModal}
+          onClose={closeDeleteModal}
           onConfirm={() => void handleDeleteProject()}
         />
       ) : null}
