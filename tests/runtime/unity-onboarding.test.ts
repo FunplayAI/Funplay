@@ -1239,6 +1239,7 @@ test('cocos create project task waits for real MCP connectivity before completin
   const templatePath = join(root, 'CocosCreator.app', 'Contents', 'Resources', 'templates', 'empty');
   const targetProjectPath = join(root, 'Arrow');
   const previousCreator = process.env.COCOS_CREATOR_EXECUTABLE;
+  const previousLocalSource = process.env.FUNPLAY_COCOS_MCP_LOCAL_SOURCE;
   try {
     await mkdir(join(fakeCreator, '..'), { recursive: true });
     await mkdir(templatePath, { recursive: true });
@@ -1253,6 +1254,9 @@ test('cocos create project task waits for real MCP connectivity before completin
     await writeFile(join(templateBridgePath, 'browser.js'), '', 'utf8');
     await writeFile(join(templateBridgePath, 'server.json'), '{}', 'utf8');
     process.env.COCOS_CREATOR_EXECUTABLE = fakeCreator;
+    // Belt-and-suspenders: if the bridge install is ever reached, copy it locally
+    // instead of doing a real git clone — keeps the test fully offline/deterministic.
+    process.env.FUNPLAY_COCOS_MCP_LOCAL_SOURCE = templateBridgePath;
 
     const result = await runEnvironmentAction(state, {
       actionId: 'create_cocos_project',
@@ -1302,6 +1306,11 @@ test('cocos create project task waits for real MCP connectivity before completin
       delete process.env.COCOS_CREATOR_EXECUTABLE;
     } else {
       process.env.COCOS_CREATOR_EXECUTABLE = previousCreator;
+    }
+    if (typeof previousLocalSource === 'undefined') {
+      delete process.env.FUNPLAY_COCOS_MCP_LOCAL_SOURCE;
+    } else {
+      process.env.FUNPLAY_COCOS_MCP_LOCAL_SOURCE = previousLocalSource;
     }
     environmentTasks.clear();
     await rm(root, { recursive: true, force: true });

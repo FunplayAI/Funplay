@@ -192,7 +192,17 @@ export function detectCocosCreatorInstallations(env: NodeJS.ProcessEnv = process
 
   return uniqueValues(installations.map((installation) => installation.executablePath))
     .map((path) => installations.find((installation) => installation.executablePath === path)!)
-    .sort((a, b) => (b.version ?? '').localeCompare(a.version ?? '', undefined, { numeric: true }));
+    .sort((a, b) => {
+      // An explicit COCOS_CREATOR_EXECUTABLE override always wins, even over a
+      // higher-versioned dashboard install (its version is unknown -> '', so it
+      // would otherwise sort last and be silently discarded).
+      const aEnv = a.source.startsWith('env:');
+      const bEnv = b.source.startsWith('env:');
+      if (aEnv !== bEnv) {
+        return aEnv ? -1 : 1;
+      }
+      return (b.version ?? '').localeCompare(a.version ?? '', undefined, { numeric: true });
+    });
 }
 
 export function findCocosCreatorInstallation(env?: NodeJS.ProcessEnv): CocosCreatorInstallation | undefined {
@@ -641,6 +651,33 @@ export function installCocosBridge(input: { projectPath: string }): WorkspaceToo
       isError: true,
       summary: `Failed to create Cocos extensions directory ${extensionsPath}: ${error instanceof Error ? error.message : String(error)}`
     };
+  }
+
+  // Offline source override: copy a local bridge checkout instead of cloning.
+  // Lets tests (and air-gapped installs) bring the bridge without hitting the
+  // network — the live git clone is the default only when this is unset.
+  const localSource = normalizePath(process.env.FUNPLAY_COCOS_MCP_LOCAL_SOURCE);
+  if (localSource && existsSync(localSource)) {
+    try {
+      cpSync(localSource, bridgePath, { recursive: true });
+      return {
+        ok: true,
+        summary: [
+          'Engine platform: cocos',
+          'Engine adapter: Cocos Creator Adapter',
+          'Capability: installBridge',
+          `Funplay Cocos MCP installed from local source: ${bridgePath}`,
+          `Default MCP endpoint: ${DEFAULT_COCOS_MCP_BASE_URL}`,
+          'Next action: restart Cocos Creator or reload extensions, then open Funplay > MCP Server.'
+        ].join('\n')
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        isError: true,
+        summary: `Failed to copy Cocos bridge from ${localSource}: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
   }
 
   const cloned = spawnSync('git', ['clone', '--depth', '1', FUNPLAY_COCOS_MCP_REPO, bridgePath], {
