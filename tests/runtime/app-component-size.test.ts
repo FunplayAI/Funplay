@@ -54,8 +54,9 @@ const BASELINES: Record<string, number> = {
   // phase 10 (slice 7): handleSelectSession moved to sessionActions (token ref injected — the last orchestration handler);
   // phase 10 (cleanup B): removed dead imports/vars left behind by the handler migration (App.tsx now lint-clean);
   // phase 11 (render-decomp A1): skill-draft-reset effect → useProjectSkills; useAppModeProjectSync store-only hook;
-  // phase 11 (A2): selected-project session derivations + project-switcher items → useSessionPanelDerivations.
-  'src/App.tsx': 1310,
+  // phase 11 (A2): selected-project session derivations + project-switcher items → useSessionPanelDerivations;
+  // phase 11 (A3): four early-return screens → BootstrapScreens (pure presentational).
+  'src/App.tsx': 1237,
   // ConversationMessage.tsx split into transcript/* modules by U47-3 — now 317 lines.
   // tool-activity.tsx split into tool/* modules by U47-4 — now 452 lines.
   // AgentChatView.tsx split into agent/* modules by U47-5 — now 371 lines.

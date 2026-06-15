@@ -43,8 +43,7 @@ import { AgentChatView } from './components/chat/AgentChatView';
 import { FileInspectorPanel, SidebarPanel } from './components/layout/WorkspacePanels';
 import { McpPluginModal } from './components/settings-modals';
 import { shouldUseFastRuntimeRefresh } from './lib/app-helpers';
-import { WelcomeScreen } from './components/pages/WelcomeScreen';
-import { OnboardingScreen } from './components/pages/OnboardingScreen';
+import { BootstrapScreens } from './components/pages/BootstrapScreens';
 import { ProjectSettingsPage } from './components/pages/ProjectSettingsPage';
 import { AssetsPage } from './components/pages/AssetsPage';
 import { AppSettingsModal } from './components/modals/AppSettingsModal';
@@ -756,93 +755,21 @@ function App(): JSX.Element {
     return projectNavActions.handleDeleteProject();
   }
 
-  if (isLoading) {
+  if (isLoading || bootstrapError || appMode !== 'workspace') {
     return (
-      <UiLanguageProvider language={uiPreferences.language}>
-        <>
-          <div className="app-bootstrap-screen">
-            {localize(uiPreferences.language, '正在加载 Funplay…', 'Loading Funplay…')}
-          </div>
-          <NotificationToastStack notifications={appNotifications} onDismiss={dismissNotification} />
-        </>
-      </UiLanguageProvider>
-    );
-  }
-
-  if (bootstrapError) {
-    return (
-      <UiLanguageProvider language={uiPreferences.language}>
-        <>
-          <div className="app-bootstrap-screen">
-            <div className="bootstrap-error-card">
-              <strong>{localize(uiPreferences.language, 'Funplay 启动失败', 'Funplay failed to start')}</strong>
-              <div>{bootstrapError}</div>
-            </div>
-          </div>
-          <NotificationToastStack notifications={appNotifications} onDismiss={dismissNotification} />
-        </>
-      </UiLanguageProvider>
-    );
-  }
-
-  if (appMode === 'welcome') {
-    return (
-      <UiLanguageProvider language={uiPreferences.language}>
-        <>
-          <WelcomeScreen
-            projects={projects}
-            mcpPlugins={mcpPlugins}
-            onCreate={() => {
-              onboarding.startOnboarding();
-              setAppMode('onboarding');
-            }}
-            onOpen={openProject}
-            onOpenExisting={() => void onboarding.handlePickExistingProjectFromWelcome()}
-          />
-          <NotificationToastStack notifications={appNotifications} onDismiss={dismissNotification} />
-        </>
-      </UiLanguageProvider>
-    );
-  }
-
-  if (appMode === 'onboarding') {
-    return (
-      <UiLanguageProvider language={uiPreferences.language}>
-        <>
-          <OnboardingScreen
-            step={onboarding.onboardingStep}
-            view={onboarding.onboardingView}
-            mode={onboarding.onboardingMode}
-            platform={onboarding.onboardingPlatform}
-            dimension={onboarding.onboardingDimension}
-            projectName={onboarding.onboardingProjectName}
-            projectPath={onboarding.onboardingProjectPath}
-            unityEditors={onboarding.onboardingUnityEditors}
-            selectedUnityEditorVersion={onboarding.onboardingUnityEditorVersion}
-            diagnostics={onboarding.environmentDiagnostics}
-            tasks={onboarding.environmentTasks}
-            detectionMessage={onboarding.onboardingDetectionMessage}
-            detectionOk={onboarding.onboardingDetectionOk}
-            actionMessage={onboarding.environmentActionMessage}
-            isChecking={onboarding.isCheckingEngine}
-            isCreatingProject={onboarding.isCreatingProject}
-            onModeChange={onboarding.setOnboardingMode}
-            onPlatformChange={onboarding.setOnboardingPlatform}
-            onDimensionChange={onboarding.setOnboardingDimension}
-            onProjectNameChange={onboarding.setOnboardingProjectName}
-            onPathChange={onboarding.setOnboardingProjectPath}
-            onUnityEditorVersionChange={onboarding.setOnboardingUnityEditorVersion}
-            onBrowsePath={() => void onboarding.handleBrowseOnboardingProjectPath()}
-            onDetect={() => void onboarding.handleCheckOnboardingConnection()}
-            onRunAction={(actionId) => void onboarding.handleRunEnvironmentAction(actionId)}
-            onBackToSetup={() => onboarding.setOnboardingView('setup')}
-            onSkip={() => setAppMode('workspace')}
-            onNext={() => void onboarding.handleFinishOnboarding()}
-            onEnter={() => void onboarding.handleEnterWorkspace()}
-          />
-          <NotificationToastStack notifications={appNotifications} onDismiss={dismissNotification} />
-        </>
-      </UiLanguageProvider>
+      <BootstrapScreens
+        isLoading={isLoading}
+        bootstrapError={bootstrapError}
+        appMode={appMode}
+        setAppMode={setAppMode}
+        projects={projects}
+        language={uiPreferences.language}
+        mcpPlugins={mcpPlugins}
+        onboarding={onboarding}
+        openProject={openProject}
+        appNotifications={appNotifications}
+        dismissNotification={dismissNotification}
+      />
     );
   }
 
