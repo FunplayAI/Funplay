@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
+import { useCallback, useEffect, useRef, type JSX } from 'react';
 import { useUiPreferences } from './hooks/useUiPreferences';
 import { useWorkspaceLayout } from './hooks/useWorkspaceLayout';
 import { useSelectedProjectView } from './hooks/useSelectedProjectView';
 import { useAppModeProjectSync } from './hooks/useAppModeProjectSync';
+import { useSessionPanelDerivations } from './hooks/useSessionPanelDerivations';
 import { createSessionActions } from './actions/sessionActions';
 import { createEnvironmentActions } from './actions/environmentActions';
 import { createPromptStreamActions } from './actions/promptStreamActions';
@@ -39,16 +40,9 @@ import {
   type StreamSessionState
 } from './lib/stream-session-manager';
 import { AgentChatView } from './components/chat/AgentChatView';
-import { getVisibleRuntimeStatusMessage } from './components/chat/runtime-display';
 import { FileInspectorPanel, SidebarPanel } from './components/layout/WorkspacePanels';
 import { McpPluginModal } from './components/settings-modals';
-import type { SessionCheckpointListItem, SessionListState } from './components/layout/SessionManagementPanel';
-import {
-  buildProjectSwitcherItem,
-  buildSessionListState,
-  buildVirtualProjectFiles,
-  shouldUseFastRuntimeRefresh
-} from './lib/app-helpers';
+import { shouldUseFastRuntimeRefresh } from './lib/app-helpers';
 import { WelcomeScreen } from './components/pages/WelcomeScreen';
 import { OnboardingScreen } from './components/pages/OnboardingScreen';
 import { ProjectSettingsPage } from './components/pages/ProjectSettingsPage';
@@ -92,7 +86,6 @@ function App(): JSX.Element {
   const setSessionDrafts = useSessionComposerStore((store) => store.setDrafts);
   const sessionAttachments = useSessionComposerStore((store) => store.attachments);
   const setSessionAttachments = useSessionComposerStore((store) => store.setAttachments);
-  const sessionComposerErrors = useSessionComposerStore((store) => store.composerErrors);
   const setSessionComposerErrors = useSessionComposerStore((store) => store.setComposerErrors);
   const queuedPromptsBySession = useSessionComposerStore((store) => store.queuedPrompts);
   const setQueuedPromptsBySession = useSessionComposerStore((store) => store.setQueuedPrompts);
@@ -549,7 +542,6 @@ function App(): JSX.Element {
     selectedProjectView?.agentPolicy?.permissionMode ?? agentSettings.permissionMode;
   const selectedSessionPermissionMode = selectedSessionRuntime?.permissionMode ?? selectedProjectPermissionMode;
   const selectedSessionEffort = selectedSessionRuntime?.effort ?? 'auto';
-  const enabledProviders = useMemo(() => providers.filter((provider) => provider.enabled), [providers]);
   const selectedDefaultProvider =
     providers.find((provider) => provider.id === aiSettings.defaultProviderId && provider.enabled) ??
     providers.find((provider) => provider.enabled) ??
@@ -567,114 +559,22 @@ function App(): JSX.Element {
       setSessionComposerErrors,
       language: uiPreferences.language
     });
-  const selectedProjectSessionStates = useMemo<Record<string, SessionListState>>(() => {
-    if (!selectedProjectView) {
-      return {};
-    }
-
-    return Object.fromEntries(
-      selectedProjectView.sessions.map((session) => [
-        session.id,
-        buildSessionListState({
-          session,
-          language: uiPreferences.language,
-          isStreaming: Boolean(
-            activeStreamSessions.some(
-              (stream) =>
-                stream.projectId === selectedProjectView.id &&
-                stream.sessionId === session.id &&
-                !['completed', 'cancelled', 'error'].includes(stream.phase)
-            )
-          ),
-          statusMessage: getVisibleRuntimeStatusMessage(
-            activeStreamSessions.find(
-              (stream) => stream.projectId === selectedProjectView.id && stream.sessionId === session.id
-            )?.statusMessage,
-            uiPreferences.developerMode,
-            uiPreferences.language
-          ),
-          queuedCount: queuedPromptsBySession[session.id]?.length ?? 0,
-          composerError: sessionComposerErrors[session.id] ?? ''
-        })
-      ])
-    );
-  }, [
-    activeStreamSessions,
-    queuedPromptsBySession,
+  const {
+    enabledProviders,
+    selectedProjectSessionStates,
+    selectedSessionRewindSnapshotIds,
+    selectedSessionLatestCheckpointId,
+    projectSwitcherItems,
+    virtualProjectFiles
+  } = useSessionPanelDerivations({
     selectedProjectView,
-    sessionComposerErrors,
-    uiPreferences.developerMode,
-    uiPreferences.language
-  ]);
-  const selectedProjectSessionCheckpoints = useMemo<Record<string, SessionCheckpointListItem[]>>(() => {
-    if (!selectedProjectView) {
-      return {};
-    }
-
-    return selectedProjectView.snapshots
-      .filter((snapshot) => snapshot.sessionCheckpoint)
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-      .reduce<Record<string, SessionCheckpointListItem[]>>((accumulator, snapshot) => {
-        const sessionId = snapshot.sessionCheckpoint?.sessionId;
-        if (sessionId) {
-          const next = accumulator[sessionId] ?? [];
-          next.push({
-            id: snapshot.id,
-            note: snapshot.note,
-            createdAt: snapshot.createdAt
-          });
-          accumulator[sessionId] = next;
-        }
-        return accumulator;
-      }, {});
-  }, [selectedProjectView]);
-  const selectedSessionRewindSnapshotIds = useMemo<Record<string, string>>(() => {
-    if (!selectedProjectView || !selectedSessionId) {
-      return {};
-    }
-
-    return selectedProjectView.snapshots
-      .filter(
-        (snapshot) =>
-          snapshot.sessionCheckpoint?.sessionId === selectedSessionId &&
-          snapshot.sessionCheckpoint?.triggerUserMessageId
-      )
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-      .reduce<Record<string, string>>((accumulator, snapshot) => {
-        const messageId = snapshot.sessionCheckpoint?.triggerUserMessageId;
-        if (messageId && !accumulator[messageId]) {
-          accumulator[messageId] = snapshot.id;
-        }
-        return accumulator;
-      }, {});
-  }, [selectedProjectView, selectedSessionId]);
-
-  const selectedSessionLatestCheckpointId = selectedSessionId
-    ? selectedProjectSessionCheckpoints[selectedSessionId]?.[0]?.id
-    : undefined;
-
-  const projectSwitcherItems = useMemo(
-    () =>
-      projects.map((project) =>
-        buildProjectSwitcherItem({
-          project: ensureProjectSessions(project),
-          activeStreams: activeStreamSessions,
-          runtimeStatuses: agentRuntimeStatuses,
-          queuedPromptsBySession,
-          composerErrors: sessionComposerErrors,
-          activeSessionByProject: localActiveSessionByProject
-        })
-      ),
-    [
-      activeStreamSessions,
-      agentRuntimeStatuses,
-      localActiveSessionByProject,
-      projects,
-      queuedPromptsBySession,
-      sessionComposerErrors
-    ]
-  );
-  const virtualProjectFiles = selectedProjectView ? buildVirtualProjectFiles(selectedProjectView) : [];
+    selectedSessionId,
+    providers,
+    activeStreamSessions,
+    agentRuntimeStatuses,
+    language: uiPreferences.language,
+    developerMode: uiPreferences.developerMode
+  });
 
   const {
     notificationTasks,
