@@ -78,17 +78,6 @@ async function discoverUnityListenPorts(): Promise<number[]> {
   }
 }
 
-async function buildCandidateUrls(baseUrl: string): Promise<string[]> {
-  const normalizedBaseUrl = normalizeMcpBaseUrl(baseUrl);
-  const ports = await discoverUnityListenPorts();
-  const urls = [
-    normalizedBaseUrl,
-    'http://127.0.0.1:8765/',
-    ...ports.map((port) => `http://127.0.0.1:${port}/`)
-  ];
-  return [...new Set(urls)];
-}
-
 async function readMcpProjectPath(url: string, abortSignal: AbortSignal): Promise<string | undefined> {
   const result = await postMcpJsonRpc<{
     content?: Array<{ text?: string }>;
@@ -128,6 +117,38 @@ async function probeMcpJsonRpc(url: string, expectedProjectPath?: string): Promi
   }
 }
 
+// Probe a set of URLs concurrently and resolve to the first that is online (and,
+// when an expected project path is given, matching) — or null once all fail.
+// Bounds offline detection to ~one probe timeout instead of summing them.
+async function raceFirstOnlineProbe(
+  urls: string[],
+  expectedProjectPath?: string
+): Promise<{ url: string; result: { serverInfo: string; projectPath?: string } } | null> {
+  if (urls.length === 0) {
+    return null;
+  }
+  return new Promise((resolve) => {
+    let remaining = urls.length;
+    let settled = false;
+    for (const url of urls) {
+      void probeMcpJsonRpc(url, expectedProjectPath).then((result) => {
+        if (settled) {
+          return;
+        }
+        if (result) {
+          settled = true;
+          resolve({ url, result });
+          return;
+        }
+        remaining -= 1;
+        if (remaining === 0) {
+          resolve(null);
+        }
+      });
+    }
+  });
+}
+
 export async function checkUnityHealth(baseUrl: string, options: { expectedProjectPath?: string; bypassCache?: boolean } = {}): Promise<UnityHealthResult> {
   const cacheKey = makeHealthCacheKey(baseUrl, options.expectedProjectPath);
   if (!options.bypassCache) {
@@ -138,42 +159,96 @@ export async function checkUnityHealth(baseUrl: string, options: { expectedProje
   }
 
   const checkedAt = new Date().toISOString();
-  const candidateUrls = await buildCandidateUrls(baseUrl);
-  const failures: string[] = [];
+  const normalizedBaseUrl = normalizeMcpBaseUrl(baseUrl);
+  const ports = await discoverUnityListenPorts();
+  // Tier 1: the configured endpoint + the default port (prefer these over any
+  // arbitrary discovered editor when the project identity can't be verified).
+  // Tier 2: other discovered Unity listen ports, only if tier 1 is offline.
+  const primaryUrls = [...new Set([normalizedBaseUrl, 'http://127.0.0.1:8765/'])];
+  const discoveredUrls = [...new Set(ports.map((port) => `http://127.0.0.1:${port}/`))].filter(
+    (url) => !primaryUrls.includes(url)
+  );
 
-  for (const url of candidateUrls) {
-    const result = await probeMcpJsonRpc(url, options.expectedProjectPath);
-    if (result) {
-      return writeCachedHealth(cacheKey, {
-        status: 'online',
-        checkedAt,
-        url,
-        projectPath: result.projectPath,
-        message: `Unity MCP 已连通：${result.serverInfo}。`
-      });
-    }
-    failures.push(url);
+  const hit =
+    (await raceFirstOnlineProbe(primaryUrls, options.expectedProjectPath)) ??
+    (await raceFirstOnlineProbe(discoveredUrls, options.expectedProjectPath));
+
+  if (hit) {
+    return writeCachedHealth(cacheKey, {
+      status: 'online',
+      checkedAt,
+      url: hit.url,
+      projectPath: hit.result.projectPath,
+      message: `Unity MCP 已连通：${hit.result.serverInfo}。`
+    });
   }
 
+  const attempted = [...primaryUrls, ...discoveredUrls].join('、') || normalizedBaseUrl;
   return writeCachedHealth(cacheKey, {
     status: 'offline',
     checkedAt,
-    url: normalizeMcpBaseUrl(baseUrl),
+    url: normalizedBaseUrl,
     message: options.expectedProjectPath
-      ? `Unity MCP 连接失败或项目不匹配：目标项目 ${normalizeProjectPathForCompare(options.expectedProjectPath)}，已尝试 ${failures.join('、') || normalizeMcpBaseUrl(baseUrl)}`
-      : `Unity MCP 连接失败：已尝试 ${failures.join('、') || normalizeMcpBaseUrl(baseUrl)}`
+      ? `Unity MCP 连接失败或项目不匹配：目标项目 ${normalizeProjectPathForCompare(options.expectedProjectPath)}，已尝试 ${attempted}`
+      : `Unity MCP 连接失败：已尝试 ${attempted}`
   });
 }
 
-export async function reconnectUnityHealth(baseUrl: string): Promise<UnityHealthResult> {
-  const serverInfo = await reconnectMcpConnection(baseUrl);
+export async function reconnectUnityHealth(baseUrl: string, expectedProjectPath?: string): Promise<UnityHealthResult> {
   const checkedAt = new Date().toISOString();
   const url = normalizeMcpBaseUrl(baseUrl);
-  healthCache.delete(makeHealthCacheKey(baseUrl));
-  return writeCachedHealth(makeHealthCacheKey(baseUrl), {
-    status: 'online',
-    checkedAt,
-    url,
-    message: `Unity MCP 已重新连接：${serverInfo.name} ${serverInfo.version}。`
-  });
+  // Cache under the SAME project-scoped key that project-scoped readers use, not
+  // a project-less key they never look up (which made the write dead).
+  const cacheKey = makeHealthCacheKey(baseUrl, expectedProjectPath);
+  healthCache.delete(cacheKey);
+
+  try {
+    const serverInfo = await reconnectMcpConnection(baseUrl);
+    // Verify the editor that answered actually serves this project — otherwise a
+    // different Unity editor listening at the port would be falsely confirmed.
+    if (expectedProjectPath) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1500);
+      try {
+        const projectPath = await readMcpProjectPath(url, controller.signal).catch(() => undefined);
+        if (
+          !projectPath ||
+          normalizeProjectPathForCompare(projectPath) !== normalizeProjectPathForCompare(expectedProjectPath)
+        ) {
+          return writeCachedHealth(cacheKey, {
+            status: 'offline',
+            checkedAt,
+            url,
+            projectPath,
+            message: projectPath
+              ? `Unity MCP 已响应，但当前连接的是 ${projectPath}，不是目标项目 ${expectedProjectPath}。`
+              : 'Unity MCP 已响应，但还不能确认它连接的是当前项目。'
+          });
+        }
+        return writeCachedHealth(cacheKey, {
+          status: 'online',
+          checkedAt,
+          url,
+          projectPath,
+          message: `Unity MCP 已重新连接：${serverInfo.name} ${serverInfo.version}。`
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    return writeCachedHealth(cacheKey, {
+      status: 'online',
+      checkedAt,
+      url,
+      message: `Unity MCP 已重新连接：${serverInfo.name} ${serverInfo.version}。`
+    });
+  } catch (error) {
+    return writeCachedHealth(cacheKey, {
+      status: 'offline',
+      checkedAt,
+      url,
+      message: `Unity MCP 重新连接失败：${error instanceof Error ? error.message : String(error)}`
+    });
+  }
 }
