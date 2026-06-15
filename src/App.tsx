@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import { useUiPreferences } from './hooks/useUiPreferences';
 import { useWorkspaceLayout } from './hooks/useWorkspaceLayout';
 import { useSelectedProjectView } from './hooks/useSelectedProjectView';
@@ -26,16 +26,10 @@ import { useAssetGenerationCenter } from './hooks/useAssetGenerationCenter';
 import { usePromptAttachmentImport } from './hooks/usePromptAttachmentImport';
 import { useMcpManager } from './hooks/useMcpManager';
 import { ensureProjectSessions } from '../shared/project-sessions';
-import {
-  type AssetGenerationProviderConfig,
-  type BootstrapPayload,
-  type CreateProjectInput,
-  type PromptStreamEvent,
-  type ProjectFileEntry
-} from '../shared/types';
+import { type BootstrapPayload, type CreateProjectInput, type PromptStreamEvent } from '../shared/types';
 import { AppShell } from './components/layout/AppShell';
 import { AgentWorkbench } from './components/layout/AgentWorkbench';
-import { UiLanguageProvider, getDocumentLanguage, localize, useUiLanguage } from './i18n';
+import { UiLanguageProvider, localize } from './i18n';
 import { dispatchRefreshFileTree, subscribeRefreshFileTree } from './lib/file-tree-events';
 import {
   applyPromptStreamEventToManager,
@@ -44,7 +38,6 @@ import {
   type StreamSessionState
 } from './lib/stream-session-manager';
 import { AgentChatView } from './components/chat/AgentChatView';
-import type { QueuedPromptItem } from './components/chat/ChatComposer';
 import { getVisibleRuntimeStatusMessage } from './components/chat/runtime-display';
 import { FileInspectorPanel, SidebarPanel } from './components/layout/WorkspacePanels';
 import { McpPluginModal } from './components/settings-modals';
@@ -54,17 +47,12 @@ import {
   buildSessionListState,
   buildVirtualProjectFiles,
   createEmptyProjectSkillDraft,
-  formatAbsoluteTime,
   shouldUseFastRuntimeRefresh
 } from './lib/app-helpers';
 import { WelcomeScreen } from './components/pages/WelcomeScreen';
 import { OnboardingScreen } from './components/pages/OnboardingScreen';
-import { McpManagementPage } from './components/pages/McpManagementPage';
-import { SkillsPage } from './components/pages/SkillsPage';
 import { ProjectSettingsPage } from './components/pages/ProjectSettingsPage';
-import { McpRegistrySettingsPage } from './components/pages/McpRegistrySettingsPage';
-import { WebSearchSettingsPage } from './components/pages/WebSearchSettingsPage';
-import { AssetsPage, type AssetLibraryViewId } from './components/pages/AssetsPage';
+import { AssetsPage } from './components/pages/AssetsPage';
 import { AppSettingsModal } from './components/modals/AppSettingsModal';
 import { DeleteProjectModal } from './components/modals/DeleteProjectModal';
 import { SessionChangesPanel, RestoreCheckpointModal } from './components/modals/SessionChangesPanel';
@@ -95,7 +83,7 @@ function App(): JSX.Element {
   } = useAssetGenerationProviders();
   // Engine/project-setup state (settings + onboarding wizard) lives in the engine-setup store.
   const {
-    settings, setSettings, settingsDraft, setSettingsDraft,
+    settings, setSettings, setSettingsDraft,
     onboardingProjectPath, setOnboardingProjectPath, onboardingEnginePluginId, setOnboardingEnginePluginId
   } = useEngineSetupStore();
   // Per-session composer state now lives in the Zustand session-composer store.
@@ -124,7 +112,7 @@ function App(): JSX.Element {
     return next;
   }
 
-  const { uiPreferences, setUiPreferences, platformCards } = useUiPreferences();
+  const { uiPreferences, setUiPreferences } = useUiPreferences();
   const {
     leftSidebarCollapsed,
     setLeftSidebarCollapsed,
@@ -151,8 +139,6 @@ function App(): JSX.Element {
     agentSettings,
     setAgentSettings,
     providerTests,
-    setProviderTests,
-    refreshProviderStateFromMain,
     handleCreateProvider,
     handleUpdateProvider,
     handleDeleteProvider,
@@ -1017,7 +1003,7 @@ function App(): JSX.Element {
         rightWidth={rightInspectorWidth}
         onLeftWidthChange={setLeftSidebarWidth}
         onRightWidthChange={setRightInspectorWidth}
-        renderLeftPanel={({ width, close }) => (
+        renderLeftPanel={({ width }) => (
           <SidebarPanel
             files={projectFiles}
             selectedFileId={selectedFileId}
