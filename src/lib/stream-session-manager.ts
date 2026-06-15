@@ -642,8 +642,14 @@ function scheduleTextSmoothing(streamId: string): void {
   getStreams().set(streamId, withLiveAgentCoreParts(next));
   emitChange();
 
-  const remaining = state.targetContent.length - nextContent.length;
-  if (remaining <= 0) {
+  // Stop on direct content equality rather than a UTF-16 length delta. Today
+  // these coincide (each tick reveals a strictly-longer PREFIX of the target, so
+  // length only reaches target.length when the whole string is present), but the
+  // equality check doesn't rely on that implicit prefix invariant: if a future
+  // change to getNextSmoothedContent ever broke monotone-prefix reveal, the
+  // length check could stop early (drop the tail) whereas equality keeps
+  // rescheduling and self-heals via the snap path on the next tick.
+  if (nextContent === state.targetContent) {
     clearTextSmoothing(streamId);
     return;
   }

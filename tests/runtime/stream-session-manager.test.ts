@@ -53,6 +53,29 @@ function stream(input: {
   };
 }
 
+// Poll the real smoothing pipeline until it converges to `expected`, instead of
+// guessing a fixed sleep. The grapheme-by-grapheme reveal runs on chained
+// setTimeout(16ms) ticks whose total wall-clock sits only a thin margin under
+// any fixed delay, so under event-loop load the final tick can land after the
+// read — a timing flake, not a real drop. Yielding here lets the timers fire and
+// returns the instant content settles; the bounded timeout still fails fast (with
+// a clear diff) if the pipeline genuinely stalls short of the target.
+async function waitForStreamContent(
+  projectId: string,
+  sessionId: string,
+  expected: string,
+  timeoutMs = 2000
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (getStreamSessionForSession(projectId, sessionId)?.content === expected) {
+      return;
+    }
+    await delay(8);
+  }
+  assert.equal(getStreamSessionForSession(projectId, sessionId)?.content, expected);
+}
+
 test('stream manager tracks parallel sessions within and across projects', () => {
   clearStreamSessions();
 
@@ -249,7 +272,7 @@ test('stream manager restores running streams from runtime status after renderer
     labels
   );
   assert.equal(getStreamSessionForSession('project_a', 'session_1')?.content, 'W');
-  await delay(260);
+  await waitForStreamContent('project_a', 'session_1', 'Working...done');
   assert.equal(getStreamSessionForSession('project_a', 'session_1')?.content, 'Working...done');
 });
 
@@ -416,7 +439,7 @@ test('stream manager places live tool steps before text generated after the tool
     labels
   );
 
-  await delay(180);
+  await waitForStreamContent('project_a', 'session_1', '以下是整理后的正文。');
   const parts = getStreamSessionForSession('project_a', 'session_1')?.agentCoreParts ?? [];
   assert.deepEqual(
     parts.map((part) => part.kind),
@@ -877,6 +900,40 @@ test('stream manager smooths large text deltas and clears the draft on completio
   );
 
   assert.equal(getStreamSessionForSession('project_a', 'session_1'), null);
+  clearStreamSessions();
+});
+
+test('stream manager smoothing converges to the full target for tricky grapheme tails', async () => {
+  clearStreamSessions();
+  seedStreamSession(
+    stream({
+      streamId: 'stream_grapheme_tail',
+      projectId: 'project_a',
+      sessionId: 'session_1',
+      startedAt: '2026-04-22T08:00:00.000Z'
+    })
+  );
+
+  // Trailing surrogate-pair emoji + whitespace: the reveal must append the emoji
+  // atomically (one grapheme spanning two UTF-16 units) and still emit the
+  // trailing newline, settling on the EXACT target — a regression guard for the
+  // equality-based stop condition and the monotone-prefix reveal invariant.
+  const targetContent = '结果:🎉\n';
+  applyPromptStreamEventToManager(
+    {
+      type: 'delta',
+      streamId: 'stream_grapheme_tail',
+      projectId: 'project_a',
+      sessionId: 'session_1',
+      delta: targetContent,
+      content: targetContent,
+      startedAt: '2026-04-22T08:00:00.000Z'
+    },
+    labels
+  );
+
+  await waitForStreamContent('project_a', 'session_1', targetContent);
+  assert.equal(getStreamSessionForSession('project_a', 'session_1')?.content, targetContent);
   clearStreamSessions();
 });
 
