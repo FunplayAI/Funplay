@@ -27,6 +27,7 @@ import type {
 } from '../../shared/types';
 import { checkUnityHealth } from './unity-bridge';
 import { listUnityResources, readUnityResource } from './unity-mcp-client';
+import { logEngineDebug } from './engine-log';
 import { nowIso } from '../../shared/utils';
 import {
   listInstalledUnityEditors,
@@ -478,7 +479,8 @@ async function discoverCocosListenPorts(): Promise<number[]> {
       .map((match) => Number(match[1]))
       .filter((port) => Number.isInteger(port) && port > 0);
     return [...new Set(ports)];
-  } catch {
+  } catch (error) {
+    logEngineDebug('cocos', 'lsof port discovery failed', error);
     return [];
   }
 }
@@ -511,8 +513,10 @@ async function probeCocosMcpConfig(
       })(),
       deadline
     ]);
-  } catch {
-    // Snapshot below records the offline reason.
+  } catch (error) {
+    // Snapshot below records the offline status; the underlying reason (timeout
+    // vs refused vs tool error) is only otherwise visible under the debug flag.
+    logEngineDebug('cocos', `probe failed for ${config.baseUrl ?? config.transport}`, error);
   } finally {
     if (timeoutHandle) {
       clearTimeout(timeoutHandle);
@@ -866,7 +870,10 @@ export async function listEnvironmentTasksForState(state: AppState): Promise<Env
       // inspectCocosProject's resolved/realpath'd form — a raw === against the resolved
       // path silently diverges for symlinked (/tmp -> /private/tmp) or trailing-slash
       // paths, so the task would otherwise never auto-complete.
-      const probe = await checkCocosMcpConnection(state, undefined, undefined).catch(() => undefined);
+      const probe = await checkCocosMcpConnection(state, undefined, undefined).catch((error) => {
+        logEngineDebug('cocos', 'task-reconciliation probe threw', error);
+        return undefined;
+      });
       if (probe?.health.status === 'online') {
         reconcileBridgeConnectedTasks(probe.health.message, pendingProjectPath);
       }
@@ -883,7 +890,10 @@ export async function listEnvironmentTasksForState(state: AppState): Promise<Env
       }
       const health = await checkUnityHealth(state.settings.baseUrl || 'http://127.0.0.1:8765/', {
         expectedProjectPath: pendingProjectPath
-      }).catch(() => undefined);
+      }).catch((error) => {
+        logEngineDebug('unity', 'task-reconciliation health probe threw', error);
+        return undefined;
+      });
       if (health?.status === 'online') {
         syncDiscoveredUnityMcpEndpoint(state, health.url);
         reconcileBridgeConnectedTasks(undefined, pendingProjectPath);

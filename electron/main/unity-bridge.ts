@@ -9,6 +9,7 @@ import {
   postMcpJsonRpc,
   reconnectMcpConnection
 } from './mcp-connection-manager';
+import { logEngineDebug } from './engine-log';
 
 const execFileAsync = promisify(execFile);
 const HEALTH_ONLINE_CACHE_TTL_MS = 30_000;
@@ -73,7 +74,8 @@ async function discoverUnityListenPorts(): Promise<number[]> {
       .map((match) => Number(match[1]))
       .filter((port) => Number.isInteger(port) && port > 0);
     return [...new Set(ports)];
-  } catch {
+  } catch (error) {
+    logEngineDebug('unity', 'lsof port discovery failed', error);
     return [];
   }
 }
@@ -110,7 +112,8 @@ async function probeMcpJsonRpc(url: string, expectedProjectPath?: string): Promi
       serverInfo: `${serverInfo.name} ${serverInfo.version}`,
       projectPath
     };
-  } catch {
+  } catch (error) {
+    logEngineDebug('unity', `probe failed for ${url}`, error);
     return null;
   } finally {
     clearTimeout(timeout);

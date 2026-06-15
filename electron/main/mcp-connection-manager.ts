@@ -7,6 +7,7 @@ import type { Transport as SdkMcpTransport } from '@modelcontextprotocol/sdk/sha
 import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { McpConnectionSnapshot, McpConnectionStatus, McpProcessStatus, McpTransport, UnityMcpJsonRpcResponse, UnityMcpServerInfo } from '../../shared/types';
 import { makeId } from '../../shared/utils';
+import { logEngineWarn } from './engine-log';
 
 export interface McpConnectionConfig {
   id?: string;
@@ -660,6 +661,10 @@ async function ensureSdkMcpClient(entry: McpConnectionEntry, abortSignal: AbortS
     entry.status = 'offline';
     entry.serverInfo = undefined;
     entry.lastCheckedAt = new Date().toISOString();
+    // A live, previously-online transport closing out from under us is a real
+    // mid-session death (server crashed/restarted), not a routine probe miss —
+    // surface it instead of silently flipping the entry offline.
+    logEngineWarn('mcp', `${transportName} transport closed for ${entry.config.baseUrl ?? entry.key}`);
   };
   transport.onerror = (error) => {
     if (sdk.closed) {
@@ -669,6 +674,7 @@ async function ensureSdkMcpClient(entry: McpConnectionEntry, abortSignal: AbortS
     entry.serverInfo = undefined;
     entry.lastCheckedAt = new Date().toISOString();
     entry.lastError = error.message;
+    logEngineWarn('mcp', `${transportName} transport error for ${entry.config.baseUrl ?? entry.key}`, error);
   };
 
   try {
@@ -678,6 +684,13 @@ async function ensureSdkMcpClient(entry: McpConnectionEntry, abortSignal: AbortS
     });
   } catch (error) {
     sdk.closed = true;
+    // Detach our handlers first so the teardown below can't fire a late
+    // onclose/onerror back into this (already-failed, never-stored) entry, then
+    // close BOTH client and transport — for SSE the client owns an EventSource
+    // that a bare transport.close() on a half-open connection can leave dangling.
+    transport.onclose = undefined;
+    transport.onerror = undefined;
+    await client.close().catch(() => undefined);
     await transport.close().catch(() => undefined);
     throw error;
   }
