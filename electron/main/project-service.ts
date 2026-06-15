@@ -217,7 +217,10 @@ export async function refreshProjectRuntimeState(state: AppState, projectId: str
 
   const runtimeState = await getProjectRuntimeState(state, {
     platform: current.engine.platform,
-    projectPath: current.engine.projectPath
+    projectPath: current.engine.projectPath,
+    // Routine poll: connection-health only, no project-path tool call (avoids
+    // poking a broken external Cocos project into a blocking modal every cycle).
+    verifyBridgeProjectMatch: false
   });
   const updated: Project = {
     ...current,

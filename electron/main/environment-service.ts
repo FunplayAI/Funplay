@@ -826,6 +826,15 @@ export async function getProjectRuntimeState(
   input: {
     platform?: PlatformChoice;
     projectPath?: string;
+    /**
+     * Whether to verify the connected bridge serves THIS project by calling a
+     * project-path MCP tool (Cocos: readCocosMcpProjectPath). Defaults to true
+     * for explicit diagnostics. The periodic runtime poller passes false: that
+     * tool call makes the (external) Cocos extension read the project, which pops
+     * a blocking "project definition not found" modal for a broken project — so
+     * the routine poll only checks connection health, not project-match.
+     */
+    verifyBridgeProjectMatch?: boolean;
   }
 ): Promise<ProjectRuntimeState> {
   const checkedAt = nowIso();
@@ -846,8 +855,10 @@ export async function getProjectRuntimeState(
   if (platform === 'cocos') {
     const cocosProject = inspectCocosProject(normalizedProjectPath);
     const bridgeInstalled = cocosProject.valid && isCocosBridgeInstalled(cocosProject.projectPath);
+    // Skip the project-path tool call on routine polls (see verifyBridgeProjectMatch).
+    const expectedProjectPath = input.verifyBridgeProjectMatch === false ? undefined : cocosProject.projectPath;
     const bridgeProbe = bridgeInstalled
-      ? await checkCocosMcpConnection(state, undefined, cocosProject.projectPath)
+      ? await checkCocosMcpConnection(state, undefined, expectedProjectPath)
       : undefined;
     const bridgeHealth = bridgeProbe?.health;
     const projectOpen = cocosProject.valid
