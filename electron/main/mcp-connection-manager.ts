@@ -577,6 +577,16 @@ function forceKillStdioProcess(entry: McpConnectionEntry): void {
   rejectPendingStdioRequests(entry, new Error('MCP stdio process reset.'));
   if (!stdio.closed && !stdio.child.killed) {
     stdio.child.kill('SIGTERM');
+    // The connection map entry is deleted right after this returns, dropping the
+    // manager's only reference — so escalate to SIGKILL via this closure (which
+    // retains the child) if it ignores SIGTERM, instead of orphaning it.
+    const killTimer = setTimeout(() => {
+      if (!stdio.closed && !stdio.child.killed) {
+        stdio.child.kill('SIGKILL');
+      }
+    }, 2000);
+    killTimer.unref?.();
+    stdio.child.once('exit', () => clearTimeout(killTimer));
   }
 }
 
@@ -641,12 +651,20 @@ async function ensureSdkMcpClient(entry: McpConnectionEntry, abortSignal: AbortS
     });
   });
   transport.onclose = () => {
+    // A late onclose from a transport we already replaced must not clobber a
+    // freshly-reconnected entry's online status.
+    if (sdk.closed) {
+      return;
+    }
     sdk.closed = true;
     entry.status = 'offline';
     entry.serverInfo = undefined;
     entry.lastCheckedAt = new Date().toISOString();
   };
   transport.onerror = (error) => {
+    if (sdk.closed) {
+      return;
+    }
     entry.status = 'offline';
     entry.serverInfo = undefined;
     entry.lastCheckedAt = new Date().toISOString();
@@ -674,6 +692,10 @@ async function closeSdkMcpConnection(entry: McpConnectionEntry): Promise<void> {
     return;
   }
   sdk.closed = true;
+  // Detach the handlers so the closing transport stops retaining the entry and
+  // can't fire a late onclose/onerror against it.
+  sdk.transport.onclose = undefined;
+  sdk.transport.onerror = undefined;
   await sdk.client.close().catch(() => undefined);
   entry.status = 'offline';
   entry.serverInfo = undefined;
@@ -753,6 +775,10 @@ async function postStdioMcpJsonRpc<T>(
     const requestId = id as string;
     const timer = setTimeout(() => {
       stdio.pending.delete(requestId);
+      // Remove the abort listener too — the {once:true} listener only self-removes
+      // if abort actually fires, so a timeout would otherwise leak it on the
+      // (often long-lived) caller signal across many timed-out requests.
+      abortSignal?.removeEventListener('abort', abort);
       reject(new Error(`MCP stdio ${method} timed out after ${timeoutMs}ms.`));
     }, timeoutMs);
     timer.unref?.();
@@ -969,7 +995,12 @@ export async function stopMcpConnection(input: string | McpConnectionConfig): Pr
 }
 
 export async function reconnectMcpConnection(input: string | McpConnectionConfig, abortSignal?: AbortSignal): Promise<UnityMcpServerInfo> {
-  resetMcpConnectionForConfig(input);
+  // Serialize close -> re-init: await the old transport's close before rebuilding,
+  // so a new SDK client is never created against a still-closing transport.
+  const entry = getConnectionEntry(input);
+  forceKillStdioProcess(entry);
+  await closeSdkMcpConnection(entry);
+  connections.delete(entry.key);
   return initializeMcpConnection(input, {
     abortSignal,
     force: true
