@@ -465,24 +465,28 @@ const cocosHealthCache = new Map<string, CocosHealthCacheEntry>();
 const COCOS_HEALTH_TTL_ONLINE_MS = 4000;
 const COCOS_HEALTH_TTL_OFFLINE_MS = 1500;
 
-async function checkCocosMcpConnection(
-  state: AppState,
-  enginePluginId?: string,
-  expectedProjectPath?: string,
-  options: { bypassCache?: boolean } = {}
-): Promise<{
-  snapshot: McpConnectionSnapshot;
-  health: UnityHealthResult;
-}> {
-  const config = buildCocosMcpConnectionConfig(state, enginePluginId);
-  const cacheKey = `${config.baseUrl ?? config.transport}\u0000${expectedProjectPath ?? ''}`;
-  if (!options.bypassCache) {
-    const cached = cocosHealthCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
-      return { snapshot: cached.snapshot, health: cached.health };
-    }
+// CocosCreator (with the funplay-cocos-mcp extension) listen ports, so a probe
+// can recover when the bridge moved off the configured/default port — mirroring
+// Unity's discoverUnityListenPorts.
+async function discoverCocosListenPorts(): Promise<number[]> {
+  try {
+    const { stdout } = await execFileAsync('lsof', ['-nP', '-a', '-c', 'CocosCreator', '-iTCP', '-sTCP:LISTEN'], {
+      timeout: 1500,
+      maxBuffer: 512 * 1024
+    });
+    const ports = [...stdout.matchAll(/(?:127\.0\.0\.1|\*|\[::1\]):(\d+)\s+\(LISTEN\)/g)]
+      .map((match) => Number(match[1]))
+      .filter((port) => Number.isInteger(port) && port > 0);
+    return [...new Set(ports)];
+  } catch {
+    return [];
   }
+}
 
+async function probeCocosMcpConfig(
+  config: McpConnectionConfig,
+  expectedProjectPath?: string
+): Promise<{ snapshot: McpConnectionSnapshot; health: UnityHealthResult }> {
   let detectedProjectPath: string | undefined;
   const controller = new AbortController();
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
@@ -515,16 +519,54 @@ async function checkCocosMcpConnection(
     }
   }
   const snapshot = getMcpConnectionSnapshot(config);
-  const health = buildCocosBridgeHealth(snapshot, {
-    expectedProjectPath,
-    detectedProjectPath
-  });
+  return { snapshot, health: buildCocosBridgeHealth(snapshot, { expectedProjectPath, detectedProjectPath }) };
+}
+
+async function checkCocosMcpConnection(
+  state: AppState,
+  enginePluginId?: string,
+  expectedProjectPath?: string,
+  options: { bypassCache?: boolean } = {}
+): Promise<{
+  snapshot: McpConnectionSnapshot;
+  health: UnityHealthResult;
+}> {
+  const config = buildCocosMcpConnectionConfig(state, enginePluginId);
+  const cacheKey = `${config.baseUrl ?? config.transport}\u0000${expectedProjectPath ?? ''}`;
+  if (!options.bypassCache) {
+    const cached = cocosHealthCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return { snapshot: cached.snapshot, health: cached.health };
+    }
+  }
+
+  let result = await probeCocosMcpConfig(config, expectedProjectPath);
+
+  // Port rediscovery: if the configured endpoint is offline and this is an
+  // HTTP-ish transport, try other CocosCreator listen ports and adopt the first
+  // that responds (a port change is otherwise unrecoverable without reconfig).
+  if (
+    result.health.status !== 'online' &&
+    (config.transport === 'http' || config.transport === 'streamable-http' || config.transport === 'sse')
+  ) {
+    const configuredPort = parseCocosMcpPort(config.baseUrl ?? '');
+    const ports = (await discoverCocosListenPorts()).filter((port) => port !== configuredPort);
+    for (const port of ports) {
+      const candidate: McpConnectionConfig = { ...config, baseUrl: `http://127.0.0.1:${port}/` };
+      const candidateResult = await probeCocosMcpConfig(candidate, expectedProjectPath);
+      if (candidateResult.health.status === 'online') {
+        result = candidateResult;
+        break;
+      }
+    }
+  }
+
   cocosHealthCache.set(cacheKey, {
-    snapshot,
-    health,
-    expiresAt: Date.now() + (health.status === 'online' ? COCOS_HEALTH_TTL_ONLINE_MS : COCOS_HEALTH_TTL_OFFLINE_MS)
+    snapshot: result.snapshot,
+    health: result.health,
+    expiresAt: Date.now() + (result.health.status === 'online' ? COCOS_HEALTH_TTL_ONLINE_MS : COCOS_HEALTH_TTL_OFFLINE_MS)
   });
-  return { snapshot, health };
+  return result;
 }
 
 function bridgePackageSpec(): { packageName: string; url: string } {
