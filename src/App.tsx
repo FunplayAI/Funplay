@@ -1,4 +1,4 @@
-import { useEffect, useRef, type JSX } from 'react';
+import { useRef, type JSX } from 'react';
 import { useUiPreferences } from './hooks/useUiPreferences';
 import { useWorkspaceLayout } from './hooks/useWorkspaceLayout';
 import { useSelectedProjectView } from './hooks/useSelectedProjectView';
@@ -7,6 +7,7 @@ import { useProjectFiles } from './hooks/useProjectFiles';
 import { useRuntimeStatePolling } from './hooks/useRuntimeStatePolling';
 import { useBootstrap } from './hooks/useBootstrap';
 import { usePromptStreamEvents } from './hooks/usePromptStreamEvents';
+import { useQueuedPromptDrain } from './hooks/useQueuedPromptDrain';
 import { useSessionPanelDerivations } from './hooks/useSessionPanelDerivations';
 import { createSessionActions } from './actions/sessionActions';
 import { createEnvironmentActions } from './actions/environmentActions';
@@ -31,7 +32,6 @@ import { useAgentRuntimeActivity } from './hooks/useAgentRuntimeActivity';
 import { useAssetGenerationCenter } from './hooks/useAssetGenerationCenter';
 import { usePromptAttachmentImport } from './hooks/usePromptAttachmentImport';
 import { useMcpManager } from './hooks/useMcpManager';
-import { ensureProjectSessions } from '../shared/project-sessions';
 import { type CreateProjectInput } from '../shared/types';
 import { AppShell } from './components/layout/AppShell';
 import { AgentWorkbench } from './components/layout/AgentWorkbench';
@@ -82,13 +82,10 @@ function App(): JSX.Element {
   const sessionAttachments = useSessionComposerStore((store) => store.attachments);
   const setSessionAttachments = useSessionComposerStore((store) => store.setAttachments);
   const setSessionComposerErrors = useSessionComposerStore((store) => store.setComposerErrors);
-  const queuedPromptsBySession = useSessionComposerStore((store) => store.queuedPrompts);
-  const setQueuedPromptsBySession = useSessionComposerStore((store) => store.setQueuedPrompts);
   const localActiveSessionByProject = useSessionStore((store) => store.localActiveSessionByProject);
   const setLocalActiveSessionByProject = useSessionStore((store) => store.setLocalActiveSessionByProject);
 
   const activeSessionSwitchTokenRef = useRef(0);
-  const dequeueSessionIdsRef = useRef<Set<string>>(new Set());
   const sessionMutationQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   function enqueueSessionMutation<T>(operation: () => Promise<T>): Promise<T> {
@@ -466,46 +463,8 @@ function App(): JSX.Element {
     { id: 'assets', label: localize(uiPreferences.language, '素材库', 'Assets'), icon: '▧' }
   ];
 
-  useEffect(() => {
-    const activeSessionIds = new Set(
-      activeStreamSessions
-        .filter((stream) => !['completed', 'cancelled', 'error'].includes(stream.phase))
-        .map((stream) => stream.sessionId)
-    );
-    const projectBySessionId = new Map<string, string>();
-    projects.forEach((project) => {
-      ensureProjectSessions(project).sessions.forEach((session) => {
-        projectBySessionId.set(session.id, project.id);
-      });
-    });
-
-    for (const [sessionId, queue] of Object.entries(queuedPromptsBySession)) {
-      if (queue.length === 0 || activeSessionIds.has(sessionId) || dequeueSessionIdsRef.current.has(sessionId)) {
-        continue;
-      }
-
-      const projectId = projectBySessionId.get(sessionId);
-      const nextPrompt = queue[0];
-      if (!projectId || !nextPrompt) {
-        continue;
-      }
-
-      dequeueSessionIdsRef.current.add(sessionId);
-      setQueuedPromptsBySession((current) => {
-        const nextQueue = (current[sessionId] ?? []).slice(1);
-        const next = { ...current };
-        if (nextQueue.length > 0) {
-          next[sessionId] = nextQueue;
-        } else {
-          delete next[sessionId];
-        }
-        return next;
-      });
-      void handleSubmitComposer(nextPrompt.content, sessionId, projectId).finally(() => {
-        dequeueSessionIdsRef.current.delete(sessionId);
-      });
-    }
-  }, [activeStreamSessions, projects, queuedPromptsBySession]);
+  // Auto-dequeue queued prompts (src/hooks/useQueuedPromptDrain.ts).
+  useQueuedPromptDrain({ activeStreamSessions, projects, handleSubmitComposer });
 
   // Hoisted wrappers so useOnboarding (above) can take stable references before
   // projectNavActions is constructed; the bodies live in projectNavActions.ts.
