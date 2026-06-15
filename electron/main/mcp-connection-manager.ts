@@ -88,6 +88,30 @@ export class McpJsonRpcError extends Error {
   }
 }
 
+export function isAbortError(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError');
+}
+
+/**
+ * Whether a failed MCP operation warrants tearing down + rebuilding the cached
+ * connection. Only TRANSPORT-dead errors should reset; resetting on a caller
+ * abort/timeout (the connection is fine) or a JSON-RPC application error (a
+ * successful round-trip carrying a tool-level error, httpStatus 200) just churns
+ * a healthy connection — re-spawning servers and doubling latency. A JSON-RPC
+ * error with a 5xx http status, or any raw network/transport error, IS treated
+ * as a dead transport.
+ */
+export function shouldResetConnectionForError(error: unknown, abortSignal?: AbortSignal): boolean {
+  if (abortSignal?.aborted || isAbortError(error)) {
+    return false;
+  }
+  if (error instanceof McpJsonRpcError) {
+    return typeof error.httpStatus === 'number' && error.httpStatus >= 500;
+  }
+  // Raw fetch/network/transport failures (ECONNREFUSED, EPIPE, socket hang up, …).
+  return true;
+}
+
 export function normalizeMcpBaseUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim();
   return trimmed.endsWith('/') ? trimmed : `${trimmed}/`;
@@ -986,8 +1010,21 @@ export async function runMcpInitializedOperation<T>(
   try {
     return await action();
   } catch (error) {
+    // Don't churn a healthy connection on an abort/timeout or an application-level
+    // JSON-RPC error — rethrow the original immediately.
+    if (!shouldResetConnectionForError(error, abortSignal)) {
+      throw error;
+    }
     resetMcpConnectionForConfig(baseUrl);
-    await initializeMcpConnection(baseUrl, { abortSignal });
-    return await action();
+    try {
+      await initializeMcpConnection(baseUrl, { abortSignal });
+      return await action();
+    } catch (retryError) {
+      // Preserve the first failure as the cause rather than discarding it.
+      if (retryError instanceof Error && error instanceof Error && retryError.cause === undefined) {
+        retryError.cause = error;
+      }
+      throw retryError;
+    }
   }
 }

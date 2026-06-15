@@ -19,7 +19,8 @@ import {
   McpJsonRpcError,
   postMcpJsonRpcForConfig,
   resetMcpConnection,
-  runMcpInitializedOperation
+  runMcpInitializedOperation,
+  shouldResetConnectionForError
 } from './mcp-connection-manager';
 
 type McpCapabilityName = 'tools' | 'resources' | 'prompts' | 'completions';
@@ -173,7 +174,12 @@ export async function callUnityTool(
     }, false, abortSignal, undefined, clientRequestHandler);
     return normalizeCallResult(result);
   } catch (error) {
-    resetMcpConnection(config);
+    // Only tear down the connection when the transport is actually dead — not on
+    // a user abort/timeout or a tool-level JSON-RPC error over a live connection
+    // (that would respawn the Unity MCP server and double latency on every retry).
+    if (shouldResetConnectionForError(error, abortSignal)) {
+      resetMcpConnection(config);
+    }
     throw error;
   }
 }
