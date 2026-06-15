@@ -2,6 +2,7 @@ import { generateText, type ModelMessage } from 'ai';
 import { createLanguageModel } from '../../ai-provider';
 import { drainBackgroundCommandNoticeMessage } from '../persistent-terminal-store';
 import { buildNativeToolLoopMessages } from '../model-message-builder';
+import { resolveModelVisionEnabled } from './multimodal';
 import { ProjectInstructionTracker } from '../project-instruction-tracker';
 import { createProviderRuntimeController } from '../provider-runtime-events';
 import type { GenericAgentRuntimeParams } from '../types';
@@ -59,18 +60,20 @@ export async function runNativeAiSdkToolLoop(
       }
     );
 
+  const builtMessages = await buildNativeToolLoopMessages({
+    project: params.project,
+    sessionId: params.context.activeSessionId,
+    visionEnabled: resolveModelVisionEnabled(params.provider),
+    currentPrompt: createNativeToolLoopPrompt(params, toolNames, {
+      includeWriteTools,
+      includeMcpToolCalls,
+      includeCommandTools,
+      dynamicMcpToolNames: toolPool.dynamicMcpTools.map((definition) => definition.name),
+      toolDefinitions: toolPool.definitions
+    })
+  });
   const loopState: NativeAiSdkLoopState = {
-    messages: buildNativeToolLoopMessages({
-      project: params.project,
-      sessionId: params.context.activeSessionId,
-      currentPrompt: createNativeToolLoopPrompt(params, toolNames, {
-        includeWriteTools,
-        includeMcpToolCalls,
-        includeCommandTools,
-        dynamicMcpToolNames: toolPool.dynamicMcpTools.map((definition) => definition.name),
-        toolDefinitions: toolPool.definitions
-      })
-    }) as ModelMessage[],
+    messages: builtMessages as ModelMessage[],
     assistantMessage: '',
     thinking: '',
     stepCount: 0,

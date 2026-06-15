@@ -4,6 +4,7 @@ import {
   type OpenAiCompatibleToolCall,
   type OpenAiCompatibleToolMessage
 } from '../../openai-compatible-client';
+import type { OpenAiCompatibleImagePart } from '../../openai-compatible-types';
 import { DYNAMIC_PROJECT_INSTRUCTIONS_MARKER } from '../project-instruction-tracker';
 
 export function normalizeToolInput(input: unknown): Record<string, unknown> | undefined {
@@ -44,6 +45,25 @@ function collectTextFromModelContent(content: ModelMessage['content']): string {
     })
     .filter(Boolean)
     .join('\n\n');
+}
+
+function collectImagePartsFromModelContent(content: ModelMessage['content']): OpenAiCompatibleImagePart[] {
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  const parts: OpenAiCompatibleImagePart[] = [];
+  for (const part of content) {
+    if (!part || typeof part !== 'object' || !('type' in part) || part.type !== 'image') {
+      continue;
+    }
+    const image = (part as { image?: unknown }).image;
+    const mediaType = (part as { mediaType?: unknown }).mediaType;
+    // The native builder inlines image attachments as base64 strings + mediaType.
+    if (typeof image === 'string' && typeof mediaType === 'string') {
+      parts.push({ mimeType: mediaType, dataBase64: image });
+    }
+  }
+  return parts;
 }
 
 function safeStringifyOpenAiCompatibleValue(value: unknown): string {
@@ -87,10 +107,12 @@ export function convertModelMessagesToOpenAiCompatible(messages: ModelMessage[],
   for (const message of messages) {
     if (message.role === 'user') {
       const content = collectTextFromModelContent(message.content);
-      if (content.trim()) {
+      const images = collectImagePartsFromModelContent(message.content);
+      if (content.trim() || images.length > 0) {
         converted.push({
           role: 'user',
-          content
+          content,
+          ...(images.length > 0 ? { images } : {})
         });
       }
       continue;

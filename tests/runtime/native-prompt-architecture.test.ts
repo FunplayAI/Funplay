@@ -216,7 +216,7 @@ test('native tool-loop per-turn prompt is a compact dynamic block without static
   assert.doesNotMatch(dynamicPrompt, /\n {2}"projectId"/);
 });
 
-test('native tool-loop messages are append-only across turns modulo the dynamic tail', () => {
+test('native tool-loop messages are append-only across turns modulo the dynamic tail', async () => {
   const project = buildProject();
   const activeSession = getActiveProjectSession(project);
   const turnOneChat: ChatMessage[] = [
@@ -224,7 +224,7 @@ test('native tool-loop messages are append-only across turns modulo the dynamic 
     buildChatMessage({ id: 'msg_2', role: 'assistant', content: '第一轮回答', ordinal: 2 })
   ];
   const turnOneProject = replaceProjectSession(project, { ...activeSession, chat: turnOneChat }, activeSession.id);
-  const turnOneMessages = buildNativeToolLoopMessages({
+  const turnOneMessages = await buildNativeToolLoopMessages({
     project: turnOneProject,
     sessionId: activeSession.id,
     currentPrompt: '动态上下文 turn-1'
@@ -242,7 +242,7 @@ test('native tool-loop messages are append-only across turns modulo the dynamic 
     },
     activeSession.id
   );
-  const turnTwoMessages = buildNativeToolLoopMessages({
+  const turnTwoMessages = await buildNativeToolLoopMessages({
     project: turnTwoProject,
     sessionId: activeSession.id,
     currentPrompt: '动态上下文 turn-2'
@@ -258,7 +258,7 @@ test('native tool-loop messages are append-only across turns modulo the dynamic 
   assert.equal(turnTwoMessages.length, turnOneTranscript.length + 3);
 });
 
-test('budget-driven retention keeps verbatim history under budget and compacts once over budget', () => {
+test('budget-driven retention keeps verbatim history under budget and compacts once over budget', async () => {
   const project = buildProject();
   const activeSession = getActiveProjectSession(project);
   const longText = 'tool-output-'.repeat(400);
@@ -279,7 +279,7 @@ test('budget-driven retention keeps verbatim history under budget and compacts o
     false
   );
   const verbatimProject = replaceProjectSession(project, session, activeSession.id);
-  const verbatimMessages = buildNativeToolLoopMessages({
+  const verbatimMessages = await buildNativeToolLoopMessages({
     project: verbatimProject,
     sessionId: activeSession.id,
     currentPrompt: '动态上下文'

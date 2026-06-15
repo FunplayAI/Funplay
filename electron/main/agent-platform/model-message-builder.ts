@@ -1,4 +1,4 @@
-import type { AssistantContent, ModelMessage, ToolContent } from 'ai';
+import type { AssistantContent, ModelMessage, ToolContent, UserContent } from 'ai';
 import { ensureProjectSessions } from '../../../shared/project-sessions';
 import type {
   AgentCoreMessagePart,
@@ -8,14 +8,18 @@ import type {
   PromptAttachment
 } from '../../../shared/types';
 import { filterNativeMessagesAfterSummaryBoundary } from './native/context-handoff';
+import { collectPromptAttachmentImageParts } from './native/multimodal';
 
 type AssistantContentPart = Exclude<AssistantContent, string>[number];
 type ToolContentPart = ToolContent[number];
+type UserContentPart = Exclude<UserContent, string>[number];
 
 export interface BuildModelMessagesOptions {
   project: Project;
   sessionId?: string;
   currentPrompt: string;
+  /** When true (model has vision), image attachments are inlined as image parts. */
+  visionEnabled?: boolean;
 }
 
 function hasText(value: string | undefined): value is string {
@@ -139,6 +143,37 @@ function formatPromptAttachmentsForModel(attachments: PromptAttachment[] | undef
 function getUserMessageText(message: ChatMessage): string {
   const attachmentText = formatPromptAttachmentsForModel(message.metadata?.promptAttachments);
   return [message.content, attachmentText].filter(hasText).join('\n\n');
+}
+
+/**
+ * Appends a user message, inlining the message's image attachments as image
+ * parts when the model has vision. Non-vision models (or messages with no
+ * loadable image) fall back to the text-only path — the attachment listing in
+ * the text already names the images so the model knows they exist.
+ */
+async function appendUserMessageWithAttachments(
+  messages: ModelMessage[],
+  message: ChatMessage,
+  visionEnabled: boolean
+): Promise<void> {
+  const text = getUserMessageText(message);
+  const imageParts = visionEnabled
+    ? await collectPromptAttachmentImageParts(message.metadata?.promptAttachments)
+    : [];
+
+  if (imageParts.length === 0) {
+    appendUserMessage(messages, text);
+    return;
+  }
+
+  const content: UserContentPart[] = [];
+  if (hasText(text)) {
+    content.push({ type: 'text', text });
+  }
+  for (const part of imageParts) {
+    content.push({ type: 'image', image: part.dataBase64, mediaType: part.mimeType });
+  }
+  messages.push({ role: 'user', content });
 }
 
 function sortAgentCoreParts(parts: AgentCoreMessagePart[] | undefined): AgentCoreMessagePart[] {
@@ -277,13 +312,16 @@ function appendAssistantMessageFromAgentCoreParts(
   flushAssistantParts();
 }
 
-export function buildModelMessagesFromChat(chat: ChatMessage[]): ModelMessage[] {
+export async function buildModelMessagesFromChat(
+  chat: ChatMessage[],
+  options: { visionEnabled?: boolean } = {}
+): Promise<ModelMessage[]> {
   const messages: ModelMessage[] = [];
   const toolCallNames = new Map<string, string>();
 
   for (const message of chat) {
     if (message.role === 'user') {
-      appendUserMessage(messages, getUserMessageText(message));
+      await appendUserMessageWithAttachments(messages, message, options.visionEnabled ?? false);
       continue;
     }
 
@@ -308,7 +346,7 @@ export function buildModelMessagesFromChat(chat: ChatMessage[]): ModelMessage[] 
 // replayed verbatim — no fixed message caps and no always-on lossy squeeze.
 // Trimming happens exclusively through the native context handoff (compaction at
 // the 0.68 context-budget ratio), which records a coverage boundary and a summary.
-export function buildNativeToolLoopMessages(options: BuildModelMessagesOptions): ModelMessage[] {
+export async function buildNativeToolLoopMessages(options: BuildModelMessagesOptions): Promise<ModelMessage[]> {
   const session = selectProjectSession(options.project, options.sessionId);
   const nativeContextSummary = session?.runtimeOverrides?.nativeContextSummary?.trim();
   const history = nativeContextSummary
@@ -326,7 +364,7 @@ export function buildNativeToolLoopMessages(options: BuildModelMessagesOptions):
           }
         ]
       : []),
-    ...buildModelMessagesFromChat(history)
+    ...(await buildModelMessagesFromChat(history, { visionEnabled: options.visionEnabled }))
   ];
 
   // The per-turn dynamic block stays a separate tail message: merging it into the

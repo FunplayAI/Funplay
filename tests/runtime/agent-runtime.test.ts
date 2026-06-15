@@ -9325,7 +9325,7 @@ test(
   }
 );
 
-test('model message builder reconstructs assistant tool calls and results', () => {
+test('model message builder reconstructs assistant tool calls and results', async () => {
   const createdAt = new Date().toISOString();
   const chat: ChatMessage[] = [
     {
@@ -9400,7 +9400,7 @@ test('model message builder reconstructs assistant tool calls and results', () =
     }
   ];
 
-  const messages = buildModelMessagesFromChat(chat);
+  const messages = await buildModelMessagesFromChat(chat);
   assert.equal(messages.length, 5);
   assert.equal(messages[0]?.role, 'user');
   assert.equal(messages[1]?.role, 'assistant');
@@ -9444,7 +9444,7 @@ test('model message builder reconstructs assistant tool calls and results', () =
   assert.match(JSON.stringify(messages), /missing\.md/);
 });
 
-test('model message builder downgrades orphan tool results to assistant text', () => {
+test('model message builder downgrades orphan tool results to assistant text', async () => {
   const createdAt = new Date().toISOString();
   const chat: ChatMessage[] = [
     {
@@ -9467,7 +9467,7 @@ test('model message builder downgrades orphan tool results to assistant text', (
     }
   ];
 
-  const messages = buildModelMessagesFromChat(chat);
+  const messages = await buildModelMessagesFromChat(chat);
   assert.equal(messages.length, 1);
   assert.equal(messages[0]?.role, 'assistant');
   assert.equal(
@@ -9482,7 +9482,7 @@ test('model message builder downgrades orphan tool results to assistant text', (
   assert.match(JSON.stringify(assistantMessage.content), /late result/);
 });
 
-test('native tool-loop messages append current prompt after active session history', () => {
+test('native tool-loop messages append current prompt after active session history', async () => {
   const createdAt = new Date().toISOString();
   const project = buildProject('/tmp/funplay-runtime-test');
   const activeSession = getActiveProjectSession(project);
@@ -9508,7 +9508,7 @@ test('native tool-loop messages append current prompt after active session histo
     activeSession.id
   );
 
-  const messages = buildNativeToolLoopMessages({
+  const messages = await buildNativeToolLoopMessages({
     project: projectWithHistory,
     sessionId: activeSession.id,
     currentPrompt: '当前工作区上下文：\n用户消息：继续推进'
@@ -9526,7 +9526,7 @@ test('native tool-loop messages append current prompt after active session histo
   assert.doesNotMatch(String(currentMessage?.content), /旧问题/);
 });
 
-test('native tool-loop messages keep older tool results verbatim while under context budget', () => {
+test('native tool-loop messages keep older tool results verbatim while under context budget', async () => {
   const createdAt = new Date().toISOString();
   const project = buildProject('/tmp/funplay-runtime-test');
   const activeSession = getActiveProjectSession(project);
@@ -9597,7 +9597,7 @@ test('native tool-loop messages keep older tool results verbatim while under con
     activeSession.id
   );
 
-  const messages = buildNativeToolLoopMessages({
+  const messages = await buildNativeToolLoopMessages({
     project: projectWithHistory,
     sessionId: activeSession.id,
     currentPrompt: '当前工作区上下文：\n用户消息：继续推进'
@@ -9712,7 +9712,7 @@ test('native context handoff falls back to ordinal boundary for legacy messages 
   );
 });
 
-test('native tool-loop messages include native summary and skip covered rowid history', () => {
+test('native tool-loop messages include native summary and skip covered rowid history', async () => {
   const createdAt = new Date().toISOString();
   const project = buildProject('/tmp/funplay-runtime-test');
   const activeSession = getActiveProjectSession(project);
@@ -9762,7 +9762,7 @@ test('native tool-loop messages include native summary and skip covered rowid hi
     activeSession.id
   );
 
-  const messages = buildNativeToolLoopMessages({
+  const messages = await buildNativeToolLoopMessages({
     project: projectWithSummary,
     sessionId: activeSession.id,
     currentPrompt: 'current prompt'

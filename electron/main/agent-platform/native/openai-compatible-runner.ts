@@ -1,6 +1,7 @@
 import { inferOpenAiCompatibleApiMode } from '../../../../shared/provider-catalog';
 import { drainBackgroundCommandNoticeMessage } from '../persistent-terminal-store';
 import { buildNativeToolLoopMessages } from '../model-message-builder';
+import { resolveModelVisionEnabled } from './multimodal';
 import { ProjectInstructionTracker } from '../project-instruction-tracker';
 import { createProviderRuntimeController } from '../provider-runtime-events';
 import { emitRuntimeTextDelta } from '../runtime-event-emitter';
@@ -41,23 +42,22 @@ export async function runOpenAiCompatibleNativeToolLoop(
     });
 
   const instructionTracker = new ProjectInstructionTracker(params.project, params.context.projectInstructions);
+  const builtMessages = await buildNativeToolLoopMessages({
+    project: params.project,
+    sessionId: params.context.activeSessionId,
+    visionEnabled: resolveModelVisionEnabled(params.provider),
+    currentPrompt: createNativeToolLoopPrompt(params, toolNames, {
+      includeWriteTools,
+      includeMcpToolCalls,
+      includeCommandTools,
+      dynamicMcpToolNames: toolPool.dynamicMcpTools.map((definition) => definition.name),
+      toolDefinitions: toolPool.definitions
+    })
+  });
   const state = createNativeToolLoopState(
-    convertModelMessagesToOpenAiCompatible(
-      buildNativeToolLoopMessages({
-        project: params.project,
-        sessionId: params.context.activeSessionId,
-        currentPrompt: createNativeToolLoopPrompt(params, toolNames, {
-          includeWriteTools,
-          includeMcpToolCalls,
-          includeCommandTools,
-          dynamicMcpToolNames: toolPool.dynamicMcpTools.map((definition) => definition.name),
-          toolDefinitions: toolPool.definitions
-        })
-      }),
-      {
-        preserveToolMessages: true
-      }
-    )
+    convertModelMessagesToOpenAiCompatible(builtMessages, {
+      preserveToolMessages: true
+    })
   );
   state.latestTodoSnapshot = resolveLatestTodoSnapshotFromHistory(params);
   const apiMode = inferOpenAiCompatibleApiMode(params.provider);
