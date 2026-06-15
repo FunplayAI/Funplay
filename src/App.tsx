@@ -5,6 +5,7 @@ import { useSelectedProjectView } from './hooks/useSelectedProjectView';
 import { useAppModeProjectSync } from './hooks/useAppModeProjectSync';
 import { useProjectFiles } from './hooks/useProjectFiles';
 import { useRuntimeStatePolling } from './hooks/useRuntimeStatePolling';
+import { useBootstrap } from './hooks/useBootstrap';
 import { useSessionPanelDerivations } from './hooks/useSessionPanelDerivations';
 import { createSessionActions } from './actions/sessionActions';
 import { createEnvironmentActions } from './actions/environmentActions';
@@ -30,7 +31,7 @@ import { useAssetGenerationCenter } from './hooks/useAssetGenerationCenter';
 import { usePromptAttachmentImport } from './hooks/usePromptAttachmentImport';
 import { useMcpManager } from './hooks/useMcpManager';
 import { ensureProjectSessions } from '../shared/project-sessions';
-import { type BootstrapPayload, type CreateProjectInput, type PromptStreamEvent } from '../shared/types';
+import { type CreateProjectInput, type PromptStreamEvent } from '../shared/types';
 import { AppShell } from './components/layout/AppShell';
 import { AgentWorkbench } from './components/layout/AgentWorkbench';
 import { UiLanguageProvider, localize } from './i18n';
@@ -59,11 +60,11 @@ function App(): JSX.Element {
   const {
     appMode, setAppMode, section, setSection, projectSettingsTab, setProjectSettingsTab,
     showAppSettingsModal, setShowAppSettingsModal, appSettingsInitialTab,
-    isLoading, setIsLoading, bootstrapError, setBootstrapError, openAppSettings
+    isLoading, bootstrapError, openAppSettings
   } = useUiShellStore();
   // Project-domain state lives in the Zustand project store.
   const {
-    projects, setProjects, selectedProjectId, setSelectedProjectId, projectFiles,
+    projects, setProjects, selectedProjectId, projectFiles,
     assetLibraryViewByProject, setAssetLibraryViewByProject, showDeleteProjectModal,
     projectPendingDelete, isDeletingProject,
     deleteProjectSourceFiles, setDeleteProjectSourceFiles, openDeleteModal, closeDeleteModal,
@@ -155,57 +156,6 @@ function App(): JSX.Element {
     language: uiPreferences.language
   });
 
-  useEffect(() => {
-    if (!window.funplay?.bootstrap) {
-      setBootstrapError(
-        localize(
-          uiPreferences.language,
-          'Funplay preload API 未成功注入。请重启应用；如果仍有问题，检查 Electron preload 是否正确加载。',
-          'Funplay preload API was not injected. Restart the app, and if it still fails, verify Electron preload is loading correctly.'
-        )
-      );
-      setIsLoading(false);
-      return;
-    }
-
-    void window.funplay
-      .bootstrap()
-      .then((payload: BootstrapPayload) => {
-        setProjects(payload.projects);
-        setLocalActiveSessionByProject(
-          Object.fromEntries(
-            payload.projects.map((project) => [project.id, project.activeSessionId || project.sessions[0]?.id || ''])
-          )
-        );
-        setProviders(payload.providers);
-        setMcpPlugins(payload.mcpPlugins);
-        setAssetGenerationProviderConfigs(payload.assetGenerationProviders ?? []);
-        setAiSettings(payload.aiSettings);
-        setAgentSettings(payload.agentSettings);
-        setSettings(payload.settings);
-        setSettingsDraft(payload.settings);
-        setOnboardingProjectPath(payload.settings.lastCreatedProjectDirectory || '~/Downloads');
-        setSelectedProjectId(payload.projects[0]?.id ?? '');
-        setOnboardingEnginePluginId(
-          payload.mcpPlugins.find(
-            (plugin) => !plugin.projectId && plugin.kind === 'engine' && /unity/i.test(plugin.name)
-          )?.id ??
-            payload.mcpPlugins.find((plugin) => !plugin.projectId && plugin.kind === 'engine' && plugin.enabled)?.id ??
-            ''
-        );
-        setAppMode(payload.projects.length > 0 ? 'workspace' : 'welcome');
-      })
-      .catch((error) => {
-        setBootstrapError(
-          error instanceof Error
-            ? error.message
-            : localize(uiPreferences.language, '应用启动失败', 'Failed to launch app')
-        );
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
-  }, []);
 
   const { selectedProject, selectedProjectView, selectedSessionId } = useSelectedProjectView({
     projects,
@@ -279,6 +229,19 @@ function App(): JSX.Element {
     retryRefreshProjectRuntimeState,
     language: uiPreferences.language
   });
+
+  // One-time app bootstrap (src/hooks/useBootstrap.ts) — hydrates stores + the
+  // hook-owned provider/mcp/asset state from window.funplay.bootstrap(). Placed
+  // after the provider/mcp/asset hooks that supply its injected setters.
+  useBootstrap({
+    setProviders,
+    setMcpPlugins,
+    setAiSettings,
+    setAgentSettings,
+    setAssetGenerationProviderConfigs,
+    language: uiPreferences.language
+  });
+
   const selectedAssetLibraryView = selectedProjectView
     ? (assetLibraryViewByProject[selectedProjectView.id] ?? 'all')
     : 'all';
