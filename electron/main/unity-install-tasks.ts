@@ -615,12 +615,43 @@ export function syncDiscoveredUnityMcpEndpoint(state: AppState, url: string): vo
   }
 }
 
+// Active bridge-wait pollers keyed by task id, so a re-open/re-trigger cancels
+// the prior poller instead of leaving a second one racing (and so the recurring
+// timer can be cleared on teardown).
+const bridgeWaitPollers = new Map<string, () => void>();
+
 export function waitForBridgeAfterOpen(taskId: string, state: AppState, projectPath?: string): void {
+  // Cancel any prior poller for this task before starting a new one.
+  bridgeWaitPollers.get(taskId)?.();
+
   let attempts = 0;
   const maxAttempts = 60;
   let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stop = (): void => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    if (bridgeWaitPollers.get(taskId) === stop) {
+      bridgeWaitPollers.delete(taskId);
+    }
+  };
+  bridgeWaitPollers.set(taskId, stop);
+
   const probe = async (): Promise<void> => {
     if (stopped) {
+      return;
+    }
+    // Stop polling if the task was removed or already reached a terminal state
+    // elsewhere — nothing left to drive.
+    const task = environmentTasks.get(taskId);
+    if (!task || task.status === 'completed' || task.status === 'failed') {
+      stop();
       return;
     }
     attempts += 1;
@@ -638,9 +669,9 @@ export function waitForBridgeAfterOpen(taskId: string, state: AppState, projectP
         return;
       }
       if (health.status === 'online') {
-        stopped = true;
         syncDiscoveredUnityMcpEndpoint(state, health.url);
         completeTask(taskId, 'completed', 'Unity 项目已打开，Bridge / MCP 已连通。');
+        stop();
         return;
       }
 
@@ -665,7 +696,6 @@ export function waitForBridgeAfterOpen(taskId: string, state: AppState, projectP
     }
 
     if (attempts >= maxAttempts) {
-      stopped = true;
       taskStageUpdate(taskId, {
         stage: 'waiting_manual',
         status: 'needs_user',
@@ -673,12 +703,15 @@ export function waitForBridgeAfterOpen(taskId: string, state: AppState, projectP
         message: 'Unity 项目可能已打开，但还没有检测到 Bridge / MCP。请确认 Bridge 已安装并启用，然后点击重新检测。',
         log: '等待 Bridge / MCP 连通超时。'
       });
+      stop();
       return;
     }
 
-    setTimeout(() => {
+    timer = setTimeout(() => {
       void probe();
     }, 3000);
+    // Don't let the recurring poll keep the process/event loop alive on its own.
+    timer.unref?.();
   };
 
   void probe();

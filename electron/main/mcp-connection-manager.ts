@@ -322,9 +322,23 @@ function getStdioProcessStatus(stdio: StdioMcpProcess | undefined): McpProcessSt
   return stdio.stopRequested ? 'stopped' : 'exited';
 }
 
+// Close the readline interface + drop its 'line' listener so the wrapped
+// child.stdout readable is released. Without this the Interface keeps the stream
+// referenced after the child exits — a leaked active handle that accumulates
+// across reconnect churn (and pins the event loop in tests). Idempotent.
+function teardownStdioReadline(stdio: StdioMcpProcess): void {
+  try {
+    stdio.stdout.removeAllListeners('line');
+    stdio.stdout.close();
+  } catch {
+    // Already closed.
+  }
+}
+
 function markStdioProcessStopped(stdio: StdioMcpProcess): void {
   stdio.stopRequested = true;
   stdio.stoppedAt = stdio.stoppedAt ?? new Date().toISOString();
+  teardownStdioReadline(stdio);
 }
 
 function handleStdioJsonRpcMessage(entry: McpConnectionEntry, message: Record<string, unknown>): void {
@@ -455,6 +469,7 @@ function ensureStdioProcess(entry: McpConnectionEntry): StdioMcpProcess {
     stdio.exitCode = child.exitCode;
     stdio.exitSignal = child.signalCode;
     entry.lastError = error.message;
+    teardownStdioReadline(stdio);
     rejectPendingStdioRequests(entry, error);
   });
 
@@ -462,6 +477,7 @@ function ensureStdioProcess(entry: McpConnectionEntry): StdioMcpProcess {
     stdio.closed = true;
     stdio.exitCode = code;
     stdio.exitSignal = signal;
+    teardownStdioReadline(stdio);
     stdio.stoppedAt = stdio.stoppedAt ?? new Date().toISOString();
     entry.status = 'offline';
     entry.serverInfo = undefined;
