@@ -4,6 +4,7 @@ import { useWorkspaceLayout } from './hooks/useWorkspaceLayout';
 import { useSelectedProjectView } from './hooks/useSelectedProjectView';
 import { useAppModeProjectSync } from './hooks/useAppModeProjectSync';
 import { useProjectFiles } from './hooks/useProjectFiles';
+import { useRuntimeStatePolling } from './hooks/useRuntimeStatePolling';
 import { useSessionPanelDerivations } from './hooks/useSessionPanelDerivations';
 import { createSessionActions } from './actions/sessionActions';
 import { createEnvironmentActions } from './actions/environmentActions';
@@ -438,42 +439,6 @@ function App(): JSX.Element {
     });
   }, [uiPreferences.language]);
 
-  useEffect(() => {
-    if (appMode !== 'workspace' || !selectedProjectId || !selectedProjectRuntimePath) {
-      return;
-    }
-    if (!selectedOverlayFile) {
-      setRightInspectorCollapsed(true);
-    }
-
-    let cancelled = false;
-    const refreshRuntimeState = async (): Promise<void> => {
-      try {
-        if (!cancelled) {
-          await refreshProjectRuntimeStateById(selectedProjectId);
-        }
-      } catch {
-        // noop
-      }
-    };
-
-    void refreshRuntimeState();
-    if (!selectedProjectUseFastRuntimeRefresh) {
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    const timer = window.setInterval(() => {
-      void refreshRuntimeState();
-    }, 5000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [appMode, selectedProjectId, selectedProjectRuntimePath, selectedProjectUseFastRuntimeRefresh]);
-
   // Workspace-with-no-selection → fall back to the first project (store-only hook).
   useAppModeProjectSync();
 
@@ -576,6 +541,18 @@ function App(): JSX.Element {
     setRightInspectorCollapsed,
     uiPreferences.language
   );
+
+  // Engine runtime-state polling (src/hooks/useRuntimeStatePolling.ts) — placed after
+  // useFileInspector since it reads selectedOverlayFile to gate the inspector collapse.
+  useRuntimeStatePolling({
+    appMode,
+    selectedProjectId,
+    runtimePath: selectedProjectRuntimePath,
+    useFastRefresh: selectedProjectUseFastRuntimeRefresh,
+    selectedOverlayFile,
+    setRightInspectorCollapsed
+  });
+
   // Project navigation + lifecycle orchestration (src/actions/projectNavActions.ts).
   // Built here, after the file-inspector / mcp / layout hooks that supply its
   // non-store injects. openProject + handleCreateProject are consumed earlier by
