@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, type JSX } from 'react';
+import { useEffect, useRef, type JSX } from 'react';
 import { useUiPreferences } from './hooks/useUiPreferences';
 import { useWorkspaceLayout } from './hooks/useWorkspaceLayout';
 import { useSelectedProjectView } from './hooks/useSelectedProjectView';
 import { useAppModeProjectSync } from './hooks/useAppModeProjectSync';
+import { useProjectFiles } from './hooks/useProjectFiles';
 import { useSessionPanelDerivations } from './hooks/useSessionPanelDerivations';
 import { createSessionActions } from './actions/sessionActions';
 import { createEnvironmentActions } from './actions/environmentActions';
@@ -32,7 +33,7 @@ import { type BootstrapPayload, type CreateProjectInput, type PromptStreamEvent 
 import { AppShell } from './components/layout/AppShell';
 import { AgentWorkbench } from './components/layout/AgentWorkbench';
 import { UiLanguageProvider, localize } from './i18n';
-import { dispatchRefreshFileTree, subscribeRefreshFileTree } from './lib/file-tree-events';
+import { dispatchRefreshFileTree } from './lib/file-tree-events';
 import {
   applyPromptStreamEventToManager,
   listStreamSessions,
@@ -61,7 +62,7 @@ function App(): JSX.Element {
   } = useUiShellStore();
   // Project-domain state lives in the Zustand project store.
   const {
-    projects, setProjects, selectedProjectId, setSelectedProjectId, projectFiles, setProjectFiles,
+    projects, setProjects, selectedProjectId, setSelectedProjectId, projectFiles,
     assetLibraryViewByProject, setAssetLibraryViewByProject, showDeleteProjectModal,
     projectPendingDelete, isDeletingProject,
     deleteProjectSourceFiles, setDeleteProjectSourceFiles, openDeleteModal, closeDeleteModal,
@@ -289,15 +290,18 @@ function App(): JSX.Element {
       sessionId: selectedSessionId || undefined
     });
   const activePromptStreamRef = useRef<StreamSessionState | null>(null);
-  const selectedProjectIdRef = useRef(selectedProjectId);
 
   useEffect(() => {
     activePromptStreamRef.current = activePromptStream;
   }, [activePromptStream]);
 
-  useEffect(() => {
-    selectedProjectIdRef.current = selectedProjectId;
-  }, [selectedProjectId]);
+  // File-tree mirror (src/hooks/useProjectFiles.ts) — owns selectedProjectIdRef +
+  // refreshProjectFiles, consumed below by prompt-stream + file-inspector hooks.
+  const { refreshProjectFiles, selectedProjectIdRef } = useProjectFiles({
+    appMode,
+    selectedProjectId,
+    enginePath: selectedProjectView?.engine?.projectPath
+  });
 
   // Prompt-stream orchestration (src/actions/promptStreamActions.ts) — submit a
   // composer message into a new stream, or resume a persisted agent run. Needs
@@ -435,16 +439,6 @@ function App(): JSX.Element {
   }, [uiPreferences.language]);
 
   useEffect(() => {
-    if (!window.funplay?.onProjectFileTreeChanged) {
-      return;
-    }
-
-    return window.funplay.onProjectFileTreeChanged((event) => {
-      dispatchRefreshFileTree({ projectId: event.projectId, reason: 'watcher' });
-    });
-  }, []);
-
-  useEffect(() => {
     if (appMode !== 'workspace' || !selectedProjectId || !selectedProjectRuntimePath) {
       return;
     }
@@ -479,46 +473,6 @@ function App(): JSX.Element {
       window.clearInterval(timer);
     };
   }, [appMode, selectedProjectId, selectedProjectRuntimePath, selectedProjectUseFastRuntimeRefresh]);
-
-  const refreshProjectFiles = useCallback(async (projectId: string): Promise<void> => {
-    if (!projectId) {
-      setProjectFiles([]);
-      return;
-    }
-
-    try {
-      const files = await window.funplay.listProjectFiles(projectId);
-      if (selectedProjectIdRef.current === projectId) {
-        setProjectFiles(files);
-      }
-    } catch {
-      if (selectedProjectIdRef.current === projectId) {
-        setProjectFiles([]);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (appMode !== 'workspace' || !selectedProjectId || !selectedProjectView?.engine?.projectPath) {
-      setProjectFiles([]);
-      return;
-    }
-
-    void refreshProjectFiles(selectedProjectId);
-  }, [appMode, selectedProjectId, selectedProjectView?.engine?.projectPath, refreshProjectFiles]);
-
-  useEffect(() => {
-    if (appMode !== 'workspace' || !selectedProjectId || !selectedProjectView?.engine?.projectPath) {
-      return;
-    }
-
-    return subscribeRefreshFileTree((detail) => {
-      if (detail.projectId && detail.projectId !== selectedProjectId) {
-        return;
-      }
-      void refreshProjectFiles(selectedProjectId);
-    });
-  }, [appMode, selectedProjectId, selectedProjectView?.engine?.projectPath, refreshProjectFiles]);
 
   // Workspace-with-no-selection → fall back to the first project (store-only hook).
   useAppModeProjectSync();
