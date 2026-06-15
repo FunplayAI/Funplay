@@ -853,53 +853,74 @@ function isPendingEnvironmentTask(task: EnvironmentTask): boolean {
 
 export async function listEnvironmentTasksForState(state: AppState): Promise<EnvironmentTask[]> {
   const pendingTasks = listEnvironmentTasksInternal().filter(isPendingEnvironmentTask);
+
+  // First pass (synchronous): classify eligible bridge-linked tasks. Cocos
+  // routine reconciliation shares ONE health probe (no per-project distinction),
+  // while Unity is project-scoped, so dedup distinct project paths.
+  const cocosTaskPaths: string[] = [];
+  const unityProjectPaths = new Set<string>();
   for (const task of pendingTasks) {
     const pendingProjectPath = getEnvironmentTaskProjectPath(task.id);
-    if (COCOS_BRIDGE_LINKED_ACTION_IDS.has(task.actionId)) {
-      if (!pendingProjectPath) {
-        continue;
-      }
-      const project = inspectCocosProject(pendingProjectPath);
-      if (!project.valid || !isCocosBridgeInstalled(project.projectPath)) {
-        continue;
-      }
-      // Routine reconciliation: connection-health only. Passing no expectedProjectPath
-      // skips the get_project_info tool call, so the external Cocos extension is never
-      // poked into its blocking "project definition not found" modal (explicit diagnose
-      // still does the full project-match check). Reconcile against the BOUND path, not
-      // inspectCocosProject's resolved/realpath'd form — a raw === against the resolved
-      // path silently diverges for symlinked (/tmp -> /private/tmp) or trailing-slash
-      // paths, so the task would otherwise never auto-complete.
-      const probe = await checkCocosMcpConnection(state, undefined, undefined).catch((error) => {
-        logEngineDebug('cocos', 'task-reconciliation probe threw', error);
-        return undefined;
-      });
-      if (probe?.health.status === 'online') {
-        reconcileBridgeConnectedTasks(probe.health.message, pendingProjectPath);
-      }
+    if (!pendingProjectPath) {
+      // Without a bound project path we can't verify the online bridge belongs to
+      // THIS task's project — completing it against any online editor would
+      // mis-attribute success. All bridge-linked actions are project-scoped, so
+      // this is an anomaly; skip.
       continue;
     }
-
-    if (UNITY_BRIDGE_LINKED_ACTION_IDS.has(task.actionId)) {
-      // Without a bound project path we can't verify the online bridge belongs to
-      // THIS task's project — completing the first queued bridge-linked task against
-      // any online Unity editor would mis-attribute success to the wrong project.
-      // All Unity bridge-linked actions are project-scoped, so this is an anomaly; skip.
-      if (!pendingProjectPath) {
-        continue;
+    if (COCOS_BRIDGE_LINKED_ACTION_IDS.has(task.actionId)) {
+      const project = inspectCocosProject(pendingProjectPath);
+      if (project.valid && isCocosBridgeInstalled(project.projectPath)) {
+        cocosTaskPaths.push(pendingProjectPath);
       }
-      const health = await checkUnityHealth(state.settings.baseUrl || 'http://127.0.0.1:8765/', {
-        expectedProjectPath: pendingProjectPath
-      }).catch((error) => {
-        logEngineDebug('unity', 'task-reconciliation health probe threw', error);
-        return undefined;
-      });
-      if (health?.status === 'online') {
-        syncDiscoveredUnityMcpEndpoint(state, health.url);
-        reconcileBridgeConnectedTasks(undefined, pendingProjectPath);
-      }
+    } else if (UNITY_BRIDGE_LINKED_ACTION_IDS.has(task.actionId)) {
+      unityProjectPaths.add(pendingProjectPath);
     }
   }
+
+  // Second pass: run the (deduped) probes concurrently so wall-clock is bounded
+  // by the slowest single probe, not the sum — distinct pending tasks no longer
+  // serialize their network round-trips.
+  const unityBaseUrl = state.settings.baseUrl || 'http://127.0.0.1:8765/';
+  const [cocosProbe, unityProbes] = await Promise.all([
+    // Routine reconciliation: connection-health only. Passing no expectedProjectPath
+    // skips the get_project_info tool call, so the external Cocos extension is never
+    // poked into its blocking "project definition not found" modal (explicit diagnose
+    // still does the full project-match check).
+    cocosTaskPaths.length > 0
+      ? checkCocosMcpConnection(state, undefined, undefined).catch((error) => {
+          logEngineDebug('cocos', 'task-reconciliation probe threw', error);
+          return undefined;
+        })
+      : Promise.resolve(undefined),
+    Promise.all(
+      [...unityProjectPaths].map((projectPath) =>
+        checkUnityHealth(unityBaseUrl, { expectedProjectPath: projectPath })
+          .catch((error) => {
+            logEngineDebug('unity', 'task-reconciliation health probe threw', error);
+            return undefined;
+          })
+          .then((health) => ({ projectPath, health }))
+      )
+    )
+  ]);
+
+  // Third pass: reconcile. Reconcile cocos tasks against the BOUND path, not
+  // inspectCocosProject's resolved/realpath'd form — a raw === against the
+  // resolved path silently diverges for symlinked (/tmp -> /private/tmp) or
+  // trailing-slash paths, so the task would otherwise never auto-complete.
+  if (cocosProbe?.health.status === 'online') {
+    for (const projectPath of cocosTaskPaths) {
+      reconcileBridgeConnectedTasks(cocosProbe.health.message, projectPath);
+    }
+  }
+  for (const { projectPath, health } of unityProbes) {
+    if (health?.status === 'online') {
+      syncDiscoveredUnityMcpEndpoint(state, health.url);
+      reconcileBridgeConnectedTasks(undefined, projectPath);
+    }
+  }
+
   return listEnvironmentTasksInternal();
 }
 
