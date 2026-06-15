@@ -191,6 +191,9 @@ export async function startInstallUnityHubTask(input?: Pick<UnitySettings, 'unit
         watchUnityHubInstallCompletion(task.id, input);
       }
     });
+    child.on('error', (error) => {
+      completeTask(task.id, 'failed', `Unity Hub 安装进程启动失败：${error.message}`);
+    });
     return task;
   }
 
@@ -337,6 +340,9 @@ export async function startInstallUnityEditorTask(input?: {
     } else {
       completeTask(task.id, 'failed', 'Unity Editor 安装失败，请检查 Unity Hub 登录状态或手动安装。');
     }
+  });
+  child.on('error', (error) => {
+    completeTask(task.id, 'failed', `Unity Editor 安装进程启动失败：${error.message}`);
   });
 
   return task;
@@ -596,6 +602,9 @@ export async function startCreateUnityProjectTask(
       });
       waitForBridgeAfterOpen(task.id, state, targetProjectPath);
     })();
+  });
+  child.on('error', (error) => {
+    completeTask(task.id, 'failed', `Unity 项目创建进程启动失败：${error.message}`);
   });
 
   return task;

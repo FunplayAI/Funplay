@@ -793,10 +793,16 @@ export async function listEnvironmentTasksForState(state: AppState): Promise<Env
     }
 
     if (UNITY_BRIDGE_LINKED_ACTION_IDS.has(task.actionId)) {
-      const health = await checkUnityHealth(
-        state.settings.baseUrl || 'http://127.0.0.1:8765/',
-        pendingProjectPath ? { expectedProjectPath: pendingProjectPath } : {}
-      ).catch(() => undefined);
+      // Without a bound project path we can't verify the online bridge belongs to
+      // THIS task's project — completing the first queued bridge-linked task against
+      // any online Unity editor would mis-attribute success to the wrong project.
+      // All Unity bridge-linked actions are project-scoped, so this is an anomaly; skip.
+      if (!pendingProjectPath) {
+        continue;
+      }
+      const health = await checkUnityHealth(state.settings.baseUrl || 'http://127.0.0.1:8765/', {
+        expectedProjectPath: pendingProjectPath
+      }).catch(() => undefined);
       if (health?.status === 'online') {
         syncDiscoveredUnityMcpEndpoint(state, health.url);
         reconcileBridgeConnectedTasks(undefined, pendingProjectPath);

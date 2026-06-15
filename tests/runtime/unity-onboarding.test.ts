@@ -780,6 +780,31 @@ test('environment task polling does not complete a task from another Unity proje
   }
 });
 
+test('environment task polling does not complete a Unity task that has no bound project path', async () => {
+  environmentTasks.clear();
+  const server = await startUnityMcpServer({ projectPath: '/tmp/funplay-some-project' });
+  try {
+    const state = buildState(buildProject());
+    state.settings.baseUrl = server.baseUrl;
+    const task = createTask('open_unity_project', '打开 Unity 项目', '准备中');
+    // Intentionally NO bindTaskProjectPath — an online bridge can't be attributed
+    // to this task's project, so it must not be force-completed (#7).
+    taskStageUpdate(task.id, {
+      stage: 'validating',
+      status: 'running',
+      progress: 92,
+      message: 'Unity 项目已启动，正在等待 Bridge / MCP 连通…'
+    });
+
+    const tasks = await listEnvironmentTasksForState(state);
+    const current = tasks.find((item) => item.id === task.id);
+    assert.equal(current?.status, 'running');
+    assert.equal(current?.stage, 'validating');
+  } finally {
+    await server.close();
+  }
+});
+
 test('cocos onboarding diagnostics mirror Unity-style staged setup and preserve 3D mode', async () => {
   const state = buildState(buildProject());
   const timestamp = new Date().toISOString();
