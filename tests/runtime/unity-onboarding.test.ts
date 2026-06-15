@@ -943,6 +943,60 @@ test('cocos project runtime state reports online Cocos MCP when the bridge serve
   }
 });
 
+test('cocos onboarding task reconciliation completes without poking the project (no get_project_info modal)', async () => {
+  environmentTasks.clear();
+  const state = buildState(buildProject());
+  // mkdtemp lives under the macOS /tmp -> /private/tmp symlink, so inspectCocosProject's
+  // resolved path diverges from the bound path — the exact === mismatch (#6).
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-task-'));
+  const server = await startCocosMcpProjectServer(root);
+  const timestamp = new Date().toISOString();
+  state.mcpPlugins = [
+    {
+      id: 'mcp_cocos',
+      name: 'Funplay Cocos MCP',
+      kind: 'engine',
+      transport: 'http',
+      baseUrl: server.baseUrl,
+      enabled: true,
+      isDefault: false,
+      notes: 'Funplay built-in Cocos Creator MCP bridge.',
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+  ];
+  try {
+    const bridgePath = join(root, 'extensions', 'funplay-cocos-mcp');
+    await mkdir(join(root, 'assets'), { recursive: true });
+    await mkdir(bridgePath, { recursive: true });
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'Arrow' }), 'utf8');
+    await writeFile(join(bridgePath, 'package.json'), JSON.stringify({ name: 'funplay-cocos-mcp' }), 'utf8');
+    await writeFile(join(bridgePath, 'browser.js'), '', 'utf8');
+    await writeFile(join(bridgePath, 'server.json'), '{}', 'utf8');
+
+    const task = createTask('open_cocos_project', '打开 Cocos 项目', '准备中');
+    bindTaskProjectPath(task.id, root);
+    taskStageUpdate(task.id, {
+      stage: 'validating',
+      status: 'running',
+      progress: 90,
+      message: '正在等待 Cocos MCP 连通…'
+    });
+
+    const tasks = await listEnvironmentTasksForState(state);
+    const current = tasks.find((item) => item.id === task.id);
+    // #6: task auto-completes despite the resolved/bound path divergence.
+    assert.equal(current?.status, 'completed');
+    // #5: routine reconciliation never calls a tool — so the external Cocos
+    // extension's get_project_info (and its blocking modal) is never triggered.
+    assert.equal(server.methods.includes('tools/call'), false);
+  } finally {
+    resetMcpConnection(server.baseUrl);
+    await server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('cocos onboarding keeps MCP connectivity pending when the online server belongs to another project', async () => {
   const state = buildState(buildProject());
   const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-mismatch-'));

@@ -778,9 +778,16 @@ export async function listEnvironmentTasksForState(state: AppState): Promise<Env
       if (!project.valid || !isCocosBridgeInstalled(project.projectPath)) {
         continue;
       }
-      const probe = await checkCocosMcpConnection(state, undefined, project.projectPath).catch(() => undefined);
+      // Routine reconciliation: connection-health only. Passing no expectedProjectPath
+      // skips the get_project_info tool call, so the external Cocos extension is never
+      // poked into its blocking "project definition not found" modal (explicit diagnose
+      // still does the full project-match check). Reconcile against the BOUND path, not
+      // inspectCocosProject's resolved/realpath'd form — a raw === against the resolved
+      // path silently diverges for symlinked (/tmp -> /private/tmp) or trailing-slash
+      // paths, so the task would otherwise never auto-complete.
+      const probe = await checkCocosMcpConnection(state, undefined, undefined).catch(() => undefined);
       if (probe?.health.status === 'online') {
-        reconcileBridgeConnectedTasks(probe.health.message, project.projectPath);
+        reconcileBridgeConnectedTasks(probe.health.message, pendingProjectPath);
       }
       continue;
     }
