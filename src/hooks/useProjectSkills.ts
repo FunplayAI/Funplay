@@ -32,6 +32,13 @@ export function useProjectSkills({
   const [isLoadingSkillCatalog, setIsLoadingSkillCatalog] = useState(false);
   const [skillCatalogError, setSkillCatalogError] = useState('');
 
+  // Reset the in-progress skill draft whenever the selected project changes
+  // (moved out of App.tsx — keyed on the project id this hook already owns).
+  useEffect(() => {
+    setSkillDraft(createEmptyProjectSkillDraft());
+    setEditingSkillId('');
+  }, [selectedProjectView?.id]);
+
   const loadSkillCatalog = useCallback(async (refresh = false): Promise<void> => {
     setIsLoadingSkillCatalog(true);
     setSkillCatalogError('');

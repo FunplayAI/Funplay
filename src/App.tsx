@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import { useUiPreferences } from './hooks/useUiPreferences';
 import { useWorkspaceLayout } from './hooks/useWorkspaceLayout';
 import { useSelectedProjectView } from './hooks/useSelectedProjectView';
+import { useAppModeProjectSync } from './hooks/useAppModeProjectSync';
 import { createSessionActions } from './actions/sessionActions';
 import { createEnvironmentActions } from './actions/environmentActions';
 import { createPromptStreamActions } from './actions/promptStreamActions';
@@ -46,7 +47,6 @@ import {
   buildProjectSwitcherItem,
   buildSessionListState,
   buildVirtualProjectFiles,
-  createEmptyProjectSkillDraft,
   shouldUseFastRuntimeRefresh
 } from './lib/app-helpers';
 import { WelcomeScreen } from './components/pages/WelcomeScreen';
@@ -453,11 +453,6 @@ function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    setSkillDraft(createEmptyProjectSkillDraft());
-    setEditingSkillId('');
-  }, [selectedProject]);
-
-  useEffect(() => {
     if (appMode !== 'workspace' || !selectedProjectId || !selectedProjectRuntimePath) {
       return;
     }
@@ -533,12 +528,8 @@ function App(): JSX.Element {
     });
   }, [appMode, selectedProjectId, selectedProjectView?.engine?.projectPath, refreshProjectFiles]);
 
-  useEffect(() => {
-    if (appMode !== 'workspace' || selectedProjectId || projects.length === 0) {
-      return;
-    }
-    setSelectedProjectId(projects[0].id);
-  }, [appMode, selectedProjectId, projects]);
+  // Workspace-with-no-selection → fall back to the first project (store-only hook).
+  useAppModeProjectSync();
 
   const { assetGenerationProviders, handleGenerateAsset, handleImportGeneratedAsset, handleCancelAssetGenerationJob } =
     useAssetGenerationCenter({
@@ -786,7 +777,6 @@ function App(): JSX.Element {
     skillDraft,
     setSkillDraft,
     editingSkillId,
-    setEditingSkillId,
     skillCatalog,
     isLoadingSkillCatalog,
     skillCatalogError,
