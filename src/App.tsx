@@ -6,6 +6,7 @@ import { useAppModeProjectSync } from './hooks/useAppModeProjectSync';
 import { useProjectFiles } from './hooks/useProjectFiles';
 import { useRuntimeStatePolling } from './hooks/useRuntimeStatePolling';
 import { useBootstrap } from './hooks/useBootstrap';
+import { usePromptStreamEvents } from './hooks/usePromptStreamEvents';
 import { useSessionPanelDerivations } from './hooks/useSessionPanelDerivations';
 import { createSessionActions } from './actions/sessionActions';
 import { createEnvironmentActions } from './actions/environmentActions';
@@ -31,17 +32,10 @@ import { useAssetGenerationCenter } from './hooks/useAssetGenerationCenter';
 import { usePromptAttachmentImport } from './hooks/usePromptAttachmentImport';
 import { useMcpManager } from './hooks/useMcpManager';
 import { ensureProjectSessions } from '../shared/project-sessions';
-import { type CreateProjectInput, type PromptStreamEvent } from '../shared/types';
+import { type CreateProjectInput } from '../shared/types';
 import { AppShell } from './components/layout/AppShell';
 import { AgentWorkbench } from './components/layout/AgentWorkbench';
 import { UiLanguageProvider, localize } from './i18n';
-import { dispatchRefreshFileTree } from './lib/file-tree-events';
-import {
-  applyPromptStreamEventToManager,
-  listStreamSessions,
-  removeStreamSession,
-  type StreamSessionState
-} from './lib/stream-session-manager';
 import { AgentChatView } from './components/chat/AgentChatView';
 import { FileInspectorPanel, SidebarPanel } from './components/layout/WorkspacePanels';
 import { McpPluginModal } from './components/settings-modals';
@@ -85,7 +79,6 @@ function App(): JSX.Element {
   // Per-session composer state now lives in the Zustand session-composer store.
   // The store setters share the React Dispatch<SetStateAction> shape, so call
   // sites and the hooks that receive them work unchanged.
-  const setSessionDrafts = useSessionComposerStore((store) => store.setDrafts);
   const sessionAttachments = useSessionComposerStore((store) => store.attachments);
   const setSessionAttachments = useSessionComposerStore((store) => store.setAttachments);
   const setSessionComposerErrors = useSessionComposerStore((store) => store.setComposerErrors);
@@ -253,11 +246,13 @@ function App(): JSX.Element {
       projectId: selectedProjectView?.id,
       sessionId: selectedSessionId || undefined
     });
-  const activePromptStreamRef = useRef<StreamSessionState | null>(null);
-
-  useEffect(() => {
-    activePromptStreamRef.current = activePromptStream;
-  }, [activePromptStream]);
+  // Prompt-stream event subscriber (src/hooks/usePromptStreamEvents.ts) — drives the
+  // streaming status manager, terminal-event side effects, and completed-stream GC.
+  usePromptStreamEvents({
+    selectedProjectView,
+    activePromptStream,
+    language: uiPreferences.language
+  });
 
   // File-tree mirror (src/hooks/useProjectFiles.ts) — owns selectedProjectIdRef +
   // refreshProjectFiles, consumed below by prompt-stream + file-inspector hooks.
@@ -278,129 +273,6 @@ function App(): JSX.Element {
     selectedProjectIdRef,
     sessionMutationQueueRef
   });
-
-  useEffect(() => {
-    if (!selectedProjectView || !activePromptStream || activePromptStream.phase !== 'completed') {
-      return;
-    }
-
-    if (activePromptStream.projectId !== selectedProjectView.id) {
-      return;
-    }
-
-    const targetSession =
-      selectedProjectView.sessions.find((session) => session.id === activePromptStream.sessionId) ??
-      selectedProjectView.sessions[0];
-
-    if (!targetSession) {
-      return;
-    }
-
-    const streamStartedAt = new Date(activePromptStream.startedAt).getTime();
-    const hasCommittedAssistantMessage = targetSession.chat.some(
-      (message) => message.role === 'assistant' && new Date(message.createdAt).getTime() >= streamStartedAt
-    );
-
-    if (hasCommittedAssistantMessage) {
-      removeStreamSession(activePromptStream.streamId);
-    }
-  }, [selectedProjectView, activePromptStream]);
-
-  useEffect(() => {
-    if (!window.funplay?.onPromptStreamEvent) {
-      return;
-    }
-
-    return window.funplay.onPromptStreamEvent((event: PromptStreamEvent) => {
-      applyPromptStreamEventToManager(event, {
-        streaming: localize(uiPreferences.language, '正在实时生成回复…', 'Streaming response…'),
-        reasoning: localize(uiPreferences.language, '正在整理推理过程…', 'Reasoning…'),
-        toolRunning: () => localize(uiPreferences.language, '正在思考中...', 'Thinking...'),
-        toolCompleted: localize(uiPreferences.language, '工具调用完成。', 'Tool call completed.'),
-        toolFailed: localize(uiPreferences.language, '工具调用失败。', 'Tool call failed.'),
-        waitingPermission: localize(uiPreferences.language, '等待权限确认…', 'Waiting for permission…'),
-        waitingUserInput: localize(uiPreferences.language, '等待用户回答…', 'Waiting for user input…'),
-        permissionAllowed: localize(
-          uiPreferences.language,
-          '已允许本轮写入操作。',
-          'Write access allowed for this turn.'
-        ),
-        permissionAllowedSession: localize(
-          uiPreferences.language,
-          '已允许当前会话写入操作。',
-          'Write access allowed for this session.'
-        ),
-        permissionDenied: localize(
-          uiPreferences.language,
-          '已拒绝本轮写入操作。',
-          'Write access denied for this turn.'
-        ),
-        userInputSubmitted: localize(
-          uiPreferences.language,
-          '已提交回答，Agent 正在继续。',
-          'Answer submitted. Agent is continuing.'
-        ),
-        completed: localize(uiPreferences.language, '已生成完成，正在写入会话…', 'Completed. Writing into the session…')
-      });
-
-      if (event.type === 'completed') {
-        setProjects((current) => current.map((project) => (project.id === event.project.id ? event.project : project)));
-        setSessionComposerErrors((current) => ({
-          ...current,
-          [event.sessionId]: ''
-        }));
-        dispatchRefreshFileTree({ projectId: event.project.id, reason: 'prompt-completed' });
-        removeStreamSession(event.streamId);
-        return;
-      }
-
-      if (event.type === 'cancelled') {
-        const current =
-          listStreamSessions().find((stream) => stream.streamId === event.streamId) ?? activePromptStreamRef.current;
-        if (event.project) {
-          // Interrupted, but the partial turn (user message + text streamed so
-          // far) was persisted on the main side. Commit it like a completed turn
-          // so the session row survives, and do NOT restore the draft — the user
-          // message now lives in the session, restoring would duplicate it.
-          const interruptedProject = event.project;
-          setProjects((projectsValue) =>
-            projectsValue.map((project) => (project.id === interruptedProject.id ? interruptedProject : project))
-          );
-        } else if (current?.streamId === event.streamId) {
-          setSessionDrafts((value) => ({
-            ...value,
-            [current.sessionId]: value[current.sessionId] || current.prompt
-          }));
-        }
-        if (current?.sessionId) {
-          setSessionComposerErrors((value) => ({
-            ...value,
-            [current.sessionId]: localize(
-              uiPreferences.language,
-              '已取消本轮生成。',
-              'The current response was cancelled.'
-            )
-          }));
-        }
-        return;
-      }
-
-      if (event.type === 'error') {
-        const current =
-          listStreamSessions().find((stream) => stream.streamId === event.streamId) ?? activePromptStreamRef.current;
-        if (current?.streamId === event.streamId) {
-          setSessionDrafts((value) => ({
-            ...value,
-            [current.sessionId]: value[current.sessionId] || current.prompt
-          }));
-          setSessionComposerErrors((value) => ({
-            ...value,
-            [current.sessionId]: event.error
-          }));
-        }
-      }
-    });
-  }, [uiPreferences.language]);
 
   // Workspace-with-no-selection → fall back to the first project (store-only hook).
   useAppModeProjectSync();
