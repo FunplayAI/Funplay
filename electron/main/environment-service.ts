@@ -454,38 +454,77 @@ function buildCocosBridgeHealth(
   };
 }
 
+interface CocosHealthCacheEntry {
+  snapshot: McpConnectionSnapshot;
+  health: UnityHealthResult;
+  expiresAt: number;
+}
+// Short-TTL cache so the 2s onboarding + 5s runtime pollers don't re-initialize
+// and re-probe the live Cocos MCP on every tick (Unity already caches this way).
+const cocosHealthCache = new Map<string, CocosHealthCacheEntry>();
+const COCOS_HEALTH_TTL_ONLINE_MS = 4000;
+const COCOS_HEALTH_TTL_OFFLINE_MS = 1500;
+
 async function checkCocosMcpConnection(
   state: AppState,
   enginePluginId?: string,
-  expectedProjectPath?: string
+  expectedProjectPath?: string,
+  options: { bypassCache?: boolean } = {}
 ): Promise<{
   snapshot: McpConnectionSnapshot;
   health: UnityHealthResult;
 }> {
   const config = buildCocosMcpConnectionConfig(state, enginePluginId);
+  const cacheKey = `${config.baseUrl ?? config.transport}\u0000${expectedProjectPath ?? ''}`;
+  if (!options.bypassCache) {
+    const cached = cocosHealthCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return { snapshot: cached.snapshot, health: cached.health };
+    }
+  }
+
   let detectedProjectPath: string | undefined;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3500);
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  // Bound the whole probe to the deadline even when initializeMcpConnection awaits
+  // a SHARED in-flight init from another caller (whose abort our controller can't
+  // cancel) — otherwise a slow/hung server could block this probe up to the 60s
+  // default request timeout.
+  const deadline = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      controller.abort();
+      reject(new Error('Cocos MCP probe timed out.'));
+    }, 3500);
+    timeoutHandle.unref?.();
+  });
   try {
-    await initializeMcpConnection(config, {
-      abortSignal: controller.signal
-    });
-    if (expectedProjectPath) {
-      detectedProjectPath = await readCocosMcpProjectPath(config, controller.signal);
-    }
+    await Promise.race([
+      (async () => {
+        await initializeMcpConnection(config, { abortSignal: controller.signal });
+        if (expectedProjectPath) {
+          detectedProjectPath = await readCocosMcpProjectPath(config, controller.signal);
+        }
+      })(),
+      deadline
+    ]);
   } catch {
     // Snapshot below records the offline reason.
   } finally {
-    clearTimeout(timeout);
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
   }
   const snapshot = getMcpConnectionSnapshot(config);
-  return {
+  const health = buildCocosBridgeHealth(snapshot, {
+    expectedProjectPath,
+    detectedProjectPath
+  });
+  cocosHealthCache.set(cacheKey, {
     snapshot,
-    health: buildCocosBridgeHealth(snapshot, {
-      expectedProjectPath,
-      detectedProjectPath
-    })
-  };
+    health,
+    expiresAt: Date.now() + (health.status === 'online' ? COCOS_HEALTH_TTL_ONLINE_MS : COCOS_HEALTH_TTL_OFFLINE_MS)
+  });
+  return { snapshot, health };
 }
 
 function bridgePackageSpec(): { packageName: string; url: string } {
@@ -1039,7 +1078,7 @@ export async function diagnoseEnvironment(
     const cocosProject = inspectCocosProject(targetProjectPath);
     const bridgeInstalled = cocosProject.valid && isCocosBridgeInstalled(cocosProject.projectPath);
     const bridgeProbe = bridgeInstalled
-      ? await checkCocosMcpConnection(state, cocosEnginePlugin?.id, cocosProject.projectPath)
+      ? await checkCocosMcpConnection(state, cocosEnginePlugin?.id, cocosProject.projectPath, { bypassCache: true })
       : null;
     const bridgeHealth = bridgeProbe?.health;
     const bridgeConnected = bridgeHealth?.status === 'online';

@@ -968,6 +968,49 @@ test('cocos project runtime state reports online Cocos MCP when the bridge serve
   }
 });
 
+test('cocos runtime-state probe caches within its TTL (repeated polls hit the network once)', async () => {
+  const state = buildState(buildProject());
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-cache-'));
+  const server = await startCocosMcpProjectServer(root);
+  const timestamp = new Date().toISOString();
+  state.mcpPlugins = [
+    {
+      id: 'mcp_cocos',
+      name: 'Funplay Cocos MCP',
+      kind: 'engine',
+      transport: 'http',
+      baseUrl: server.baseUrl,
+      enabled: true,
+      isDefault: false,
+      notes: 'Funplay built-in Cocos Creator MCP bridge.',
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+  ];
+  try {
+    const bridgePath = join(root, 'extensions', 'funplay-cocos-mcp');
+    await mkdir(join(root, 'assets'), { recursive: true });
+    await mkdir(bridgePath, { recursive: true });
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'Arrow' }), 'utf8');
+    await writeFile(join(bridgePath, 'package.json'), JSON.stringify({ name: 'funplay-cocos-mcp' }), 'utf8');
+    await writeFile(join(bridgePath, 'browser.js'), '', 'utf8');
+    await writeFile(join(bridgePath, 'server.json'), '{}', 'utf8');
+
+    const first = await getProjectRuntimeState(state, { platform: 'cocos', projectPath: root });
+    assert.equal(first.bridgeHealth?.status, 'online');
+    const initCount = server.methods.filter((method) => method === 'initialize').length;
+
+    // A second poll within the TTL must be served from cache — no new probe.
+    const second = await getProjectRuntimeState(state, { platform: 'cocos', projectPath: root });
+    assert.equal(second.bridgeHealth?.status, 'online');
+    assert.equal(server.methods.filter((method) => method === 'initialize').length, initCount);
+  } finally {
+    resetMcpConnection(server.baseUrl);
+    await server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('cocos onboarding task reconciliation completes without poking the project (no get_project_info modal)', async () => {
   environmentTasks.clear();
   const state = buildState(buildProject());
