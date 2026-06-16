@@ -1158,7 +1158,12 @@ async function executeEngineControlAction(
       await options.persistAppState(options.appState);
     }
   };
-  if (platform === 'cocos') {
+  // run_engine_environment_action drives the staged onboarding flow (create →
+  // install → open) and must reach runEnvironmentAction by its actionId, NOT the
+  // cocos capability dispatch below (where its fallthrough capability 'diagnose'
+  // would mis-route a create/open into a diagnose). Unity already bypasses this
+  // block; exclude cocos here too so both engines route the staged action alike.
+  if (platform === 'cocos' && action.type !== 'run_engine_environment_action') {
     const projectPath = resolveEngineProjectPath(project, 'projectPath' in action ? action.projectPath : undefined);
     if (capability === 'diagnose') {
       const diagnosis = diagnoseCocosEnvironment({

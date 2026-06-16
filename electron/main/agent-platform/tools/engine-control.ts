@@ -101,3 +101,41 @@ registerAgentTool({
     ...input
   })
 });
+
+// Agent-facing subset of EnvironmentActionKind: the project-level staged-setup
+// actions (create / import / open / install-bridge / verify). The heavy OS-level
+// software installers (install_unity_hub, install_unity_editor,
+// install_cocos_dashboard) are deliberately EXCLUDED — those multi-GB downloads
+// stay UI-only and are not driven by the agent.
+const environmentActionIdSchema = z.enum([
+  'open_unity_hub',
+  'select_unity_hub',
+  'create_unity_project',
+  'import_unity_project',
+  'open_unity_project',
+  'install_project_bridge',
+  'open_cocos_dashboard',
+  'create_cocos_project',
+  'open_cocos_project',
+  'install_cocos_bridge',
+  'verify_project_path'
+]);
+
+registerAgentTool({
+  name: 'run_engine_environment_action',
+  title: 'Run Engine Environment Action',
+  description:
+    '驱动当前项目引擎的分阶段环境编排动作(创建/导入/打开工程、安装 Bridge、校验路径)。Unity 走 Hub/Editor/项目编排;Cocos 走 create_cocos_project → install_cocos_bridge → open_cocos_project 流程。重型软件安装(安装 Unity Hub/Editor、Cocos Dashboard)不在此工具范围内,请用户在 UI onboarding 中完成。',
+  inputSchema: engineContextSchema.extend({
+    actionId: environmentActionIdSchema,
+    reason: z.string().trim().max(500).optional()
+  }),
+  risk: 'high',
+  permissionPolicy: 'ask',
+  checkpointPolicy: 'external_best_effort',
+  readOnly: false,
+  toAction: (input) => ({
+    type: 'run_engine_environment_action',
+    ...input
+  })
+});

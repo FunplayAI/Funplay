@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checkUnityHealth } from '../../electron/main/unity-bridge.ts';
 import { executeAgentToolAction } from '../../electron/main/agent-platform/workspace-tools.ts';
+import { getAgentToolDefinition } from '../../electron/main/agent-platform/tool-registry.ts';
 import { openUnityProjectDirectly } from '../../electron/main/unity-install-tasks.ts';
 import { readUnityProjectVersion } from '../../electron/main/unity-version.ts';
 import {
@@ -1546,6 +1547,48 @@ test('cocos openHub skips launch when a Dashboard is already running', () => {
   assert.equal(result.ok, true);
   assert.match(result.summary, /already running: skipped/i);
   assert.equal(launchCalled, false);
+});
+
+test('run_engine_environment_action is a registered agent tool that excludes heavy software installers', () => {
+  const definition = getAgentToolDefinition('run_engine_environment_action');
+  assert.ok(definition);
+  assert.equal(definition?.readOnly, false);
+  // Project-level staged actions are accepted...
+  assert.equal(definition?.inputSchema.safeParse({ actionId: 'create_cocos_project', platform: 'cocos' }).success, true);
+  assert.equal(definition?.inputSchema.safeParse({ actionId: 'open_cocos_project' }).success, true);
+  assert.equal(definition?.inputSchema.safeParse({ actionId: 'create_unity_project' }).success, true);
+  // ...but the heavy OS-level software installers are NOT exposed to the agent.
+  assert.equal(definition?.inputSchema.safeParse({ actionId: 'install_unity_editor' }).success, false);
+  assert.equal(definition?.inputSchema.safeParse({ actionId: 'install_unity_hub' }).success, false);
+  assert.equal(definition?.inputSchema.safeParse({ actionId: 'install_cocos_dashboard' }).success, false);
+});
+
+test('run_engine_environment_action for cocos reaches the staged runEnvironmentAction, not diagnose', async () => {
+  environmentTasks.clear();
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-runaction-'));
+  const projectPath = join(root, 'Arrow');
+  const state = buildState(buildProject());
+  try {
+    await mkdir(join(projectPath, 'assets'), { recursive: true });
+    await writeFile(join(projectPath, 'package.json'), JSON.stringify({ name: 'Arrow' }), 'utf8');
+
+    // verify_project_path is spawn-free (just inspects the project) — proves the
+    // routing reaches runEnvironmentAction without launching a real editor.
+    const result = await executeAgentToolAction(
+      buildProject(),
+      { type: 'run_engine_environment_action', actionId: 'verify_project_path', platform: 'cocos', projectPath },
+      { appState: state }
+    );
+
+    // runEnvironmentAction's summarizeEnvironmentAction format, NOT the cocos
+    // diagnose capability blob it was previously mis-routed into.
+    assert.match(result.summary, /Action: verify_project_path/);
+    assert.doesNotMatch(result.summary, /Capability: diagnose/);
+    assert.match(result.summary, /项目路径校验通过/);
+  } finally {
+    environmentTasks.clear();
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('cocos create project task waits for real MCP connectivity before completing', async () => {

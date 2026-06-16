@@ -777,6 +777,7 @@ test('tool registry includes write and MCP metadata boundaries', () => {
       'read_mcp_resource',
       'refresh_engine_runtime_state',
       'run_command',
+      'run_engine_environment_action',
       'run_subagent',
       'run_subagents',
       'scan_file_tree',
