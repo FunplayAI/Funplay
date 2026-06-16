@@ -949,7 +949,14 @@
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
   align-items: start;
-  padding: 4px 32px 12px;
+  padding: 2px 32px;
+}
+
+/* Turn separation lives entirely in a single, consistent gap between adjacent
+   turns (rather than uneven per-row top/bottom padding) — clearer grouping that
+   breaks up the "wall of text" without a busy divider line. */
+.chat-transcript-row + .chat-transcript-row {
+  margin-top: 1.75rem;
 }
 
 .chat-transcript-row.user {
@@ -958,8 +965,6 @@
 }
 
 .chat-transcript-row.assistant {
-  padding-top: 14px;
-  padding-bottom: 22px;
   padding-right: max(var(--fp-space-7), 12%);
 }
 
