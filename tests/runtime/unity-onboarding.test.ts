@@ -830,6 +830,33 @@ test('environment task polling does not complete a Unity task that has no bound 
   }
 });
 
+test('cocos diagnose resolves the engine variant (defaults to creator3, honors cocos4)', async () => {
+  const state = buildState(buildProject());
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-variant-'));
+  try {
+    const defaulted = await diagnoseEnvironment(state, {
+      platform: 'cocos',
+      mode: 'create',
+      dimension: '3d',
+      projectName: 'Arrow',
+      projectPath: root
+    });
+    assert.equal(defaulted.cocosVariant, 'creator3');
+
+    const explicit = await diagnoseEnvironment(state, {
+      platform: 'cocos',
+      mode: 'create',
+      dimension: '3d',
+      cocosVariant: 'cocos4',
+      projectName: 'Arrow',
+      projectPath: root
+    });
+    assert.equal(explicit.cocosVariant, 'cocos4');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('cocos onboarding diagnostics mirror Unity-style staged setup and preserve 3D mode', async () => {
   const state = buildState(buildProject());
   const timestamp = new Date().toISOString();

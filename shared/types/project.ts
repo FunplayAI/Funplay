@@ -7,6 +7,7 @@ import type {
   PlatformChoice,
   ProjectSetupMode,
   EngineProjectDimension,
+  CocosEngineVariant,
   McpPluginKind
 } from './unity';
 
@@ -105,6 +106,9 @@ export interface ProjectEngineInfo {
   projectPath?: string;
   dimension?: EngineProjectDimension;
   unityEditorVersion?: string;
+  // For platform 'cocos' only; undefined is treated as 'creator3' for backward
+  // compatibility with projects created before the cocos4/cocos-cli path existed.
+  cocosVariant?: CocosEngineVariant;
 }
 
 export interface ProjectRuntimeState {

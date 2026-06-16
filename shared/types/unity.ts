@@ -4,6 +4,12 @@ export type UnityReleaseChannel = 'stable' | 'patch' | 'beta' | 'alpha' | 'unkno
 export type PlatformChoice = 'web' | 'unity' | 'cocos' | 'godot' | 'unreal';
 export type ProjectSetupMode = 'create' | 'import';
 export type EngineProjectDimension = '2d' | '3d' | 'unknown';
+// Which Cocos toolchain backs a cocos project:
+//  - 'creator3': Cocos Creator 3.x GUI editor + the funplay-cocos-mcp extension
+//    (manual "Funplay > MCP Server" panel; the current default).
+//  - 'cocos4': the official cocos4 engine driven headlessly by cocos-cli
+//    (`cocos start-mcp-server`, no GUI). Funplay downloads cocos-cli + cocos4.
+export type CocosEngineVariant = 'creator3' | 'cocos4';
 export type UnityMcpContentType = 'text' | 'image';
 export type McpPluginKind = 'engine' | 'asset' | 'qa' | 'custom';
 export type McpTransport = 'http' | 'stdio' | 'streamable-http' | 'sse';
@@ -305,6 +311,9 @@ export interface EnvironmentDiagnostics {
   platform: PlatformChoice;
   mode: ProjectSetupMode;
   dimension: EngineProjectDimension;
+  // The resolved cocos toolchain variant for platform 'cocos' (defaults to
+  // 'creator3' when the caller did not specify one); undefined for other engines.
+  cocosVariant?: CocosEngineVariant;
   checkedAt: string;
   projectPath: string;
   enginePluginId?: string;

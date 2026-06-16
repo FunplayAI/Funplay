@@ -12,6 +12,7 @@ import type {
   EnvironmentCheck,
   EnvironmentDiagnostics,
   EngineProjectDimension,
+  CocosEngineVariant,
   EnvironmentTask,
   EnvironmentTaskStage,
   EnvironmentTaskStatus,
@@ -1137,6 +1138,7 @@ export async function diagnoseEnvironment(
     platform: PlatformChoice;
     mode: ProjectSetupMode;
     dimension: EngineProjectDimension;
+    cocosVariant?: CocosEngineVariant;
     projectName?: string;
     projectPath: string;
     enginePluginId?: string;
@@ -1184,6 +1186,7 @@ export async function diagnoseEnvironment(
   }
 
   if (input.platform === 'cocos') {
+    const cocosVariant: CocosEngineVariant = input.cocosVariant ?? 'creator3';
     const cocosDimension = formatCocosDimensionLabel(input.dimension);
     const cocosEnginePlugin = resolveCocosMcpPlugin(state, input.enginePluginId);
     const dashboardPath = findCocosDashboardExecutable();
@@ -1408,6 +1411,7 @@ export async function diagnoseEnvironment(
       platform: input.platform,
       mode: input.mode,
       dimension: input.dimension,
+      cocosVariant,
       checkedAt,
       projectPath: input.projectPath,
       enginePluginId: cocosEnginePlugin?.id,
@@ -1764,6 +1768,7 @@ export async function runEnvironmentAction(
     platform: PlatformChoice;
     mode: ProjectSetupMode;
     dimension: EngineProjectDimension;
+    cocosVariant?: CocosEngineVariant;
     projectName?: string;
     projectPath: string;
     enginePluginId?: string;

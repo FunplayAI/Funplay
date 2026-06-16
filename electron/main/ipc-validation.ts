@@ -18,6 +18,7 @@ import type {
 const platformChoiceSchema = z.enum(['web', 'unity', 'cocos', 'godot', 'unreal']);
 const projectSetupModeSchema = z.enum(['create', 'import']);
 const engineProjectDimensionSchema = z.enum(['2d', '3d', 'unknown']);
+const cocosEngineVariantSchema = z.enum(['creator3', 'cocos4']);
 const gameTemplateIdSchema = z.enum([
   'generic-workspace',
   'engine-game-prototype',
@@ -170,6 +171,7 @@ export const createProjectInputSchema = z
         setupMode: projectSetupModeSchema.optional(),
         projectPath: optionalTrimmedString(2048),
         dimension: engineProjectDimensionSchema.optional(),
+        cocosVariant: cocosEngineVariantSchema.optional(),
         unityEditorVersion: optionalTrimmedString(120)
       })
       .optional()
@@ -181,6 +183,7 @@ export const environmentInputSchema = z
     platform: platformChoiceSchema,
     mode: projectSetupModeSchema,
     dimension: engineProjectDimensionSchema,
+    cocosVariant: cocosEngineVariantSchema.optional(),
     projectName: optionalTrimmedString(120),
     projectPath: trimmedString(1, 2048),
     enginePluginId: optionalTrimmedString(120),

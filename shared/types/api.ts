@@ -50,6 +50,7 @@ import type {
   PlatformChoice,
   ProjectSetupMode,
   EngineProjectDimension,
+  CocosEngineVariant,
   EnvironmentDiagnostics,
   EnvironmentActionKind,
   EnvironmentActionResult,
@@ -105,6 +106,7 @@ export interface FunPlayApi {
     platform: PlatformChoice;
     mode: ProjectSetupMode;
     dimension: EngineProjectDimension;
+    cocosVariant?: CocosEngineVariant;
     projectName?: string;
     projectPath: string;
     enginePluginId?: string;
@@ -115,6 +117,7 @@ export interface FunPlayApi {
     platform: PlatformChoice;
     mode: ProjectSetupMode;
     dimension: EngineProjectDimension;
+    cocosVariant?: CocosEngineVariant;
     projectName?: string;
     projectPath: string;
     enginePluginId?: string;

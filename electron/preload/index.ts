@@ -3,6 +3,7 @@ import type {
   AiProviderInput,
   AssetGenerationProviderInput,
   AssetGenerationRequest,
+  CocosEngineVariant,
   CreateProjectInput,
   EnvironmentActionKind,
   FunPlayApi,
@@ -25,6 +26,7 @@ const api: FunPlayApi = {
     platform: PlatformChoice;
     mode: ProjectSetupMode;
     dimension: '2d' | '3d' | 'unknown';
+    cocosVariant?: CocosEngineVariant;
     projectName?: string;
     projectPath: string;
     enginePluginId?: string;
@@ -35,6 +37,7 @@ const api: FunPlayApi = {
     platform: PlatformChoice;
     mode: ProjectSetupMode;
     dimension: '2d' | '3d' | 'unknown';
+    cocosVariant?: CocosEngineVariant;
     projectName?: string;
     projectPath: string;
     enginePluginId?: string;
