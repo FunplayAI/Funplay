@@ -77,7 +77,9 @@ const BASELINES: Record<string, number> = {
   // ProjectSettingsPage.tsx split into project-settings/* modules — now 311 lines (under default limit).
   // Claude settings tab removed with the Claude runtime; Agent tab removed and
   // developer-mode toggle relocated into the Appearance tab.
-  'src/components/modals/AppSettingsModal.tsx': 687
+  // Memory panel (+ its local filter state, memos and clear handlers) extracted
+  // into AppSettingsMemorySection.tsx for the memory-UX fixes — now 509 lines.
+  'src/components/modals/AppSettingsModal.tsx': 509
 };
 
 function collectTsxFiles(dir: string): string[] {

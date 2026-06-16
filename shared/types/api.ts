@@ -25,6 +25,7 @@ import type {
   AiProviderAuthStyle,
   AgentSettings,
   WebSearchSettings,
+  WebSearchTestResult,
   WebResearchMetrics,
   WebSearchQualityReport
 } from './provider';
@@ -220,6 +221,7 @@ export interface FunPlayApi {
   updateSettings: (settings: Partial<UnitySettings>) => Promise<UnitySettings>;
   updateAgentSettings: (settings: Partial<AgentSettings>) => Promise<AgentSettings>;
   updateWebSearchSettings: (settings: Partial<WebSearchSettings>) => Promise<AiSettings>;
+  testWebSearchKey: (provider: 'brave' | 'bing', apiKey: string) => Promise<WebSearchTestResult>;
   getWebResearchMetrics: () => Promise<WebResearchMetrics>;
   resetWebResearchMetrics: () => Promise<WebResearchMetrics>;
   runWebSearchQualityEval: () => Promise<WebSearchQualityReport>;

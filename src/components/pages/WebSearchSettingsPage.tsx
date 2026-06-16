@@ -1,6 +1,6 @@
 import { useEffect, useState, type JSX } from 'react';
-import { PlayCircle, RefreshCw, RotateCcw, Save } from 'lucide-react';
-import type { WebResearchMetrics, WebSearchQualityReport, WebSearchSettings } from '../../../shared/types';
+import { KeyRound, PlayCircle, RefreshCw, RotateCcw, Save } from 'lucide-react';
+import type { WebResearchMetrics, WebSearchQualityReport, WebSearchSettings, WebSearchTestResult } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import { Badge, Button, MetricTile, SelectField, Surface, SwitchField, TextField, type SelectOption } from '../ui/index';
 
@@ -16,18 +16,27 @@ export function WebSearchSettingsPage(props: {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
   const [isRunningEval, setIsRunningEval] = useState(false);
+  const [evaluationFailed, setEvaluationFailed] = useState(false);
   const [message, setMessage] = useState('');
+  const [messageTone, setMessageTone] = useState<'neutral' | 'success' | 'error'>('neutral');
+  const [testingKeyProvider, setTestingKeyProvider] = useState<'brave' | 'bing' | ''>('');
+  const [keyTestResults, setKeyTestResults] = useState<Partial<Record<'brave' | 'bing', WebSearchTestResult>>>({});
 
   useEffect(() => {
     setDraft(props.settings);
   }, [props.settings]);
+
+  function setStatus(text: string, tone: 'neutral' | 'success' | 'error'): void {
+    setMessage(text);
+    setMessageTone(tone);
+  }
 
   async function refreshMetrics(): Promise<void> {
     setIsLoadingMetrics(true);
     try {
       setMetrics(await window.funplay.getWebResearchMetrics());
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('读取搜索指标失败。', 'Failed to load search metrics.'));
+      setStatus(error instanceof Error ? error.message : t('读取搜索指标失败。', 'Failed to load search metrics.'), 'error');
     } finally {
       setIsLoadingMetrics(false);
     }
@@ -49,11 +58,23 @@ export function WebSearchSettingsPage(props: {
         browserFallbackEnabled: draft.browserFallbackEnabled,
         telemetryEnabled: draft.telemetryEnabled
       });
-      setMessage(t('Web Search 配置已保存。', 'Web Search settings saved.'));
+      setStatus(t('Web Search 配置已保存。', 'Web Search settings saved.'), 'success');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('保存 Web Search 配置失败。', 'Failed to save Web Search settings.'));
+      setStatus(error instanceof Error ? error.message : t('保存 Web Search 配置失败。', 'Failed to save Web Search settings.'), 'error');
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function testKey(provider: 'brave' | 'bing'): Promise<void> {
+    setTestingKeyProvider(provider);
+    try {
+      const result = await window.funplay.testWebSearchKey(provider, (provider === 'brave' ? draft.braveApiKey : draft.bingApiKey) ?? '');
+      setKeyTestResults((current) => ({ ...current, [provider]: result }));
+    } catch (error) {
+      setKeyTestResults((current) => ({ ...current, [provider]: { provider, status: 'error', message: error instanceof Error ? error.message : t('密钥测试失败。', 'Key test failed.'), testedAt: new Date().toISOString() } }));
+    } finally {
+      setTestingKeyProvider('');
     }
   }
 
@@ -62,9 +83,9 @@ export function WebSearchSettingsPage(props: {
     setMessage('');
     try {
       setMetrics(await window.funplay.resetWebResearchMetrics());
-      setMessage(t('搜索指标已重置。', 'Search metrics reset.'));
+      setStatus(t('搜索指标已重置。', 'Search metrics reset.'), 'success');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('重置搜索指标失败。', 'Failed to reset search metrics.'));
+      setStatus(error instanceof Error ? error.message : t('重置搜索指标失败。', 'Failed to reset search metrics.'), 'error');
     } finally {
       setIsLoadingMetrics(false);
     }
@@ -73,12 +94,14 @@ export function WebSearchSettingsPage(props: {
   async function runQualityEval(): Promise<void> {
     setIsRunningEval(true);
     setMessage('');
+    setEvaluationFailed(false);
     try {
       const report = await window.funplay.runWebSearchQualityEval();
       setQualityReport(report);
       setMetrics(await window.funplay.getWebResearchMetrics());
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('搜索质量评测失败。', 'Search quality evaluation failed.'));
+      setEvaluationFailed(true);
+      setStatus(error instanceof Error ? error.message : t('搜索质量评测失败。', 'Search quality evaluation failed.'), 'error');
     } finally {
       setIsRunningEval(false);
     }
@@ -124,22 +147,38 @@ export function WebSearchSettingsPage(props: {
           options={providerOptions}
           onValueChange={(provider) => setDraft((current) => ({ ...current, provider: provider as WebSearchSettings['provider'] }))}
         />
-        <TextField
-          label={t('Brave API 密钥', 'Brave API Key')}
-          type="password"
-          value={draft.braveApiKey ?? ''}
-          onValueChange={(braveApiKey) => setDraft((current) => ({ ...current, braveApiKey }))}
-          placeholder={t('可选，自动选择时优先使用', 'Optional, preferred in auto mode')}
-          autoComplete="off"
-        />
-        <TextField
-          label={t('Bing API 密钥', 'Bing API Key')}
-          type="password"
-          value={draft.bingApiKey ?? ''}
-          onValueChange={(bingApiKey) => setDraft((current) => ({ ...current, bingApiKey }))}
-          placeholder={t('可选，Brave 未配置时使用', 'Optional, used when Brave is not configured')}
-          autoComplete="off"
-        />
+        <div className="web-search-key-field">
+          <TextField
+            label={t('Brave API 密钥', 'Brave API Key')}
+            type="password"
+            value={draft.braveApiKey ?? ''}
+            onValueChange={(braveApiKey) => setDraft((current) => ({ ...current, braveApiKey }))}
+            placeholder={t('可选，自动选择时优先使用', 'Optional, preferred in auto mode')}
+            autoComplete="off"
+          />
+          <div className="web-search-key-test-row">
+            <Button variant="secondary" size="compact" onClick={() => void testKey('brave')} disabled={testingKeyProvider === 'brave'} leadingIcon={<KeyRound size={13} aria-hidden="true" />}>
+              {testingKeyProvider === 'brave' ? t('测试中…', 'Testing…') : t('测试密钥', 'Test Key')}
+            </Button>
+            {keyTestResults.brave ? <span className={`web-search-key-test-result ${keyTestResults.brave.status}`}>{keyTestResults.brave.message}</span> : null}
+          </div>
+        </div>
+        <div className="web-search-key-field">
+          <TextField
+            label={t('Bing API 密钥', 'Bing API Key')}
+            type="password"
+            value={draft.bingApiKey ?? ''}
+            onValueChange={(bingApiKey) => setDraft((current) => ({ ...current, bingApiKey }))}
+            placeholder={t('可选，Brave 未配置时使用', 'Optional, used when Brave is not configured')}
+            autoComplete="off"
+          />
+          <div className="web-search-key-test-row">
+            <Button variant="secondary" size="compact" onClick={() => void testKey('bing')} disabled={testingKeyProvider === 'bing'} leadingIcon={<KeyRound size={13} aria-hidden="true" />}>
+              {testingKeyProvider === 'bing' ? t('测试中…', 'Testing…') : t('测试密钥', 'Test Key')}
+            </Button>
+            {keyTestResults.bing ? <span className={`web-search-key-test-result ${keyTestResults.bing.status}`}>{keyTestResults.bing.message}</span> : null}
+          </div>
+        </div>
         <SelectField
           label={t('缓存 TTL', 'Cache TTL')}
           value={String(draft.cacheTtlMs)}
@@ -185,6 +224,14 @@ export function WebSearchSettingsPage(props: {
             {isRunningEval ? t('评测中…', 'Evaluating…') : t('运行评测', 'Run Evaluation')}
           </Button>
         </div>
+        {evaluationFailed ? (
+          <div className="warning-banner error web-search-eval-failed">
+            <span>{t('上次评测失败，未能生成质量报告。', 'The last evaluation failed and no quality report was produced.')}</span>
+            <Button variant="secondary" size="compact" onClick={() => void runQualityEval()} disabled={isRunningEval} leadingIcon={<RotateCcw size={13} aria-hidden="true" />}>
+              {t('重试', 'Retry')}
+            </Button>
+          </div>
+        ) : null}
         {qualityReport ? (
           <div className="web-search-quality-report">
             <Badge tone={qualityReport.passedCases === qualityReport.totalCases ? 'success' : 'warning'}>
@@ -205,7 +252,7 @@ export function WebSearchSettingsPage(props: {
           {t('最近请求', 'Last request')}: {[metrics.lastRequest.kind, metrics.lastRequest.provider, metrics.lastRequest.extraction, `${metrics.lastRequest.durationMs}ms`, metrics.lastRequest.ok ? 'ok' : 'failed'].filter(Boolean).join(' · ')}
         </div>
       ) : null}
-      {message ? <div className="agent-composer-error neutral">{message}</div> : null}
+      {message ? <div className={`web-search-status-banner ${messageTone}`}>{message}</div> : null}
     </div>
   );
 }

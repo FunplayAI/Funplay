@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import {
   Bell,
   Cloud,
@@ -9,11 +9,8 @@ import {
   Monitor,
   Plug,
   RefreshCw,
-  RotateCcw,
-  Save,
   Search,
   Sparkles,
-  Trash2,
   type LucideIcon
 } from 'lucide-react';
 import type {
@@ -27,7 +24,6 @@ import type {
   McpRawAuditEntry,
   McpRawRequestResult,
   McpToolSnapshot,
-  ProjectMemoryEntryKind,
   ProjectMemoryClearScope,
   ProjectMemoryFileContent,
   ProjectMemoryFileSummary,
@@ -46,8 +42,6 @@ import {
   formatAppUpdateFeedSource,
   formatAppUpdateStatus,
   formatFileSize,
-  formatMemoryEntryKindLabel,
-  formatMemoryKindLabel,
   formatNotificationTaskStatus,
   resolveAppUpdateActionMessage
 } from '../../lib/app-helpers';
@@ -55,9 +49,10 @@ import { ModalShell } from '../settings-modals';
 import { InfoRow } from '../shared/InfoComponents';
 import { AppSettingsAiProviderSection } from './AppSettingsAiProviderSection';
 import { AppSettingsAssetProviderSection } from './AppSettingsAssetProviderSection';
+import { AppSettingsMemorySection } from './AppSettingsMemorySection';
 import { McpRegistrySettingsPage } from '../pages/McpRegistrySettingsPage';
 import { WebSearchSettingsPage } from '../pages/WebSearchSettingsPage';
-import { Button, SwitchField, TextAreaField, TextField } from '../ui/index';
+import { Button, SwitchField } from '../ui/index';
 
 export function AppSettingsModal(props: {
   initialTab: AppSettingsTab;
@@ -108,7 +103,7 @@ export function AppSettingsModal(props: {
   onDeleteAssetGenerationProvider?: (providerId: string) => void;
   onSelectMcpPlugin: (pluginId: string) => void;
   onRefreshMcpPluginMeta: () => void;
-  onToggleMcpPlugin: (plugin: McpPlugin, enabled: boolean) => void;
+  onToggleMcpPlugin: (plugin: McpPlugin, enabled: boolean) => void | Promise<void>;
   onAddMcpPlugin: () => void;
   onEditMcpPlugin: (plugin: McpPlugin) => void;
   onDeleteMcpPlugin: (pluginId: string) => void;
@@ -129,9 +124,6 @@ export function AppSettingsModal(props: {
   onClose: () => void;
 }): JSX.Element {
   const [tab, setTab] = useState<AppSettingsTab>(props.initialTab);
-  const [memoryQuery, setMemoryQuery] = useState('');
-  const [memoryKindFilter, setMemoryKindFilter] = useState<ProjectMemoryEntryKind | ''>('');
-  const [memoryTagFilter, setMemoryTagFilter] = useState('');
   const [updateAction, setUpdateAction] = useState<'check' | 'download' | 'install' | ''>('');
   const [updateActionMessage, setUpdateActionMessage] = useState('');
   const language = useUiLanguage();
@@ -179,27 +171,14 @@ export function AppSettingsModal(props: {
     }
   }
 
-  const allMemoryTags = useMemo(
-    () => [...new Set(props.memoryFiles.flatMap((file) => file.tags))].sort((left, right) => left.localeCompare(right)),
-    [props.memoryFiles]
-  );
-  const allMemoryKinds = useMemo(
-    () => [...new Set(props.memoryFiles.flatMap((file) => file.memoryKinds))],
-    [props.memoryFiles]
-  );
-  const filteredMemoryFiles = useMemo(() => {
-    const query = memoryQuery.trim().toLowerCase();
-    const tag = memoryTagFilter.trim().toLowerCase();
-    return props.memoryFiles.filter((file) => {
-      const matchesKind = !memoryKindFilter || file.memoryKinds.includes(memoryKindFilter);
-      const matchesTag = !tag || file.tags.includes(tag);
-      const matchesQuery =
-        !query ||
-        `${file.title}\n${file.path}\n${file.excerpt}\n${file.tags.join(' ')}`.toLowerCase().includes(query);
-      return matchesKind && matchesTag && matchesQuery;
-    });
-  }, [memoryKindFilter, memoryQuery, memoryTagFilter, props.memoryFiles]);
   const memoryDirty = !!props.selectedMemoryFile && props.memoryDraft !== props.selectedMemoryFile.content;
+  // Guard the modal close path when there are unsaved memory edits (memory-dirty-state-7).
+  function requestClose(): void {
+    if (tab === 'memory' && memoryDirty && !window.confirm(t('记忆有未保存的修改，确定关闭？', 'Memory has unsaved changes. Close anyway?'))) {
+      return;
+    }
+    props.onClose();
+  }
   const navItems: Array<{ id: AppSettingsTab; label: string; desc: string; Icon: LucideIcon }> = [
     { id: 'appearance', label: t('外观', 'Appearance'), desc: t('主题与界面外观', 'Theme and window appearance'), Icon: Monitor },
     { id: 'language', label: t('语言', 'Language'), desc: t('界面语言与文案', 'Interface language and copy'), Icon: Languages },
@@ -216,7 +195,7 @@ export function AppSettingsModal(props: {
       title={t('应用设置', 'App Settings')}
       subtitle={t('统一管理 Funplay 的界面、语言与模型服务。', 'Manage Funplay appearance, language, and model services in one place.')}
       className="app-settings-modal"
-      onClose={props.onClose}
+      onClose={requestClose}
     >
       <div className="app-settings-layout">
         <aside className="app-settings-sidebar">
@@ -349,179 +328,22 @@ export function AppSettingsModal(props: {
           ) : null}
 
           {tab === 'memory' ? (
-            <section className="app-settings-section memory-center-section">
-              <div className="memory-center-header">
-                <div>
-                  <strong>{t('记忆', 'Memory')}</strong>
-                  <div className="helper-copy">
-                    {props.selectedProjectId
-                      ? t(
-                          `${props.memoryFiles.length} 个文件 · ${allMemoryKinds.length} 类记忆 · ${allMemoryTags.length} 个标签`,
-                          `${props.memoryFiles.length} files · ${allMemoryKinds.length} memory kinds · ${allMemoryTags.length} tags`
-                        )
-                      : t('未选择项目', 'No project selected')}
-                  </div>
-                </div>
-                <div className="modal-actions compact">
-                  <Button size="sm" variant="secondary" leadingIcon={<RefreshCw size={14} aria-hidden="true" />} loading={props.isLoadingMemory} onClick={() => void props.onRefreshMemoryFiles()}>
-                    {props.isLoadingMemory ? t('刷新中…', 'Refreshing…') : t('刷新', 'Refresh')}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    leadingIcon={<Save size={14} aria-hidden="true" />}
-                    onClick={() => void props.onSaveMemoryFile()}
-                    disabled={!memoryDirty || props.isSavingMemory || props.isLoadingMemory}
-                    loading={props.isSavingMemory}
-                  >
-                    {props.isSavingMemory ? t('保存中…', 'Saving…') : t('保存', 'Save')}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="memory-center-toolbar">
-                <TextField
-                  className="memory-search-field"
-                  label={t('搜索 Memory', 'Search Memory')}
-                  value={memoryQuery}
-                  onValueChange={setMemoryQuery}
-                  placeholder={t('搜索标题、路径、内容摘要或标签', 'Search title, path, excerpt, or tags')}
-                />
-                <div className="memory-kind-filter" aria-label={t('记忆分类筛选', 'Memory kind filter')}>
-                  <Button size="compact" variant="ghost" className={!memoryKindFilter ? 'active' : ''} onClick={() => setMemoryKindFilter('')}>
-                    {t('全部分类', 'All Kinds')}
-                  </Button>
-                  {allMemoryKinds.map((kind) => (
-                    <Button key={kind} size="compact" variant="ghost" className={memoryKindFilter === kind ? 'active' : ''} onClick={() => setMemoryKindFilter(kind)}>
-                      {formatMemoryEntryKindLabel(kind, language)}
-                    </Button>
-                  ))}
-                </div>
-                <div className="memory-tag-filter" aria-label={t('记忆标签筛选', 'Memory tag filter')}>
-                  <Button size="compact" variant="ghost" className={!memoryTagFilter ? 'active' : ''} onClick={() => setMemoryTagFilter('')}>
-                    {t('全部', 'All')}
-                  </Button>
-                  {allMemoryTags.slice(0, 16).map((tag) => (
-                    <Button key={tag} size="compact" variant="ghost" className={memoryTagFilter === tag ? 'active' : ''} onClick={() => setMemoryTagFilter(tag)}>
-                      #{tag}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="memory-center-layout">
-                <div className="memory-file-list" aria-label={t('记忆文件列表', 'Memory files')}>
-                  {filteredMemoryFiles.length > 0 ? (
-                    filteredMemoryFiles.map((file) => (
-                      <Button
-                        key={file.path}
-                        size="compact"
-                        variant="ghost"
-                        className={`memory-file-row ${props.selectedMemoryPath === file.path ? 'active' : ''}`}
-                        onClick={() => void props.onSelectMemoryFile(file.path)}
-                      >
-                        <div className="memory-pill-row">
-                          <span className={`memory-kind-pill ${file.kind}`}>{formatMemoryKindLabel(file.kind, language)}</span>
-                          {file.memoryKinds.map((kind) => (
-                            <span key={kind} className={`memory-entry-kind-pill ${kind}`}>{formatMemoryEntryKindLabel(kind, language)}</span>
-                          ))}
-                        </div>
-                        <strong>{file.title}</strong>
-                        <span>{file.path}</span>
-                        {file.excerpt ? <em>{file.excerpt}</em> : null}
-                        <small>{[formatFileSize(file.size), `${file.lineCount} lines`, formatAbsoluteTime(file.updatedAt)].join(' · ')}</small>
-                      </Button>
-                    ))
-                  ) : (
-                    <div className="memory-empty-state">
-                      {props.isLoadingMemory ? t('正在读取 Memory…', 'Loading memory…') : t('没有匹配的 Memory 文件。', 'No matching memory files.')}
-                    </div>
-                  )}
-                </div>
-
-                <div className="memory-editor-panel">
-                  {props.selectedMemoryFile ? (
-                    <>
-                      <div className="memory-editor-header">
-                        <div>
-                          <strong>{props.selectedMemoryFile.title}</strong>
-                          <span>
-                            {[
-                              props.selectedMemoryFile.path,
-                              formatMemoryKindLabel(props.selectedMemoryFile.kind, language),
-                              ...props.selectedMemoryFile.memoryKinds.map((kind) => formatMemoryEntryKindLabel(kind, language))
-                            ].join(' · ')}
-                          </span>
-                        </div>
-                        <div className="memory-editor-tags">
-                          {props.selectedMemoryFile.tags.length > 0
-                            ? props.selectedMemoryFile.tags.map((tag) => (
-                              <Button key={tag} size="compact" variant="ghost" onClick={() => setMemoryTagFilter(tag)}>
-                                #{tag}
-                              </Button>
-                            ))
-                            : <span>{t('无标签', 'No tags')}</span>}
-                        </div>
-                      </div>
-
-                      <TextAreaField
-                        label={t('内容', 'Content')}
-                        className="memory-editor-field"
-                        textareaClassName="memory-editor-textarea"
-                        value={props.memoryDraft}
-                        onValueChange={props.onChangeMemoryDraft}
-                        spellCheck={false}
-                      />
-
-                      <div className="memory-editor-actions">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          leadingIcon={<RotateCcw size={14} aria-hidden="true" />}
-                          onClick={() => {
-                            if (window.confirm(t('清空当前 Memory 文件？', 'Clear the current memory file?'))) {
-                              void props.onClearMemory('file', props.selectedMemoryFile?.path);
-                            }
-                          }}
-                          disabled={props.isSavingMemory || props.isLoadingMemory}
-                        >
-                          {t('清空当前', 'Clear File')}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          leadingIcon={<RotateCcw size={14} aria-hidden="true" />}
-                          onClick={() => {
-                            if (window.confirm(t('清空所有 daily Memory？', 'Clear all daily memory?'))) {
-                              void props.onClearMemory('daily');
-                            }
-                          }}
-                          disabled={props.isSavingMemory || props.isLoadingMemory}
-                        >
-                          {t('清空 Daily', 'Clear Daily')}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          leadingIcon={<Trash2 size={14} aria-hidden="true" />}
-                          onClick={() => {
-                            if (window.confirm(t('清空全部 Memory？', 'Clear all memory?'))) {
-                              void props.onClearMemory('all');
-                            }
-                          }}
-                          disabled={props.isSavingMemory || props.isLoadingMemory}
-                        >
-                          {t('清空全部', 'Clear All')}
-                        </Button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="memory-empty-state">{t('选择一个 Memory 文件进行编辑。', 'Select a memory file to edit.')}</div>
-                  )}
-                </div>
-              </div>
-              {props.memoryError ? <div className="agent-composer-error neutral">{props.memoryError}</div> : null}
-            </section>
+            <AppSettingsMemorySection
+              language={language}
+              selectedProjectId={props.selectedProjectId}
+              memoryFiles={props.memoryFiles}
+              selectedMemoryPath={props.selectedMemoryPath}
+              selectedMemoryFile={props.selectedMemoryFile}
+              memoryDraft={props.memoryDraft}
+              isLoadingMemory={props.isLoadingMemory}
+              isSavingMemory={props.isSavingMemory}
+              memoryError={props.memoryError}
+              onRefreshMemoryFiles={props.onRefreshMemoryFiles}
+              onSelectMemoryFile={props.onSelectMemoryFile}
+              onChangeMemoryDraft={props.onChangeMemoryDraft}
+              onSaveMemoryFile={props.onSaveMemoryFile}
+              onClearMemory={props.onClearMemory}
+            />
           ) : null}
 
           {tab === 'notifications' ? (

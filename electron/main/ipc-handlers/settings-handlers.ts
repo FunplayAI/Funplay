@@ -1,6 +1,7 @@
 import type { IpcMain } from 'electron';
 import type { HandlerContext } from './types';
 import {
+  testWebSearchKeySchema,
   updateAgentSettingsSchema,
   updateSettingsSchema,
   updateWebSearchSettingsSchema,
@@ -10,7 +11,8 @@ import { patchAiSettings, patchAgentSettings, patchSettings } from '../store';
 import {
   getWebResearchMetrics,
   resetWebResearchMetrics,
-  runWebSearchQualityEval
+  runWebSearchQualityEval,
+  testWebSearchProvider
 } from '../agent-platform/web-research-service';
 
 export function registerSettingsHandlers(ipcMain: IpcMain, _ctx: HandlerContext): void {
@@ -23,6 +25,10 @@ export function registerSettingsHandlers(ipcMain: IpcMain, _ctx: HandlerContext)
       webSearch: validateIpcInput(updateWebSearchSettingsSchema, settings, 'webSearchSettings:update')
     })
   );
+  ipcMain.handle('webSearchSettings:test', async (_, input: unknown) => {
+    const validated = validateIpcInput(testWebSearchKeySchema, input, 'webSearchSettings:test');
+    return testWebSearchProvider(validated.provider, validated.apiKey);
+  });
   ipcMain.handle('webResearch:getMetrics', async () => getWebResearchMetrics());
   ipcMain.handle('webResearch:resetMetrics', async () => {
     resetWebResearchMetrics();

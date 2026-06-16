@@ -54,7 +54,7 @@ export function McpRegistrySettingsPage(props: {
   onRefresh: () => void;
   onReconnect: () => void;
   onStop: () => void;
-  onTogglePlugin: (plugin: McpPlugin, enabled: boolean) => void;
+  onTogglePlugin: (plugin: McpPlugin, enabled: boolean) => void | Promise<void>;
   onAddPlugin: () => void;
   onEditPlugin: (plugin: McpPlugin) => void;
   onDeletePlugin: (pluginId: string) => void;
@@ -63,6 +63,23 @@ export function McpRegistrySettingsPage(props: {
   const language = useUiLanguage();
   const t = (zh: string, en: string): string => localize(language, zh, en);
   const [detailPluginId, setDetailPluginId] = useState('');
+  const [togglingPluginId, setTogglingPluginId] = useState('');
+
+  async function handleTogglePlugin(plugin: McpPlugin, enabled: boolean): Promise<void> {
+    setTogglingPluginId(plugin.id);
+    try {
+      await props.onTogglePlugin(plugin, enabled);
+    } finally {
+      setTogglingPluginId('');
+    }
+  }
+
+  function confirmDeletePlugin(pluginId: string): void {
+    if (window.confirm(t('删除此 MCP Server？此操作不可撤销，并会从所有项目解绑。', 'Delete this MCP server? This cannot be undone and unbinds it from all projects.'))) {
+      props.onDeletePlugin(pluginId);
+    }
+  }
+
   const detailPlugin = props.plugins.find((plugin) => plugin.id === detailPluginId) ?? null;
   const pluginItems: ConfigListItem[] = props.plugins.map((plugin) => {
     const snapshot = props.connectionStatuses[plugin.id] ?? (props.selectedPlugin?.id === plugin.id ? props.connectionStatus : null);
@@ -137,11 +154,11 @@ export function McpRegistrySettingsPage(props: {
                   ]
                 : []),
               { id: 'refresh', label: props.isRefreshing ? t('刷新中…', 'Refreshing…') : t('刷新', 'Refresh'), icon: <RefreshCw size={14} aria-hidden="true" />, disabled: props.isRefreshing, onAction: props.onRefresh },
-              { id: 'delete', label: t('删除', 'Delete'), tone: 'danger', icon: <Trash2 size={14} aria-hidden="true" />, onAction: () => props.onDeletePlugin(detailPlugin.id) }
+              { id: 'delete', label: t('删除', 'Delete'), tone: 'danger', icon: <Trash2 size={14} aria-hidden="true" />, onAction: () => confirmDeletePlugin(detailPlugin.id) }
             ]} />
           </div>
 
-          {props.pluginError ? <div className="warning-banner error">{props.pluginError}</div> : null}
+          {props.pluginError ? <div className="warning-banner error mcp-plugin-error" style={{ whiteSpace: 'pre-line' }}>{props.pluginError}</div> : null}
 
           <div className="detail-grid">
             <Card title={t('连接定义', 'Connection')}>
@@ -206,7 +223,8 @@ export function McpRegistrySettingsPage(props: {
               <ToggleSwitch
                 label={plugin.enabled ? t('停用 MCP Server', 'Disable MCP server') : t('启用 MCP Server', 'Enable MCP server')}
                 checked={plugin.enabled}
-                onCheckedChange={(enabled) => props.onTogglePlugin(plugin, enabled)}
+                disabled={togglingPluginId === plugin.id}
+                onCheckedChange={(enabled) => void handleTogglePlugin(plugin, enabled)}
               />
             ) : null;
           }}

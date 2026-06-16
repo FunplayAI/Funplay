@@ -1520,6 +1520,60 @@
   line-height: 1.45;
 }
 
+.web-search-key-field {
+  display: grid;
+  gap: 6px;
+}
+
+.web-search-key-test-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.web-search-key-test-result {
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.web-search-key-test-result.success {
+  color: rgb(34, 197, 94);
+}
+
+.web-search-key-test-result.error {
+  color: rgb(239, 68, 68);
+}
+
+.web-search-eval-failed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.web-search-status-banner {
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.web-search-status-banner.neutral {
+  background: var(--fp-web-search-quality-row-bg);
+  color: var(--text-soft);
+}
+
+.web-search-status-banner.success {
+  background: rgba(34, 197, 94, 0.12);
+  color: rgb(22, 163, 74);
+}
+
+.web-search-status-banner.error {
+  background: rgba(239, 68, 68, 0.12);
+  color: rgb(220, 38, 38);
+}
+
 .runtime-summary-grid,
 .runtime-card-grid {
   display: grid;
@@ -2036,6 +2090,23 @@
   font-size: 13px;
   font-weight: 700;
   text-align: center;
+}
+
+.memory-success-banner {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(34, 197, 94, 0.12);
+  color: rgb(22, 163, 74);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.memory-error-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .notification-settings-section {

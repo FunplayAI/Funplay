@@ -156,10 +156,62 @@ export function McpPluginModal(props: {
       }, [props.plugin, props.projectId]);
   const [draft, setDraft] = useState<McpPluginDraft>(initialDraft);
   const [policyError, setPolicyError] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
   useEffect(() => {
     setDraft(initialDraft);
     setPolicyError('');
+    setSaveError('');
   }, [initialDraft]);
+  const isDirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(initialDraft), [draft, initialDraft]);
+
+  function validatePolicyText(value: string): void {
+    try {
+      parseToolPolicies(value);
+      setPolicyError('');
+    } catch (error) {
+      setPolicyError(error instanceof Error ? error.message : localize(language, '工具策略 JSON 无效。', 'Invalid tool policy JSON.'));
+    }
+  }
+
+  async function handleSave(): Promise<void> {
+    let toolPolicies: McpPluginInput['toolPolicies'];
+    try {
+      toolPolicies = parseToolPolicies(draft.toolPoliciesText);
+    } catch (error) {
+      setPolicyError(error instanceof Error ? error.message : localize(language, '工具策略 JSON 无效。', 'Invalid tool policy JSON.'));
+      return;
+    }
+    const payload: McpPluginInput = {
+      projectId: draft.projectId,
+      name: draft.name,
+      kind: draft.kind,
+      transport: draft.transport as McpTransport,
+      baseUrl: draft.baseUrl,
+      command: draft.command,
+      args: parseLines(draft.argsText),
+      cwd: draft.cwd,
+      env: parseEnvLines(draft.envText),
+      defaultToolPermission: draft.defaultToolPermission ?? 'infer',
+      defaultToolRisk: draft.defaultToolRisk ?? 'infer',
+      toolPolicies,
+      enabled: draft.enabled,
+      notes: draft.notes
+    };
+    setSaveError('');
+    setIsSaving(true);
+    try {
+      if (props.plugin) {
+        await props.onUpdate(props.plugin.id, payload);
+      } else {
+        await props.onCreate(payload);
+      }
+    } catch (error) {
+      // Keep the modal open on failure and surface the error instead of swallowing it.
+      setSaveError(error instanceof Error ? error.message : localize(language, '保存失败。', 'Failed to save.'));
+      setIsSaving(false);
+    }
+  }
   const preset = MCP_PLUGIN_PRESETS.find((item) => item.id === draft.presetId) ?? MCP_PLUGIN_PRESETS[0];
   const presetDescription = describeMcpPreset(language, preset.id, preset.description);
 
@@ -167,6 +219,9 @@ export function McpPluginModal(props: {
     <ModalShell
       title={props.plugin ? localize(language, '编辑 MCP 插件', 'Edit MCP Plugin') : localize(language, '添加 MCP 插件', 'Add MCP Plugin')}
       subtitle={props.projectId ? localize(language, '这个 Server 只属于当前项目。', 'This server belongs only to the current project.') : localize(language, '这个 Server 会作为全局 MCP 供项目选择启用。', 'This server is registered globally and can be enabled by projects.')}
+      onClose={props.onClose}
+      isDirty={isDirty && !isSaving}
+      confirmCloseWhenDirty
     >
       <SelectField
         label={localize(language, '预设', 'Preset')}
@@ -266,7 +321,7 @@ export function McpPluginModal(props: {
           helper={localize(language, '键是 MCP 原始工具名；permission 支持 infer/allow/ask/deny，risk 支持 infer/read/write。', 'Keys are original MCP tool names; permission supports infer/allow/ask/deny, risk supports infer/read/write.')}
           onValueChange={(value) => {
             setDraft((current) => ({ ...current, toolPoliciesText: value }));
-            setPolicyError('');
+            validatePolicyText(value);
           }}
         />
         {policyError ? <div className="helper-copy form-error">{policyError}</div> : null}
@@ -282,59 +337,41 @@ export function McpPluginModal(props: {
         value={draft.notes}
         onValueChange={(value) => setDraft((current) => ({ ...current, notes: value }))}
       />
+      {saveError ? <div className="helper-copy form-error">{saveError}</div> : null}
       <div className="modal-actions">
-        <Button variant="secondary" onClick={props.onClose}>
+        <Button variant="secondary" onClick={props.onClose} disabled={isSaving}>
           {localize(language, '取消', 'Cancel')}
         </Button>
         <Button
           variant="primary"
-          onClick={() => {
-            let toolPolicies: McpPluginInput['toolPolicies'];
-            try {
-              toolPolicies = parseToolPolicies(draft.toolPoliciesText);
-            } catch (error) {
-              setPolicyError(error instanceof Error ? error.message : localize(language, '工具策略 JSON 无效。', 'Invalid tool policy JSON.'));
-              return;
-            }
-            const payload: McpPluginInput = {
-              projectId: draft.projectId,
-              name: draft.name,
-              kind: draft.kind,
-              transport: draft.transport as McpTransport,
-              baseUrl: draft.baseUrl,
-              command: draft.command,
-              args: parseLines(draft.argsText),
-              cwd: draft.cwd,
-              env: parseEnvLines(draft.envText),
-              defaultToolPermission: draft.defaultToolPermission ?? 'infer',
-              defaultToolRisk: draft.defaultToolRisk ?? 'infer',
-              toolPolicies,
-              enabled: draft.enabled,
-              notes: draft.notes
-            };
-            if (props.plugin) {
-              void props.onUpdate(props.plugin.id, payload);
-            } else {
-              void props.onCreate(payload);
-            }
-          }}
+          loading={isSaving}
+          disabled={isSaving || Boolean(policyError)}
+          onClick={() => void handleSave()}
         >
-          {localize(language, '保存', 'Save')}
+          {isSaving ? localize(language, '保存中…', 'Saving…') : localize(language, '保存', 'Save')}
         </Button>
       </div>
     </ModalShell>
   );
 }
 
-export function ModalShell(props: { title: string; subtitle: string; children: ReactNode; className?: string; onClose?: () => void }): JSX.Element {
+export function ModalShell(props: { title: string; subtitle: string; children: ReactNode; className?: string; onClose?: () => void; isDirty?: boolean; confirmCloseWhenDirty?: boolean }): JSX.Element {
   const language = useUiLanguage();
   const titleId = useId();
   const subtitleId = useId();
   const cardRef = useRef<HTMLDivElement | null>(null);
+  const requestClose = props.onClose
+    ? () => {
+        if (props.confirmCloseWhenDirty && props.isDirty && !window.confirm(localize(language, '有未保存的修改，确定关闭？', 'You have unsaved changes. Close anyway?'))) {
+          return;
+        }
+        props.onClose?.();
+      }
+    : undefined;
   useDialogFocus({
     enabled: true,
     containerRef: cardRef,
-    onEscape: props.onClose
+    onEscape: requestClose
   });
 
   return (
@@ -354,7 +391,7 @@ export function ModalShell(props: { title: string; subtitle: string; children: R
             <div className="page-subtitle" id={subtitleId}>{props.subtitle}</div>
           </div>
           {props.onClose ? (
-            <IconButton className="modal-close-button" icon={<X size={16} aria-hidden="true" />} label={localize(language, '关闭', 'Close')} onClick={props.onClose} />
+            <IconButton className="modal-close-button" icon={<X size={16} aria-hidden="true" />} label={localize(language, '关闭', 'Close')} onClick={requestClose} />
           ) : null}
         </div>
         <div className="modal-stack">{props.children}</div>

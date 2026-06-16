@@ -321,6 +321,13 @@ export const updateWebSearchSettingsSchema = z
     'At least one web search setting must be provided.'
   ) satisfies z.ZodType<Partial<WebSearchSettings>>;
 
+export const testWebSearchKeySchema = z
+  .object({
+    provider: z.enum(['brave', 'bing']),
+    apiKey: z.string().max(2048)
+  })
+  .strict();
+
 export const updateProjectAgentPolicySchema = z
   .object({
     permissionMode: agentPermissionModeSchema.optional(),

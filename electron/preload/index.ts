@@ -181,6 +181,7 @@ const api: FunPlayApi = {
   updateSettings: (settings: Partial<UnitySettings>) => ipcRenderer.invoke('settings:update', settings),
   updateAgentSettings: (settings) => ipcRenderer.invoke('agentSettings:update', settings),
   updateWebSearchSettings: (settings) => ipcRenderer.invoke('webSearchSettings:update', settings),
+  testWebSearchKey: (provider, apiKey) => ipcRenderer.invoke('webSearchSettings:test', { provider, apiKey }),
   getWebResearchMetrics: () => ipcRenderer.invoke('webResearch:getMetrics'),
   resetWebResearchMetrics: () => ipcRenderer.invoke('webResearch:resetMetrics'),
   runWebSearchQualityEval: () => ipcRenderer.invoke('webResearch:runQualityEval'),

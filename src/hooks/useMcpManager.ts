@@ -43,6 +43,7 @@ export function useMcpManager(input: UseMcpManagerInput) {
   const [mcpConnectionStatuses, setMcpConnectionStatuses] = useState<Record<string, McpConnectionSnapshot>>({});
   const [projectBindings, setProjectBindings] = useState<ProjectMcpBindingDraft>([]);
   const [isRefreshingPlugin, setIsRefreshingPlugin] = useState(false);
+  const [isTogglingPluginId, setIsTogglingPluginId] = useState('');
   const [selectedMcpPluginId, setSelectedMcpPluginId] = useState('');
   const [editingPlugin, setEditingPlugin] = useState<McpPlugin | null>(null);
   const [showPluginModal, setShowPluginModal] = useState(false);
@@ -227,6 +228,8 @@ export function useMcpManager(input: UseMcpManagerInput) {
   }
 
   async function handleCreatePlugin(pluginInput: McpPluginInput): Promise<void> {
+    // Let errors propagate so the modal can show them and stay open; only the
+    // success path mutates state and closes the modal.
     const plugin = await window.funplay.createMcpPlugin(pluginInput);
     setMcpPlugins((current) => [plugin, ...current]);
     setSelectedMcpPluginId(plugin.id);
@@ -243,6 +246,7 @@ export function useMcpManager(input: UseMcpManagerInput) {
   }
 
   async function handleUpdatePlugin(pluginId: string, pluginInput: McpPluginInput): Promise<void> {
+    // Errors propagate to the modal (kept open); only success closes it.
     const updated = await window.funplay.updateMcpPlugin(pluginId, pluginInput);
     setMcpPlugins((current) => current.map((plugin) => (plugin.id === updated.id ? updated : plugin)));
     setShowPluginModal(false);
@@ -251,30 +255,45 @@ export function useMcpManager(input: UseMcpManagerInput) {
   }
 
   async function handleToggleMcpPluginEnabled(plugin: McpPlugin, enabled: boolean): Promise<void> {
-    const updated = await window.funplay.updateMcpPlugin(plugin.id, {
-      projectId: plugin.projectId,
-      name: plugin.name,
-      kind: plugin.kind,
-      transport: plugin.transport,
-      baseUrl: plugin.baseUrl,
-      command: plugin.command,
-      args: plugin.args,
-      cwd: plugin.cwd,
-      env: plugin.env,
-      defaultToolPermission: plugin.defaultToolPermission,
-      defaultToolRisk: plugin.defaultToolRisk,
-      toolPolicies: plugin.toolPolicies,
-      enabled,
-      notes: plugin.notes
-    });
-    setMcpPlugins((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-    if (!enabled) {
-      await handleStopMcpPlugin(updated);
+    setIsTogglingPluginId(plugin.id);
+    setPluginError('');
+    try {
+      const updated = await window.funplay.updateMcpPlugin(plugin.id, {
+        projectId: plugin.projectId,
+        name: plugin.name,
+        kind: plugin.kind,
+        transport: plugin.transport,
+        baseUrl: plugin.baseUrl,
+        command: plugin.command,
+        args: plugin.args,
+        cwd: plugin.cwd,
+        env: plugin.env,
+        defaultToolPermission: plugin.defaultToolPermission,
+        defaultToolRisk: plugin.defaultToolRisk,
+        toolPolicies: plugin.toolPolicies,
+        enabled,
+        notes: plugin.notes
+      });
+      setMcpPlugins((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      if (!enabled) {
+        await handleStopMcpPlugin(updated);
+      }
+    } catch (error) {
+      // Surface the failure so the UI does not show a stale enabled/disabled state.
+      setPluginError(error instanceof Error ? error.message : localize(language, enabled ? '启用 MCP Server 失败。' : '停用 MCP Server 失败。', enabled ? 'Failed to enable MCP server.' : 'Failed to disable MCP server.'));
+    } finally {
+      setIsTogglingPluginId('');
     }
   }
 
   async function handleDeletePlugin(pluginId: string): Promise<void> {
-    await window.funplay.deleteMcpPlugin(pluginId);
+    setPluginError('');
+    try {
+      await window.funplay.deleteMcpPlugin(pluginId);
+    } catch (error) {
+      setPluginError(error instanceof Error ? error.message : localize(language, '删除 MCP Server 失败。', 'Failed to delete MCP server.'));
+      return;
+    }
     setMcpPlugins((current) => current.filter((plugin) => plugin.id !== pluginId));
     setMcpConnectionStatuses((current) => {
       const next = { ...current };
@@ -386,6 +405,7 @@ export function useMcpManager(input: UseMcpManagerInput) {
     mcpConnectionStatuses,
     projectBindings,
     isRefreshingPlugin,
+    isTogglingPluginId,
     selectedMcpPluginId,
     setSelectedMcpPluginId,
     editingPlugin,

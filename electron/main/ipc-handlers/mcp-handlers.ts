@@ -70,12 +70,24 @@ function formatMcpHealthError(error: unknown): string {
   return cause ? `${error.message}: ${cause}` : error.message;
 }
 
+function resolveMcpHealthGuidance(plugin: McpPlugin | string, formattedError: string): string {
+  if (/timed?\s*out|timeout|ETIMEDOUT|ABORT/i.test(formattedError)) {
+    return '检查网络连接后重试；若服务在远程主机，确认其可达且未被防火墙拦截。';
+  }
+  const transport = typeof plugin === 'string' ? 'http' : plugin.transport;
+  if (transport === 'stdio') {
+    return '确认启动命令可执行、参数与 CWD 正确，并查看上方进程日志（stderr）排查启动错误。';
+  }
+  return '确认 MCP 服务已启动且 Base URL 可访问（可在浏览器或 curl 中验证该地址）。';
+}
+
 function makeOfflineMcpHealthResult(plugin: McpPlugin | string, error: unknown): UnityHealthResult {
+  const formattedError = formatMcpHealthError(error);
   return {
     status: 'offline',
     checkedAt: new Date().toISOString(),
     url: describeMcpHealthEndpoint(plugin),
-    message: `MCP 连接失败：${formatMcpHealthError(error)}`
+    message: `MCP 连接失败：${formattedError}\n建议：${resolveMcpHealthGuidance(plugin, formattedError)}`
   };
 }
 

@@ -5,7 +5,8 @@ import {
   type WebSearchProvider,
   type WebSearchQualityCaseResult,
   type WebSearchQualityReport,
-  type WebSearchSettings
+  type WebSearchSettings,
+  type WebSearchTestResult
 } from '../../../shared/types';
 import { getState } from '../store';
 
@@ -1137,4 +1138,43 @@ export async function runWebSearchQualityEval(options: WebToolExecutionOptions =
     averageDurationMs: results.length ? Math.round(totalDurationMs / results.length) : 0,
     cases: results
   };
+}
+
+export async function testWebSearchProvider(provider: 'brave' | 'bing', apiKey: string): Promise<WebSearchTestResult> {
+  const testedAt = new Date().toISOString();
+  const key = apiKey.trim() || readSearchProviderApiKey(provider);
+  if (!key) {
+    return { provider, status: 'error', message: `${provider === 'brave' ? 'Brave' : 'Bing'} 密钥为空，请先填写 API Key。`, testedAt };
+  }
+  const url = provider === 'brave'
+    ? new URL('https://api.search.brave.com/res/v1/web/search')
+    : new URL('https://api.bing.microsoft.com/v7.0/search');
+  url.searchParams.set('q', 'funplay web search key test');
+  url.searchParams.set('count', '1');
+  const abort = createAbortSignal();
+  try {
+    const response = await fetch(url, {
+      signal: abort.signal,
+      headers: {
+        accept: 'application/json',
+        'user-agent': WEB_USER_AGENT,
+        ...(provider === 'brave' ? { 'x-subscription-token': key } : { 'ocp-apim-subscription-key': key })
+      }
+    });
+    if (response.status === 401 || response.status === 403) {
+      return { provider, status: 'error', message: `密钥未通过验证（HTTP ${response.status}），请检查 API Key 是否正确、是否已开通配额。`, testedAt };
+    }
+    if (response.status === 429) {
+      return { provider, status: 'error', message: '密钥有效，但已触发速率限制（HTTP 429），稍后再试。', testedAt };
+    }
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      return { provider, status: 'error', message: `搜索服务返回 HTTP ${response.status}：${body.slice(0, 200)}`, testedAt };
+    }
+    return { provider, status: 'success', message: `${provider === 'brave' ? 'Brave' : 'Bing'} 密钥验证通过。`, testedAt };
+  } catch (error) {
+    return { provider, status: 'error', message: error instanceof Error ? error.message : String(error), testedAt };
+  } finally {
+    abort.cleanup();
+  }
 }

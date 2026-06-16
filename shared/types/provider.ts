@@ -165,6 +165,13 @@ export interface WebSearchSettings {
   telemetryEnabled: boolean;
 }
 
+export interface WebSearchTestResult {
+  provider: 'brave' | 'bing';
+  status: 'success' | 'error';
+  message: string;
+  testedAt: string;
+}
+
 export interface AiSettings {
   defaultProviderId?: string;
   fallbackToLocalPlanner: boolean;

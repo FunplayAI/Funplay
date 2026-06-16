@@ -861,7 +861,7 @@ function App(): JSX.Element {
           onDeleteAssetGenerationProvider={(providerId) => void handleDeleteAssetGenerationProvider(providerId)}
           onSelectMcpPlugin={setSelectedMcpPluginId}
           onRefreshMcpPluginMeta={() => void handleRefreshPluginMeta(selectedGlobalMcpPlugin)}
-          onToggleMcpPlugin={(plugin, enabled) => void handleToggleMcpPluginEnabled(plugin, enabled)}
+          onToggleMcpPlugin={(plugin, enabled) => handleToggleMcpPluginEnabled(plugin, enabled)}
           onAddMcpPlugin={() => {
             setEditingPlugin(null);
             setMcpModalProjectId(undefined);
