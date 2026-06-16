@@ -39,6 +39,10 @@ const COCOS_CREATOR_ENV_KEYS = ['COCOS_CREATOR_EXECUTABLE', 'COCOS_CREATOR_PATH'
 const COCOS_DASHBOARD_ENV_KEYS = ['COCOS_DASHBOARD_EXECUTABLE', 'COCOS_DASHBOARD_PATH'];
 
 const FUNPLAY_COCOS_MCP_REPO = 'https://github.com/FunplayAI/funplay-cocos-mcp.git';
+// Pin installs to a published release tag for reproducibility — a bare clone of
+// the default branch could drift mid-development. Bump this when the bridge ships
+// a new release.
+const FUNPLAY_COCOS_MCP_PINNED_REF = 'v0.4.0';
 const FUNPLAY_COCOS_MCP_EXTENSION_DIR = 'funplay-cocos-mcp';
 export const DEFAULT_COCOS_MCP_BASE_URL = 'http://127.0.0.1:8765/';
 
@@ -665,6 +669,26 @@ export async function openCocosProject(input: {
   };
 }
 
+// After a copy/clone, confirm the bridge files actually landed instead of
+// inferring success from a zero exit status alone — a partial/corrupt clone or a
+// copy from an incomplete source would otherwise be reported as installed.
+function verifyCocosBridgeLanded(projectPath: string, bridgePath: string): WorkspaceToolActionResult | null {
+  if (isCocosBridgeInstalled(projectPath)) {
+    return null;
+  }
+  return {
+    ok: false,
+    isError: true,
+    summary: [
+      'Engine platform: cocos',
+      'Engine adapter: Cocos Creator Adapter',
+      'Capability: installBridge',
+      `Install incomplete: ${bridgePath} is missing required Funplay Cocos MCP files (package.json / browser.js / server.json).`,
+      'Next action: remove that folder and retry install_engine_bridge.'
+    ].join('\n')
+  };
+}
+
 export function installCocosBridge(input: { projectPath: string }): WorkspaceToolActionResult {
   const project = inspectCocosProject(input.projectPath);
   if (!project.valid) {
@@ -730,6 +754,10 @@ export function installCocosBridge(input: { projectPath: string }): WorkspaceToo
   if (localSource && existsSync(localSource)) {
     try {
       cpSync(localSource, bridgePath, { recursive: true });
+      const incomplete = verifyCocosBridgeLanded(project.projectPath, bridgePath);
+      if (incomplete) {
+        return incomplete;
+      }
       return {
         ok: true,
         summary: [
@@ -750,10 +778,14 @@ export function installCocosBridge(input: { projectPath: string }): WorkspaceToo
     }
   }
 
-  const cloned = spawnSync('git', ['clone', '--depth', '1', FUNPLAY_COCOS_MCP_REPO, bridgePath], {
-    encoding: 'utf8',
-    timeout: 120_000
-  });
+  const cloned = spawnSync(
+    'git',
+    ['clone', '--depth', '1', '--branch', FUNPLAY_COCOS_MCP_PINNED_REF, FUNPLAY_COCOS_MCP_REPO, bridgePath],
+    {
+      encoding: 'utf8',
+      timeout: 120_000
+    }
+  );
   if (cloned.status !== 0) {
     return {
       ok: false,
@@ -773,6 +805,11 @@ export function installCocosBridge(input: { projectPath: string }): WorkspaceToo
     };
   }
 
+  const incomplete = verifyCocosBridgeLanded(project.projectPath, bridgePath);
+  if (incomplete) {
+    return incomplete;
+  }
+
   return {
     ok: true,
     summary: [
@@ -780,7 +817,7 @@ export function installCocosBridge(input: { projectPath: string }): WorkspaceToo
       'Engine adapter: Cocos Creator Adapter',
       'Capability: installBridge',
       `Installed Funplay Cocos MCP: ${bridgePath}`,
-      `Repository: ${FUNPLAY_COCOS_MCP_REPO}`,
+      `Repository: ${FUNPLAY_COCOS_MCP_REPO} @ ${FUNPLAY_COCOS_MCP_PINNED_REF}`,
       `Default MCP endpoint: ${DEFAULT_COCOS_MCP_BASE_URL}`,
       'Next action: restart Cocos Creator or reload extensions, then open Funplay > MCP Server.'
     ].join('\n')

@@ -13,6 +13,7 @@ import { openUnityProjectDirectly } from '../../electron/main/unity-install-task
 import { readUnityProjectVersion } from '../../electron/main/unity-version.ts';
 import {
   createCocosProjectFromTemplate,
+  installCocosBridge,
   isCocosProjectCurrentlyOpen,
   openCocosProject
 } from '../../electron/main/agent-platform/cocos-adapter.ts';
@@ -1460,6 +1461,48 @@ test('cocos openProject reports started + the manual MCP-server step when the ed
       delete process.env.COCOS_CREATOR_EXECUTABLE;
     } else {
       process.env.COCOS_CREATOR_EXECUTABLE = previousCreator;
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('cocos installBridge verifies the bridge files landed and rejects an incomplete source', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-install-'));
+  const projectPath = join(root, 'Arrow');
+  const completeSource = join(root, 'complete-source');
+  const incompleteSource = join(root, 'incomplete-source');
+  const previousLocalSource = process.env.FUNPLAY_COCOS_MCP_LOCAL_SOURCE;
+  try {
+    // A valid cocos project WITHOUT the bridge yet (so install proceeds to copy).
+    await mkdir(join(projectPath, 'assets'), { recursive: true });
+    await writeFile(join(projectPath, 'package.json'), JSON.stringify({ name: 'Arrow' }), 'utf8');
+    // Complete bridge source (all three required files).
+    await mkdir(completeSource, { recursive: true });
+    await writeFile(join(completeSource, 'package.json'), JSON.stringify({ name: 'funplay-cocos-mcp' }), 'utf8');
+    await writeFile(join(completeSource, 'browser.js'), '', 'utf8');
+    await writeFile(join(completeSource, 'server.json'), '{}', 'utf8');
+    // Incomplete source: missing browser.js and server.json.
+    await mkdir(incompleteSource, { recursive: true });
+    await writeFile(join(incompleteSource, 'package.json'), JSON.stringify({ name: 'funplay-cocos-mcp' }), 'utf8');
+
+    // An incomplete copy is rejected by the post-install verification, not reported as success.
+    process.env.FUNPLAY_COCOS_MCP_LOCAL_SOURCE = incompleteSource;
+    const rejected = installCocosBridge({ projectPath });
+    assert.equal(rejected.ok, false);
+    assert.equal(rejected.isError, true);
+    assert.match(rejected.summary, /Install incomplete/);
+
+    // Clear the partial copy, then a complete source installs cleanly.
+    await rm(join(projectPath, 'extensions', 'funplay-cocos-mcp'), { recursive: true, force: true });
+    process.env.FUNPLAY_COCOS_MCP_LOCAL_SOURCE = completeSource;
+    const installed = installCocosBridge({ projectPath });
+    assert.equal(installed.ok, true);
+    assert.match(installed.summary, /installed from local source/);
+  } finally {
+    if (typeof previousLocalSource === 'undefined') {
+      delete process.env.FUNPLAY_COCOS_MCP_LOCAL_SOURCE;
+    } else {
+      process.env.FUNPLAY_COCOS_MCP_LOCAL_SOURCE = previousLocalSource;
     }
     await rm(root, { recursive: true, force: true });
   }
