@@ -760,7 +760,7 @@ async function snapshot(webContents) {
         modalText: modal?.textContent?.replace(/\\s+/g, ' ').trim().slice(0, 2400) || '',
         appSettingsColumns: appSettingsLayout ? getComputedStyle(appSettingsLayout).gridTemplateColumns : '',
         activeProviderPreset: document.querySelector('.provider-preset-card.active strong')?.textContent?.trim() || '',
-        providerEditorBaseUrl: [...document.querySelectorAll('.provider-core-config label')].find((label) => /Base URL/.test(label.textContent || ''))?.querySelector('input')?.value || '',
+        providerEditorBaseUrl: [...document.querySelectorAll('.provider-core-config label')].find((label) => /基础 URL|Base URL/.test(label.textContent || ''))?.querySelector('input')?.value || '',
         providerEditorModel: [...document.querySelectorAll('.provider-core-config label')].find((label) => /默认模型|Default Model/.test(label.textContent || ''))?.querySelector('input')?.value || '',
         providerAdvancedOpen: Boolean(document.querySelector('.provider-advanced-section')?.hasAttribute('open')),
         inspectorPath: document.querySelector('.file-inspector-path')?.textContent?.trim() || '',
