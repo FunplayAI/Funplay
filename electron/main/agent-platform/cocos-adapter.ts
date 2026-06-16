@@ -511,8 +511,48 @@ function spawnDetached(command: string, args: string[]): WorkspaceToolActionResu
   }
 }
 
-export function openCocosDashboard(): WorkspaceToolActionResult {
-  const dashboard = findCocosDashboardExecutable();
+// Resolve the .app bundle from the inner Mach-O path so macOS can launch through
+// LaunchServices (`open -a <bundle>`) rather than exec'ing the binary directly —
+// the bundle launch respects Gatekeeper and, being single-instance aware, won't
+// spawn a duplicate Dashboard.
+function cocosDashboardBundle(binaryPath: string): string {
+  const marker = '.app/Contents/MacOS/';
+  const index = binaryPath.indexOf(marker);
+  return index >= 0 ? binaryPath.slice(0, index + '.app'.length) : binaryPath;
+}
+
+function buildCocosDashboardLaunch(binaryPath: string): { command: string; args: string[] } {
+  if (process.platform === 'darwin') {
+    return { command: 'open', args: ['-a', cocosDashboardBundle(binaryPath)] };
+  }
+  return { command: binaryPath, args: [] };
+}
+
+function isCocosDashboardRunning(): boolean {
+  try {
+    if (process.platform === 'win32') {
+      const out = execFileSync('tasklist', ['/FI', 'IMAGENAME eq CocosDashboard.exe'], { encoding: 'utf8' });
+      return /CocosDashboard\.exe/i.test(out);
+    }
+    // pgrep exits 0 when a match exists, non-zero (throws) otherwise.
+    execFileSync('pgrep', ['-f', 'CocosDashboard']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function openCocosDashboard(
+  options: {
+    resolveDashboard?: () => string | undefined;
+    isRunning?: () => boolean;
+    launch?: (command: string, args: string[]) => WorkspaceToolActionResult;
+  } = {}
+): WorkspaceToolActionResult {
+  const resolveDashboard = options.resolveDashboard ?? findCocosDashboardExecutable;
+  const isRunning = options.isRunning ?? isCocosDashboardRunning;
+  const launch = options.launch ?? spawnDetached;
+  const dashboard = resolveDashboard();
   if (!dashboard) {
     return {
       ok: false,
@@ -526,7 +566,20 @@ export function openCocosDashboard(): WorkspaceToolActionResult {
       ].join('\n')
     };
   }
-  const result = spawnDetached(dashboard, []);
+  if (isRunning()) {
+    return {
+      ok: true,
+      summary: [
+        'Engine platform: cocos',
+        'Engine adapter: Cocos Creator Adapter',
+        'Capability: openHub',
+        `Cocos Dashboard executable: ${dashboard}`,
+        'Cocos Dashboard already running: skipped launch.'
+      ].join('\n')
+    };
+  }
+  const { command, args } = buildCocosDashboardLaunch(dashboard);
+  const result = launch(command, args);
   return {
     ...result,
     summary: [

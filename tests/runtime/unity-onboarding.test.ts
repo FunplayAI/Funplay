@@ -15,6 +15,7 @@ import {
   createCocosProjectFromTemplate,
   installCocosBridge,
   isCocosProjectCurrentlyOpen,
+  openCocosDashboard,
   openCocosProject
 } from '../../electron/main/agent-platform/cocos-adapter.ts';
 import {
@@ -1506,6 +1507,45 @@ test('cocos installBridge verifies the bridge files landed and rejects an incomp
     }
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('cocos openHub reports not-found when no Cocos Dashboard is discovered', () => {
+  const result = openCocosDashboard({ resolveDashboard: () => undefined });
+  assert.equal(result.ok, false);
+  assert.equal(result.isError, true);
+  assert.match(result.summary, /Cocos Dashboard executable: not found/);
+});
+
+test('cocos openHub launches the Dashboard via the .app bundle (open -a) on macOS', { skip: process.platform !== 'darwin' }, () => {
+  const launched: { command: string; args: string[] } = { command: '', args: [] };
+  const result = openCocosDashboard({
+    resolveDashboard: () => '/Applications/CocosDashboard.app/Contents/MacOS/CocosDashboard',
+    isRunning: () => false,
+    launch: (command, args) => {
+      launched.command = command;
+      launched.args = args;
+      return { ok: true, summary: `Started ${command} ${args.join(' ')}` };
+    }
+  });
+  assert.equal(result.ok, true);
+  // LaunchServices bundle launch, not a direct Mach-O exec.
+  assert.equal(launched.command, 'open');
+  assert.deepEqual(launched.args, ['-a', '/Applications/CocosDashboard.app']);
+});
+
+test('cocos openHub skips launch when a Dashboard is already running', () => {
+  let launchCalled = false;
+  const result = openCocosDashboard({
+    resolveDashboard: () => '/Applications/CocosDashboard.app/Contents/MacOS/CocosDashboard',
+    isRunning: () => true,
+    launch: () => {
+      launchCalled = true;
+      return { ok: true, summary: 'started' };
+    }
+  });
+  assert.equal(result.ok, true);
+  assert.match(result.summary, /already running: skipped/i);
+  assert.equal(launchCalled, false);
 });
 
 test('cocos create project task waits for real MCP connectivity before completing', async () => {
