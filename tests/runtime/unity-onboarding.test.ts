@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { checkUnityHealth } from '../../electron/main/unity-bridge.ts';
 import { executeAgentToolAction } from '../../electron/main/agent-platform/workspace-tools.ts';
 import { getAgentToolDefinition } from '../../electron/main/agent-platform/tool-registry.ts';
+import { assembleGameTools } from '../../electron/main/game-tool-layer.ts';
 import { openUnityProjectDirectly } from '../../electron/main/unity-install-tasks.ts';
 import { readUnityProjectVersion } from '../../electron/main/unity-version.ts';
 import {
@@ -179,6 +180,27 @@ async function startCocosMcpProjectServer(projectPath: string): Promise<{
         });
         return;
       }
+    }
+    if (method === 'resources/list') {
+      sendJsonRpc(response, body.id, {
+        resources: [
+          { uri: 'cocos://project/context', name: 'Project Context' },
+          { uri: 'cocos://scene/active', name: 'Active Scene' },
+          { uri: 'cocos://selection/current', name: 'Current Selection' },
+          { uri: 'cocos://errors/scripts', name: 'Script Diagnostics' }
+        ]
+      });
+      return;
+    }
+    if (method === 'tools/list') {
+      sendJsonRpc(response, body.id, {
+        tools: [
+          { name: 'get_scene_info', inputSchema: { type: 'object', properties: {} } },
+          { name: 'execute_javascript', inputSchema: { type: 'object', properties: { code: { type: 'string' } }, required: ['code'] } },
+          { name: 'capture_game_screenshot', inputSchema: { type: 'object', properties: {} } }
+        ]
+      });
+      return;
     }
     if (method === 'resources/read') {
       sendJsonRpc(response, body.id, {
@@ -1547,6 +1569,26 @@ test('cocos openHub skips launch when a Dashboard is already running', () => {
   assert.equal(result.ok, true);
   assert.match(result.summary, /already running: skipped/i);
   assert.equal(launchCalled, false);
+});
+
+test('assembleGameTools warm-starts a cocos engine plugin from cocos:// resources', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-gametools-'));
+  const server = await startCocosMcpProjectServer(root);
+  try {
+    const assembly = await assembleGameTools(server.baseUrl);
+    assert.equal(assembly.available, true);
+    // Project context is read from cocos://project/context (engine-agnostic suffix
+    // match), proving the seeding no longer hardcodes unity:// and a Cocos agent
+    // doesn't start cold.
+    assert.match(assembly.projectContext ?? '', /Cocos MCP Project Context/);
+    // Cocos bridge tools are recognized as preferred (shared + cocos-specific names).
+    assert.ok(assembly.preferredTools.some((tool) => tool.name === 'execute_javascript'));
+    assert.ok(assembly.preferredTools.some((tool) => tool.name === 'get_scene_info'));
+  } finally {
+    resetMcpConnection(server.baseUrl);
+    await server.close();
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('run_engine_environment_action is a registered agent tool that excludes heavy software installers', () => {
