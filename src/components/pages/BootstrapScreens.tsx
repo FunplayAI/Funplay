@@ -100,6 +100,7 @@ export function BootstrapScreens(props: {
             mode={onboarding.onboardingMode}
             platform={onboarding.onboardingPlatform}
             dimension={onboarding.onboardingDimension}
+            cocosVariant={onboarding.onboardingCocosVariant}
             projectName={onboarding.onboardingProjectName}
             projectPath={onboarding.onboardingProjectPath}
             unityEditors={onboarding.onboardingUnityEditors}
@@ -114,6 +115,7 @@ export function BootstrapScreens(props: {
             onModeChange={onboarding.setOnboardingMode}
             onPlatformChange={onboarding.setOnboardingPlatform}
             onDimensionChange={onboarding.setOnboardingDimension}
+            onCocosVariantChange={onboarding.setOnboardingCocosVariant}
             onProjectNameChange={onboarding.setOnboardingProjectName}
             onPathChange={onboarding.setOnboardingProjectPath}
             onUnityEditorVersionChange={onboarding.setOnboardingUnityEditorVersion}

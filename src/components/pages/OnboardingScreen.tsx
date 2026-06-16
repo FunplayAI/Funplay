@@ -10,6 +10,7 @@ import {
   Search
 } from 'lucide-react';
 import type {
+  CocosEngineVariant,
   EngineProjectDimension,
   EnvironmentActionResult,
   EnvironmentDiagnostics,
@@ -19,6 +20,7 @@ import type {
   ProjectSetupMode
 } from '../../../shared/types';
 import { StandaloneAppShell } from '../layout/AppShell';
+import { CocosVariantSelector } from './CocosVariantSelector';
 import { localize, useUiLanguage } from '../../i18n';
 import {
   formatDiagnosticStatus,
@@ -67,6 +69,7 @@ export function OnboardingScreen(props: {
   mode: ProjectSetupMode;
   platform: PlatformChoice;
   dimension: EngineProjectDimension;
+  cocosVariant: CocosEngineVariant;
   projectName: string;
   projectPath: string;
   unityEditors: InstalledUnityEditorOption[];
@@ -81,6 +84,7 @@ export function OnboardingScreen(props: {
   onModeChange: (value: ProjectSetupMode) => void;
   onPlatformChange: (value: PlatformChoice) => void;
   onDimensionChange: (value: EngineProjectDimension) => void;
+  onCocosVariantChange: (value: CocosEngineVariant) => void;
   onProjectNameChange: (value: string) => void;
   onPathChange: (value: string) => void;
   onUnityEditorVersionChange: (value: string) => void;
@@ -461,6 +465,14 @@ export function OnboardingScreen(props: {
                             </Button>
                           </div>
                         </section>
+                      ) : null}
+
+                      {props.platform === 'cocos' ? (
+                        <CocosVariantSelector
+                          value={props.cocosVariant}
+                          onChange={props.onCocosVariantChange}
+                          language={language}
+                        />
                       ) : null}
 
                       <section className="onboarding-panel onboarding-project-form" aria-labelledby="project-details-title">

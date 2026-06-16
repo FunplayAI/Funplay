@@ -5,6 +5,7 @@ import {
   type EnvironmentDiagnostics,
   type EnvironmentTask,
   type EngineProjectDimension,
+  type CocosEngineVariant,
   type InstalledUnityEditorOption,
   type PlatformChoice,
   type Project,
@@ -52,6 +53,7 @@ export function useOnboarding(params: UseOnboardingParams) {
   const [onboardingMode, setOnboardingMode] = useState<ProjectSetupMode>('create');
   const [onboardingPlatform, setOnboardingPlatform] = useState<PlatformChoice>('web');
   const [onboardingDimension, setOnboardingDimension] = useState<EngineProjectDimension>('2d');
+  const [onboardingCocosVariant, setOnboardingCocosVariant] = useState<CocosEngineVariant>('creator3');
   const [onboardingProjectName, setOnboardingProjectName] = useState('');
   const [onboardingUnityEditors, setOnboardingUnityEditors] = useState<InstalledUnityEditorOption[]>([]);
   const [onboardingUnityEditorVersion, setOnboardingUnityEditorVersion] = useState('');
@@ -229,6 +231,7 @@ export function useOnboarding(params: UseOnboardingParams) {
         setupMode: input.mode,
         projectPath: targetProjectPath,
         dimension: input.dimension,
+        cocosVariant: input.platform === 'cocos' ? onboardingCocosVariant : undefined,
         unityEditorVersion: input.platform === 'unity' ? input.unityEditorVersion || undefined : undefined
       }
     };
@@ -250,6 +253,7 @@ export function useOnboarding(params: UseOnboardingParams) {
         platform: input.platform,
         mode: input.mode,
         dimension: input.dimension,
+        cocosVariant: input.platform === 'cocos' ? onboardingCocosVariant : undefined,
         projectName: input.projectName,
         projectPath: input.projectPath,
         enginePluginId: input.enginePluginId || undefined,
@@ -264,6 +268,9 @@ export function useOnboarding(params: UseOnboardingParams) {
         enginePluginId: nextEnginePluginId
       });
       setOnboardingDimension(diagnostics.dimension);
+      if (diagnostics.cocosVariant) {
+        setOnboardingCocosVariant(diagnostics.cocosVariant);
+      }
       setEnvironmentDiagnostics(diagnostics);
       setOnboardingEnginePluginId(nextEnginePluginId);
       setOnboardingUnityEditors(diagnostics.availableUnityEditors ?? []);
@@ -365,6 +372,7 @@ export function useOnboarding(params: UseOnboardingParams) {
         platform: onboardingPlatform,
         mode: onboardingMode,
         dimension: onboardingDimension,
+        cocosVariant: onboardingPlatform === 'cocos' ? onboardingCocosVariant : undefined,
         projectName: onboardingProjectName,
         projectPath: onboardingProjectPath,
         enginePluginId: onboardingPlatform === 'unity' ? onboardingEnginePluginId || undefined : undefined,
@@ -470,6 +478,7 @@ export function useOnboarding(params: UseOnboardingParams) {
     onboardingMode,
     onboardingPlatform,
     onboardingDimension,
+    onboardingCocosVariant,
     onboardingProjectName,
     onboardingProjectPath,
     onboardingEnginePluginId,
@@ -486,6 +495,7 @@ export function useOnboarding(params: UseOnboardingParams) {
     setOnboardingMode,
     setOnboardingPlatform,
     setOnboardingDimension,
+    setOnboardingCocosVariant,
     setOnboardingProjectName,
     setOnboardingProjectPath,
     setOnboardingUnityEditorVersion,
