@@ -1221,7 +1221,7 @@ async function executeEngineControlAction(
           ].join('\n')
         };
       }
-      return openCocosProject({
+      return await openCocosProject({
         projectPath
       });
     }

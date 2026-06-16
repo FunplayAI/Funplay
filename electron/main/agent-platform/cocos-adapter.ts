@@ -535,7 +535,61 @@ export function openCocosDashboard(): WorkspaceToolActionResult {
   };
 }
 
-export function openCocosProject(input: { projectPath: string }): WorkspaceToolActionResult {
+interface CocosLaunchOutcome {
+  started: boolean;
+  reason?: string;
+}
+
+// Spawn the Cocos Creator editor and observe a brief window for an early crash,
+// instead of reporting success the instant spawn() is issued. Exit code 0 (a
+// launcher that handed off cleanly) or surviving the window both count as a
+// successful launch; a spawn error (e.g. ENOENT) or a NON-ZERO early exit means
+// the editor died on launch. observeMs is injectable so tests resolve fast.
+async function launchCocosEditor(command: string, args: string[], observeMs = 800): Promise<CocosLaunchOutcome> {
+  let child: ReturnType<typeof spawn>;
+  try {
+    child = spawn(command, args, { detached: true, stdio: 'ignore' });
+  } catch (error) {
+    return { started: false, reason: `spawn failed: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  return await new Promise<CocosLaunchOutcome>((resolve) => {
+    let settled = false;
+    const settle = (outcome: CocosLaunchOutcome): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(outcome);
+    };
+    child.once('error', (error) =>
+      settle({ started: false, reason: `launch error: ${error instanceof Error ? error.message : String(error)}` })
+    );
+    child.once('exit', (code, signal) => {
+      if (code === 0) {
+        settle({ started: true });
+      } else {
+        settle({
+          started: false,
+          reason: signal
+            ? `Cocos Creator was terminated by ${signal} on launch`
+            : `Cocos Creator exited immediately with code ${code}`
+        });
+      }
+    });
+    const timer = setTimeout(() => {
+      child.removeAllListeners('error');
+      child.removeAllListeners('exit');
+      child.unref();
+      settle({ started: true });
+    }, observeMs);
+    timer.unref?.();
+  });
+}
+
+export async function openCocosProject(input: {
+  projectPath: string;
+  observeMs?: number;
+}): Promise<WorkspaceToolActionResult> {
   const installation = findCocosCreatorInstallation();
   const project = inspectCocosProject(input.projectPath);
   if (!installation) {
@@ -581,16 +635,32 @@ export function openCocosProject(input: { projectPath: string }): WorkspaceToolA
       ].join('\n')
     };
   }
-  const result = spawnDetached(installation.executablePath, ['--project', project.projectPath]);
+  const launch = await launchCocosEditor(installation.executablePath, ['--project', project.projectPath], input.observeMs);
+  if (!launch.started) {
+    return {
+      ok: false,
+      isError: true,
+      summary: [
+        'Engine platform: cocos',
+        'Engine adapter: Cocos Creator Adapter',
+        'Capability: openProject',
+        `Cocos Creator executable: ${installation.executablePath}`,
+        `Project path: ${project.projectPath}`,
+        `Launch failed: ${launch.reason ?? 'Cocos Creator did not stay open.'}`,
+        'Next action: open the project manually in Cocos Creator and start Funplay > MCP Server.'
+      ].join('\n')
+    };
+  }
   return {
-    ...result,
+    ok: true,
     summary: [
       'Engine platform: cocos',
       'Engine adapter: Cocos Creator Adapter',
       'Capability: openProject',
       `Cocos Creator executable: ${installation.executablePath}`,
       `Project path: ${project.projectPath}`,
-      result.summary
+      'Project launch: started (survived the early-exit watch).',
+      'Bridge connectivity: the Funplay Cocos MCP bridge stays offline until you open Funplay > MCP Server inside Cocos Creator.'
     ].join('\n')
   };
 }

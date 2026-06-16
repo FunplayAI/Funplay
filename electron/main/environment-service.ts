@@ -1812,7 +1812,7 @@ export async function runEnvironmentAction(
           message: 'Cocos 项目和 MCP 扩展已准备好，正在尝试打开项目…',
           log: bridge.summary
         });
-        const opened = openCocosProject({ projectPath: targetProjectPath });
+        const opened = await openCocosProject({ projectPath: targetProjectPath });
         completeTask(
           task.id,
           'needs_user',
@@ -1854,7 +1854,7 @@ export async function runEnvironmentAction(
             taskId: task.id
           };
         }
-        const result = openCocosProject({ projectPath: targetProjectPath });
+        const result = await openCocosProject({ projectPath: targetProjectPath });
         completeTask(task.id, result.ok ? 'completed' : 'failed', result.summary);
         return {
           actionId: input.actionId,

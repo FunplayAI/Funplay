@@ -1376,7 +1376,7 @@ test('cocos open-project action does not relaunch an already open project', asyn
     assert.equal(task?.progress, 72);
     assert.match(task?.message ?? '', /不会重复打开同一个项目/);
 
-    const directOpen = openCocosProject({ projectPath });
+    const directOpen = await openCocosProject({ projectPath });
     assert.equal(directOpen.ok, true);
     assert.match(directOpen.summary, /Project already open: yes/);
     assert.match(directOpen.summary, /Skipped launch/);
@@ -1411,6 +1411,56 @@ test('cocos open-project action does not relaunch an already open project', asyn
       process.env.FUNPLAY_FAKE_CREATOR_LOG = previousLaunchLog;
     }
     environmentTasks.clear();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('cocos openProject reports launch failure when Cocos Creator crashes on launch', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-crash-'));
+  const projectPath = join(root, 'Arrow');
+  const fakeCreator = join(root, 'CocosCreator');
+  const previousCreator = process.env.COCOS_CREATOR_EXECUTABLE;
+  try {
+    await writeCocosProjectFixture(projectPath);
+    // Editor that dies immediately with a non-zero exit code.
+    await writeFakeCocosCreator(fakeCreator, '#!/bin/sh\nexit 7\n');
+    process.env.COCOS_CREATOR_EXECUTABLE = fakeCreator;
+
+    const result = await openCocosProject({ projectPath, observeMs: 1500 });
+    assert.equal(result.ok, false);
+    assert.equal(result.isError, true);
+    assert.match(result.summary, /Launch failed: .*code 7/);
+  } finally {
+    if (typeof previousCreator === 'undefined') {
+      delete process.env.COCOS_CREATOR_EXECUTABLE;
+    } else {
+      process.env.COCOS_CREATOR_EXECUTABLE = previousCreator;
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('cocos openProject reports started + the manual MCP-server step when the editor launches cleanly', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-launch-'));
+  const projectPath = join(root, 'Arrow');
+  const fakeCreator = join(root, 'CocosCreator');
+  const previousCreator = process.env.COCOS_CREATOR_EXECUTABLE;
+  try {
+    await writeCocosProjectFixture(projectPath);
+    // Editor that hands off cleanly (exit 0) — counts as a successful launch.
+    await writeFakeCocosCreator(fakeCreator, '#!/bin/sh\nexit 0\n');
+    process.env.COCOS_CREATOR_EXECUTABLE = fakeCreator;
+
+    const result = await openCocosProject({ projectPath, observeMs: 1500 });
+    assert.equal(result.ok, true);
+    assert.match(result.summary, /Project launch: started/);
+    assert.match(result.summary, /Funplay > MCP Server/);
+  } finally {
+    if (typeof previousCreator === 'undefined') {
+      delete process.env.COCOS_CREATOR_EXECUTABLE;
+    } else {
+      process.env.COCOS_CREATOR_EXECUTABLE = previousCreator;
+    }
     await rm(root, { recursive: true, force: true });
   }
 });
