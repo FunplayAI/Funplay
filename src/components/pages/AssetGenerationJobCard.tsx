@@ -1,5 +1,5 @@
-import { CheckCircle2, Clock3, Loader2, XCircle, type LucideIcon } from 'lucide-react';
-import type { JSX } from 'react';
+import { CheckCircle2, Clock3, Loader2, RotateCcw, XCircle, type LucideIcon } from 'lucide-react';
+import { useState, type JSX } from 'react';
 import type { AssetGenerationJob } from '../../../shared/types';
 import { localize, type UiLanguage } from '../../i18n';
 import { formatGenerationJobStatus, formatGenerationKind } from '../../lib/asset-generation-ui';
@@ -18,11 +18,38 @@ export function AssetGenerationJobCard(props: {
   onOpenOutput: (path: string) => void;
   onImport?: (jobId: string) => Promise<unknown>;
   onCancel?: (jobId: string) => Promise<unknown>;
+  onRetry?: (jobId: string) => Promise<unknown>;
   compact?: boolean;
 }): JSX.Element {
   const t = (zh: string, en: string): string => localize(props.language, zh, en);
   const StatusIcon = jobStatusIcon(props.job);
   const progressPercent = Math.max(0, Math.min(100, Math.round(props.job.progress * 100)));
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  const handleCancel = async (): Promise<void> => {
+    if (!props.onCancel || isCancelling) {
+      return;
+    }
+    setIsCancelling(true);
+    try {
+      await props.onCancel(props.job.id);
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  const handleRetry = async (): Promise<void> => {
+    if (!props.onRetry || isRetrying) {
+      return;
+    }
+    setIsRetrying(true);
+    try {
+      await props.onRetry(props.job.id);
+    } finally {
+      setIsRetrying(false);
+    }
+  };
   return (
     <section className={`asset-generation-job ${props.job.status} ${props.compact ? 'compact' : ''}`}>
       <div className="asset-generation-job-main">
@@ -62,9 +89,27 @@ export function AssetGenerationJobCard(props: {
             {t('标记已导入', 'Mark Imported')}
           </Button>
         ) : null}
+        {props.job.status === 'failed' && props.onRetry ? (
+          <Button
+            size="compact"
+            variant="secondary"
+            loading={isRetrying}
+            disabled={isRetrying}
+            onClick={() => void handleRetry()}
+            leadingIcon={<RotateCcw size={13} aria-hidden="true" />}
+          >
+            {isRetrying ? t('重试中…', 'Retrying…') : t('重试', 'Retry')}
+          </Button>
+        ) : null}
         {props.job.status === 'running' || props.job.status === 'queued' ? (
-          <Button size="compact" variant="secondary" onClick={() => void props.onCancel?.(props.job.id)}>
-            {t('取消', 'Cancel')}
+          <Button
+            size="compact"
+            variant="secondary"
+            loading={isCancelling}
+            disabled={isCancelling}
+            onClick={() => void handleCancel()}
+          >
+            {isCancelling ? t('取消中…', 'Cancelling…') : t('取消', 'Cancel')}
           </Button>
         ) : null}
       </div>

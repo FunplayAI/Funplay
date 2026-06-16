@@ -9,6 +9,7 @@ export function AgentLiveStatus(props: {
   detail?: string;
   taskSummary?: RuntimeTaskSummary | null;
   compactTaskSummary?: boolean;
+  cancelDisabled?: boolean;
   onCancel?: () => void;
 }): JSX.Element {
   const language = useUiLanguage();
@@ -43,7 +44,14 @@ export function AgentLiveStatus(props: {
           <i />
         </span>
         {props.onCancel ? (
-          <Button size="sm" variant="secondary" leadingIcon={<Square size={12} aria-hidden="true" />} onClick={props.onCancel}>
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon={<Square size={12} aria-hidden="true" />}
+            disabled={props.cancelDisabled}
+            title={props.cancelDisabled ? localize(language, '请先响应当前请求', 'Respond to the prompt first') : undefined}
+            onClick={props.onCancel}
+          >
             {localize(language, '停止', 'Stop')}
           </Button>
         ) : null}

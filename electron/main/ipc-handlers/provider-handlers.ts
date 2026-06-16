@@ -8,7 +8,7 @@ import {
   runtimeRepairInputSchema,
   validateIpcInput
 } from '../ipc-validation';
-import { createProvider, deleteProvider, setDefaultProvider, updateProvider } from '../provider-service';
+import { countProviderUsage, createProvider, deleteProvider, setDefaultProvider, updateProvider } from '../provider-service';
 import { listProviderModels } from '../provider-model-service';
 import { testProviderConnection } from '../text-generator';
 import { resolveProviderTokenLimits } from '../../../shared/provider-catalog';
@@ -54,6 +54,13 @@ export function registerProviderHandlers(ipcMain: IpcMain, ctx: HandlerContext):
     await deleteProvider(state, validateIpcInput(providerIdSchema, providerId, 'providers:delete'));
     await ctx.setState({ ...state });
     return { success: true as const };
+  });
+
+  ipcMain.handle('providers:usage', async (_, providerId: unknown) => {
+    return countProviderUsage(
+      ctx.getState(),
+      validateIpcInput(providerIdSchema, providerId, 'providers:usage')
+    );
   });
 
   ipcMain.handle('providers:setDefault', async (_, providerId: unknown) => {
@@ -113,6 +120,8 @@ export function registerProviderHandlers(ipcMain: IpcMain, ctx: HandlerContext):
         status: 'error' as const,
         message: [
           error instanceof Error ? error.message : 'Unknown error',
+          '请检查：Base URL 格式与协议(http/https)、是否需要 /v1 等路径、API Key 是否正确、以及代理或防火墙设置。',
+          'Check: Base URL format and protocol (http/https), required path such as /v1, API Key correctness, and any proxy or firewall settings.',
           `Provider: ${provider.name}`,
           `Protocol: ${provider.protocol}`,
           `Base URL: ${provider.baseUrl || '(default)'}`,

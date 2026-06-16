@@ -17,6 +17,7 @@ import type {
 } from '../../shared/types';
 import {
   formatAssetGenerationImageDimensionValidation,
+  isAssetGenerationImageDimensionConstrainedKind,
   validateAssetGenerationRequestImageDimensions
 } from '../../shared/asset-generation-validation';
 import { resolveProjectRootPathForProject } from './project-file-service';
@@ -58,6 +59,10 @@ const visualGenerationKinds: AssetGenerationKind[] = ['image_2d', 'ui_2d', 'text
 const openAiGenerationKinds: AssetGenerationKind[] = ['image_2d', 'ui_2d', 'texture_2d'];
 const audioGenerationKinds: AssetGenerationKind[] = ['audio_sfx', 'audio_music'];
 const defaultProviderTimeoutMs = 180_000;
+// Shorter timeout for the very first submit/queue request to a provider, so an
+// unreachable endpoint surfaces as a fast failure instead of hanging near the
+// start of the progress bar for the full provider timeout.
+const initialSubmitTimeoutMs = 30_000;
 
 interface ExecutableAssetGenerationProvider extends AssetGenerationProviderProfile {
   apiKey?: string;
@@ -635,6 +640,62 @@ function configuredProviderReady(provider: AssetGenerationProviderConfig): { rea
   };
 }
 
+// Conservative per-adapter maximum output edge (px) for image-style generations.
+// Used to surface a friendly over-limit error before issuing the provider call,
+// instead of letting the bar stall until the provider rejects oversized requests.
+const assetProviderMaxImageEdge: Partial<Record<AssetGenerationConfigurableProviderAdapterKind, number>> = {
+  'openai-image': 1536,
+  stability: 1536
+};
+
+function checkProviderImageDimensionLimit(
+  provider: ExecutableAssetGenerationProvider,
+  request: AssetGenerationRequest
+): string | undefined {
+  if (!isAssetGenerationImageDimensionConstrainedKind(request.kind)) {
+    return undefined;
+  }
+  const maxEdge = assetProviderMaxImageEdge[provider.adapter as AssetGenerationConfigurableProviderAdapterKind];
+  if (!maxEdge) {
+    return undefined;
+  }
+  const width = request.outputSpec?.width;
+  const height = request.outputSpec?.height;
+  if (typeof width !== 'number' || typeof height !== 'number') {
+    return undefined;
+  }
+  if (Math.max(width, height) <= maxEdge) {
+    return undefined;
+  }
+  return `Provider ${provider.name} 支持的最大边为 ${maxEdge}px，当前 ${width}x${height} 超限。请缩小尺寸后重试。/ Provider ${provider.name} supports a maximum edge of ${maxEdge}px; the requested ${width}x${height} exceeds it. Reduce the size and try again.`;
+}
+
+function assertConfiguredAssetProviderReady(provider: AssetGenerationProviderConfig): void {
+  const readiness = configuredProviderReady(provider);
+  if (readiness.ready) {
+    return;
+  }
+  const adapterLabel = defaultAssetProviderName(provider.adapter);
+  if (provider.adapter === 'comfyui') {
+    throw new Error(
+      `ComfyUI 配置不完整：需要填写 Base URL，以及工作流 JSON 或工作流文件路径。/ ComfyUI configuration is incomplete: set Base URL and either workflow JSON or a workflow file path.`
+    );
+  }
+  if (provider.adapter === 'replicate') {
+    throw new Error(
+      `Replicate 配置不完整：需要填写 API Key 和模型/版本。/ Replicate configuration is incomplete: set an API Key and a model or version.`
+    );
+  }
+  if (provider.adapter === 'elevenlabs') {
+    throw new Error(
+      `ElevenLabs 配置不完整：需要填写 API Key。/ ElevenLabs configuration is incomplete: set an API Key.`
+    );
+  }
+  throw new Error(
+    `${adapterLabel} 配置不完整：需要填写 API Key。/ ${adapterLabel} configuration is incomplete: set an API Key.`
+  );
+}
+
 function readConfiguredWorkflowJson(provider: AssetGenerationProviderConfig): string | undefined {
   if (provider.workflowJson?.trim()) {
     return provider.workflowJson;
@@ -852,6 +913,7 @@ export async function createAssetGenerationProvider(
   input: AssetGenerationProviderInput
 ): Promise<AssetGenerationProviderConfig> {
   const provider = normalizeAssetGenerationProviderInput(input);
+  assertConfiguredAssetProviderReady(provider);
   await persistAssetGenerationProviderSecret(provider.id, provider.apiKey);
   state.assetGenerationProviders = [provider, ...(state.assetGenerationProviders ?? [])];
   return provider;
@@ -868,6 +930,7 @@ export async function updateAssetGenerationProvider(
     throw new Error('Asset generation provider not found.');
   }
   const provider = normalizeAssetGenerationProviderInput(input, providers[index]);
+  assertConfiguredAssetProviderReady(provider);
   await persistAssetGenerationProviderSecret(provider.id, provider.apiKey);
   state.assetGenerationProviders = providers.map((current, currentIndex) => (currentIndex === index ? provider : current));
   return provider;
@@ -1282,7 +1345,7 @@ async function generateComfyUiAsset(
         prompt: applyComfyWorkflowTemplate(provider.workflowJson, input),
         client_id: clientId
       })
-    }), 'ComfyUI prompt queue');
+    }, initialSubmitTimeoutMs), 'ComfyUI prompt queue');
     const promptId = queued.prompt_id;
     if (!promptId) {
       throw new Error('ComfyUI did not return a prompt_id.');
@@ -1360,7 +1423,7 @@ async function generateMeshyModel(provider: ExecutableAssetGenerationProvider, i
       ai_model: provider.model,
       target_formats: ['glb']
     })
-  }), 'Meshy text-to-3d');
+  }, initialSubmitTimeoutMs), 'Meshy text-to-3d');
   if (!created.result) {
     throw new Error('Meshy did not return a task id.');
   }
@@ -1588,7 +1651,14 @@ export async function generateAssetForProject(
     ? providers.find((candidate) => candidate.id === request.providerId)
     : providers.find((candidate) => candidate.enabled && candidate.supportedKinds.includes(request.kind));
   if (!provider) {
-    throw new Error('No configured asset generation provider is available for this asset type.');
+    throw new Error(
+      '没有就绪的素材生成 Provider。请在「素材 Provider」中确认 API Key、模型、地址等必填项已填写并启用。/ No ready asset generation provider is available. In "Asset Providers", confirm the API key, model, and endpoint are filled in and the provider is enabled.'
+    );
+  }
+  if (!provider.enabled) {
+    throw new Error(
+      `素材 Provider「${provider.name}」未就绪或未启用。${provider.notes ?? ''} 请在「素材 Provider」中检查必填项并启用。/ Asset provider "${provider.name}" is not ready or not enabled. ${provider.notes ?? ''} Check its required fields in "Asset Providers" and enable it.`.trim()
+    );
   }
 
   const timestamp = nowIso();
@@ -1605,6 +1675,10 @@ export async function generateAssetForProject(
   const dimensionValidation = validateAssetGenerationRequestImageDimensions(normalizedRequest);
   if (dimensionValidation && !dimensionValidation.ok) {
     throw new Error(formatAssetGenerationImageDimensionValidation(dimensionValidation));
+  }
+  const providerDimensionError = checkProviderImageDimensionLimit(provider, normalizedRequest);
+  if (providerDimensionError) {
+    throw new Error(providerDimensionError);
   }
   const baseJob: AssetGenerationJob = {
     id: jobId,
@@ -1685,10 +1759,14 @@ export async function generateAssetForProject(
 
   try {
     const providerStartedAt = nowIso();
+    // Emit an explicit "waiting for provider" state before the first provider call,
+    // so the bar visibly advances instead of sitting flat while we wait on a network
+    // round-trip that can take a while (or hang if the provider is unreachable).
     await publishJob({
       ...baseJob,
       status: 'running',
-      progress: 0.2,
+      progress: 0.15,
+      costEstimate: '等待 Provider 响应… / Waiting for provider…',
       updatedAt: providerStartedAt
     });
 

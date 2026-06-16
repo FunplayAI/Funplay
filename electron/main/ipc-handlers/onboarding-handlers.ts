@@ -5,7 +5,14 @@ import {
   environmentInputSchema,
   validateIpcInput
 } from '../ipc-validation';
-import { diagnoseEnvironment, listAvailableUnityEditors, listEnvironmentTasksForState, runEnvironmentAction } from '../environment-service';
+import {
+  checkCocosVariantPrerequisite,
+  diagnoseEnvironment,
+  listAvailableUnityEditors,
+  listEnvironmentTasksForState,
+  runEnvironmentAction
+} from '../environment-service';
+import type { CocosEngineVariant } from '../../../shared/types';
 
 export function registerOnboardingHandlers(ipcMain: IpcMain, ctx: HandlerContext): void {
   ipcMain.handle('onboarding:diagnoseEnvironment', async (_, input: unknown) => {
@@ -33,5 +40,13 @@ export function registerOnboardingHandlers(ipcMain: IpcMain, ctx: HandlerContext
 
   ipcMain.handle('onboarding:listInstalledUnityEditors', async (_, dimension?: '2d' | '3d' | 'unknown') => {
     return listAvailableUnityEditors(dimension);
+  });
+
+  // Lightweight, read-only precheck for the Step-1 Cocos variant card. The input
+  // is a single known enum value, guarded inline here (the shared ipc-validation
+  // module is owned elsewhere); anything unexpected falls back to 'creator3'.
+  ipcMain.handle('onboarding:checkCocosVariantPrerequisite', async (_, variant: unknown) => {
+    const resolved: CocosEngineVariant = variant === 'cocos4' ? 'cocos4' : 'creator3';
+    return checkCocosVariantPrerequisite(resolved);
   });
 }

@@ -126,6 +126,10 @@ export function BootstrapScreens(props: {
             onSkip={() => setAppMode('workspace')}
             onNext={() => void onboarding.handleFinishOnboarding()}
             onEnter={() => void onboarding.handleEnterWorkspace()}
+            createError={onboarding.onboardingCreateError}
+            onRetryEnter={() => void onboarding.handleRetryEnterWorkspace()}
+            onBackToEnvironment={onboarding.handleBackToEnvironmentFromStep3}
+            detectedDimension={onboarding.importDetectedDimension}
           />
           {toasts}
         </>

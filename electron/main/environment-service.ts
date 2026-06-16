@@ -13,6 +13,7 @@ import type {
   EnvironmentDiagnostics,
   EngineProjectDimension,
   CocosEngineVariant,
+  CocosVariantPrerequisite,
   EnvironmentTask,
   EnvironmentTaskStage,
   EnvironmentTaskStatus,
@@ -1022,6 +1023,68 @@ export function listAvailableUnityEditors(dimension: EngineProjectDimension = 'u
   return buildInstalledUnityEditorOptions(dimension);
 }
 
+// The Node.js LTS download / install guide. Opened in the external browser as an
+// actionable remedy when the cocos4 build prerequisites (Node 22+/git) fail.
+const NODEJS_DOWNLOAD_URL = 'https://nodejs.org/en/download';
+
+// Turn a failed cocos4 prerequisite check into actionable remedies. The actions
+// carry an externalUrl, so the renderer opens the page in the browser instead of
+// dispatching an in-app task. When Node is present but < 22 we offer a more
+// specific "upgrade" label; git failures point at the same Node/tooling guide.
+function buildCocosCliPrereqActions(prereqs: ReturnType<typeof checkCocosCliPrerequisites>): EnvironmentAction[] {
+  const actions: EnvironmentAction[] = [];
+  if (!prereqs.nodeOk) {
+    actions.push(
+      prereqs.nodeVersion
+        ? {
+            id: 'verify_project_path',
+            label: `升级 Node.js（当前 ${prereqs.nodeVersion}）`,
+            description: '在浏览器中打开 Node.js 官方下载页，升级到 22 LTS 或更高版本。',
+            primary: true,
+            externalUrl: NODEJS_DOWNLOAD_URL
+          }
+        : {
+            id: 'verify_project_path',
+            label: '打开 Node.js 安装指南',
+            description: '在浏览器中打开 Node.js 官方下载页，安装 22 LTS 或更高版本。',
+            primary: true,
+            externalUrl: NODEJS_DOWNLOAD_URL
+          }
+    );
+  }
+  if (!prereqs.gitOk) {
+    actions.push({
+      id: 'verify_project_path',
+      label: '打开 git 安装指南',
+      description: '在浏览器中打开 git 官方下载页安装命令行工具。',
+      primary: !actions.length,
+      externalUrl: 'https://git-scm.com/downloads'
+    });
+  }
+  return actions;
+}
+
+// Lightweight, non-blocking precheck of a Cocos engine-variant's hard
+// prerequisite, surfaced as a warning badge on the Step-1 variant card before the
+// heavy environment diagnostics run. creator3 needs the Cocos Creator GUI editor;
+// cocos4 needs the system Node.js 22+/git build toolchain.
+export function checkCocosVariantPrerequisite(variant: CocosEngineVariant): CocosVariantPrerequisite {
+  if (variant === 'cocos4') {
+    const prereqs = checkCocosCliPrerequisites();
+    return {
+      variant,
+      satisfied: prereqs.ok,
+      warning: prereqs.ok ? '' : `缺少 ${prereqs.missing.join('、')}，第 2 步将无法下载 cocos4。`
+    };
+  }
+  const creatorInstalled = Boolean(findCocosCreatorInstallation());
+  return {
+    variant,
+    satisfied: creatorInstalled,
+    warning: creatorInstalled ? '' : '未检测到 Cocos Creator，第 2 步需先安装编辑器。'
+  };
+}
+
 function extractTextContent(result: { content?: Array<{ type?: string; text?: string }> }): string {
   return (result.content ?? [])
     .filter((part) => part.type === 'text' && typeof part.text === 'string')
@@ -1304,7 +1367,7 @@ export async function diagnoseEnvironment(
         detail: prereqs.ok
           ? `已满足：Node ${prereqs.nodeVersion}，git 可用。`
           : `缺少：${prereqs.missing.join('、')}。请安装后重试。`,
-        actions: []
+        actions: prereqs.ok ? [] : buildCocosCliPrereqActions(prereqs)
       });
 
       checks.push({

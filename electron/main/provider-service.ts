@@ -69,6 +69,15 @@ export async function createProvider(state: AppState, input: AiProviderInput): P
   const hasEnabledProvider = state.providers.some((provider) => provider.enabled);
   const secret = input.apiKey.trim();
   const presetDefaults = getProviderPresetDefaults(input);
+  const resolvedAuthStyle = normalizeProviderAuthStyle({
+    authStyle: input.authStyle ?? presetDefaults.authStyle,
+    protocol: input.protocol,
+    baseUrl: input.baseUrl
+  });
+  // A new api_key-style provider with no key would silently fail at runtime; reject it up front.
+  if (resolvedAuthStyle === 'api_key' && !secret) {
+    throw new Error('api_key 认证方式需要填写 API Key。/ The api_key auth style requires an API Key.');
+  }
   const availableModels = normalizeProviderModels(input.availableModels) ?? presetDefaults.availableModels;
   const providerForUpstream = {
     model: input.model.trim(),
@@ -178,6 +187,24 @@ export async function updateProvider(state: AppState, providerId: string, input:
   }
 
   return updated;
+}
+
+export interface ProviderUsage {
+  projects: string[];
+}
+
+export function countProviderUsage(state: AppState, providerId: string): ProviderUsage {
+  const projectNames = new Set<string>();
+  for (const project of state.projects) {
+    const referencedByProject = project.providerId === providerId;
+    const referencedBySession = project.sessions?.some(
+      (session) => session.runtimeOverrides?.providerId === providerId
+    );
+    if (referencedByProject || referencedBySession) {
+      projectNames.add(project.name);
+    }
+  }
+  return { projects: [...projectNames] };
 }
 
 export async function deleteProvider(state: AppState, providerId: string): Promise<void> {

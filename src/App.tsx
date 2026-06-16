@@ -274,7 +274,7 @@ function App(): JSX.Element {
   // Workspace-with-no-selection → fall back to the first project (store-only hook).
   useAppModeProjectSync();
 
-  const { assetGenerationProviders, handleGenerateAsset, handleImportGeneratedAsset, handleCancelAssetGenerationJob } =
+  const { assetGenerationProviders, handleGenerateAsset, handleImportGeneratedAsset, handleCancelAssetGenerationJob, handleRetryAssetGenerationJob } =
     useAssetGenerationCenter({
       appMode,
       mcpPlugins,
@@ -659,49 +659,17 @@ function App(): JSX.Element {
                 }}
                 onRespondPermission={(decision) => {
                   if (!selectedProjectStream?.pendingPermission) {
-                    return;
+                    return Promise.resolve();
                   }
-                  void window.funplay
-                    .respondPromptPermission(selectedProjectStream.pendingPermission.requestId, decision)
-                    .catch((error) => {
-                      if (!selectedSessionId) {
-                        return;
-                      }
-                      setSessionComposerErrors((current) => ({
-                        ...current,
-                        [selectedSessionId]:
-                          error instanceof Error
-                            ? error.message
-                            : localize(
-                                uiPreferences.language,
-                                '权限响应失败，请重试。',
-                                'Failed to submit the permission decision. Please try again.'
-                              )
-                      }));
-                    });
+                  // Renderer (ChatComposer) awaits this promise to drive in-flight + inline-error state on the card.
+                  return window.funplay.respondPromptPermission(selectedProjectStream.pendingPermission.requestId, decision);
                 }}
                 onRespondUserInput={(response) => {
                   if (!selectedProjectStream?.pendingUserInput) {
-                    return;
+                    return Promise.resolve();
                   }
-                  void window.funplay
-                    .respondPromptUserInput(selectedProjectStream.pendingUserInput.requestId, response)
-                    .catch((error) => {
-                      if (!selectedSessionId) {
-                        return;
-                      }
-                      setSessionComposerErrors((current) => ({
-                        ...current,
-                        [selectedSessionId]:
-                          error instanceof Error
-                            ? error.message
-                            : localize(
-                                uiPreferences.language,
-                                '回答提交失败，请重试。',
-                                'Failed to submit the answer. Please try again.'
-                              )
-                      }));
-                    });
+                  // Renderer awaits this promise to drive the Submit spinner + inline-error state on the user-input card.
+                  return window.funplay.respondPromptUserInput(selectedProjectStream.pendingUserInput.requestId, response);
                 }}
                 onUpdateSessionRuntime={(runtime) => {
                   void updateSelectedSessionRuntime(
@@ -832,6 +800,7 @@ function App(): JSX.Element {
               onGenerateAsset={handleGenerateAsset}
               onImportGeneratedAsset={handleImportGeneratedAsset}
               onCancelAssetGenerationJob={handleCancelAssetGenerationJob}
+              onRetryAssetGenerationJob={handleRetryAssetGenerationJob}
             />
           ) : null}
         </div>

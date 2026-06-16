@@ -94,6 +94,7 @@ export function AssetsPage(props: {
   onGenerateAsset?: (input: AssetGenerationRequest) => Promise<Project>;
   onImportGeneratedAsset?: (jobId: string) => Promise<Project>;
   onCancelAssetGenerationJob?: (jobId: string) => Promise<Project>;
+  onRetryAssetGenerationJob?: (jobId: string) => Promise<Project>;
   activeViewId?: AssetLibraryViewId;
   onActiveViewChange?: (viewId: AssetLibraryViewId) => void;
 }): JSX.Element {
@@ -466,6 +467,7 @@ export function AssetsPage(props: {
                         onOpenOutput={props.onOpenProjectFile}
                         onImport={props.onImportGeneratedAsset}
                         onCancel={props.onCancelAssetGenerationJob}
+                        onRetry={props.onRetryAssetGenerationJob}
                       />
                     ))}
                   </div>
@@ -488,6 +490,7 @@ export function AssetsPage(props: {
                   onOpenOutput={props.onOpenProjectFile}
                   onImport={props.onImportGeneratedAsset}
                   onCancel={props.onCancelAssetGenerationJob}
+                  onRetry={props.onRetryAssetGenerationJob}
                 />
               ))}
             </div>

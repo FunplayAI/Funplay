@@ -70,7 +70,7 @@ const BASELINES: Record<string, number> = {
   // phase 11 (A6): one-time bootstrap fan-out → useBootstrap;
   // phase 11 (A7): prompt-stream event subscriber + GC + pure lifecycle handler → usePromptStreamEvents;
   // phase 11 (A8): queued-prompt auto-dequeue → useQueuedPromptDrain (App now has zero useEffect/useMemo).
-  'src/App.tsx': 962,
+  'src/App.tsx': 931,
   // ConversationMessage.tsx split into transcript/* modules by U47-3 — now 317 lines.
   // tool-activity.tsx split into tool/* modules by U47-4 — now 452 lines.
   // AgentChatView.tsx split into agent/* modules by U47-5 — now 371 lines.

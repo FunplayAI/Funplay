@@ -63,7 +63,18 @@ export function useOnboarding(params: UseOnboardingParams) {
   const [environmentActionMessage, setEnvironmentActionMessage] = useState('');
   const [environmentTasks, setEnvironmentTasks] = useState<EnvironmentTask[]>([]);
   const [lastAutoDiagnosedTaskId, setLastAutoDiagnosedTaskId] = useState('');
+  // Step-3 (completion) project-creation error, surfaced as a banner with retry —
+  // kept separate from the Step-1 detectionMessage so the completion screen can
+  // show a recovery path instead of silently resetting.
+  const [onboardingCreateError, setOnboardingCreateError] = useState('');
+  // When an import auto-detects a dimension that differs from the user's Step-1
+  // choice, this holds the detected dimension so Step 2 can show a brief note.
+  const [importDetectedDimension, setImportDetectedDimension] = useState<EngineProjectDimension | null>(null);
   const acceptedDiagnosticsSignatureRef = useRef('');
+  // Tracks whether we've already auto-resumed into Step 2 for an in-progress task
+  // on this onboarding open, so the resume happens once and the user can navigate
+  // back afterwards.
+  const resumedRunningTaskRef = useRef(false);
 
   useEffect(() => {
     const currentSignature = buildDiagnosticsInputSignature({
@@ -145,6 +156,33 @@ export function useOnboarding(params: UseOnboardingParams) {
       window.clearInterval(timer);
     };
   }, [appMode]);
+
+  // Reset the one-shot resume guard each time onboarding (re)opens so a long task
+  // (cocos-cli 3.5G download, unity project creation) can resume us into Step 2.
+  useEffect(() => {
+    if (appMode !== 'onboarding') {
+      resumedRunningTaskRef.current = false;
+    }
+  }, [appMode]);
+
+  // task-status-update persistence: if onboarding reopens while an environment
+  // task is still in flight, jump to the Step-2 environment view with the task
+  // card visible instead of starting clean at Step 1. One-shot per open so the
+  // user can still navigate back afterwards.
+  useEffect(() => {
+    if (appMode !== 'onboarding' || resumedRunningTaskRef.current) {
+      return;
+    }
+    const hasRunningTask = environmentTasks.some(
+      (task) => task.status === 'queued' || task.status === 'running' || task.status === 'needs_user'
+    );
+    if (!hasRunningTask) {
+      return;
+    }
+    resumedRunningTaskRef.current = true;
+    setOnboardingStep(1);
+    setOnboardingView('environment');
+  }, [appMode, environmentTasks]);
 
   useEffect(() => {
     if (appMode !== 'onboarding' || environmentTasks.length === 0 || isCheckingEngine) {
@@ -267,6 +305,15 @@ export function useOnboarding(params: UseOnboardingParams) {
         projectPath: input.projectPath,
         enginePluginId: nextEnginePluginId
       });
+      // Surface a brief Step-2 note when an import auto-detected a dimension that
+      // differs from the user's Step-1 choice (e.g. picked 2D, project is 3D).
+      setImportDetectedDimension(
+        input.mode === 'import' &&
+          diagnostics.dimension !== 'unknown' &&
+          diagnostics.dimension !== input.dimension
+          ? diagnostics.dimension
+          : null
+      );
       setOnboardingDimension(diagnostics.dimension);
       if (diagnostics.cocosVariant) {
         setOnboardingCocosVariant(diagnostics.cocosVariant);
@@ -440,6 +487,7 @@ export function useOnboarding(params: UseOnboardingParams) {
       return;
     }
 
+    setOnboardingCreateError('');
     setIsCreatingProject(true);
     try {
       await handleCreateProject(buildOnboardingProjectInput({
@@ -451,12 +499,35 @@ export function useOnboarding(params: UseOnboardingParams) {
         unityEditorVersion: onboardingUnityEditorVersion || environmentDiagnostics?.selectedUnityVersion
       }));
     } catch (error) {
-      setOnboardingDetectionMessage(error instanceof Error ? error.message : localize(language, '创建项目失败。', 'Failed to create project.'));
-      setOnboardingDetectionOk(false);
-      setOnboardingView('setup');
+      const message = error instanceof Error ? error.message : localize(language, '创建项目失败。', 'Failed to create project.');
+      // Engine projects fail from the Step-3 completion screen — keep the user
+      // there with a prominent error banner + Retry/Back instead of silently
+      // bouncing to the Step-1 setup view (which would hide the error entirely).
+      if (onboardingPlatform === 'web') {
+        setOnboardingDetectionMessage(message);
+        setOnboardingDetectionOk(false);
+        setOnboardingView('setup');
+      } else {
+        setOnboardingCreateError(message);
+      }
     } finally {
       setIsCreatingProject(false);
     }
+  }
+
+  // Step-3 recovery: retry project creation without resetting the collected
+  // state (path, name, dimension, editor) the user already confirmed.
+  async function handleRetryEnterWorkspace(): Promise<void> {
+    setOnboardingCreateError('');
+    await handleEnterWorkspace();
+  }
+
+  // Step-3 recovery: drop back to the Step-2 environment view (keeps state) so the
+  // user can re-run actions, instead of being stuck on the failed completion card.
+  function handleBackToEnvironmentFromStep3(): void {
+    setOnboardingCreateError('');
+    setOnboardingStep(1);
+    setOnboardingView('environment');
   }
 
   function startOnboarding(): void {
@@ -470,6 +541,8 @@ export function useOnboarding(params: UseOnboardingParams) {
     setOnboardingDetectionOk(false);
     setEnvironmentActionMessage('');
     setEnvironmentDiagnostics(null);
+    setOnboardingCreateError('');
+    setImportDetectedDimension(null);
   }
 
   return {
@@ -486,6 +559,8 @@ export function useOnboarding(params: UseOnboardingParams) {
     onboardingUnityEditorVersion,
     onboardingDetectionMessage,
     onboardingDetectionOk,
+    onboardingCreateError,
+    importDetectedDimension,
     environmentDiagnostics,
     environmentActionMessage,
     environmentTasks,
@@ -506,6 +581,8 @@ export function useOnboarding(params: UseOnboardingParams) {
     handleRunEnvironmentAction,
     handleFinishOnboarding,
     handleEnterWorkspace,
+    handleRetryEnterWorkspace,
+    handleBackToEnvironmentFromStep3,
     handlePickExistingProjectFromWelcome,
     startOnboarding
   };

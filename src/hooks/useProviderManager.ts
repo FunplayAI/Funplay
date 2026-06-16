@@ -14,6 +14,7 @@ export function useProviderManager(initial?: Partial<ProviderManagerState>) {
   const [aiSettings, setAiSettings] = useState<AiSettings>(initial?.aiSettings ?? DEFAULT_AI_SETTINGS);
   const [agentSettings, setAgentSettings] = useState<AgentSettings>(initial?.agentSettings ?? DEFAULT_AGENT_SETTINGS);
   const [providerTests, setProviderTests] = useState<Record<string, AiTestResult>>({});
+  const [testingProviderIds, setTestingProviderIds] = useState<Set<string>>(() => new Set());
   const providerTestRequestCounter = useRef(0);
   const activeProviderTestRequests = useRef<Record<string, number>>({});
 
@@ -43,11 +44,29 @@ export function useProviderManager(initial?: Partial<ProviderManagerState>) {
     const requestId = providerTestRequestCounter.current + 1;
     providerTestRequestCounter.current = requestId;
     activeProviderTestRequests.current[providerId] = requestId;
+    setTestingProviderIds((current) => {
+      const next = new Set(current);
+      next.add(providerId);
+      return next;
+    });
     setProviderTests((current) => {
       const next = { ...current };
       delete next[providerId];
       return next;
     });
+    const clearTesting = (): void => {
+      if (activeProviderTestRequests.current[providerId] !== requestId) {
+        return;
+      }
+      setTestingProviderIds((current) => {
+        if (!current.has(providerId)) {
+          return current;
+        }
+        const next = new Set(current);
+        next.delete(providerId);
+        return next;
+      });
+    };
     try {
       const result = await window.funplay.testProvider(providerId);
       if (activeProviderTestRequests.current[providerId] === requestId) {
@@ -65,6 +84,8 @@ export function useProviderManager(initial?: Partial<ProviderManagerState>) {
           }
         }));
       }
+    } finally {
+      clearTesting();
     }
   }
 
@@ -82,6 +103,7 @@ export function useProviderManager(initial?: Partial<ProviderManagerState>) {
     setAgentSettings,
     providerTests,
     setProviderTests,
+    testingProviderIds,
     refreshProviderStateFromMain,
     handleCreateProvider,
     handleUpdateProvider,

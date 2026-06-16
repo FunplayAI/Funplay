@@ -21,6 +21,7 @@ export function useAssetGenerationCenter(input: {
   handleGenerateAsset: (request: AssetGenerationRequest) => Promise<Project>;
   handleImportGeneratedAsset: (jobId: string) => Promise<Project>;
   handleCancelAssetGenerationJob: (jobId: string) => Promise<Project>;
+  handleRetryAssetGenerationJob: (jobId: string) => Promise<Project>;
 } {
   const [assetGenerationProviders, setAssetGenerationProviders] = useState<AssetGenerationProviderProfile[]>([]);
   const completedJobIdsRef = useRef(new Set<string>());
@@ -98,10 +99,33 @@ export function useAssetGenerationCenter(input: {
     return updated;
   }, [commitProject, requireProject]);
 
+  const handleRetryAssetGenerationJob = useCallback(async (jobId: string): Promise<Project> => {
+    const project = requireProject();
+    const job = (project.assetGenerationJobs ?? []).find((candidate) => candidate.id === jobId);
+    if (!job) {
+      throw new Error(localize(input.language, '找不到要重试的任务。', 'Could not find the job to retry.'));
+    }
+    const request: AssetGenerationRequest = {
+      title: job.title,
+      kind: job.kind,
+      prompt: job.prompt,
+      negativePrompt: job.negativePrompt,
+      providerId: job.providerId,
+      providerAdapter: job.providerAdapter,
+      stylePresetId: job.stylePresetId,
+      references: job.references,
+      targetEngine: job.targetEngine,
+      outputSpec: job.outputSpec,
+      createdBy: job.createdBy
+    };
+    return handleGenerateAsset(request);
+  }, [handleGenerateAsset, input.language, requireProject]);
+
   return {
     assetGenerationProviders,
     handleGenerateAsset,
     handleImportGeneratedAsset,
-    handleCancelAssetGenerationJob
+    handleCancelAssetGenerationJob,
+    handleRetryAssetGenerationJob
   };
 }

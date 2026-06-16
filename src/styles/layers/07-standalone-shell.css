@@ -596,3 +596,66 @@
     margin-bottom: 0;
   }
 }
+
+/* Onboarding interaction affordances (added with the UX-safety pass). */
+.option-card-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-soft);
+}
+
+.onboarding-variant-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: var(--fp-radius-sm);
+  font-size: 12px;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.24);
+}
+
+.onboarding-editor-note,
+.onboarding-detected-dimension {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
+
+.onboarding-step3-error {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: var(--fp-radius-md);
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.22);
+  color: var(--danger);
+}
+
+.onboarding-step3-error-head {
+  font-weight: 800;
+}
+
+.onboarding-step3-error-message {
+  font-size: 13px;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.onboarding-step3-error-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.step-dot.skipped {
+  opacity: 0.4;
+}
+
+:root[data-theme='dark'] .onboarding-variant-warning {
+  color: #fbbf24;
+}

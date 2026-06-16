@@ -297,6 +297,21 @@ export interface EnvironmentAction {
   label: string;
   description: string;
   primary?: boolean;
+  // When set, the renderer opens this URL in the external browser instead of
+  // dispatching the action through runEnvironmentAction — used for "open the
+  // install guide" style remedies that have no in-app task to run.
+  externalUrl?: string;
+}
+
+// Lightweight, non-blocking precheck of a Cocos engine-variant's prerequisites,
+// surfaced on the Step-1 variant card before the heavy environment diagnostics.
+export interface CocosVariantPrerequisite {
+  variant: CocosEngineVariant;
+  // Whether the variant's hard prerequisite is satisfied (creator3 → Cocos
+  // Creator installed; cocos4 → Node.js 22+ and git present).
+  satisfied: boolean;
+  // A short, already-localized warning to show when not satisfied; '' otherwise.
+  warning: string;
 }
 
 export interface EnvironmentCheck {

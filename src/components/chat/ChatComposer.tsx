@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, type JSX, type PointerEvent } from 'react';
+import { useMemo, useState, type JSX, type PointerEvent } from 'react';
 import { ArrowUp, Paperclip, Square, X } from 'lucide-react';
 import type { AgentPermissionImpact, AgentPermissionMode, AgentUserInputOption, AgentUserInputResponse, AiProvider, PromptAttachment } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import { Button, IconButton, TextAreaControl } from '../ui/index';
 import { AgentLiveStatus } from './AgentLiveStatus';
+import { AgentPermissionCard, AgentUserInputCard } from './AgentPromptCards';
 import { useComposerAttachmentDrop } from './composer-attachment-drop';
 import { resolveComposerState, type RuntimeMenuKey } from './composer-state';
 import { EngineConnectionIndicator, type EngineConnectionSummary } from './engine-connection-indicator';
@@ -14,6 +15,9 @@ export type { EngineConnectionSummary } from './engine-connection-indicator';
 export interface QueuedPromptItem {
   id: string;
   content: string;
+  // composer-8: marks queue items that were auto-generated (e.g. an attachment-only
+  // synthetic fallback) rather than typed by the user, so they render distinctly.
+  isSynthetic?: boolean;
 }
 
 export interface AgentContextUsageSummary {
@@ -70,8 +74,8 @@ export function ChatComposer(props: {
   onRemoveAttachment: (attachmentId: string) => void;
   onSubmit: () => void;
   onCancelStream: () => void;
-  onRespondPermission: (decision: 'allow' | 'allow_session' | 'deny') => void;
-  onRespondUserInput: (response: AgentUserInputResponse) => void;
+  onRespondPermission: (decision: 'allow' | 'allow_session' | 'deny') => void | Promise<unknown>;
+  onRespondUserInput: (response: AgentUserInputResponse) => void | Promise<unknown>;
   onUpdateSessionRuntime: (runtime: { providerId?: string }) => void;
   onUpdatePermissionMode: (mode: AgentPermissionMode) => void;
   onRemoveQueuedPrompt: (id: string) => void;
@@ -82,8 +86,6 @@ export function ChatComposer(props: {
   const language = useUiLanguage();
   const [slashPopoverOpen, setSlashPopoverOpen] = useState(false);
   const [runtimeMenuOpen, setRuntimeMenuOpen] = useState<RuntimeMenuKey>(null);
-  const [userInputDraft, setUserInputDraft] = useState('');
-  const [selectedUserInputOptionIds, setSelectedUserInputOptionIds] = useState<string[]>([]);
   const attachmentDrop = useComposerAttachmentDrop(props.onImportAttachments);
   const defaultProviderId = props.defaultProviderId || props.activeProviderId || '';
   const normalizedSessionProviderId =
@@ -139,24 +141,8 @@ export function ChatComposer(props: {
   );
   const contextTokenBudget = props.contextUsage.tokenBudget;
   const contextUsedTokens = props.contextUsage.usedTokens;
-
-  useEffect(() => {
-    setUserInputDraft('');
-    setSelectedUserInputOptionIds([]);
-  }, [props.pendingUserInput?.requestId]);
-
-  function toggleUserInputOption(optionId: string): void {
-    if (props.pendingUserInput?.multiSelect) {
-      setSelectedUserInputOptionIds((current) =>
-        current.includes(optionId)
-          ? current.filter((id) => id !== optionId)
-          : [...current, optionId]
-      );
-      return;
-    }
-
-    setSelectedUserInputOptionIds([optionId]);
-  }
+  // composer-7: a pending prompt must be answered before the stream can be stopped.
+  const hasPendingPrompt = Boolean(props.pendingPermission || props.pendingUserInput);
 
   function applySlashCommand(prompt: string): void {
     props.onDraftChange(prompt);
@@ -177,34 +163,6 @@ export function ChatComposer(props: {
   function selectPermission(permissionMode: AgentPermissionMode): void {
     props.onUpdatePermissionMode(permissionMode);
     setRuntimeMenuOpen(null);
-  }
-
-  function submitUserInput(cancelled = false): void {
-    if (!props.pendingUserInput) {
-      return;
-    }
-
-    if (cancelled) {
-      props.onRespondUserInput({
-        answer: '',
-        cancelled: true
-      });
-      return;
-    }
-
-    const selectedOptions = props.pendingUserInput.options?.filter((option) => selectedUserInputOptionIds.includes(option.id)) ?? [];
-    const selectedAnswer = selectedOptions.map((option) => option.label).join(', ');
-    const draftAnswer = userInputDraft.trim();
-    const answer = [selectedAnswer, draftAnswer].filter(Boolean).join(draftAnswer && selectedAnswer ? '\n' : '');
-    if (!answer) {
-      return;
-    }
-
-    props.onRespondUserInput({
-      answer,
-      optionId: selectedOptions[0]?.id,
-      optionIds: selectedOptions.length > 0 ? selectedOptions.map((option) => option.id) : undefined
-    });
   }
 
   function closeMenuFromComposerSurface(event: PointerEvent<HTMLDivElement>): void {
@@ -238,10 +196,13 @@ export function ChatComposer(props: {
         {props.queuedPrompts.length > 0 ? (
           <div className="agent-queue-stack">
             {props.queuedPrompts.map((item, index) => (
-              <div key={item.id} className="agent-queue-item">
+              <div key={item.id} className={`agent-queue-item ${item.isSynthetic ? 'is-synthetic' : ''}`}>
                 <div className="agent-queue-copy">
-                  <strong>{localize(language, `排队消息 ${index + 1}`, `Queued ${index + 1}`)}</strong>
-                  <span>{item.content}</span>
+                  <strong>
+                    {localize(language, `排队消息 ${index + 1}`, `Queued ${index + 1}`)}
+                    {item.isSynthetic ? localize(language, ' (自动)', ' (auto)') : ''}
+                  </strong>
+                  <span style={item.isSynthetic ? { fontStyle: 'italic' } : undefined}>{item.content}</span>
                 </div>
                 <IconButton
                   className="agent-queue-remove"
@@ -259,85 +220,21 @@ export function ChatComposer(props: {
             message={props.statusMessage || localize(language, 'AI 正在生成回复…', 'AI is generating a reply…')}
             taskSummary={props.runtimeTaskSummary}
             compactTaskSummary={awaitingUserInput}
+            cancelDisabled={hasPendingPrompt}
             onCancel={props.onCancelStream}
           />
         ) : null}
 
         {props.pendingPermission ? (
-          <div className={`agent-permission-card ${props.pendingPermission.risk}`}>
-            <div className="agent-permission-copy">
-              <strong>{props.pendingPermission.title}</strong>
-              {props.permissionContextLabel ? <em>{props.permissionContextLabel}</em> : null}
-              <span>{props.pendingPermission.detail}</span>
-              <PermissionImpactSummary impact={props.pendingPermission.impact} />
-            </div>
-            <div className="agent-permission-actions">
-              <Button size="sm" variant="danger" onClick={() => props.onRespondPermission('deny')}>
-                {localize(language, '拒绝', 'Deny')}
-              </Button>
-              <Button size="sm" variant="secondary" onClick={() => props.onRespondPermission('allow_session')}>
-                {localize(language, '允许本会话', 'Allow Session')}
-              </Button>
-              <Button size="sm" variant="primary" onClick={() => props.onRespondPermission('allow')}>
-                {localize(language, '允许本次', 'Allow Once')}
-              </Button>
-            </div>
-          </div>
+          <AgentPermissionCard
+            pending={props.pendingPermission}
+            contextLabel={props.permissionContextLabel}
+            onRespond={props.onRespondPermission}
+          />
         ) : null}
 
         {props.pendingUserInput ? (
-          <div className="agent-user-input-card">
-            <div className="agent-user-input-scroll">
-              <div className="agent-permission-copy">
-                <strong>{props.pendingUserInput.title}</strong>
-                <span>{props.pendingUserInput.question}</span>
-                {props.pendingUserInput.detail ? <em>{props.pendingUserInput.detail}</em> : null}
-              </div>
-              {props.pendingUserInput.options?.length ? (
-                <div className="agent-user-input-options">
-                  {props.pendingUserInput.options.map((option) => (
-                    <Button
-                      key={option.id}
-                      variant="secondary"
-                      size="sm"
-                      className={selectedUserInputOptionIds.includes(option.id) ? 'selected' : ''}
-                      onClick={() => toggleUserInputOption(option.id)}
-                    >
-                      <strong>{option.label}</strong>
-                      {option.description ? <span>{option.description}</span> : null}
-                    </Button>
-                  ))}
-                </div>
-              ) : null}
-              {props.pendingUserInput.allowFreeText !== false ? (
-                <TextAreaControl
-                  className="agent-user-input-textarea"
-                  value={userInputDraft}
-                  onValueChange={setUserInputDraft}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                      event.preventDefault();
-                      submitUserInput();
-                    }
-                  }}
-                  placeholder={props.pendingUserInput.placeholder || localize(language, '输入你的回答…', 'Enter your answer…')}
-                />
-              ) : null}
-            </div>
-            <div className="agent-permission-actions agent-user-input-actions">
-              <Button size="sm" variant="secondary" onClick={() => submitUserInput(true)}>
-                {localize(language, '取消', 'Cancel')}
-              </Button>
-              <Button
-                size="sm"
-                variant="primary"
-                onClick={() => submitUserInput()}
-                disabled={!userInputDraft.trim() && selectedUserInputOptionIds.length === 0}
-              >
-                {localize(language, '提交回答', 'Submit Answer')}
-              </Button>
-            </div>
-          </div>
+          <AgentUserInputCard pending={props.pendingUserInput} onRespond={props.onRespondUserInput} />
         ) : null}
 
         {props.error ? <div className="agent-composer-error">{props.error}</div> : null}
@@ -421,6 +318,7 @@ export function ChatComposer(props: {
                 variant="ghost"
                 size="sm"
                 trailingIcon={<ChevronDownIcon className="agent-chevron-icon" />}
+                title={props.isSending ? localize(language, '切换模式将在下一轮运行生效，不影响当前进行中的回复。', 'Switching mode applies to the next run; it does not affect the in-flight reply.') : undefined}
                 onClick={() => toggleRuntimeMenu('permission')}
               >
                 {activePermissionLabel}
@@ -428,8 +326,15 @@ export function ChatComposer(props: {
               {runtimeMenuOpen === 'permission' ? (
                 <div className="agent-runtime-menu permission-menu">
                   {permissionOptions.map((option) => (
-                    <Button key={option.value} variant="ghost" className={props.permissionMode === option.value ? 'selected' : ''} onClick={() => selectPermission(option.value)}>
+                    <Button
+                      key={option.value}
+                      variant="ghost"
+                      className={props.permissionMode === option.value ? 'selected' : ''}
+                      title={props.isSending ? localize(language, '下一轮运行生效', 'Applies to the next run') : undefined}
+                      onClick={() => selectPermission(option.value)}
+                    >
                       <strong>{option.label}</strong>
+                      {props.isSending ? <span>{localize(language, '下一轮运行生效', 'Applies to the next run')}</span> : null}
                     </Button>
                   ))}
                 </div>
@@ -483,7 +388,12 @@ export function ChatComposer(props: {
               </div>
             </div>
             <div className="agent-combo-control">
-              <Button className="agent-combo-trigger" variant="secondary" onClick={() => toggleRuntimeMenu('agent')}>
+              <Button
+                className="agent-combo-trigger"
+                variant="secondary"
+                title={props.isSending ? localize(language, '切换 Provider 将在下一轮运行生效，不影响当前进行中的回复。', 'Switching provider applies to the next run; it does not affect the in-flight reply.') : undefined}
+                onClick={() => toggleRuntimeMenu('agent')}
+              >
                 <strong>{providerDisplayLabel}</strong>
                 <em>Provider</em>
                 <ChevronDownIcon className="agent-combo-chevron" />
@@ -491,7 +401,9 @@ export function ChatComposer(props: {
               {runtimeMenuOpen === 'agent' ? (
                 <div className="agent-agent-menu">
                   <div className="agent-menu-section">
-                    <div className="agent-menu-section-title">Provider</div>
+                    <div className="agent-menu-section-title">
+                      Provider{props.isSending ? ` · ${localize(language, '下一轮运行生效', 'Applies to next run')}` : ''}
+                    </div>
                     <div className="agent-menu-option-list">
                       <Button variant="ghost" onClick={props.onOpenAppSettings}>
                         <strong>{localize(language, '管理 Provider', 'Manage providers')}</strong>
@@ -522,49 +434,6 @@ export function ChatComposer(props: {
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function PermissionImpactSummary(props: { impact?: AgentPermissionImpact }): JSX.Element | null {
-  const language = useUiLanguage();
-  const impact = props.impact;
-  if (!impact) {
-    return null;
-  }
-
-  const entries = [
-    impact.toolTitle || impact.toolName
-      ? localize(language, `工具：${impact.toolTitle || impact.toolName}`, `Tool: ${impact.toolTitle || impact.toolName}`)
-      : '',
-    impact.paths?.length
-      ? localize(language, `路径：${impact.paths.join(' · ')}`, `Paths: ${impact.paths.join(' · ')}`)
-      : '',
-    impact.commands?.length
-      ? localize(language, `命令：${impact.commands.join(' · ')}`, `Commands: ${impact.commands.join(' · ')}`)
-      : '',
-    impact.mcp?.pluginName || impact.mcp?.pluginId || impact.mcp?.toolName
-      ? localize(language, `MCP：${[impact.mcp.pluginName ?? impact.mcp.pluginId, impact.mcp.toolName].filter(Boolean).join(' / ')}`, `MCP: ${[impact.mcp.pluginName ?? impact.mcp.pluginId, impact.mcp.toolName].filter(Boolean).join(' / ')}`)
-      : '',
-    impact.mcp?.permission || impact.mcp?.risk || impact.mcp?.policySource
-      ? localize(language, `MCP 策略：${[impact.mcp.permission, impact.mcp.risk, impact.mcp.policySource].filter(Boolean).join(' / ')}`, `MCP policy: ${[impact.mcp.permission, impact.mcp.risk, impact.mcp.policySource].filter(Boolean).join(' / ')}`)
-      : '',
-    impact.cwd ? localize(language, `目录：${impact.cwd}`, `Directory: ${impact.cwd}`) : '',
-    impact.reason ? localize(language, `原因：${impact.reason}`, `Reason: ${impact.reason}`) : '',
-    impact.checkpointPolicy
-      ? localize(language, `恢复策略：${impact.checkpointPolicy}`, `Recovery: ${impact.checkpointPolicy}`)
-      : ''
-  ].filter(Boolean);
-
-  const detailEntries = impact.inputSummary?.filter(Boolean).slice(0, 4) ?? [];
-  if (entries.length === 0 && detailEntries.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="agent-permission-impact">
-      {entries.map((entry, index) => <span key={`impact-${index}`}>{entry}</span>)}
-      {detailEntries.map((entry, index) => <span key={`detail-${index}`}>{entry}</span>)}
     </div>
   );
 }

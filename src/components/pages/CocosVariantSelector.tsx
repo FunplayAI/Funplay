@@ -1,7 +1,8 @@
 import type { JSX } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/index';
 import { localize, type UiLanguage } from '../../i18n';
-import type { CocosEngineVariant } from '../../../shared/types';
+import type { CocosEngineVariant, CocosVariantPrerequisite } from '../../../shared/types';
 
 // Engine-variant picker for the cocos create/import onboarding: Cocos Creator 3.x
 // (GUI editor + funplay-cocos-mcp) vs the headless cocos4 + cocos-cli toolchain.
@@ -9,9 +10,23 @@ import type { CocosEngineVariant } from '../../../shared/types';
 export function CocosVariantSelector(props: {
   value: CocosEngineVariant;
   onChange: (value: CocosEngineVariant) => void;
+  // Lightweight precheck of the *selected* variant's prerequisite (non-blocking);
+  // null while the check is still loading or hasn't run.
+  prerequisite: CocosVariantPrerequisite | null;
   language: UiLanguage;
 }): JSX.Element {
   const t = (zh: string, en: string): string => localize(props.language, zh, en);
+  const renderWarning = (variant: CocosEngineVariant): JSX.Element | null => {
+    if (props.value !== variant || !props.prerequisite || props.prerequisite.variant !== variant || props.prerequisite.satisfied) {
+      return null;
+    }
+    return (
+      <span className="onboarding-variant-warning" role="status">
+        <AlertTriangle size={13} aria-hidden="true" />
+        {props.prerequisite.warning}
+      </span>
+    );
+  };
   return (
     <section className="onboarding-choice-section compact" aria-labelledby="cocos-variant-title">
       <div className="onboarding-section-heading compact">
@@ -35,6 +50,13 @@ export function CocosVariantSelector(props: {
                 'GUI editor + the Funplay MCP extension (start the MCP Server manually inside Creator).'
               )}
             </span>
+            <span className="option-card-meta">
+              {t(
+                '前置条件：需已安装 Cocos Creator（GUI 编辑器）。',
+                'Prerequisite: Cocos Creator (GUI editor) must already be installed.'
+              )}
+            </span>
+            {renderWarning('creator3')}
           </span>
         </Button>
         <Button
@@ -51,6 +73,13 @@ export function CocosVariantSelector(props: {
                 'Official cocos4 + cocos-cli, no editor GUI; Funplay downloads the ~3.5G engine.'
               )}
             </span>
+            <span className="option-card-meta">
+              {t(
+                '前置条件：独立命令行，无需编辑器；首次需下载约 3.5G，并要求 Node.js 22+、git。',
+                'Prerequisite: standalone CLI, no editor; first run downloads ~3.5G and needs Node.js 22+ and git.'
+              )}
+            </span>
+            {renderWarning('cocos4')}
           </span>
         </Button>
       </div>

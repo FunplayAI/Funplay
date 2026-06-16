@@ -74,6 +74,24 @@ function presetForAdapter(adapter: AssetGenerationConfigurableProviderAdapterKin
   return assetProviderPresets.find((preset) => preset.adapter === adapter) ?? assetProviderPresets[0];
 }
 
+/**
+ * Renderer-side mirror of the main process `configuredProviderReady` adapter rules
+ * (electron/main/asset-generation-service.ts). ComfyUI needs Base URL + workflow,
+ * Replicate needs key + model, others need an API key. The renderer only knows
+ * whether a key is stored (`hasStoredApiKey`), not its value, which is sufficient.
+ */
+function assetProviderReadiness(provider: AssetGenerationProviderConfig): { ready: boolean; missing: { zh: string; en: string } } {
+  if (provider.adapter === 'comfyui') {
+    const ready = Boolean(provider.baseUrl?.trim() && (provider.workflowJson?.trim() || provider.workflowPath?.trim()));
+    return { ready, missing: { zh: '缺少 Base URL 或工作流', en: 'Missing Base URL or workflow' } };
+  }
+  if (provider.adapter === 'replicate') {
+    const ready = Boolean(provider.hasStoredApiKey && provider.model?.trim());
+    return { ready, missing: { zh: '缺少密钥或模型', en: 'Missing key or model' } };
+  }
+  return { ready: Boolean(provider.hasStoredApiKey), missing: { zh: '缺少密钥', en: 'Missing key' } };
+}
+
 function createAssetProviderDraft(provider: AssetGenerationProviderConfig | null): AssetProviderDraft {
   if (provider) {
     return {
@@ -117,20 +135,23 @@ export function AssetProviderSettingsPage(props: {
   const [detailProviderId, setDetailProviderId] = useState('');
   const detailProvider = props.providers.find((provider) => provider.id === detailProviderId) ?? null;
   const enabledCount = props.providers.filter((provider) => provider.enabled).length;
-  const providerItems: ConfigListItem[] = props.providers.map((provider) => ({
-    id: provider.id,
-    title: provider.name,
-    subtitle: `${formatAssetProviderAdapter(provider.adapter, language)} · ${provider.model || provider.workflowPath || t('未配置模型', 'No model')}`,
-    description: provider.baseUrl,
-    statusLabel: provider.enabled ? t('启用', 'Enabled') : t('停用', 'Disabled'),
-    statusTone: provider.enabled ? 'success' : 'neutral',
-    enabled: provider.enabled,
-    meta: [
-      provider.adapter === 'comfyui' ? t('本地/自托管', 'Local / self-hosted') : t('云端服务', 'Cloud service'),
-      provider.adapter === 'comfyui' || provider.hasStoredApiKey ? t('可用', 'Ready') : t('缺少密钥', 'Missing key')
-    ],
-    searchText: [provider.adapter, provider.model, provider.workflowPath, provider.baseUrl, provider.notes].filter(Boolean).join(' ')
-  }));
+  const providerItems: ConfigListItem[] = props.providers.map((provider) => {
+    const readiness = assetProviderReadiness(provider);
+    return {
+      id: provider.id,
+      title: provider.name,
+      subtitle: `${formatAssetProviderAdapter(provider.adapter, language)} · ${provider.model || provider.workflowPath || t('未配置模型', 'No model')}`,
+      description: provider.baseUrl,
+      statusLabel: provider.enabled ? t('启用', 'Enabled') : t('停用', 'Disabled'),
+      statusTone: provider.enabled ? 'success' : 'neutral',
+      enabled: provider.enabled,
+      meta: [
+        provider.adapter === 'comfyui' ? t('本地/自托管', 'Local / self-hosted') : t('云端服务', 'Cloud service'),
+        readiness.ready ? t('可用', 'Ready') : t(`未就绪 · ${readiness.missing.zh}`, `Incomplete · ${readiness.missing.en}`)
+      ],
+      searchText: [provider.adapter, provider.model, provider.workflowPath, provider.baseUrl, provider.notes].filter(Boolean).join(' ')
+    };
+  });
 
   useEffect(() => {
     if (detailProviderId && !props.providers.some((provider) => provider.id === detailProviderId)) {
@@ -218,6 +239,21 @@ export function AssetProviderEditor(props: {
     [language]
   );
 
+  function friendlyAssetProviderError(message: string): string {
+    const lower = message.toLowerCase();
+    if (lower.includes('baseurl') || lower.includes('base url')) {
+      return t('Base URL 需是有效网址，例如 https://api.example.com（本地 ComfyUI 可用 http://127.0.0.1:8188）。', 'Base URL must be a valid URL, e.g. https://api.example.com (local ComfyUI can use http://127.0.0.1:8188).');
+    }
+    if (lower.includes('configuration is incomplete') || message.includes('配置不完整')) {
+      // Backend readiness errors are already bilingual and actionable; pass through.
+      return message;
+    }
+    if (lower.includes('api key') || message.includes('API Key')) {
+      return t('请填写有效的 API Key。', 'Please provide a valid API Key.');
+    }
+    return message;
+  }
+
   async function save(): Promise<void> {
     setSaving(true);
     setError('');
@@ -228,7 +264,7 @@ export function AssetProviderEditor(props: {
         await props.onCreate(draft);
       }
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : t('保存失败。', 'Save failed.'));
+      setError(saveError instanceof Error ? friendlyAssetProviderError(saveError.message) : t('保存失败。', 'Save failed.'));
     } finally {
       setSaving(false);
     }
@@ -356,6 +392,7 @@ function AssetProviderDetail(props: {
 }): JSX.Element {
   const t = (zh: string, en: string): string => localize(props.language, zh, en);
   const preset = presetForAdapter(props.provider.adapter);
+  const readiness = assetProviderReadiness(props.provider);
   const primaryActions: ConfigDetailAction[] = [
     { id: 'edit', label: t('编辑', 'Edit'), icon: <Settings2 size={14} aria-hidden="true" />, onAction: props.onEdit }
   ];
@@ -398,6 +435,9 @@ function AssetProviderDetail(props: {
         <Badge>{formatAssetProviderAdapter(props.provider.adapter, props.language)}</Badge>
         <Badge tone={props.provider.enabled ? 'success' : 'neutral'}>{props.provider.enabled ? t('启用', 'Enabled') : t('停用', 'Disabled')}</Badge>
         {props.provider.adapter === 'comfyui' ? <Badge>{t('本地/自托管', 'Local / self-hosted')}</Badge> : <Badge>{t('云端服务', 'Cloud service')}</Badge>}
+        {readiness.ready
+          ? <Badge tone="success">{t('就绪', 'Ready')}</Badge>
+          : <Badge tone="warning">{t(`未就绪 · ${readiness.missing.zh}`, `Incomplete · ${readiness.missing.en}`)}</Badge>}
       </div>
 
       <div className="provider-card-actions">

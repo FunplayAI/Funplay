@@ -3,7 +3,7 @@ import { RefreshCw } from 'lucide-react';
 import { AI_PROVIDER_PRESETS, resolveProviderAvailableModels, resolveProviderTokenLimits } from '../../../shared/provider-catalog';
 import type { AiProvider, AiProviderApiMode, AiProviderAuthStyle, AiProviderInput, AiProviderModelListRequest, AiProviderModelListResult, AiProviderProtocol } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
-import { Button, CheckboxField, SelectField, TextAreaField, TextField } from '../ui/index';
+import { Badge, Button, CheckboxField, SelectField, TextAreaField, TextField } from '../ui/index';
 import {
   authStyleForProtocol,
   createProviderDraft,
@@ -74,7 +74,12 @@ export function ProviderEditor(props: {
     return [...values];
   }, [resolvedModelChoices]);
   const canFetchModelList = Boolean(draft.baseUrl.trim() && (draft.apiKey.trim() || props.provider?.hasStoredApiKey));
-  const canSave = Boolean(draft.name.trim() && draft.baseUrl.trim() && draft.model.trim());
+  const baseUrlValue = draft.baseUrl.trim();
+  const baseUrlMalformed = Boolean(baseUrlValue) && !/^https?:\/\//i.test(baseUrlValue);
+  const effectiveAuthStyle = draft.authStyle ?? 'api_key';
+  const apiKeyRequired = effectiveAuthStyle === 'api_key';
+  const apiKeyMissing = apiKeyRequired && !draft.apiKey.trim() && !props.provider?.hasStoredApiKey;
+  const canSave = Boolean(draft.name.trim() && draft.baseUrl.trim() && draft.model.trim()) && !baseUrlMalformed && !apiKeyMissing;
 
   const applyProviderPreset = (presetId: string): void => {
     const next = AI_PROVIDER_PRESETS.find((item) => item.id === presetId);
@@ -150,15 +155,34 @@ export function ProviderEditor(props: {
           <span>{apiKeyHint}</span>
         </div>
         <TextField label={localize(language, '名称', 'Name')} value={draft.name} onValueChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
-        <TextField label={localize(language, '基础 URL', 'Base URL')} value={draft.baseUrl} onValueChange={(value) => setDraft((current) => ({ ...current, baseUrl: value }))} />
         <TextField
-          label={localize(language, 'API Key', 'API Key')}
+          label={localize(language, '基础 URL', 'Base URL')}
+          value={draft.baseUrl}
+          onValueChange={(value) => setDraft((current) => ({ ...current, baseUrl: value }))}
+          helper={baseUrlMalformed
+            ? localize(language, 'Base URL 需以 http:// 或 https:// 开头。例如 https://api.openai.com/v1，按服务商要求包含 /v1 等路径。', 'Base URL must start with http:// or https://. For example https://api.openai.com/v1; include paths such as /v1 as the provider requires.')
+            : localize(language, '例如 https://api.openai.com/v1，按服务商要求包含 /v1 等路径。', 'For example https://api.openai.com/v1; include paths such as /v1 as the provider requires.')}
+        />
+        <TextField
+          label={(
+            <span className="provider-field-label-row">
+              {localize(language, 'API Key', 'API Key')}
+              {apiKeyRequired ? <span className="provider-field-required" aria-hidden="true"> *</span> : null}
+              <Badge tone={props.provider?.hasStoredApiKey ? 'success' : 'neutral'}>
+                {props.provider?.hasStoredApiKey ? localize(language, '已保存', 'Saved') : localize(language, '未保存', 'Unsaved')}
+              </Badge>
+            </span>
+          )}
           value={draft.apiKey}
           placeholder={apiKeyHint}
           onValueChange={(value) => setDraft((current) => ({ ...current, apiKey: value }))}
-          helper={props.provider?.hasStoredApiKey
-            ? localize(language, '留空将保留当前已保存的 API Key。', 'Leave blank to keep the currently saved API key.')
-            : localize(language, '当前尚未保存 API Key。', 'No API key is currently saved.')}
+          helper={effectiveAuthStyle === 'env_only'
+            ? localize(language, '当前认证方式为 env_only，API Key 从环境变量读取，无需在此填写。', 'Auth style is env_only; the API key is read from environment variables and is not required here.')
+            : apiKeyMissing
+              ? localize(language, '该认证方式需要填写 API Key 才能保存。', 'This auth style requires an API Key before you can save.')
+              : props.provider?.hasStoredApiKey
+                ? localize(language, '留空将保留当前已保存的 API Key。', 'Leave blank to keep the currently saved API key.')
+                : localize(language, '当前尚未保存 API Key。', 'No API key is currently saved.')}
         />
         <div className="provider-model-fetch-row">
           <TextField
@@ -347,7 +371,13 @@ export function ProviderEditor(props: {
           variant="primary"
           loading={saving}
           disabled={!canSave || saving}
-          title={canSave ? undefined : localize(language, '请先填写名称、Base URL 和默认模型', 'Fill in Name, Base URL, and Default Model first')}
+          title={canSave
+            ? undefined
+            : baseUrlMalformed
+              ? localize(language, 'Base URL 需以 http:// 或 https:// 开头', 'Base URL must start with http:// or https://')
+              : apiKeyMissing
+                ? localize(language, '请先填写 API Key', 'Fill in the API Key first')
+                : localize(language, '请先填写名称、Base URL 和默认模型', 'Fill in Name, Base URL, and Default Model first')}
           onClick={async () => {
             if (!canSave || saving) return;
             setSaveError('');

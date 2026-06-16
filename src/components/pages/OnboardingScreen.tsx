@@ -6,7 +6,6 @@ import {
   FilePlus2,
   FolderInput,
   FolderOpen,
-  Globe2,
   Search
 } from 'lucide-react';
 import type {
@@ -21,6 +20,15 @@ import type {
 } from '../../../shared/types';
 import { StandaloneAppShell } from '../layout/AppShell';
 import { CocosVariantSelector } from './CocosVariantSelector';
+import {
+  buildOnboardingHeadings,
+  CompatibleEditorsNote,
+  ImportDetectedDimensionNote,
+  PlatformCardIcon,
+  StepIndicator,
+  Step3ErrorBanner,
+  useCocosVariantPrerequisite
+} from './onboarding/OnboardingPieces';
 import { localize, useUiLanguage } from '../../i18n';
 import {
   formatDiagnosticStatus,
@@ -33,35 +41,6 @@ import {
 } from '../../lib/app-helpers';
 import type { LanguagePreference } from '../../lib/app-types';
 import { Button, SelectField, TextField } from '../ui/index';
-
-const platformLogoUrls: Partial<Record<PlatformChoice, string>> = {
-  unity: './engine-logos/unity.svg',
-  cocos: './engine-logos/cocos.svg',
-  godot: './engine-logos/godotengine.svg',
-  unreal: './engine-logos/unrealengine.svg'
-};
-
-function PlatformCardIcon(props: { id: PlatformChoice }): JSX.Element {
-  const logoUrl = platformLogoUrls[props.id];
-
-  return (
-    <span className={`option-card-icon platform-logo-icon platform-logo-${props.id} ${logoUrl ? 'has-brand-logo' : ''}`} aria-hidden="true">
-      {logoUrl ? <img className="platform-logo-image" src={logoUrl} alt="" draggable={false} /> : <Globe2 size={18} />}
-    </span>
-  );
-}
-
-export function StepIndicator(props: { step: 1 | 2 | 3 }): JSX.Element {
-  return (
-    <div className="step-indicator">
-      <div className={`step-dot ${props.step === 1 ? 'active' : 'complete'}`}>{props.step > 1 ? '✓' : '1'}</div>
-      <div className="step-line" />
-      <div className={`step-dot ${props.step === 2 ? 'active' : props.step > 2 ? 'complete' : ''}`}>{props.step > 2 ? '✓' : '2'}</div>
-      <div className="step-line" />
-      <div className={`step-dot ${props.step === 3 ? 'active complete' : ''}`}>3</div>
-    </div>
-  );
-}
 
 export function OnboardingScreen(props: {
   step: 1 | 2 | 3;
@@ -95,6 +74,14 @@ export function OnboardingScreen(props: {
   onSkip: () => void;
   onNext: () => void;
   onEnter: () => void;
+  // Step-3 project-creation failure recovery (optional — falls back to a no-banner
+  // completion screen + onEnter retry when the host has not wired these yet).
+  createError?: string;
+  onRetryEnter?: () => void;
+  onBackToEnvironment?: () => void;
+  // Step-2 note: the dimension an import auto-detected, when it differs from the
+  // user's Step-1 choice (optional).
+  detectedDimension?: EngineProjectDimension | null;
 }): JSX.Element {
   const language = useUiLanguage();
   const t = (zh: string, en: string): string => localize(language, zh, en);
@@ -105,21 +92,11 @@ export function OnboardingScreen(props: {
     steps.length === 0 ? 0 : firstIncompleteIndex === -1 ? Math.max(steps.length - 1, 0) : firstIncompleteIndex;
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [hiddenActionIds, setHiddenActionIds] = useState<Set<string>>(() => new Set());
+  // Non-blocking precheck of the selected Cocos variant's prerequisite, used to
+  // warn on the Step-1 variant card before the heavy Step-2 diagnostics run.
+  const cocosPrerequisite = useCocosVariantPrerequisite(props.platform, props.cocosVariant);
   const isGenericProject = props.platform === 'web';
-  const projectSetupHeading = props.mode === 'create'
-    ? isGenericProject
-      ? t('新建通用项目', 'Create Generic Project')
-      : t('新建引擎项目', 'Create Engine Project')
-    : isGenericProject
-      ? t('导入通用项目', 'Import Generic Project')
-      : t('导入已有引擎项目', 'Import Engine Project');
-  const projectSourceLabel = props.mode === 'create'
-    ? isGenericProject
-      ? t('新建通用项目', 'Create Generic Project')
-      : t('新建引擎项目', 'Create Engine Project')
-    : isGenericProject
-      ? t('导入通用项目', 'Import Generic Project')
-      : t('导入已有项目', 'Import Existing Project');
+  const { heading: projectSetupHeading, sourceLabel: projectSourceLabel } = buildOnboardingHeadings(props.mode, isGenericProject, language);
 
   useEffect(() => {
     if (steps.length === 0) {
@@ -209,6 +186,7 @@ export function OnboardingScreen(props: {
                           <span>{t('第 2 步 / 共 3 步', 'Step 2 of 3')}</span>
                         </div>
                         {props.actionMessage ? <div className="helper-copy onboarding-action-message environment-inline-message">{props.actionMessage}</div> : null}
+                        {props.mode === 'import' ? <ImportDetectedDimensionNote detected={props.detectedDimension} language={language} /> : null}
                         <div className="wizard-stepper-track environment-stepper-track">
                           {steps.length === 0 ? <div className="empty-note">{t('正在准备环境体检结果…', 'Preparing environment check results…')}</div> : null}
                           {steps.map((step, index) => {
@@ -291,15 +269,23 @@ export function OnboardingScreen(props: {
                                   }
                                   return !hiddenActionIds.has(action.id) && !props.tasks.some((task) => task.actionId === 'create_unity_project');
                                 }).map((action) => {
-                                  const disabled = busyActionIds.has(action.id);
+                                  // Link-style remedies (e.g. "open the Node.js install guide")
+                                  // open the URL in the external browser; they have no in-app task
+                                  // and are never busy.
+                                  const isExternal = Boolean(action.externalUrl);
+                                  const disabled = !isExternal && busyActionIds.has(action.id);
                                   return (
                                     <Button
-                                      key={action.id}
+                                      key={action.externalUrl ?? action.id}
                                       className="small-action"
                                       size="sm"
                                       variant={action.primary ? 'primary' : 'secondary'}
                                       loading={disabled}
                                       onClick={() => {
+                                        if (isExternal) {
+                                          void window.funplay.openExternal(action.externalUrl!);
+                                          return;
+                                        }
                                         if (action.id === 'create_unity_project') {
                                           setHiddenActionIds((current) => new Set(current).add(action.id));
                                         }
@@ -361,7 +347,7 @@ export function OnboardingScreen(props: {
                 <div className="onboarding-body onboarding-body-wizard">
                   <div className="onboarding-wizard-card">
                     <aside className="onboarding-wizard-rail" aria-label={t('配置步骤', 'Setup steps')}>
-                      <StepIndicator step={1} />
+                      <StepIndicator step={1} skipEnvironment={isGenericProject} language={language} />
                       <div className="onboarding-rail-copy">
                         <div className="section-heading">{t('项目配置向导', 'Project Setup')}</div>
                         <h2>{t('选择项目入口', 'Choose how to start')}</h2>
@@ -464,6 +450,9 @@ export function OnboardingScreen(props: {
                               </span>
                             </Button>
                           </div>
+                          {props.platform === 'unity' ? (
+                            <CompatibleEditorsNote editors={props.unityEditors} dimension={props.dimension} language={language} />
+                          ) : null}
                         </section>
                       ) : null}
 
@@ -471,6 +460,7 @@ export function OnboardingScreen(props: {
                         <CocosVariantSelector
                           value={props.cocosVariant}
                           onChange={props.onCocosVariantChange}
+                          prerequisite={cocosPrerequisite}
                           language={language}
                         />
                       ) : null}
@@ -552,10 +542,22 @@ export function OnboardingScreen(props: {
             <div className="onboarding-main-panel">
               <div className="onboarding-main-scroll">
                 <div className="onboarding-body center">
-                  <StepIndicator step={3} />
-                  <div className="celebration">✓</div>
-                  <h2>{t('配置完成!', 'Setup Complete!')}</h2>
-                  <p>{isGenericProject ? t('工作区已准备好，现在可以进入使用。', 'The workspace is ready. You can enter and start working.') : t('引擎已绑定，现在可以进入工作台开始使用了。', 'The engine is now connected. You can enter the workspace and start building.')}</p>
+                  <StepIndicator step={3} skipEnvironment={isGenericProject} language={language} />
+                  {props.createError ? (
+                    <Step3ErrorBanner
+                      message={props.createError}
+                      busy={props.isCreatingProject}
+                      onRetry={props.onRetryEnter ?? props.onEnter}
+                      onBack={props.onBackToEnvironment ?? props.onBackToSetup}
+                      language={language}
+                    />
+                  ) : (
+                    <>
+                      <div className="celebration">✓</div>
+                      <h2>{t('配置完成!', 'Setup Complete!')}</h2>
+                      <p>{isGenericProject ? t('工作区已准备好，现在可以进入使用。', 'The workspace is ready. You can enter and start working.') : t('引擎已绑定，现在可以进入工作台开始使用了。', 'The engine is now connected. You can enter the workspace and start building.')}</p>
+                    </>
+                  )}
                   <div className="summary-card">
                     <div><span>{t('目标平台', 'Target Platform')}</span><strong>{formatPlatformLabel(props.platform)}</strong></div>
                     <div><span>{t('项目来源', 'Project Source')}</span><strong>{projectSourceLabel}</strong></div>
@@ -575,8 +577,14 @@ export function OnboardingScreen(props: {
                 <Button variant="ghost" leadingIcon={<ArrowLeft size={14} aria-hidden="true" />} onClick={props.onBackToSetup}>
                   {t('返回调整', 'Adjust Settings')}
                 </Button>
-                <Button variant="primary" trailingIcon={<ArrowRight size={14} aria-hidden="true" />} onClick={props.onEnter}>
-                  {t('进入工作台', 'Enter Workspace')}
+                <Button
+                  variant="primary"
+                  trailingIcon={<ArrowRight size={14} aria-hidden="true" />}
+                  loading={props.isCreatingProject}
+                  disabled={props.isCreatingProject}
+                  onClick={props.onEnter}
+                >
+                  {props.isCreatingProject ? t('创建中…', 'Creating…') : t('进入工作台', 'Enter Workspace')}
                 </Button>
               </div>
             </div>

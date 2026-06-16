@@ -46,6 +46,8 @@ const api: FunPlayApi = {
   listEnvironmentTasks: () => ipcRenderer.invoke('onboarding:listEnvironmentTasks'),
   listInstalledUnityEditors: (dimension?: '2d' | '3d' | 'unknown') =>
     ipcRenderer.invoke('onboarding:listInstalledUnityEditors', dimension),
+  checkCocosVariantPrerequisite: (variant: CocosEngineVariant) =>
+    ipcRenderer.invoke('onboarding:checkCocosVariantPrerequisite', variant),
   pickProjectFolder: (input: { mode: ProjectSetupMode; defaultPath?: string }) =>
     ipcRenderer.invoke('dialog:pickProjectFolder', input),
   createProject: (input: CreateProjectInput) => ipcRenderer.invoke('projects:create', input),
@@ -235,6 +237,7 @@ const api: FunPlayApi = {
   updateProvider: (providerId: string, input: AiProviderInput) =>
     ipcRenderer.invoke('providers:update', providerId, input),
   deleteProvider: (providerId: string) => ipcRenderer.invoke('providers:delete', providerId),
+  countProviderUsage: (providerId: string) => ipcRenderer.invoke('providers:usage', providerId),
   setDefaultProvider: (providerId: string) => ipcRenderer.invoke('providers:setDefault', providerId),
   listProviderModels: (input) => ipcRenderer.invoke('providers:listModels', input),
   testProvider: (providerId: string) => ipcRenderer.invoke('providers:test', providerId),

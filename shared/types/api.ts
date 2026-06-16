@@ -51,6 +51,7 @@ import type {
   ProjectSetupMode,
   EngineProjectDimension,
   CocosEngineVariant,
+  CocosVariantPrerequisite,
   EnvironmentDiagnostics,
   EnvironmentActionKind,
   EnvironmentActionResult,
@@ -125,6 +126,9 @@ export interface FunPlayApi {
   }) => Promise<EnvironmentActionResult>;
   listEnvironmentTasks: () => Promise<EnvironmentTask[]>;
   listInstalledUnityEditors: (dimension?: EngineProjectDimension) => Promise<InstalledUnityEditorOption[]>;
+  // Lightweight, non-blocking precheck of a Cocos engine-variant's prerequisites,
+  // used to warn on the Step-1 variant card before the heavy diagnostics run.
+  checkCocosVariantPrerequisite: (variant: CocosEngineVariant) => Promise<CocosVariantPrerequisite>;
   pickProjectFolder: (input: { mode: ProjectSetupMode; defaultPath?: string }) => Promise<FolderPickerResult>;
   createProject: (input: CreateProjectInput) => Promise<Project>;
   deleteProject: (projectId: string, deleteSourceFiles?: boolean) => Promise<DeleteProjectResult>;
@@ -270,6 +274,7 @@ export interface FunPlayApi {
   createProvider: (input: AiProviderInput) => Promise<AiProvider>;
   updateProvider: (providerId: string, input: AiProviderInput) => Promise<AiProvider>;
   deleteProvider: (providerId: string) => Promise<{ success: true }>;
+  countProviderUsage: (providerId: string) => Promise<{ projects: string[] }>;
   setDefaultProvider: (providerId: string) => Promise<AiSettings>;
   listProviderModels: (input: AiProviderModelListRequest) => Promise<AiProviderModelListResult>;
   testProvider: (providerId: string) => Promise<AiTestResult>;

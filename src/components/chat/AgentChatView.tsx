@@ -57,8 +57,8 @@ export function AgentChatView(props: {
   onRemoveAttachment: (attachmentId: string) => void;
   onSubmit: (content?: string) => void;
   onCancelStream: () => void;
-  onRespondPermission: (decision: 'allow' | 'allow_session' | 'deny') => void;
-  onRespondUserInput: (response: AgentUserInputResponse) => void;
+  onRespondPermission: (decision: 'allow' | 'allow_session' | 'deny') => void | Promise<unknown>;
+  onRespondUserInput: (response: AgentUserInputResponse) => void | Promise<unknown>;
   onUpdateSessionRuntime: (runtime: {
     runtimeId?: ProjectSessionRuntimeId;
     providerId?: string;
@@ -253,8 +253,16 @@ export function AgentChatView(props: {
       return;
     }
 
+    // composer-2: attachment-only send used to silently inject synthetic text the user never
+    // saw. Instead, prefill the draft with the editable fallback so the user reviews/edits it
+    // and presses send again — never submitting or queuing text they didn't see.
+    if (!prompt) {
+      handleComposerChange(t('请查看附件并继续处理。', 'Please review the attachments and continue.'));
+      return;
+    }
+
     if (props.isSending) {
-      handleQueuePrompt(prompt || t('请查看附件并继续处理。', 'Please review the attachments and continue.'));
+      handleQueuePrompt(prompt);
       handleComposerChange('');
       return;
     }

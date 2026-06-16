@@ -204,6 +204,19 @@ export const folderPickerInputSchema = z
   })
   .strict();
 
+export function isValidHttpUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export const aiProviderInputSchema = z
   .object({
     name: trimmedString(1, 120),
@@ -225,7 +238,14 @@ export const aiProviderInputSchema = z
     enabled: z.boolean().optional(),
     notes: optionalTrimmedString(1000)
   })
-  .strict() satisfies z.ZodType<AiProviderInput>;
+  .strict()
+  .refine(
+    (input) => !input.baseUrl.trim() || isValidHttpUrl(input.baseUrl),
+    {
+      path: ['baseUrl'],
+      message: 'Base URL 需是有效的 http(s) 网址，例如 https://api.openai.com/v1。/ Base URL must be a valid http(s) URL, e.g. https://api.openai.com/v1.'
+    }
+  ) satisfies z.ZodType<AiProviderInput>;
 
 export const aiProviderModelListRequestSchema = z
   .object({
@@ -374,7 +394,14 @@ export const assetGenerationProviderInputSchema = z
     voiceId: optionalTrimmedString(240),
     notes: optionalTrimmedString(1000)
   })
-  .strict() satisfies z.ZodType<AssetGenerationProviderInput>;
+  .strict()
+  .refine(
+    (input) => !input.baseUrl?.trim() || isValidHttpUrl(input.baseUrl),
+    {
+      path: ['baseUrl'],
+      message: 'Base URL 需是有效网址，例如 https://api.example.com。/ Base URL must be a valid URL, e.g. https://api.example.com.'
+    }
+  ) satisfies z.ZodType<AssetGenerationProviderInput>;
 export const assetGenerationRequestSchema = z
   .object({
     title: trimmedString(1, 160),

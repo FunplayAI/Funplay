@@ -10,6 +10,7 @@ import { Badge, Button, ConfigDetailActionBar, ConfigListPanel, TextAreaField, T
 export function ProviderSettingsPage(props: {
   providers: AiProvider[];
   providerTests: Record<string, AiTestResult>;
+  testingProviderIds?: Set<string>;
   selectedProjectId?: string;
   onAddProvider: () => void;
   onEditProvider: (provider: AiProvider) => void;
@@ -22,6 +23,19 @@ export function ProviderSettingsPage(props: {
   const language = useUiLanguage();
   const t = (zh: string, en: string): string => localize(language, zh, en);
   const defaultProvider = props.providers.find((provider) => provider.isDefault) ?? null;
+
+  function handleToggleProvider(provider: AiProvider, enabled: boolean): void {
+    if (!enabled && provider.isDefault) {
+      const enabledOthers = props.providers.filter((item) => item.id !== provider.id && item.enabled);
+      const message = enabledOthers.length > 0
+        ? t('这是默认 Provider，停用后系统会改用其他启用的 Provider 作为默认。确定停用?', 'This is the default provider. Disabling it will reassign the default to another enabled provider. Disable anyway?')
+        : t('这是默认 Provider，且没有其他启用的 Provider。停用后将没有可用的默认 Provider。确定停用?', 'This is the default provider and no other provider is enabled. Disabling it leaves no usable default. Disable anyway?');
+      if (!window.confirm(message)) {
+        return;
+      }
+    }
+    props.onToggleProvider(provider, enabled);
+  }
   const [doctorProvider, setDoctorProvider] = useState<AiProvider | null>(null);
   const [doctorResult, setDoctorResult] = useState<RuntimeDoctorResult | null>(null);
   const [doctorLoading, setDoctorLoading] = useState(false);
@@ -140,6 +154,7 @@ export function ProviderSettingsPage(props: {
           <ProviderDetail
             provider={detailProvider}
             providerTest={props.providerTests[detailProvider.id]}
+            isTesting={props.testingProviderIds?.has(detailProvider.id) ?? false}
             language={language}
             onBack={closeProviderDetail}
             onEdit={() => props.onEditProvider(detailProvider)}
@@ -165,7 +180,7 @@ export function ProviderSettingsPage(props: {
               <ToggleSwitch
                 label={provider.enabled ? t('停用 Provider', 'Disable provider') : t('启用 Provider', 'Enable provider')}
                 checked={provider.enabled}
-                onCheckedChange={(enabled) => props.onToggleProvider(provider, enabled)}
+                onCheckedChange={(enabled) => handleToggleProvider(provider, enabled)}
               />
             ) : null;
           }}
@@ -225,6 +240,7 @@ export function buildProviderToggleInput(provider: AiProvider, enabled: boolean)
 function ProviderDetail(props: {
   provider: AiProvider;
   providerTest?: AiTestResult;
+  isTesting: boolean;
   language: UiLanguage;
   onBack: () => void;
   onEdit: () => void;
@@ -237,9 +253,36 @@ function ProviderDetail(props: {
   const tokenLimits = resolveProviderTokenLimits(props.provider);
   const primaryActions: ConfigDetailAction[] = [
     { id: 'edit', label: t('编辑', 'Edit'), icon: <Settings2 size={14} aria-hidden="true" />, onAction: props.onEdit },
-    { id: 'test', label: t('测试', 'Test'), icon: <TestTube2 size={14} aria-hidden="true" />, onAction: props.onTest },
+    {
+      id: 'test',
+      label: props.isTesting ? t('测试中…', 'Testing…') : t('测试', 'Test'),
+      icon: <TestTube2 size={14} aria-hidden="true" />,
+      disabled: props.isTesting,
+      onAction: props.onTest
+    },
     { id: 'doctor', label: t('诊断', 'Doctor'), icon: <Stethoscope size={14} aria-hidden="true" />, onAction: props.onDoctor }
   ];
+  const handleDelete = async (): Promise<void> => {
+    let usageNote = '';
+    try {
+      const usage = await window.funplay.countProviderUsage(props.provider.id);
+      if (usage.projects.length > 0) {
+        const preview = usage.projects.slice(0, 3).join('、');
+        const suffix = usage.projects.length > 3 ? t('等', ', …') : '';
+        usageNote = t(
+          `\n此 Provider 正被 ${usage.projects.length} 个项目使用(${preview}${suffix}),删除会影响它们。`,
+          `\nThis provider is used by ${usage.projects.length} project(s) (${preview}${suffix}); deleting it will affect them.`
+        );
+      }
+    } catch {
+      usageNote = t('\n(无法确认占用情况,该 Provider 可能正在被项目使用。)', '\n(Could not verify usage; this provider may be in use by projects.)');
+    }
+    const defaultNote = props.provider.isDefault
+      ? t('(删除后系统会自动改用其他启用的 Provider 作为默认)', ' (another enabled provider will become the default)')
+      : '';
+    const message = t(`删除 Provider「${props.provider.name}」?此操作不可撤销,已保存的 API Key 会一并移除。`, `Delete provider "${props.provider.name}"? This cannot be undone — the saved API key will be removed.`);
+    if (window.confirm(message + defaultNote + usageNote)) props.onDelete();
+  };
   const secondaryActions: ConfigDetailAction[] = [
     ...(!props.provider.isDefault
       ? [{ id: 'default', label: t('设默认', 'Set Default'), icon: <BadgeCheck size={14} aria-hidden="true" />, onAction: props.onSetDefault }]
@@ -250,11 +293,7 @@ function ProviderDetail(props: {
       tone: 'danger',
       icon: <Trash2 size={14} aria-hidden="true" />,
       onAction: () => {
-        const note = props.provider.isDefault
-          ? t('(删除后系统会自动改用其他启用的 Provider 作为默认)', ' (another enabled provider will become the default)')
-          : '';
-        const message = t(`删除 Provider「${props.provider.name}」?此操作不可撤销,已保存的 API Key 会一并移除。`, `Delete provider "${props.provider.name}"? This cannot be undone — the saved API key will be removed.`);
-        if (window.confirm(message + note)) props.onDelete();
+        void handleDelete();
       }
     }
   ];
