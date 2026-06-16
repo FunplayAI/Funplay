@@ -857,6 +857,44 @@ test('cocos diagnose resolves the engine variant (defaults to creator3, honors c
   }
 });
 
+test('cocos4 variant diagnose surfaces cocos-cli prerequisites + a download action when not installed', async () => {
+  const state = buildState(buildProject());
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos4-diag-'));
+  const previous = process.env.COCOS_CLI_DIR;
+  try {
+    // Point at a dir with no built cocos-cli so the download action is offered.
+    process.env.COCOS_CLI_DIR = join(root, 'cocos-cli');
+    const diagnostics = await diagnoseEnvironment(state, {
+      platform: 'cocos',
+      mode: 'create',
+      dimension: '3d',
+      cocosVariant: 'cocos4',
+      projectName: 'Arrow',
+      projectPath: root
+    });
+    assert.equal(diagnostics.cocosVariant, 'cocos4');
+    const ids = diagnostics.checks.map((check) => check.id);
+    assert.ok(ids.includes('cocos-cli-prereq'));
+    assert.ok(ids.includes('cocos-cli'));
+    const cliCheck = diagnostics.checks.find((check) => check.id === 'cocos-cli');
+    // cocos-cli is not built in the temp dir.
+    assert.equal(cliCheck?.status, 'failed');
+    // The download action is offered when the build prerequisites are met
+    // (host-dependent on Node/git, so gate the assertion on the prereq check).
+    const prereqCheck = diagnostics.checks.find((check) => check.id === 'cocos-cli-prereq');
+    if (prereqCheck?.status === 'passed') {
+      assert.ok(cliCheck?.actions.some((action) => action.id === 'install_cocos_cli'));
+    }
+  } finally {
+    if (typeof previous === 'undefined') {
+      delete process.env.COCOS_CLI_DIR;
+    } else {
+      process.env.COCOS_CLI_DIR = previous;
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('cocos onboarding diagnostics mirror Unity-style staged setup and preserve 3D mode', async () => {
   const state = buildState(buildProject());
   const timestamp = new Date().toISOString();

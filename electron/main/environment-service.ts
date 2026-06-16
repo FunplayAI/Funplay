@@ -29,6 +29,12 @@ import type {
 import { checkUnityHealth } from './unity-bridge';
 import { listUnityResources, readUnityResource } from './unity-mcp-client';
 import { logEngineDebug } from './engine-log';
+import {
+  checkCocosCliPrerequisites,
+  findCocosCliInstallation,
+  getCocosCliDir,
+  installCocosCli
+} from './cocos-cli-installer';
 import { nowIso } from '../../shared/utils';
 import {
   listInstalledUnityEditors,
@@ -243,6 +249,17 @@ function isUnityProjectCurrentlyOpen(projectPath: string): boolean {
 
 function formatCocosDimensionLabel(dimension: EngineProjectDimension): string {
   return dimension === '3d' ? '3D' : '2D';
+}
+
+// Resolve the app userData dir for the managed cocos-cli install. Guarded so it
+// stays safe outside a running Electron app (e.g. the Node test runner), where
+// the COCOS_CLI_DIR override carries the path instead.
+function resolveCocosCliUserDataPath(): string {
+  try {
+    return electron.app.getPath('userData');
+  } catch {
+    return '';
+  }
 }
 
 function getCocosDashboardDownloadUrl(): string {
@@ -1187,6 +1204,61 @@ export async function diagnoseEnvironment(
 
   if (input.platform === 'cocos') {
     const cocosVariant: CocosEngineVariant = input.cocosVariant ?? 'creator3';
+
+    if (cocosVariant === 'cocos4') {
+      // cocos4 is driven headlessly by cocos-cli (no Cocos Creator GUI). The
+      // onboarding checks the build prerequisites and whether Funplay's managed
+      // cocos-cli is built, offering the heavy download when it isn't.
+      const userDataPath = resolveCocosCliUserDataPath();
+      const cliInstall = findCocosCliInstallation(userDataPath);
+      const prereqs = checkCocosCliPrerequisites();
+
+      checks.push({
+        id: 'cocos-cli-prereq',
+        title: '构建前置环境',
+        description: '下载 cocos4 需要系统 Node.js 22+ 与 git（cocos-cli 的构建依赖）。',
+        status: prereqs.ok ? 'passed' : 'failed',
+        detail: prereqs.ok
+          ? `已满足：Node ${prereqs.nodeVersion}，git 可用。`
+          : `缺少：${prereqs.missing.join('、')}。请安装后重试。`,
+        actions: []
+      });
+
+      checks.push({
+        id: 'cocos-cli',
+        title: 'Cocos 4 / cocos-cli',
+        description: '官方 cocos4 引擎 + cocos-cli（headless MCP，无需打开 Cocos Creator 编辑器）。',
+        status: cliInstall ? 'passed' : 'failed',
+        detail: cliInstall
+          ? `已安装：${cliInstall.cliPath}`
+          : `未安装。Funplay 会克隆 cocos-cli 并拉取 cocos4 引擎（约 3.5G）到 ${getCocosCliDir(userDataPath)}。`,
+        actions: cliInstall
+          ? []
+          : prereqs.ok
+            ? [
+                {
+                  id: 'install_cocos_cli',
+                  label: '下载 cocos-cli + cocos4',
+                  description: '克隆并构建官方 cocos4 工具链（约 3.5G，耗时较长）。',
+                  primary: true
+                }
+              ]
+            : []
+      });
+
+      return {
+        platform: input.platform,
+        mode: input.mode,
+        dimension: input.dimension,
+        cocosVariant,
+        checkedAt,
+        projectPath: input.projectPath,
+        enginePluginId: input.enginePluginId,
+        checks,
+        ready: checks.every((check) => check.status === 'passed')
+      };
+    }
+
     const cocosDimension = formatCocosDimensionLabel(input.dimension);
     const cocosEnginePlugin = resolveCocosMcpPlugin(state, input.enginePluginId);
     const dashboardPath = findCocosDashboardExecutable();
@@ -1942,6 +2014,39 @@ export async function runEnvironmentAction(
             : project.exists
               ? `目标目录存在，但还不是有效的 Cocos 项目，缺少：${project.missing.join('、') || 'Cocos 项目标识'}。`
               : '目标项目路径不存在，请检查后重试。'
+        };
+      }
+      case 'install_cocos_cli': {
+        const task = createTask('install_cocos_cli', '下载 cocos-cli + cocos4', '正在准备下载 cocos-cli…');
+        taskStageUpdate(task.id, {
+          stage: 'checking',
+          status: 'running',
+          progress: 5,
+          message: '正在检查前置环境（Node.js / git）…'
+        });
+        const userDataPath = resolveCocosCliUserDataPath();
+        // The clone+build is heavy (~5G, several minutes); run it in the
+        // background and return the task immediately so the IPC call doesn't block.
+        void installCocosCli({
+          userDataPath,
+          onStage: (stage, progress, message) =>
+            taskStageUpdate(task.id, { stage, status: 'running', progress, message })
+        })
+          .then((installResult) => {
+            completeTask(task.id, installResult.ok ? 'completed' : 'failed', installResult.message);
+          })
+          .catch((error) => {
+            completeTask(
+              task.id,
+              'failed',
+              `cocos-cli 安装异常：${error instanceof Error ? error.message : String(error)}`
+            );
+          });
+        return {
+          actionId: input.actionId,
+          status: 'opened',
+          message: 'cocos-cli 下载已开始：将克隆 cocos-cli 并拉取 cocos4 引擎（约 3.5G，耗时较长），可在任务列表查看进度。',
+          taskId: task.id
         };
       }
       default:
