@@ -35,7 +35,8 @@ import {
   getCocosCliDir,
   installCocosCli
 } from './cocos-cli-installer';
-import { nowIso } from '../../shared/utils';
+import { ensureCocosCliServer } from './cocos-cli-server';
+import { nowIso, makeId } from '../../shared/utils';
 import {
   listInstalledUnityEditors,
   compareUnityVersions,
@@ -260,6 +261,81 @@ function resolveCocosCliUserDataPath(): string {
   } catch {
     return '';
   }
+}
+
+// Point the cocos engine MCP plugin at the Funplay-managed cocos-cli server so
+// the agent's engine-tool path (which resolves the engine plugin's baseUrl)
+// drives cocos4 through the same generic MCP client. Mirrors Unity's
+// syncDiscoveredUnityMcpEndpoint; the caller persists state afterward.
+function syncCocos4McpEndpoint(state: AppState, url: string): void {
+  const now = nowIso();
+  const existing = state.mcpPlugins.find(isCocosEngineMcpPlugin);
+  if (existing) {
+    existing.baseUrl = url;
+    existing.transport = 'streamable-http';
+    existing.enabled = true;
+    existing.updatedAt = now;
+    return;
+  }
+  state.mcpPlugins.push({
+    id: makeId('mcp_cocos4'),
+    name: 'Cocos 4 (cocos-cli MCP)',
+    kind: 'engine',
+    transport: 'streamable-http',
+    baseUrl: url,
+    enabled: true,
+    isDefault: false,
+    notes: 'Funplay-managed cocos-cli headless MCP server (cocos4).',
+    createdAt: now,
+    updatedAt: now
+  });
+}
+
+// Resolve runtime state for a cocos4 project: ensure the managed headless
+// cocos-cli MCP server is running, sync the engine plugin to it, and probe it.
+async function resolveCocos4RuntimeState(state: AppState, normalizedProjectPath: string): Promise<ProjectRuntimeState> {
+  const checkedAt = nowIso();
+  const cocosProject = inspectCocosProject(normalizedProjectPath);
+  const cli = findCocosCliInstallation(resolveCocosCliUserDataPath());
+  if (!cli) {
+    // cocos-cli isn't built yet — the onboarding download action handles that.
+    return {
+      checkedAt,
+      projectExists: cocosProject.exists,
+      unityProjectValid: cocosProject.valid,
+      projectOpen: false,
+      bridgeInstalled: false,
+      detectedDimension: 'unknown'
+    };
+  }
+
+  let bridgeHealth: UnityHealthResult | undefined;
+  let mcpUrl: string | undefined;
+  try {
+    const server = await ensureCocosCliServer({ projectPath: cocosProject.projectPath, cliPath: cli.cliPath });
+    mcpUrl = server.url;
+    syncCocos4McpEndpoint(state, server.url);
+    const probe = await probeCocosMcpConfig(
+      { name: 'Cocos 4 MCP', transport: 'streamable-http', baseUrl: server.url },
+      undefined
+    );
+    bridgeHealth = probe.health;
+  } catch (error) {
+    logEngineDebug('cocos-cli', `ensure cocos4 server failed for ${cocosProject.projectPath}`, error);
+  }
+
+  return {
+    checkedAt,
+    projectExists: cocosProject.exists,
+    unityProjectValid: cocosProject.valid,
+    projectOpen: bridgeHealth?.status === 'online',
+    bridgeInstalled: true,
+    detectedDimension: 'unknown',
+    mcpSettings: mcpUrl
+      ? { enabled: true, port: parseCocosMcpPort(mcpUrl), toolExportProfile: 'cocos', url: mcpUrl }
+      : undefined,
+    bridgeHealth
+  };
 }
 
 function getCocosDashboardDownloadUrl(): string {
@@ -969,6 +1045,10 @@ export async function getProjectRuntimeState(
   input: {
     platform?: PlatformChoice;
     projectPath?: string;
+    // For platform 'cocos': which toolchain backs the project. 'cocos4' resolves
+    // runtime state against a Funplay-managed headless cocos-cli MCP server;
+    // anything else (default) uses the funplay-cocos-mcp creator3 path.
+    cocosVariant?: CocosEngineVariant;
     /**
      * Whether to verify the connected bridge serves THIS project by calling a
      * project-path MCP tool (Cocos: readCocosMcpProjectPath). Defaults to true
@@ -996,6 +1076,9 @@ export async function getProjectRuntimeState(
 
   const normalizedProjectPath = normalizeProjectPath(projectPath);
   if (platform === 'cocos') {
+    if ((input.cocosVariant ?? 'creator3') === 'cocos4') {
+      return resolveCocos4RuntimeState(state, normalizedProjectPath);
+    }
     const cocosProject = inspectCocosProject(normalizedProjectPath);
     const bridgeInstalled = cocosProject.valid && isCocosBridgeInstalled(cocosProject.projectPath);
     // Skip the project-path tool call on routine polls (see verifyBridgeProjectMatch).

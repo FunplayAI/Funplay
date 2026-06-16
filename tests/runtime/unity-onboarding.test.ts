@@ -1202,6 +1202,36 @@ test('cocos diagnose_engine_status reports offline (not a hard failure) when no 
   }
 });
 
+test('cocos4 getProjectRuntimeState reports not-installed (no server spawn) when cocos-cli is absent', async () => {
+  const state = buildState(buildProject());
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos4-runtime-'));
+  const previous = process.env.COCOS_CLI_DIR;
+  try {
+    // Point at a non-existent cocos-cli install so the cocos4 path takes the
+    // not-installed branch and never spawns a server.
+    process.env.COCOS_CLI_DIR = join(root, 'no-cocos-cli');
+    await mkdir(join(root, 'assets'), { recursive: true });
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'Arrow' }), 'utf8');
+
+    const runtime = await getProjectRuntimeState(state, {
+      platform: 'cocos',
+      cocosVariant: 'cocos4',
+      projectPath: root
+    });
+    assert.equal(runtime.bridgeInstalled, false);
+    assert.equal(runtime.projectOpen, false);
+    assert.equal(runtime.bridgeHealth, undefined);
+    assert.equal(runtime.projectExists, true);
+  } finally {
+    if (typeof previous === 'undefined') {
+      delete process.env.COCOS_CLI_DIR;
+    } else {
+      process.env.COCOS_CLI_DIR = previous;
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('cocos runtime-state probe caches within its TTL (repeated polls hit the network once)', async () => {
   const state = buildState(buildProject());
   const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-cache-'));

@@ -168,7 +168,8 @@ export async function createProject(state: AppState, input: CreateProjectInput):
     if (seeded.engine?.projectPath) {
       seeded.runtimeState = await getProjectRuntimeState(state, {
         platform: seeded.engine.platform,
-        projectPath: seeded.engine.projectPath
+        projectPath: seeded.engine.projectPath,
+        cocosVariant: seeded.engine.cocosVariant
       });
     }
 
@@ -195,7 +196,8 @@ export async function createProject(state: AppState, input: CreateProjectInput):
   if (project.engine?.projectPath) {
     project.runtimeState = await getProjectRuntimeState(state, {
       platform: project.engine.platform,
-      projectPath: project.engine.projectPath
+      projectPath: project.engine.projectPath,
+      cocosVariant: project.engine.cocosVariant
     });
   }
 
@@ -218,6 +220,7 @@ export async function refreshProjectRuntimeState(state: AppState, projectId: str
   const runtimeState = await getProjectRuntimeState(state, {
     platform: current.engine.platform,
     projectPath: current.engine.projectPath,
+    cocosVariant: current.engine.cocosVariant,
     // Routine poll: connection-health only, no project-path tool call (avoids
     // poking a broken external Cocos project into a blocking modal every cycle).
     verifyBridgeProjectMatch: false

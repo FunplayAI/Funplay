@@ -1178,6 +1178,7 @@ async function executeEngineControlAction(
       const runtimeState = await getProjectRuntimeState(state, {
         platform,
         projectPath,
+        cocosVariant: project.engine?.cocosVariant,
         verifyBridgeProjectMatch: false
       });
       await persistState();
@@ -1199,6 +1200,7 @@ async function executeEngineControlAction(
       const runtimeState = await getProjectRuntimeState(state, {
         platform,
         projectPath,
+        cocosVariant: project.engine?.cocosVariant,
         verifyBridgeProjectMatch: false
       });
       await persistState();
@@ -1213,7 +1215,8 @@ async function executeEngineControlAction(
     if (capability === 'openProject') {
       const runtimeState = await getProjectRuntimeState(state, {
         platform,
-        projectPath
+        projectPath,
+        cocosVariant: project.engine?.cocosVariant
       });
       await persistState();
       if (runtimeState.projectOpen) {
