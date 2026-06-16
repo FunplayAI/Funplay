@@ -999,16 +999,19 @@
 .chat-transcript-bubble.user {
   justify-self: end;
   width: fit-content;
-  max-width: min(720px, 100%);
-  padding: 12px 18px;
-  border-radius: 24px;
+  max-width: min(640px, 100%);
+  padding: 10px 16px;
+  /* 16px reads as a refined card rather than a rounded pill (24px). */
+  border-radius: 16px;
   background: var(--fp-chat-user-bubble-bg);
   color: var(--fp-chat-user-bubble-text);
 }
 
 .chat-transcript-bubble.assistant {
   justify-self: start;
-  width: min(55rem, 100%);
+  /* ~48rem keeps assistant prose near the comfortable 70–80ch reading measure
+     on wide windows (was 55rem ≈ too wide for sustained reading). */
+  width: min(48rem, 100%);
   max-width: 100%;
   padding: 0;
   gap: var(--fp-space-1);
