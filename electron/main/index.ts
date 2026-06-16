@@ -5,6 +5,7 @@ import { initializeStore, getState, setState } from './store';
 import { initializePptxPreviewRenderer } from './pptx-preview-renderer';
 import { disposeProjectFileWatchers, syncProjectFileWatchers } from './project-file-watcher';
 import { disposePersistentTerminals } from './agent-platform/persistent-terminal-store';
+import { stopAllCocosCliServers } from './cocos-cli-server';
 import { initializeNotificationService, sendAppNotification } from './notification-service';
 import { getAppUpdateStatus, initializeAppUpdateService, scheduleStartupUpdateCheck } from './update-service';
 import { initializeProviderSecretStore } from './provider-secret-store';
@@ -287,4 +288,5 @@ app.on('before-quit', () => {
   disposeProjectFileWatchers();
   disposeProjectHtmlPreviewServers();
   disposePersistentTerminals();
+  void stopAllCocosCliServers();
 });
