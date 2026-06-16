@@ -986,6 +986,9 @@ test('cocos project runtime state reports online Cocos MCP when the bridge serve
     assert.equal(runtimeState.bridgeHealth?.projectPath, root);
     assert.match(runtimeState.bridgeHealth?.message ?? '', /Cocos MCP 已连通/);
     assert.equal(server.methods.includes('tools/call'), true);
+    // P7b: the online cocos runtime snapshot reads the cocos:// resource layer.
+    assert.ok((runtimeState.availableResourceUris ?? []).includes('cocos://scene/active'));
+    assert.match(runtimeState.activeSceneSummary ?? '', /Project Context/);
   } finally {
     resetMcpConnection(server.baseUrl);
     await server.close();

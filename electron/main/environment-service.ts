@@ -991,6 +991,46 @@ export async function getProjectRuntimeState(
       : false;
     const mcpUrl =
       bridgeProbe?.snapshot.baseUrl ?? buildCocosMcpConnectionConfig(state).baseUrl ?? DEFAULT_COCOS_MCP_BASE_URL;
+
+    // When the bridge is online, read the cocos:// resource layer into the runtime
+    // snapshot (scene/selection/diagnostics/logs) — mirroring the Unity branch so
+    // a Cocos refresh carries the same depth of live editor state. cocos://errors/
+    // scripts is the Cocos analogue of unity://errors/console. detectedDimension
+    // stays 'unknown': Cocos 3.x is a unified 2D/3D engine with no reliable
+    // project-file marker to recover the intended dimension post-hoc.
+    let availableResourceUris: string[] | undefined;
+    let activeSceneSummary: string | undefined;
+    let currentSelectionSummary: string | undefined;
+    let recentConsoleSummary: string | undefined;
+    let recentBridgeLogs: string | undefined;
+    if (bridgeHealth?.status === 'online') {
+      try {
+        const resources = await listUnityResources(mcpUrl);
+        availableResourceUris = resources.map((resource) => resource.uri).filter(Boolean);
+        const readableResources = [
+          ['cocos://scene/active', (value: string) => void (activeSceneSummary = trimMultilineText(value, 10, 1400))],
+          [
+            'cocos://selection/current',
+            (value: string) => void (currentSelectionSummary = trimMultilineText(value, 10, 1200))
+          ],
+          ['cocos://errors/scripts', (value: string) => void (recentConsoleSummary = trimMultilineText(value, 10, 1400))],
+          ['cocos://mcp/interactions', (value: string) => void (recentBridgeLogs = trimMultilineText(value, 12, 1800))]
+        ] as const;
+        for (const [uri, assign] of readableResources) {
+          if (!availableResourceUris.includes(uri)) {
+            continue;
+          }
+          try {
+            assign(extractTextContent(await readUnityResource(mcpUrl, uri)));
+          } catch {
+            // best effort
+          }
+        }
+      } catch {
+        availableResourceUris = undefined;
+      }
+    }
+
     return {
       checkedAt,
       projectExists: cocosProject.exists,
@@ -998,6 +1038,11 @@ export async function getProjectRuntimeState(
       projectOpen,
       bridgeInstalled,
       detectedDimension: 'unknown',
+      availableResourceUris,
+      activeSceneSummary,
+      currentSelectionSummary,
+      recentConsoleSummary,
+      recentBridgeLogs,
       mcpSettings: bridgeInstalled
         ? {
             enabled: true,
