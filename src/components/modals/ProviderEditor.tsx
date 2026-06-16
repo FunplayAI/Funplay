@@ -36,10 +36,14 @@ export function ProviderEditor(props: {
     tone: 'neutral' | 'success' | 'error';
     message: string;
   }>({ loading: false, tone: 'neutral', message: '' });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
     setDraft(initialDraft);
     setModelFetchState({ loading: false, tone: 'neutral', message: '' });
+    setSaving(false);
+    setSaveError('');
   }, [initialDraft]);
 
   const preset = AI_PROVIDER_PRESETS.find((item) => item.id === draft.presetId) ?? AI_PROVIDER_PRESETS[0];
@@ -70,6 +74,7 @@ export function ProviderEditor(props: {
     return [...values];
   }, [resolvedModelChoices]);
   const canFetchModelList = Boolean(draft.baseUrl.trim() && (draft.apiKey.trim() || props.provider?.hasStoredApiKey));
+  const canSave = Boolean(draft.name.trim() && draft.baseUrl.trim() && draft.model.trim());
 
   const applyProviderPreset = (presetId: string): void => {
     const next = AI_PROVIDER_PRESETS.find((item) => item.id === presetId);
@@ -335,14 +340,26 @@ export function ProviderEditor(props: {
         <TextAreaField label="Env Overrides" value={formatStringRecord(draft.envOverrides)} onValueChange={(value) => setDraft((current) => ({ ...current, envOverrides: parseStringRecord(value) }))} placeholder="HTTPS_PROXY=http://127.0.0.1:7890" />
       </details>
       <TextAreaField label={localize(language, '备注', 'Notes')} value={draft.notes} onValueChange={(value) => setDraft((current) => ({ ...current, notes: value }))} />
+      {saveError ? <div className="provider-model-fetch-message error" role="alert">{saveError}</div> : null}
       <div className="modal-actions">
-        {props.onCancel ? <Button variant="secondary" onClick={props.onCancel}>{localize(language, '取消', 'Cancel')}</Button> : null}
+        {props.onCancel ? <Button variant="secondary" disabled={saving} onClick={props.onCancel}>{localize(language, '取消', 'Cancel')}</Button> : null}
         <Button
           variant="primary"
-          onClick={() => {
-            const payload = createProviderInputFromDraft(draft);
-            if (props.provider) void props.onUpdate(props.provider.id, payload);
-            else void props.onCreate(payload);
+          loading={saving}
+          disabled={!canSave || saving}
+          title={canSave ? undefined : localize(language, '请先填写名称、Base URL 和默认模型', 'Fill in Name, Base URL, and Default Model first')}
+          onClick={async () => {
+            if (!canSave || saving) return;
+            setSaveError('');
+            setSaving(true);
+            try {
+              const payload = createProviderInputFromDraft(draft);
+              if (props.provider) await props.onUpdate(props.provider.id, payload);
+              else await props.onCreate(payload);
+            } catch (error) {
+              setSaveError(error instanceof Error ? error.message : localize(language, '保存失败,请重试。', 'Failed to save, please try again.'));
+              setSaving(false);
+            }
           }}
         >
           {localize(language, '保存', 'Save')}
