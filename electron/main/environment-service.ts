@@ -35,7 +35,7 @@ import {
   getCocosCliDir,
   installCocosCli
 } from './cocos-cli-installer';
-import { ensureCocosCliServer } from './cocos-cli-server';
+import { ensureCocosCliServer, createCocosProjectViaCli } from './cocos-cli-server';
 import { nowIso, makeId } from '../../shared/utils';
 import {
   listInstalledUnityEditors,
@@ -1950,6 +1950,39 @@ export async function runEnvironmentAction(
         };
       }
       case 'create_cocos_project': {
+        if ((input.cocosVariant ?? 'creator3') === 'cocos4') {
+          // cocos4: create headlessly via cocos-cli (no Cocos Creator), then start
+          // the managed MCP server so the project is immediately operable.
+          const task = createTask('create_cocos_project', '创建 Cocos 4 项目', '正在通过 cocos-cli 创建…');
+          bindTaskProjectPath(task.id, targetProjectPath);
+          const cli = findCocosCliInstallation(resolveCocosCliUserDataPath());
+          if (!cli) {
+            completeTask(task.id, 'failed', '尚未安装 cocos-cli + cocos4，请先在引导中下载。');
+            return { actionId: input.actionId, status: 'failed', message: '尚未安装 cocos-cli。', taskId: task.id };
+          }
+          const cocos4Dimension = input.dimension === '3d' ? '3d' : '2d';
+          taskStageUpdate(task.id, {
+            stage: 'installing',
+            status: 'running',
+            progress: 40,
+            message: `正在通过 cocos-cli 创建 ${cocos4Dimension.toUpperCase()} 项目…`,
+            log: `目标项目路径：${targetProjectPath}`
+          });
+          const created = await createCocosProjectViaCli({
+            cliPath: cli.cliPath,
+            projectPath: targetProjectPath,
+            dimension: cocos4Dimension
+          });
+          if (!created.ok) {
+            completeTask(task.id, 'failed', created.message);
+            return { actionId: input.actionId, status: 'failed', message: created.message, taskId: task.id };
+          }
+          await ensureCocosCliServer({ projectPath: targetProjectPath, cliPath: cli.cliPath }).catch((error) =>
+            logEngineDebug('cocos-cli', 'post-create server start failed', error)
+          );
+          completeTask(task.id, 'completed', `${created.message} headless MCP 服务已启动。`);
+          return { actionId: input.actionId, status: 'opened', message: created.message, taskId: task.id };
+        }
         const task = createTask('create_cocos_project', '创建 Cocos 项目', '正在准备自动创建 Cocos 项目…');
         bindTaskProjectPath(task.id, targetProjectPath);
         taskStageUpdate(task.id, {
@@ -2036,6 +2069,31 @@ export async function runEnvironmentAction(
         };
       }
       case 'open_cocos_project': {
+        if ((input.cocosVariant ?? 'creator3') === 'cocos4') {
+          // cocos4 has no separate editor to launch — "opening" means starting
+          // the managed headless MCP server for the project.
+          const task = createTask('open_cocos_project', '启动 Cocos 4 运行时', '正在启动 cocos-cli MCP 服务…');
+          bindTaskProjectPath(task.id, targetProjectPath);
+          const cli = findCocosCliInstallation(resolveCocosCliUserDataPath());
+          if (!cli) {
+            completeTask(task.id, 'failed', '尚未安装 cocos-cli + cocos4,请先在引导中下载。');
+            return { actionId: input.actionId, status: 'failed', message: '尚未安装 cocos-cli。', taskId: task.id };
+          }
+          try {
+            const server = await ensureCocosCliServer({ projectPath: targetProjectPath, cliPath: cli.cliPath });
+            completeTask(task.id, 'completed', `Cocos 4 headless MCP 已启动：${server.url}`);
+            return {
+              actionId: input.actionId,
+              status: 'opened',
+              message: `Cocos 4 headless MCP 已启动：${server.url}`,
+              taskId: task.id
+            };
+          } catch (error) {
+            const message = `启动 cocos-cli MCP 服务失败：${error instanceof Error ? error.message : String(error)}`;
+            completeTask(task.id, 'failed', message);
+            return { actionId: input.actionId, status: 'failed', message, taskId: task.id };
+          }
+        }
         const task = createTask('open_cocos_project', '打开 Cocos 项目', '正在准备打开 Cocos 项目…');
         bindTaskProjectPath(task.id, targetProjectPath);
         taskStageUpdate(task.id, {

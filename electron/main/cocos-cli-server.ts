@@ -156,3 +156,46 @@ export async function stopCocosCliServer(projectPath: string): Promise<void> {
 export async function stopAllCocosCliServers(): Promise<void> {
   await Promise.all([...servers.keys()].map((projectPath) => stopCocosCliServer(projectPath)));
 }
+
+export type CocosCliCommandRunner = (command: string, args: string[]) => Promise<{ code: number; stderrTail?: string }>;
+
+function runCocosCliCommand(command: string, args: string[]): Promise<{ code: number; stderrTail?: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderrTail = '';
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderrTail = `${stderrTail}${chunk.toString()}`.slice(-2000);
+    });
+    child.on('error', (error) => resolve({ code: -1, stderrTail: error.message }));
+    child.on('exit', (code) => resolve({ code: code ?? -1, stderrTail }));
+  });
+}
+
+// Create a cocos4 project headlessly via `cocos create --project <path> --type
+// 2d|3d` — no Cocos Creator GUI. Runner is injectable for tests.
+export async function createCocosProjectViaCli(options: {
+  cliPath: string;
+  projectPath: string;
+  dimension: '2d' | '3d';
+  run?: CocosCliCommandRunner;
+}): Promise<{ ok: boolean; message: string }> {
+  const run = options.run ?? runCocosCliCommand;
+  const result = await run('node', [
+    options.cliPath,
+    'create',
+    '--project',
+    options.projectPath,
+    '--type',
+    options.dimension
+  ]);
+  if (result.code !== 0) {
+    return {
+      ok: false,
+      message: `cocos create 失败（exit ${result.code}）。${result.stderrTail ? `\n${result.stderrTail.slice(-600)}` : ''}`
+    };
+  }
+  return {
+    ok: true,
+    message: `已通过 cocos-cli 创建 ${options.dimension.toUpperCase()} 项目：${options.projectPath}`
+  };
+}

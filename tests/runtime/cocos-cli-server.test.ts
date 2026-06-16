@@ -7,7 +7,8 @@ import {
   getCocosCliServer,
   stopCocosCliServer,
   stopAllCocosCliServers,
-  findFreePort
+  findFreePort,
+  createCocosProjectViaCli
 } from '../../electron/main/cocos-cli-server.ts';
 
 function makeFakeChild(): ChildProcess {
@@ -82,6 +83,30 @@ test('ensureCocosCliServer throws and cleans up when the server never becomes re
   } finally {
     await stopAllCocosCliServers();
   }
+});
+
+test('createCocosProjectViaCli passes the dimension flag and reports success / failure', async () => {
+  let invoked: string[] = [];
+  const ok = await createCocosProjectViaCli({
+    cliPath: '/fake/dist/cli.js',
+    projectPath: '/tmp/MyGame',
+    dimension: '3d',
+    run: async (command, args) => {
+      invoked = [command, ...args];
+      return { code: 0 };
+    }
+  });
+  assert.equal(ok.ok, true);
+  assert.deepEqual(invoked, ['node', '/fake/dist/cli.js', 'create', '--project', '/tmp/MyGame', '--type', '3d']);
+
+  const failed = await createCocosProjectViaCli({
+    cliPath: '/fake/dist/cli.js',
+    projectPath: '/tmp/MyGame',
+    dimension: '2d',
+    run: async () => ({ code: 2, stderrTail: 'nope' })
+  });
+  assert.equal(failed.ok, false);
+  assert.match(failed.message, /失败（exit 2）/);
 });
 
 test('a server whose process exits is no longer reported as running', async () => {

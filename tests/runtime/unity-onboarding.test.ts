@@ -1202,6 +1202,35 @@ test('cocos diagnose_engine_status reports offline (not a hard failure) when no 
   }
 });
 
+test('cocos4 create_cocos_project fails gracefully (no spawn) when cocos-cli is not installed', async () => {
+  environmentTasks.clear();
+  const state = buildState(buildProject());
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos4-create-'));
+  const previous = process.env.COCOS_CLI_DIR;
+  try {
+    process.env.COCOS_CLI_DIR = join(root, 'no-cocos-cli');
+    const result = await runEnvironmentAction(state, {
+      actionId: 'create_cocos_project',
+      platform: 'cocos',
+      mode: 'create',
+      dimension: '3d',
+      cocosVariant: 'cocos4',
+      projectName: 'Arrow',
+      projectPath: root
+    });
+    assert.equal(result.status, 'failed');
+    assert.match(result.message, /尚未安装 cocos-cli/);
+  } finally {
+    if (typeof previous === 'undefined') {
+      delete process.env.COCOS_CLI_DIR;
+    } else {
+      process.env.COCOS_CLI_DIR = previous;
+    }
+    environmentTasks.clear();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('cocos4 getProjectRuntimeState reports not-installed (no server spawn) when cocos-cli is absent', async () => {
   const state = buildState(buildProject());
   const root = await mkdtemp(join(tmpdir(), 'funplay-cocos4-runtime-'));
