@@ -598,18 +598,23 @@ async function clickByText(webContents, text) {
 }
 
 async function clickModalButtonByText(webContents, text) {
+  // Accept one or more candidate labels so the click survives the UI language
+  // (the app defaults to zh-CN, e.g. the provider tab reads "AI 服务商", not the
+  // English "AI Provider").
+  const texts = Array.isArray(text) ? text : [text];
   const clicked = await webContents.executeJavaScript(`
     (() => {
       const modal = document.querySelector('[role="dialog"][aria-modal="true"]');
       if (!modal) return false;
+      const wanted = ${JSON.stringify(texts)};
       const candidates = [...modal.querySelectorAll('button')];
-      const target = candidates.find((button) => button.textContent && button.textContent.includes(${JSON.stringify(text)}));
+      const target = candidates.find((button) => button.textContent && wanted.some((t) => button.textContent.includes(t)));
       if (!target) return false;
       target.click();
       return true;
     })()
   `);
-  assert.equal(clicked, true, `Expected modal button containing "${text}"`);
+  assert.equal(clicked, true, `Expected modal button containing one of ${JSON.stringify(texts)}`);
 }
 
 async function clickByAriaLabel(webContents, label) {
@@ -1272,7 +1277,7 @@ async function main() {
 
     await clickByAriaLabel(win.webContents, '打开应用设置');
     await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]')", 'App Settings modal');
-    await clickModalButtonByText(win.webContents, 'AI Provider');
+    await clickModalButtonByText(win.webContents, ['AI Provider', 'AI 服务商']);
     await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"]')?.textContent.includes('Xiaomi MiMo')", 'Provider settings modal');
     const providerModal = await snapshot(win.webContents);
     assert.equal(providerModal.modalOpen, true);
@@ -1311,7 +1316,7 @@ async function main() {
     await auditLayout(win.webContents, 'App Settings MCP', layoutAudits);
     rows.push({ state: 'App Settings MCP', screenshot: await capture(win, 'app-settings-mcp'), detail: mcpModal });
 
-    await clickModalButtonByText(win.webContents, 'AI Provider');
+    await clickModalButtonByText(win.webContents, ['AI Provider', 'AI 服务商']);
     await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"]')?.textContent.includes('Xiaomi MiMo')", 'Provider settings modal restored');
 
     await clickByText(win.webContents, '添加 Provider');
@@ -1420,7 +1425,7 @@ async function main() {
 
     await clickByAriaLabel(win.webContents, '打开应用设置');
     await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"][aria-modal=\"true\"]') && document.documentElement.dataset.theme === 'dark'", 'Dark App Settings modal');
-    await clickModalButtonByText(win.webContents, 'AI Provider');
+    await clickModalButtonByText(win.webContents, ['AI Provider', 'AI 服务商']);
     await waitFor(win.webContents, "() => document.querySelector('[role=\"dialog\"]')?.textContent.includes('Xiaomi MiMo')", 'Dark Provider settings modal');
     const darkProviderModal = await snapshot(win.webContents);
     assert.equal(darkProviderModal.theme, 'dark');
