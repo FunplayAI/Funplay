@@ -594,8 +594,15 @@
   --fp-welcome-titlebar-bg: #161b27;
   --fp-welcome-titlebar-text: #f8fafc;
 
-  /* Shadow */
-  --fp-shadow-5: 0 24px 60px rgba(0, 0, 0, 0.36);
+  /* Shadow — dark mode needs PURE-BLACK shadows (the light rgba(15,23,38,…)
+     values are invisible on a near-black canvas, so cards/panels read flat).
+     A 1px inset top highlight gives the classic "lit top edge" that lifts a
+     surface off a dark background. Light theme is untouched. */
+  --fp-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --fp-shadow-2: 0 2px 8px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --fp-shadow-3: 0 8px 24px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --fp-shadow-4: 0 16px 44px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --fp-shadow-5: 0 24px 60px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 
   /* Body — dark mode adds a radial highlight stack over the body fill. */
   --fp-body-background:

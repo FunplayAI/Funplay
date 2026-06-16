@@ -41,12 +41,12 @@
 
 .workspace-sidebar-nav-item:hover {
   background: rgba(255, 255, 255, 0.72);
-  color: #111827;
+  color: var(--text);
 }
 
 .workspace-sidebar-nav-item.active {
   background: rgba(255, 255, 255, 0.94);
-  color: #111827;
+  color: var(--text);
   box-shadow: inset 0 0 0 1px rgba(60, 60, 67, 0.08);
 }
 
@@ -98,7 +98,7 @@
   padding: 0 12px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.86);
-  color: #111827;
+  color: var(--text);
   border: 1px solid rgba(60, 60, 67, 0.12);
   font-size: 12px;
   font-weight: 700;
@@ -128,7 +128,7 @@
 .project-switcher-item:hover,
 .project-switcher-item.active {
   background: rgba(255, 255, 255, 0.92);
-  color: #111827;
+  color: var(--text);
 }
 
 .project-switcher-item.active {
@@ -253,7 +253,7 @@
 }
 
 .global-run-main:hover {
-  color: #111827;
+  color: var(--text);
 }
 
 .sidebar-session-row {
@@ -293,7 +293,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #111827;
+  color: var(--text);
 }
 
 .sidebar-session-card-title {
@@ -369,7 +369,7 @@
 .sidebar-session-main:hover,
 .sidebar-session-item.active .sidebar-session-main {
   background: rgba(255, 255, 255, 0.78);
-  color: #111827;
+  color: var(--text);
 }
 
 .sidebar-session-item.active .sidebar-session-main {
@@ -603,7 +603,7 @@
 }
 
 .sidebar-session-action:hover {
-  color: #111827;
+  color: var(--text);
   background: #ffffff;
 }
 
@@ -641,7 +641,7 @@
   justify-content: flex-start;
   border-radius: 8px;
   text-align: left;
-  color: #111827;
+  color: var(--text);
   font-size: 12px;
   font-weight: 700;
 }
@@ -690,7 +690,7 @@
 .sidebar-tool-icon.active {
   transform: none;
   background: rgba(255, 255, 255, 0.86);
-  color: #111827;
+  color: var(--text);
 }
 
 .sidebar-session-search {
@@ -703,7 +703,7 @@
   padding: 0 12px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.86);
-  color: #111827;
+  color: var(--text);
   border: 1px solid rgba(60, 60, 67, 0.12);
 }
 
@@ -768,12 +768,12 @@
 .workspace-sidebar .file-tree-folder-label:hover,
 .workspace-sidebar .file-item.tree:hover {
   background: rgba(255, 255, 255, 0.74);
-  color: #111827;
+  color: var(--text);
 }
 
 .workspace-sidebar .file-item.active {
   background: rgba(99, 102, 241, 0.14);
-  color: #111827;
+  color: var(--text);
   font-weight: 700;
 }
 
