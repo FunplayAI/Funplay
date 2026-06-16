@@ -67,3 +67,50 @@
 .project-switcher-trigger {
   border-radius: 999px;
 }
+
+/* ── Asset library: livelier cards with a friendly hover lift ─────────────── */
+.asset-card,
+.asset-library-card {
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.asset-card:hover,
+.asset-library-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(99, 102, 241, 0.16);
+  border-color: rgba(99, 102, 241, 0.32);
+}
+
+/* Empty-state marks carry the brand gradient so blank screens read as
+   intentional and lively, not unfinished. */
+.agent-empty-icon,
+.welcome-empty-icon {
+  width: 60px;
+  height: 60px;
+  background: var(--fp-accent-gradient-soft);
+  color: var(--fp-accent-primary-strong);
+  border-radius: 20px;
+}
+
+/* ── Buttons & forms: consistent, tactile micro-interactions ──────────────── */
+.fp-button:active:not(:disabled),
+.composer-icon-button:active {
+  transform: scale(0.97);
+}
+
+.fp-button-primary:hover {
+  box-shadow: 0 14px 30px rgba(99, 102, 241, 0.3);
+}
+
+.fp-input:hover:not(:focus),
+.fp-select-trigger:hover:not(:focus) {
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.fp-button:focus-visible,
+.fp-select-trigger:focus-visible,
+.fp-switch:focus-visible,
+.fp-input:focus-visible {
+  border-color: rgba(99, 102, 241, 0.6);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.16);
+}
