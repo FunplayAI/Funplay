@@ -1161,10 +1161,29 @@ async function executeEngineControlAction(
   if (platform === 'cocos') {
     const projectPath = resolveEngineProjectPath(project, 'projectPath' in action ? action.projectPath : undefined);
     if (capability === 'diagnose') {
-      return diagnoseCocosEnvironment({
+      const diagnosis = diagnoseCocosEnvironment({
         project,
         projectPath
       });
+      // Enrich the static install/structure diagnosis with a LIVE, poll-safe MCP
+      // connectivity probe so the agent learns whether the bridge is actually
+      // online (and on which discovered endpoint) — not just installed on disk —
+      // mirroring Unity's diagnose bridge-connected check. Offline is reported,
+      // not treated as a hard failure (diagnose stays ok:true).
+      const runtimeState = await getProjectRuntimeState(state, {
+        platform,
+        projectPath,
+        verifyBridgeProjectMatch: false
+      });
+      await persistState();
+      const health = runtimeState.bridgeHealth;
+      const connectivityLine = health
+        ? `MCP health: ${health.status} - ${health.message}`
+        : 'MCP health: not checked';
+      return {
+        ...diagnosis,
+        summary: [diagnosis.summary, connectivityLine].join('\n')
+      };
     }
     if (capability === 'refresh') {
       // refresh must return a LIVE runtime-state snapshot (projectOpen + bridge

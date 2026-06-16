@@ -1017,6 +1017,98 @@ test('cocos refresh_engine_runtime_state agent tool returns live runtime state, 
   }
 });
 
+test('cocos diagnose_engine_status agent tool reports live MCP connectivity (online)', async () => {
+  const state = buildState(buildProject());
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-diag-online-'));
+  const server = await startCocosMcpProjectServer(root);
+  const timestamp = new Date().toISOString();
+  state.mcpPlugins = [
+    {
+      id: 'mcp_cocos',
+      name: 'Funplay Cocos MCP',
+      kind: 'engine',
+      transport: 'http',
+      baseUrl: server.baseUrl,
+      enabled: true,
+      isDefault: false,
+      notes: 'Funplay built-in Cocos Creator MCP bridge.',
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+  ];
+  try {
+    const bridgePath = join(root, 'extensions', 'funplay-cocos-mcp');
+    await mkdir(join(root, 'assets'), { recursive: true });
+    await mkdir(bridgePath, { recursive: true });
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'Arrow' }), 'utf8');
+    await writeFile(join(bridgePath, 'package.json'), JSON.stringify({ name: 'funplay-cocos-mcp' }), 'utf8');
+    await writeFile(join(bridgePath, 'browser.js'), '', 'utf8');
+    await writeFile(join(bridgePath, 'server.json'), '{}', 'utf8');
+
+    const result = await executeAgentToolAction(
+      buildProject(),
+      { type: 'diagnose_engine_status', platform: 'cocos', projectPath: root },
+      { appState: state }
+    );
+
+    // Keeps the static install/structure diagnosis...
+    assert.equal(result.ok, true);
+    assert.match(result.summary, /Cocos project valid: yes/);
+    assert.match(result.summary, /Funplay Cocos MCP installed: yes/);
+    // ...and now also reports LIVE bridge connectivity, not just on-disk install.
+    assert.match(result.summary, /MCP health: online - .*Cocos MCP 已连通/);
+  } finally {
+    resetMcpConnection(server.baseUrl);
+    await server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('cocos diagnose_engine_status reports offline (not a hard failure) when no bridge server answers', async () => {
+  const state = buildState(buildProject());
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-diag-offline-'));
+  const timestamp = new Date().toISOString();
+  // Point at a dead localhost port; no server is listening.
+  const deadUrl = 'http://127.0.0.1:59231/';
+  state.mcpPlugins = [
+    {
+      id: 'mcp_cocos',
+      name: 'Funplay Cocos MCP',
+      kind: 'engine',
+      transport: 'http',
+      baseUrl: deadUrl,
+      enabled: true,
+      isDefault: false,
+      notes: 'Funplay built-in Cocos Creator MCP bridge.',
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+  ];
+  try {
+    const bridgePath = join(root, 'extensions', 'funplay-cocos-mcp');
+    await mkdir(join(root, 'assets'), { recursive: true });
+    await mkdir(bridgePath, { recursive: true });
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'Arrow' }), 'utf8');
+    await writeFile(join(bridgePath, 'package.json'), JSON.stringify({ name: 'funplay-cocos-mcp' }), 'utf8');
+    await writeFile(join(bridgePath, 'browser.js'), '', 'utf8');
+    await writeFile(join(bridgePath, 'server.json'), '{}', 'utf8');
+
+    const result = await executeAgentToolAction(
+      buildProject(),
+      { type: 'diagnose_engine_status', platform: 'cocos', projectPath: root },
+      { appState: state }
+    );
+
+    // Offline is reported as diagnostic info, not an error — diagnose stays ok.
+    assert.equal(result.ok, true);
+    assert.notEqual(result.isError, true);
+    assert.match(result.summary, /MCP health: offline/);
+  } finally {
+    resetMcpConnection(deadUrl);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('cocos runtime-state probe caches within its TTL (repeated polls hit the network once)', async () => {
   const state = buildState(buildProject());
   const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-cache-'));
