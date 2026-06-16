@@ -32,6 +32,7 @@ export type EnvironmentActionKind =
   | 'create_cocos_project'
   | 'open_cocos_project'
   | 'install_cocos_bridge'
+  | 'install_cocos_cli'
   | 'verify_project_path';
 export type EnvironmentTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'needs_user';
 export type EnvironmentTaskStage =
