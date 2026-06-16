@@ -1,0 +1,69 @@
+/*
+ * Characterful creative-tool skin — the brand's visual personality layer.
+ *
+ * Loaded last so it overrides earlier layout layers by source order (the same
+ * ordered-override convention layers 01–12 already use — no !important needed
+ * for equal-specificity rules). The accent, signature gradient, and generous
+ * radii live in tokens.css; this layer carries the component-level character:
+ * a gradient primary action, a composer with presence, softly-branded active
+ * states, and friendlier corners on elements that hardcode their own radius.
+ */
+
+/* Hero primary action — the send button carries the brand gradient. */
+.send-button {
+  background: var(--fp-accent-gradient);
+  border: 0;
+  color: #fff;
+  border-radius: 16px;
+  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.34);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.send-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px rgba(99, 102, 241, 0.46);
+}
+
+/* A composer with presence — friendlier corners + a soft lift, and a branded
+   focus ring so the primary input feels like the heart of the screen. */
+.composer-shell {
+  border-radius: 24px;
+  box-shadow: 0 10px 34px rgba(17, 12, 46, 0.1);
+}
+
+.composer-shell:focus-within {
+  border-color: rgba(99, 102, 241, 0.5);
+  box-shadow:
+    0 0 0 4px rgba(99, 102, 241, 0.12),
+    0 12px 38px rgba(99, 102, 241, 0.14);
+}
+
+.composer-icon-button {
+  border-radius: 13px;
+}
+
+/* Softly-branded active states — the sidebar reads as one coherent, lively
+   surface (soft gradient tint + accent text + a 3px accent edge). */
+.project-switcher-item.active,
+.workspace-sidebar-nav-item.active,
+.sidebar-session-item.active,
+.sidebar-session-card.active,
+.sidebar-entry.active,
+.material-category-item.active,
+.project-settings-nav-item.active,
+.app-settings-nav-item.active {
+  background: var(--fp-accent-gradient-soft);
+  color: var(--fp-accent-primary-strong);
+  border-radius: 14px;
+  box-shadow: inset 3px 0 0 var(--fp-accent-primary);
+}
+
+/* Friendlier corners on elements that hardcode their own radius. */
+.chat-transcript-bubble.user {
+  border-radius: 20px;
+}
+
+.project-tab,
+.project-switcher-trigger {
+  border-radius: 999px;
+}

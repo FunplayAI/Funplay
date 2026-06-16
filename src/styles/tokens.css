@@ -113,9 +113,13 @@
   --fp-border-subtle: rgba(148, 163, 184, 0.12);
 
   /* === Semantic accent ===================================================== */
-  --fp-accent-primary: var(--fp-color-indigo-600);
-  --fp-accent-primary-strong: var(--fp-color-indigo-700);
-  --fp-accent-primary-soft: rgba(79, 70, 229, 0.12);
+  --fp-accent-primary: var(--fp-color-indigo-500);
+  --fp-accent-primary-strong: var(--fp-color-indigo-600);
+  --fp-accent-primary-soft: rgba(99, 102, 241, 0.14);
+  /* Signature brand gradient for primary actions + brand marks (creative-tool
+     character); the -soft variant is a low-alpha tint for active states. */
+  --fp-accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 52%, #ec4899 100%);
+  --fp-accent-gradient-soft: linear-gradient(135deg, rgba(99, 102, 241, 0.16), rgba(236, 72, 153, 0.12));
 
   /* === Semantic feedback =================================================== */
   --fp-feedback-success: #15803d;
@@ -179,10 +183,10 @@
   --fp-leading-loose: 1.7;
 
   /* === Radii =============================================================== */
-  --fp-radius-sm: 6px;
-  --fp-radius-md: 8px;
-  --fp-radius-lg: 10px;
-  --fp-radius-xl: 12px;
+  --fp-radius-sm: 9px;
+  --fp-radius-md: 13px;
+  --fp-radius-lg: 17px;
+  --fp-radius-xl: 22px;
 
   /* === Shadows ============================================================= */
   --fp-shadow-1: 0 1px 2px rgba(15, 23, 38, 0.06);
