@@ -1160,11 +1160,28 @@ async function executeEngineControlAction(
   };
   if (platform === 'cocos') {
     const projectPath = resolveEngineProjectPath(project, 'projectPath' in action ? action.projectPath : undefined);
-    if (capability === 'diagnose' || capability === 'refresh') {
+    if (capability === 'diagnose') {
       return diagnoseCocosEnvironment({
         project,
         projectPath
       });
+    }
+    if (capability === 'refresh') {
+      // refresh must return a LIVE runtime-state snapshot (projectOpen + bridge
+      // health), mirroring the Unity refresh block below — not the static
+      // filesystem blob diagnose produces. verifyBridgeProjectMatch:false keeps
+      // the MCP probe poll-safe so a routine refresh can't trip the external
+      // Cocos extension's blocking "project definition not found" modal.
+      const runtimeState = await getProjectRuntimeState(state, {
+        platform,
+        projectPath,
+        verifyBridgeProjectMatch: false
+      });
+      await persistState();
+      return {
+        ok: true,
+        summary: formatRuntimeState(runtimeState, platform, projectPath)
+      };
     }
     if (capability === 'openHub') {
       return openCocosDashboard();

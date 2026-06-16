@@ -968,6 +968,55 @@ test('cocos project runtime state reports online Cocos MCP when the bridge serve
   }
 });
 
+test('cocos refresh_engine_runtime_state agent tool returns live runtime state, not the static diagnose blob', async () => {
+  const state = buildState(buildProject());
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-refresh-'));
+  const server = await startCocosMcpProjectServer(root);
+  const timestamp = new Date().toISOString();
+  state.mcpPlugins = [
+    {
+      id: 'mcp_cocos',
+      name: 'Funplay Cocos MCP',
+      kind: 'engine',
+      transport: 'http',
+      baseUrl: server.baseUrl,
+      enabled: true,
+      isDefault: false,
+      notes: 'Funplay built-in Cocos Creator MCP bridge.',
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+  ];
+  try {
+    const bridgePath = join(root, 'extensions', 'funplay-cocos-mcp');
+    await mkdir(join(root, 'assets'), { recursive: true });
+    await mkdir(bridgePath, { recursive: true });
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'Arrow' }), 'utf8');
+    await writeFile(join(bridgePath, 'package.json'), JSON.stringify({ name: 'funplay-cocos-mcp' }), 'utf8');
+    await writeFile(join(bridgePath, 'browser.js'), '', 'utf8');
+    await writeFile(join(bridgePath, 'server.json'), '{}', 'utf8');
+
+    const result = await executeAgentToolAction(
+      buildProject(),
+      { type: 'refresh_engine_runtime_state', platform: 'cocos', projectPath: root },
+      { appState: state }
+    );
+
+    // Live runtime-state markers (formatRuntimeState), proving refresh is no
+    // longer aliased to the static diagnoseCocosEnvironment text blob.
+    assert.equal(result.ok, true);
+    assert.match(result.summary, /Engine platform: cocos/);
+    assert.match(result.summary, /Project open: yes/);
+    assert.match(result.summary, /MCP health: online - .*Cocos MCP 已连通/);
+    // The old aliased diagnose output emitted this static endpoint line; refresh must not.
+    assert.doesNotMatch(result.summary, /Default MCP endpoint:/);
+  } finally {
+    resetMcpConnection(server.baseUrl);
+    await server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('cocos runtime-state probe caches within its TTL (repeated polls hit the network once)', async () => {
   const state = buildState(buildProject());
   const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-cache-'));
