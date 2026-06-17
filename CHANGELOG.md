@@ -6,6 +6,14 @@ This project follows a pre-1.0 release flow. Minor versions may include breaking
 
 ## Unreleased
 
+## 0.3.10 - 2026-06-17
+
+### Added
+
+- Added a Cocos engine-variant path for Creator 3 and Cocos4 projects, including Cocos4 onboarding diagnostics, background cocos-cli installation, headless create/open support, managed MCP server startup, and live `cocos://` resource reading.
+- Added native runtime multimodal image attachment handling, richer reasoning/dialect controls, command sandbox plumbing, and stronger subagent definitions/runs persistence.
+- Added syntax highlighting for chat code blocks, a more guided provider editor, richer loading/progress feedback, and a characterful creative-tool UI skin.
+
 ### Removed
 
 - Removed the Claude Code SDK runtime; the native runtime is now the only agent runtime. Anthropic models remain fully supported through the regular Anthropic API provider.
@@ -14,6 +22,14 @@ This project follows a pre-1.0 release flow. Minor versions may include breaking
 ### Changed
 
 - Existing sessions configured for the Claude Code runtime migrate automatically to the native runtime; persisted Claude session metadata is cleaned up by a store migration.
+- Refactored the renderer app shell into focused stores, action factories, and hooks for project/session/composer/runtime state while keeping the component-size ratchet honest.
+- Refined chat reply typography, inline code, tables, blockquotes, dark-theme depth, turn separation, and soft line-break handling.
+
+### Fixed
+
+- Fixed agent `find_files` missing files beyond the 1200-entry listing cap.
+- Hardened Unity and Cocos MCP lifecycle handling, including transport-death detection, Cocos MCP port rediscovery, deterministic bridge installation, offline install behavior, launch readiness waits, dashboard deduplication, and bounded health probes.
+- Fixed provider setup, asset generation, onboarding, composer, MCP, web search, memory, and modal interaction-safety issues found in the UI review batches.
 
 ## 0.3.9 - 2026-06-10
 

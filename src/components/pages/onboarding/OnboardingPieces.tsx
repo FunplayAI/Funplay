@@ -9,6 +9,7 @@ import type {
   ProjectSetupMode
 } from '../../../../shared/types';
 import { localize, type UiLanguage } from '../../../i18n';
+import { Button } from '../../ui/index';
 
 // Step-1 / Step-3 heading + source label, varying by create/import and whether the
 // project is a generic (web) workspace vs an engine project.
@@ -18,20 +19,22 @@ export function buildOnboardingHeadings(
   language: UiLanguage
 ): { heading: string; sourceLabel: string } {
   const t = (zh: string, en: string): string => localize(language, zh, en);
-  const heading = mode === 'create'
-    ? isGenericProject
-      ? t('新建通用项目', 'Create Generic Project')
-      : t('新建引擎项目', 'Create Engine Project')
-    : isGenericProject
-      ? t('导入通用项目', 'Import Generic Project')
-      : t('导入已有引擎项目', 'Import Engine Project');
-  const sourceLabel = mode === 'create'
-    ? isGenericProject
-      ? t('新建通用项目', 'Create Generic Project')
-      : t('新建引擎项目', 'Create Engine Project')
-    : isGenericProject
-      ? t('导入通用项目', 'Import Generic Project')
-      : t('导入已有项目', 'Import Existing Project');
+  const heading =
+    mode === 'create'
+      ? isGenericProject
+        ? t('新建通用项目', 'Create Generic Project')
+        : t('新建引擎项目', 'Create Engine Project')
+      : isGenericProject
+        ? t('导入通用项目', 'Import Generic Project')
+        : t('导入已有引擎项目', 'Import Engine Project');
+  const sourceLabel =
+    mode === 'create'
+      ? isGenericProject
+        ? t('新建通用项目', 'Create Generic Project')
+        : t('新建引擎项目', 'Create Engine Project')
+      : isGenericProject
+        ? t('导入通用项目', 'Import Generic Project')
+        : t('导入已有项目', 'Import Existing Project');
   return { heading, sourceLabel };
 }
 
@@ -46,7 +49,10 @@ export function PlatformCardIcon(props: { id: PlatformChoice }): JSX.Element {
   const logoUrl = platformLogoUrls[props.id];
 
   return (
-    <span className={`option-card-icon platform-logo-icon platform-logo-${props.id} ${logoUrl ? 'has-brand-logo' : ''}`} aria-hidden="true">
+    <span
+      className={`option-card-icon platform-logo-icon platform-logo-${props.id} ${logoUrl ? 'has-brand-logo' : ''}`}
+      aria-hidden="true"
+    >
       {logoUrl ? <img className="platform-logo-image" src={logoUrl} alt="" draggable={false} /> : <Globe2 size={18} />}
     </span>
   );
@@ -89,14 +95,20 @@ export function useCocosVariantPrerequisite(
 // Step indicator for the onboarding wizard. Web / generic projects skip the
 // engine environment check (Step 2), so for them we render Step 2 grayed and
 // relabel it rather than implying a check that never happens.
-export function StepIndicator(props: { step: 1 | 2 | 3; skipEnvironment?: boolean; language?: UiLanguage }): JSX.Element {
+export function StepIndicator(props: {
+  step: 1 | 2 | 3;
+  skipEnvironment?: boolean;
+  language?: UiLanguage;
+}): JSX.Element {
   if (props.skipEnvironment) {
     const skipLabel = localize(props.language ?? 'zh-CN', '引擎设置 — Web 项目跳过', 'Engine setup — skipped for web');
     return (
       <div className="step-indicator step-indicator-web">
         <div className={`step-dot ${props.step >= 3 ? 'complete' : 'active'}`}>{props.step >= 3 ? '✓' : '1'}</div>
         <div className="step-line" />
-        <div className="step-dot skipped" aria-disabled="true" aria-label={skipLabel} title={skipLabel}>{'—'}</div>
+        <div className="step-dot skipped" aria-disabled="true" aria-label={skipLabel} title={skipLabel}>
+          {'—'}
+        </div>
         <div className="step-line" />
         <div className={`step-dot ${props.step >= 3 ? 'active complete' : ''}`}>3</div>
       </div>
@@ -106,7 +118,9 @@ export function StepIndicator(props: { step: 1 | 2 | 3; skipEnvironment?: boolea
     <div className="step-indicator">
       <div className={`step-dot ${props.step === 1 ? 'active' : 'complete'}`}>{props.step > 1 ? '✓' : '1'}</div>
       <div className="step-line" />
-      <div className={`step-dot ${props.step === 2 ? 'active' : props.step > 2 ? 'complete' : ''}`}>{props.step > 2 ? '✓' : '2'}</div>
+      <div className={`step-dot ${props.step === 2 ? 'active' : props.step > 2 ? 'complete' : ''}`}>
+        {props.step > 2 ? '✓' : '2'}
+      </div>
       <div className="step-line" />
       <div className={`step-dot ${props.step === 3 ? 'active complete' : ''}`}>3</div>
     </div>
@@ -182,12 +196,22 @@ export function Step3ErrorBanner(props: {
       </div>
       <div className="onboarding-step3-error-message">{props.message}</div>
       <div className="onboarding-step3-error-actions">
-        <button type="button" className="onboarding-step3-error-back" onClick={props.onBack} disabled={props.busy}>
+        <Button
+          variant="secondary"
+          className="onboarding-step3-error-back"
+          onClick={props.onBack}
+          disabled={props.busy}
+        >
           {t('返回', 'Back')}
-        </button>
-        <button type="button" className="onboarding-step3-error-retry" onClick={props.onRetry} disabled={props.busy}>
+        </Button>
+        <Button
+          variant="primary"
+          className="onboarding-step3-error-retry"
+          onClick={props.onRetry}
+          disabled={props.busy}
+        >
           {props.busy ? t('重试中…', 'Retrying…') : t('重试', 'Retry')}
-        </button>
+        </Button>
       </div>
     </div>
   );

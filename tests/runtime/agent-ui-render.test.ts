@@ -2703,7 +2703,7 @@ test('web search settings render through the shared UI component system', () => 
   assert.equal(html.includes('prototype-primary'), false);
 });
 
-test('provider editor prioritizes presets and hides protocol fields under advanced settings', () => {
+test('provider editor prioritizes presets and exposes protocol controls', () => {
   const html = renderZh(
     createElement(ProviderEditor, {
       provider: null,
@@ -2715,13 +2715,14 @@ test('provider editor prioritizes presets and hides protocol fields under advanc
 
   assert.match(html, /服务商预设/);
   assert.match(html, /核心配置/);
-  assert.match(html, /高级协议配置/);
   assert.match(html, /OpenAI/);
   assert.match(html, /Xiaomi MiMo/);
   assert.match(html, /默认模型/);
   assert.match(html, /Base URL/);
   assert.match(html, /API Key/);
+  assert.match(html, /协议/);
   assert.match(html, /接口模式/);
+  assert.match(html, /认证方式/);
   assert.match(html, /provider-advanced-section/);
   assert.match(html, /fp-field/);
   assert.match(html, /fp-input/);
@@ -3852,7 +3853,7 @@ test('project settings shell marks selected settings category and renders only t
 
   assert.match(html, /项目设置分类/);
   assert.match(html, /fp-button[^"]*project-settings-nav-item active/);
-  assert.match(html, /aria-current="page"[^>]*title="引擎项目 · 路径、平台、运行状态/);
+  assert.match(html, /aria-current="page"[^>]*title="引擎项目 · 未绑定/);
   assert.match(html, /project-settings-nav-icon/);
   assert.match(html, /<span class="project-settings-nav-copy"><strong>引擎项目/);
   assert.match(html, /运行状态/);
