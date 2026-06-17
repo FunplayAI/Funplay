@@ -5,6 +5,7 @@ import type {
   ProjectFileEntry
 } from '../../../shared/types';
 import {
+  findProjectFilesOnDisk,
   listProjectFilesForProject,
   readProjectFileForProject,
   writeProjectTextFileForProject
@@ -135,6 +136,39 @@ export function findProjectFiles(files: ProjectFileEntry[], input: {
       return rightTime - leftTime || left.path.localeCompare(right.path);
     })
     .slice(0, maxResults);
+}
+
+// find_files matched against the in-memory listing (listProjectFilesForProject),
+// which is capped at MAX_FILE_ENTRIES (1200) — so in large projects (e.g. Unity,
+// where every asset has a .meta sidecar) files in later folders were never in the
+// list and looked "missing" even though they exist. This variant walks the project
+// tree directly so glob matches are found regardless of the listing cap.
+export async function findProjectFilesFromDisk(project: Project, input: {
+  pattern: string;
+  path?: string;
+  maxResults?: number;
+}): Promise<ProjectFileEntry[]> {
+  const pattern = input.pattern.trim().replaceAll('\\', '/').replace(/^\.\//, '');
+  if (!pattern) {
+    throw new Error('find_files 缺少 pattern。');
+  }
+
+  const directory = normalizeOptionalDirectoryPath(input.path);
+  const matcher = globToRegExp(pattern);
+  const shouldMatchPath = pattern.includes('/');
+  const maxResults = Math.max(1, Math.min(input.maxResults ?? MAX_FIND_FILE_RESULTS, MAX_FIND_FILE_RESULTS));
+
+  const matched = await findProjectFilesOnDisk(
+    project,
+    (relativePath, name) => matcher.test(shouldMatchPath ? relativePath : name),
+    { startDir: directory || undefined, maxMatches: maxResults }
+  );
+
+  return matched.sort((left, right) => {
+    const leftTime = left.modifiedAt ? Date.parse(left.modifiedAt) : 0;
+    const rightTime = right.modifiedAt ? Date.parse(right.modifiedAt) : 0;
+    return rightTime - leftTime || left.path.localeCompare(right.path);
+  });
 }
 
 export function formatFileMatches(files: ProjectFileEntry[], pattern: string): string {

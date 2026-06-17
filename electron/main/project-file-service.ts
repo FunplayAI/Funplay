@@ -473,6 +473,83 @@ export async function listProjectFilesForProject(project: Project): Promise<Proj
   return entries;
 }
 
+// Walk the whole project tree collecting files that satisfy `predicate`, stopping
+// at `maxMatches`. Unlike listProjectFilesForProject this is NOT bounded by
+// MAX_FILE_ENTRIES — it scans the full tree (only stat-ing matches), so tools like
+// find_files can locate files in large (e.g. Unity) projects that the capped
+// 1200-entry listing never reaches.
+export async function findProjectFilesOnDisk(
+  project: Project,
+  predicate: (relativePath: string, name: string) => boolean,
+  options: { startDir?: string; maxMatches: number }
+): Promise<ProjectFileEntry[]> {
+  const rootPath = resolveProjectRoot(project);
+  const startAbsolute = options.startDir ? resolve(rootPath, options.startDir) : rootPath;
+  if (startAbsolute !== rootPath && !isPathInsideRoot(rootPath, startAbsolute)) {
+    throw new Error('非法搜索路径。');
+  }
+  const matches: ProjectFileEntry[] = [];
+  await walkProjectFilesForMatches(rootPath, startAbsolute, predicate, Math.max(1, options.maxMatches), matches);
+  return matches;
+}
+
+async function walkProjectFilesForMatches(
+  rootPath: string,
+  currentPath: string,
+  predicate: (relativePath: string, name: string) => boolean,
+  maxMatches: number,
+  matches: ProjectFileEntry[]
+): Promise<void> {
+  if (matches.length >= maxMatches) {
+    return;
+  }
+
+  const directoryEntries = await readdir(currentPath, { withFileTypes: true });
+  directoryEntries.sort((left, right) => {
+    if (left.isDirectory() !== right.isDirectory()) {
+      return left.isDirectory() ? -1 : 1;
+    }
+    return left.name.localeCompare(right.name);
+  });
+
+  for (const directoryEntry of directoryEntries) {
+    if (matches.length >= maxMatches) {
+      return;
+    }
+    if (shouldHideProjectTreeEntry(directoryEntry.name)) {
+      continue;
+    }
+
+    const absolutePath = resolve(currentPath, directoryEntry.name);
+    const relativePath = toPosixRelativePath(rootPath, absolutePath);
+
+    if (directoryEntry.isDirectory()) {
+      if (IGNORED_DIRECTORIES.has(directoryEntry.name)) {
+        continue;
+      }
+      if (relativePath === 'Packages/PackageCache' || relativePath.startsWith('Packages/PackageCache/')) {
+        continue;
+      }
+      await walkProjectFilesForMatches(rootPath, absolutePath, predicate, maxMatches, matches);
+      continue;
+    }
+
+    if (!directoryEntry.isFile() || !predicate(relativePath, directoryEntry.name)) {
+      continue;
+    }
+
+    const fileStat = await stat(absolutePath);
+    matches.push({
+      id: relativePath,
+      name: basename(relativePath),
+      path: relativePath,
+      type: 'file',
+      size: fileStat.size,
+      modifiedAt: fileStat.mtime.toISOString()
+    });
+  }
+}
+
 export async function readProjectFile(state: AppState, projectId: string, filePath: string): Promise<ProjectFileContent> {
   const project = getProjectOrThrow(state, projectId);
   return readProjectFileForProject(project, filePath);

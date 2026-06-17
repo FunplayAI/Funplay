@@ -60,7 +60,7 @@ import { inferMcpToolReadOnly, resolveMcpToolPolicy } from './mcp-policy';
 import {
   applyWorkspaceWriteOperations as _applyWorkspaceWriteOperations,
   buildDirectorySummary,
-  findProjectFiles as _findProjectFiles,
+  findProjectFilesFromDisk as _findProjectFilesFromDisk,
   formatFileMatches as _formatFileMatches,
   performAdvancedProjectSearch as _performAdvancedProjectSearch
 } from './project-search-tools';
@@ -2164,8 +2164,7 @@ export async function executeAgentToolAction(
     }
 
     if (action.type === 'find_files') {
-      const files = await listProjectFilesForProject(project);
-      const matches = _findProjectFiles(files, action);
+      const matches = await _findProjectFilesFromDisk(project, action);
       return {
         ok: true,
         summary: _formatFileMatches(matches, action.pattern)
