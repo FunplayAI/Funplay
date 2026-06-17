@@ -51,12 +51,13 @@ export function AgentPermissionCard(props: {
     try {
       await props.onRespond(decision);
     } catch (cause) {
-      setInFlight(null);
       setError(
         cause instanceof Error
           ? cause.message
           : localize(language, '权限响应失败，请重试。', 'Failed to submit the permission decision. Please try again.')
       );
+    } finally {
+      setInFlight(null);
     }
   }
 
@@ -139,8 +140,9 @@ export function AgentUserInputCard(props: {
       try {
         await props.onRespond({ answer: '', cancelled: true });
       } catch (cause) {
-        setSubmitting(false);
         setError(resolveError(cause));
+      } finally {
+        setSubmitting(false);
       }
       return;
     }
@@ -162,8 +164,9 @@ export function AgentUserInputCard(props: {
         optionIds: selectedOptions.length > 0 ? selectedOptions.map((option) => option.id) : undefined
       });
     } catch (cause) {
-      setSubmitting(false);
       setError(resolveError(cause));
+    } finally {
+      setSubmitting(false);
     }
   }
 

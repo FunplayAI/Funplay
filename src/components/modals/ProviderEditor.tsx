@@ -18,6 +18,17 @@ import {
   type ProviderDraft
 } from './provider-editor-utils';
 
+// Mirror the backend isValidHttpUrl (ipc-validation.ts) so the Save gate matches
+// what the schema will accept — avoids enabling Save on a URL the backend rejects.
+function isLikelyHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export function ProviderEditor(props: {
   provider: AiProvider | null;
   onCancel?: () => void;
@@ -65,12 +76,15 @@ export function ProviderEditor(props: {
   }, [resolvedModelChoices]);
   const canFetchModelList = Boolean(draft.baseUrl.trim() && (draft.apiKey.trim() || props.provider?.hasStoredApiKey));
   const baseUrlValue = draft.baseUrl.trim();
-  const baseUrlMalformed = Boolean(baseUrlValue) && !/^https?:\/\//i.test(baseUrlValue);
+  // bedrock/vertex authenticate via region/project env overrides, not a Base URL,
+  // so don't require (or force the advanced section open for) an empty Base URL.
+  const baseUrlRequired = draft.protocol !== 'bedrock' && draft.protocol !== 'vertex';
+  const baseUrlMalformed = Boolean(baseUrlValue) && !isLikelyHttpUrl(baseUrlValue);
   const effectiveAuthStyle = draft.authStyle ?? 'api_key';
   const apiKeyRequired = effectiveAuthStyle === 'api_key';
   const apiKeyMissing = apiKeyRequired && !draft.apiKey.trim() && !props.provider?.hasStoredApiKey;
-  const canSave = Boolean(draft.name.trim() && draft.baseUrl.trim() && draft.model.trim()) && !baseUrlMalformed && !apiKeyMissing;
-  const needsAdvanced = !draft.baseUrl.trim() || !draft.model.trim() || baseUrlMalformed;
+  const canSave = Boolean(draft.name.trim() && draft.model.trim() && (!baseUrlRequired || baseUrlValue)) && !baseUrlMalformed && !apiKeyMissing;
+  const needsAdvanced = (baseUrlRequired && !baseUrlValue) || !draft.model.trim() || baseUrlMalformed;
 
   const applyProviderPreset = (presetId: string): void => {
     const next = AI_PROVIDER_PRESETS.find((item) => item.id === presetId);
@@ -369,6 +383,7 @@ export function ProviderEditor(props: {
               else await props.onCreate(payload);
             } catch (error) {
               setSaveError(error instanceof Error ? error.message : localize(language, '保存失败,请重试。', 'Failed to save, please try again.'));
+            } finally {
               setSaving(false);
             }
           }}

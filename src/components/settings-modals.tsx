@@ -183,6 +183,7 @@ export function McpPluginModal(props: {
     } catch (error) {
       // Keep the modal open on failure and surface the error instead of swallowing it.
       setSaveError(error instanceof Error ? error.message : localize(language, '保存失败。', 'Failed to save.'));
+    } finally {
       setIsSaving(false);
     }
   }
@@ -345,7 +346,7 @@ export function ModalShell(props: { title: string; subtitle?: string; children: 
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        aria-describedby={subtitleId}
+        aria-describedby={props.subtitle ? subtitleId : undefined}
         tabIndex={-1}
       >
         <div className="modal-header">

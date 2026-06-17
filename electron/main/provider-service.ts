@@ -216,7 +216,9 @@ export async function deleteProvider(state: AppState, providerId: string): Promi
   state.providers = state.providers.filter((provider) => provider.id !== providerId);
 
   if (state.aiSettings.defaultProviderId === providerId) {
-    const nextDefault = state.providers.find((provider) => provider.enabled) ?? state.providers[0];
+    // Only an enabled provider may become the default; if none remain enabled,
+    // leave the default unset rather than pointing at a disabled provider.
+    const nextDefault = state.providers.find((provider) => provider.enabled);
     state.aiSettings.defaultProviderId = nextDefault?.id;
     state.providers = state.providers.map((provider) => ({
       ...provider,
