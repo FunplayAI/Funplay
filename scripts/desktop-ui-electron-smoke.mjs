@@ -760,8 +760,8 @@ async function snapshot(webContents) {
         modalText: modal?.textContent?.replace(/\\s+/g, ' ').trim().slice(0, 2400) || '',
         appSettingsColumns: appSettingsLayout ? getComputedStyle(appSettingsLayout).gridTemplateColumns : '',
         activeProviderPreset: document.querySelector('.provider-preset-card.active strong')?.textContent?.trim() || '',
-        providerEditorBaseUrl: [...document.querySelectorAll('.provider-core-config label')].find((label) => /基础 URL|Base URL/.test(label.textContent || ''))?.querySelector('input')?.value || '',
-        providerEditorModel: [...document.querySelectorAll('.provider-core-config label')].find((label) => /默认模型|Default Model/.test(label.textContent || ''))?.querySelector('input')?.value || '',
+        providerEditorBaseUrl: [...document.querySelectorAll('.provider-advanced-section label')].find((label) => /基础 URL|Base URL/.test(label.textContent || ''))?.querySelector('input')?.value || '',
+        providerEditorModel: [...document.querySelectorAll('.provider-advanced-section label')].find((label) => /默认模型|Default Model/.test(label.textContent || ''))?.querySelector('input')?.value || '',
         providerAdvancedOpen: Boolean(document.querySelector('.provider-advanced-section')?.hasAttribute('open')),
         inspectorPath: document.querySelector('.file-inspector-path')?.textContent?.trim() || '',
         inspectorText: document.querySelector('.file-inspector-panel')?.textContent?.replace(/\\s+/g, ' ').trim().slice(0, 400) || '',
@@ -1330,7 +1330,7 @@ async function main() {
     assert.equal(providerEditor.providerEditorModel, 'mimo-v2.5-pro');
     assert.equal(providerEditor.providerAdvancedOpen, false);
     assert.match(providerEditor.modalText, /核心配置|Core Configuration/);
-    assert.match(providerEditor.modalText, /高级协议配置|Advanced Protocol Configuration/);
+    assert.match(providerEditor.modalText, /高级设置|Advanced Settings/);
     await auditAccessibility(win.webContents, 'Provider Editor Preset', accessibilityAudits);
     await auditLayout(win.webContents, 'Provider Editor Preset', layoutAudits);
     rows.push({ state: 'Provider Editor Preset', screenshot: await capture(win, 'provider-editor-preset'), detail: providerEditor });

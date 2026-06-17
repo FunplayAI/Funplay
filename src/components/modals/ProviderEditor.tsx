@@ -38,12 +38,14 @@ export function ProviderEditor(props: {
   }>({ loading: false, tone: 'neutral', message: '' });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
     setDraft(initialDraft);
     setModelFetchState({ loading: false, tone: 'neutral', message: '' });
     setSaving(false);
     setSaveError('');
+    setAdvancedOpen(false);
   }, [initialDraft]);
 
   const preset = AI_PROVIDER_PRESETS.find((item) => item.id === draft.presetId) ?? AI_PROVIDER_PRESETS[0];
@@ -80,6 +82,7 @@ export function ProviderEditor(props: {
   const apiKeyRequired = effectiveAuthStyle === 'api_key';
   const apiKeyMissing = apiKeyRequired && !draft.apiKey.trim() && !props.provider?.hasStoredApiKey;
   const canSave = Boolean(draft.name.trim() && draft.baseUrl.trim() && draft.model.trim()) && !baseUrlMalformed && !apiKeyMissing;
+  const needsAdvanced = !draft.baseUrl.trim() || !draft.model.trim() || baseUrlMalformed;
 
   const applyProviderPreset = (presetId: string): void => {
     const next = AI_PROVIDER_PRESETS.find((item) => item.id === presetId);
@@ -156,14 +159,6 @@ export function ProviderEditor(props: {
         </div>
         <TextField label={localize(language, '名称', 'Name')} value={draft.name} onValueChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
         <TextField
-          label={localize(language, '基础 URL', 'Base URL')}
-          value={draft.baseUrl}
-          onValueChange={(value) => setDraft((current) => ({ ...current, baseUrl: value }))}
-          helper={baseUrlMalformed
-            ? localize(language, 'Base URL 需以 http:// 或 https:// 开头。例如 https://api.openai.com/v1，按服务商要求包含 /v1 等路径。', 'Base URL must start with http:// or https://. For example https://api.openai.com/v1; include paths such as /v1 as the provider requires.')
-            : localize(language, '例如 https://api.openai.com/v1，按服务商要求包含 /v1 等路径。', 'For example https://api.openai.com/v1; include paths such as /v1 as the provider requires.')}
-        />
-        <TextField
           label={(
             <span className="provider-field-label-row">
               {localize(language, 'API Key', 'API Key')}
@@ -182,7 +177,37 @@ export function ProviderEditor(props: {
               ? localize(language, '该认证方式需要填写 API Key 才能保存。', 'This auth style requires an API Key before you can save.')
               : props.provider?.hasStoredApiKey
                 ? localize(language, '留空将保留当前已保存的 API Key。', 'Leave blank to keep the currently saved API key.')
-                : localize(language, '当前尚未保存 API Key。', 'No API key is currently saved.')}
+                : localize(language, '填好上面的 API Key 一般就能用了，其余按预设自动配置。', 'Once the API Key above is set you are usually ready — everything else is auto-filled by the preset.')}
+        />
+        {baseUrlValue && draft.model.trim() && !baseUrlMalformed ? (
+          <div className="provider-core-summary">
+            <div className="provider-core-summary-items">
+              <span><em>{localize(language, '接口', 'Endpoint')}</em>{draft.baseUrl}</span>
+              <span><em>{localize(language, '模型', 'Model')}</em>{draft.model}</span>
+              <span><em>{localize(language, '协议', 'Protocol')}</em>{formatPresetProtocol(language, draft.protocol, draft.apiMode)}</span>
+            </div>
+            <Button type="button" variant="ghost" size="compact" className="provider-core-summary-edit" onClick={() => setAdvancedOpen(true)}>
+              {localize(language, '调整', 'Adjust')}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+      <details
+        className="provider-advanced-section"
+        open={advancedOpen || needsAdvanced}
+        onToggle={(event) => setAdvancedOpen((event.target as HTMLDetailsElement).open || needsAdvanced)}
+      >
+        <summary>
+          <span>{localize(language, '高级设置', 'Advanced Settings')}</span>
+          <em>{localize(language, 'Base URL · 模型 · 协议 · 超时', 'Base URL · model · protocol · timeouts')}</em>
+        </summary>
+        <TextField
+          label={localize(language, '基础 URL', 'Base URL')}
+          value={draft.baseUrl}
+          onValueChange={(value) => setDraft((current) => ({ ...current, baseUrl: value }))}
+          helper={baseUrlMalformed
+            ? localize(language, 'Base URL 需以 http:// 或 https:// 开头。例如 https://api.openai.com/v1，按服务商要求包含 /v1 等路径。', 'Base URL must start with http:// or https://. For example https://api.openai.com/v1; include paths such as /v1 as the provider requires.')
+            : localize(language, '选了上面的预设后会自动填好；自定义端点时按服务商要求填写，例如 https://api.openai.com/v1。', 'Auto-filled when you pick a preset above; for a custom endpoint enter it as the provider requires, e.g. https://api.openai.com/v1.')}
         />
         <div className="provider-model-fetch-row">
           <TextField
@@ -251,12 +276,6 @@ export function ProviderEditor(props: {
         <datalist id={upstreamModelListId}>
           {suggestedUpstreamModels.map((modelId) => <option key={modelId} value={modelId} />)}
         </datalist>
-      </div>
-      <details className="provider-advanced-section">
-        <summary>
-          <span>{localize(language, '高级协议配置', 'Advanced Protocol Configuration')}</span>
-          <em>{formatPresetProtocol(language, draft.protocol, draft.apiMode)}</em>
-        </summary>
         <SelectField
           label={localize(language, '协议', 'Protocol')}
           value={draft.protocol}

@@ -564,6 +564,46 @@
   margin-top: 12px;
 }
 
+/* Read-only readout of what the chosen preset already configured, so newbies
+   see the endpoint/model is set without facing the editable fields. */
+.provider-core-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  padding: 8px 12px;
+  border-radius: var(--fp-radius-md);
+  background: var(--fp-accent-primary-soft);
+  border: 1px solid rgba(99, 102, 241, 0.16);
+}
+
+.provider-core-summary-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.provider-core-summary-items span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-core-summary-items em {
+  margin-right: 5px;
+  color: var(--text-soft);
+  font-style: normal;
+}
+
+.provider-core-summary-edit {
+  flex-shrink: 0;
+}
+
 .provider-editor-section-header {
   display: grid;
   gap: 3px;
