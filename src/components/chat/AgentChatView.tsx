@@ -228,7 +228,6 @@ export function AgentChatView(props: {
           <div className="agent-empty-state minimal compact-style">
             <div className="agent-empty-copy">
               <strong>{t('暂无项目', 'No Project')}</strong>
-              <span>{t('先从欢迎页创建一个新项目。', 'Create a new project from the welcome screen first.')}</span>
             </div>
           </div>
         </section>

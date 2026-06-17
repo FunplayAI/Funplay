@@ -259,7 +259,6 @@ export function McpManagementPage(props: {
       <div className="mcp-server-settings-header">
         <div>
           <h2>{t('Servers', 'Servers')}</h2>
-          <p>{t('为当前项目选择可用 MCP。全局服务器只在这里启停，新增和删除请到全局设置。', 'Choose MCP servers for this project. Global servers can only be enabled or disabled here; add and delete them in global settings.')}</p>
         </div>
         <div className="ghost-pill-group">
           <Button variant="secondary" size="sm" onClick={props.onOpenRegistry} leadingIcon={<Settings2 size={14} aria-hidden="true" />}>
@@ -360,7 +359,7 @@ export function McpManagementPage(props: {
       ) : (
         <div className="mcp-server-list" role="list">
           {projectPlugins.length === 0 ? (
-            <div className="empty-note">{t('暂无 MCP Server。可以添加项目 Server，或到全局设置里添加全局 Server。', 'No MCP servers yet. Add a project server, or add a global server in global settings.')}</div>
+            <div className="empty-note">{t('暂无 MCP Server。', 'No MCP servers yet.')}</div>
           ) : null}
           {projectPlugins.map((plugin) => {
             const isProjectScoped = Boolean(plugin.projectId);

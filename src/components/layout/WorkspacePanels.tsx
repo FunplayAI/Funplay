@@ -245,7 +245,6 @@ export function FileInspectorPanel(props: {
             <div className="file-inspector-empty">
               <div className="empty-agent-icon">📄</div>
               <strong>{localize(language, '打开一个项目文件', 'Open a project file')}</strong>
-              <span>{localize(language, '左侧点击文件后，这里会显示源码编辑区；Markdown 和 HTML 文件可直接预览。', 'Click a file on the left to inspect source here; Markdown and HTML files can be previewed directly.')}</span>
             </div>
           ) : props.mode === 'preview' && previewable ? (
             renderFilePreview(props.file, props.draft, props.project, htmlPreviewMode)

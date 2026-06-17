@@ -126,14 +126,12 @@ export function ProjectSettingsPage(props: {
   const settingsNavItems: Array<{
     id: ProjectSettingsTab;
     label: string;
-    description: string;
     badge: string;
     Icon: LucideIcon;
   }> = [
     {
       id: 'engine',
       label: t('引擎项目', 'Engine Project'),
-      description: t('路径、平台、运行状态', 'Path, platform, runtime'),
       badge: props.project?.engine?.platform
         ? formatPlatformLabel(props.project.engine.platform)
         : t('未绑定', 'Unbound'),
@@ -142,7 +140,6 @@ export function ProjectSettingsPage(props: {
     {
       id: 'agent',
       label: 'Agent',
-      description: t('模型与项目策略', 'Model and project policy'),
       badge: props.activeSession
         ? props.sessionModel || props.activeProvider?.model || t('默认模型', 'Default Model')
         : t('未选择', 'No Session'),
@@ -151,14 +148,12 @@ export function ProjectSettingsPage(props: {
     {
       id: 'usage',
       label: t('用量', 'Usage'),
-      description: t('项目 Token 统计', 'Project token usage'),
       badge: formatTokenCount(projectUsage.totalTokens, language),
       Icon: Gauge
     },
     {
       id: 'runs',
       label: t('Agent 运行', 'Agent Runs'),
-      description: t('历史、恢复与验证', 'History, recovery, verification'),
       badge:
         projectRuns.resumableRunCount > 0
           ? t(`${projectRuns.resumableRunCount} 可恢复`, `${projectRuns.resumableRunCount} resumable`)
@@ -168,14 +163,12 @@ export function ProjectSettingsPage(props: {
     {
       id: 'mcp',
       label: 'MCP',
-      description: t('项目级 Server 与运行检查', 'Project servers and runtime checks'),
       badge: t(`${projectMcpServerCount} 启用`, `${projectMcpServerCount} enabled`),
       Icon: Plug
     },
     {
       id: 'skills',
       label: 'Skills',
-      description: t('用户赋予 Agent 的项目技能', 'User-provided agent skills'),
       badge: t(
         `${props.project?.agentPolicy?.skills?.filter((skill) => skill.enabled).length ?? 0} 启用`,
         `${props.project?.agentPolicy?.skills?.filter((skill) => skill.enabled).length ?? 0} enabled`
@@ -201,7 +194,7 @@ export function ProjectSettingsPage(props: {
               variant="ghost"
               className={`project-settings-nav-item ${tab === item.id ? 'active' : ''}`}
               aria-current={tab === item.id ? 'page' : undefined}
-              title={`${item.label} · ${item.description} · ${item.badge}`}
+              title={`${item.label} · ${item.badge}`}
               onClick={() => onTabChange(item.id)}
             >
               <span className="project-settings-nav-icon" aria-hidden="true">
@@ -209,7 +202,6 @@ export function ProjectSettingsPage(props: {
               </span>
               <span className="project-settings-nav-copy">
                 <strong>{item.label}</strong>
-                <span>{item.description}</span>
               </span>
               <span className="project-settings-nav-badge">{item.badge}</span>
             </Button>
@@ -221,7 +213,6 @@ export function ProjectSettingsPage(props: {
         <div className="project-settings-detail-header">
           <div>
             <h2>{activeItem.label}</h2>
-            <p>{activeItem.description}</p>
           </div>
         </div>
 

@@ -158,7 +158,6 @@ export function OnboardingScreen(props: {
                       <div className="onboarding-rail-copy">
                         <div className="section-heading">{t('项目配置向导', 'Project Setup')}</div>
                         <h2>{t('环境体检', 'Environment Check')}</h2>
-                        <p>{t('按顺序确认引擎、项目打开状态和 MCP / Bridge 连通。', 'Confirm the engine, project open state, and MCP / Bridge connection in order.')}</p>
                       </div>
                       <div className="onboarding-rail-summary">
                         <div>
@@ -351,7 +350,6 @@ export function OnboardingScreen(props: {
                       <div className="onboarding-rail-copy">
                         <div className="section-heading">{t('项目配置向导', 'Project Setup')}</div>
                         <h2>{t('选择项目入口', 'Choose how to start')}</h2>
-                        <p>{t('Funplay 会根据项目来源和引擎类型，把后续环境检查收进下一步。', 'Funplay will tailor the next environment check from your source and engine choice.')}</p>
                       </div>
                       <div className="onboarding-rail-summary">
                         <div>
@@ -383,14 +381,12 @@ export function OnboardingScreen(props: {
                             <span className="option-card-icon" aria-hidden="true"><FilePlus2 size={18} /></span>
                             <span className="option-card-copy">
                               <strong>{t('新建项目', 'Create New Project')}</strong>
-                              <span>{t('从玩法想法或空工程开始。', 'Start from a gameplay idea or blank workspace.')}</span>
                             </span>
                           </Button>
                           <Button variant="ghost" size="compact" className={`setup-mode-card ${props.mode === 'import' ? 'selected' : ''}`} onClick={() => props.onModeChange('import')}>
                             <span className="option-card-icon" aria-hidden="true"><FolderInput size={18} /></span>
                             <span className="option-card-copy">
                               <strong>{t('导入已有项目', 'Import Existing Project')}</strong>
-                              <span>{t('接入本机已有的游戏或 Web 项目。', 'Connect an existing local game or web project.')}</span>
                             </span>
                           </Button>
                         </div>
@@ -435,7 +431,6 @@ export function OnboardingScreen(props: {
                             <Button variant="ghost" size="compact" className={`setup-mode-card ${props.dimension === '2d' ? 'selected' : ''}`} onClick={() => props.onDimensionChange('2d')}>
                               <span className="option-card-copy">
                                 <strong>{t('2D 项目', '2D Project')}</strong>
-                                <span>{t('像素、横版、卡牌或其他 2D 原型。', 'Pixel art, side-scrollers, card games, or other 2D prototypes.')}</span>
                               </span>
                             </Button>
                             <Button
@@ -446,7 +441,6 @@ export function OnboardingScreen(props: {
                             >
                               <span className="option-card-copy">
                                 <strong>{t('3D 项目', '3D Project')}</strong>
-                                <span>{t('三维场景、平台跳跃、角色控制或轻量 3D 原型。', '3D scenes, platformers, character control, or lightweight 3D prototypes.')}</span>
                               </span>
                             </Button>
                           </div>
@@ -504,11 +498,6 @@ export function OnboardingScreen(props: {
                             </div>
                           </div>
                         </div>
-                        <div className="onboarding-form-note">
-                          {isGenericProject
-                            ? t('通用项目不会绑定游戏引擎，可直接进入工作台。', 'Generic projects do not bind a game engine and can enter the workspace directly.')
-                            : t('引擎项目会在下一步检查编辑器、项目版本和 MCP 连接状态。', 'Engine projects continue with editor, project version, and MCP connection checks.')}
-                        </div>
                         {props.actionMessage ? <div className="helper-copy onboarding-action-message">{props.actionMessage}</div> : null}
                         {props.detectionMessage && !props.detectionOk ? <div className="helper-copy onboarding-action-message">{props.detectionMessage}</div> : null}
                       </section>
@@ -555,7 +544,6 @@ export function OnboardingScreen(props: {
                     <>
                       <div className="celebration">✓</div>
                       <h2>{t('配置完成!', 'Setup Complete!')}</h2>
-                      <p>{isGenericProject ? t('工作区已准备好，现在可以进入使用。', 'The workspace is ready. You can enter and start working.') : t('引擎已绑定，现在可以进入工作台开始使用了。', 'The engine is now connected. You can enter the workspace and start building.')}</p>
                     </>
                   )}
                   <div className="summary-card">

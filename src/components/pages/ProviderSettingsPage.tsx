@@ -134,7 +134,6 @@ export function ProviderSettingsPage(props: {
       <div className={`settings-header ${props.embedded ? 'embedded' : ''}`}>
         <div>
           <h2>AI Provider</h2>
-          <p>{t('集中配置模型服务、默认模型与测试连接。这些设置会持久化保存，并应用到所有项目。', 'Configure model services, default models, and connection tests here. These settings are persisted and shared across all projects.')}</p>
           <div className="provider-settings-meta">
             <span>{t(`已配置 ${props.providers.length} 个 Provider`, `${props.providers.length} providers configured`)}</span>
             <span>{defaultProvider ? t(`默认：${defaultProvider.name}`, `Default: ${defaultProvider.name}`) : t('未设置默认 Provider', 'No default provider')}</span>
@@ -169,7 +168,7 @@ export function ProviderSettingsPage(props: {
           className="provider-settings-list-panel"
           items={providerItems}
           emptyTitle={t('暂无 Provider', 'No providers yet')}
-          emptyDescription={t('添加一个模型服务后，就可以在所有项目里使用。', 'Add a model service to use it across projects.')}
+          emptyDescription=""
           onOpenItem={(providerId) => {
             const provider = props.providers.find((item) => item.id === providerId);
             if (provider) openProviderDetail(provider);

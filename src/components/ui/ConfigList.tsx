@@ -34,7 +34,7 @@ export function ConfigListPanel(props: {
   items: ConfigListItem[];
   searchPlaceholder?: string;
   emptyTitle: string;
-  emptyDescription: string;
+  emptyDescription?: string;
   onOpenItem: (id: string) => void;
   renderItemActions?: (item: ConfigListItem) => ReactNode;
   className?: string;
@@ -93,7 +93,7 @@ export function ConfigListPanel(props: {
       {visibleItems.length === 0 ? (
         <div className="config-list-empty">
           <strong>{query ? localize(language, '没有匹配结果', 'No matches') : props.emptyTitle}</strong>
-          <span>{query ? localize(language, '换个关键词试试。', 'Try another keyword.') : props.emptyDescription}</span>
+          {query ? <span>{localize(language, '换个关键词试试。', 'Try another keyword.')}</span> : props.emptyDescription ? <span>{props.emptyDescription}</span> : null}
         </div>
       ) : (
         <div className="provider-channel-list config-list" role="list">

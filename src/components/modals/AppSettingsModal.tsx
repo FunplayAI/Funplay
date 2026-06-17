@@ -180,28 +180,28 @@ export function AppSettingsModal(props: {
     }
     props.onClose();
   }
-  const navItems: Array<{ id: AppSettingsTab; label: string; desc: string; Icon: LucideIcon }> = [
-    { id: 'appearance', label: t('外观', 'Appearance'), desc: t('主题与界面外观', 'Theme and window appearance'), Icon: Monitor },
-    { id: 'language', label: t('语言', 'Language'), desc: t('界面语言与文案', 'Interface language and copy'), Icon: Languages },
-    { id: 'provider', label: t('AI 服务商', 'AI Provider'), desc: t('模型服务与默认渠道', 'Model services and default providers'), Icon: Cloud },
-    { id: 'asset-provider', label: t('素材 Provider', 'Asset Provider'), desc: t('图片、3D 与音频生成', 'Image, 3D, and audio generation'), Icon: Sparkles },
-    { id: 'mcp', label: 'MCP', desc: t('全局 MCP Registry', 'Global MCP Registry'), Icon: Plug },
-    { id: 'web-search', label: t('网页搜索', 'Web Search'), desc: t('搜索来源、抽取与评测', 'Sources, extraction, and evaluation'), Icon: Search },
-    { id: 'memory', label: t('记忆', 'Memory'), desc: t('浏览、编辑与清理项目记忆', 'Browse, edit, and clear project memory'), Icon: Database },
-    { id: 'notifications', label: t('通知', 'Notifications'), desc: t('提醒任务与系统通知', 'Reminder tasks and system alerts'), Icon: Bell },
-    { id: 'about', label: t('关于', 'About'), desc: t('产品信息与说明', 'Product info and notes'), Icon: Info }
+  const navItems: Array<{ id: AppSettingsTab; label: string; Icon: LucideIcon }> = [
+    { id: 'appearance', label: t('外观', 'Appearance'), Icon: Monitor },
+    { id: 'language', label: t('语言', 'Language'), Icon: Languages },
+    { id: 'provider', label: t('AI 服务商', 'AI Provider'), Icon: Cloud },
+    { id: 'asset-provider', label: t('素材 Provider', 'Asset Provider'), Icon: Sparkles },
+    { id: 'mcp', label: 'MCP', Icon: Plug },
+    { id: 'web-search', label: t('网页搜索', 'Web Search'), Icon: Search },
+    { id: 'memory', label: t('记忆', 'Memory'), Icon: Database },
+    { id: 'notifications', label: t('通知', 'Notifications'), Icon: Bell },
+    { id: 'about', label: t('关于', 'About'), Icon: Info }
   ];
   return (
     <ModalShell
       title={t('应用设置', 'App Settings')}
-      subtitle={t('统一管理 Funplay 的界面、语言与模型服务。', 'Manage Funplay appearance, language, and model services in one place.')}
+      subtitle=""
       className="app-settings-modal"
       onClose={requestClose}
     >
       <div className="app-settings-layout">
         <aside className="app-settings-sidebar">
           <div className="app-settings-sidebar-title">{t('设置分类', 'Settings')}</div>
-          {navItems.map(({ id, label, desc, Icon }) => (
+          {navItems.map(({ id, label, Icon }) => (
             <Button
               key={id}
               variant="ghost"
@@ -214,7 +214,6 @@ export function AppSettingsModal(props: {
               </span>
               <span className="app-settings-nav-copy">
                 <strong>{label}</strong>
-                <span>{desc}</span>
               </span>
             </Button>
           ))}
@@ -225,7 +224,6 @@ export function AppSettingsModal(props: {
             <section className="app-settings-section">
               <div>
                 <strong>{t('主题', 'Theme')}</strong>
-                <div className="helper-copy">{t('选择工作台的显示外观。', 'Choose the workspace appearance.')}</div>
               </div>
               <div className="segmented-options">
                 {([
@@ -243,7 +241,6 @@ export function AppSettingsModal(props: {
                 checked={props.developerMode}
                 onCheckedChange={props.onChangeDeveloperMode}
                 label={t('开发者模式', 'Developer Mode')}
-                description={t('显示运行时阶段、工具边界等调试级运行细节。默认关闭。', 'Show debug-level runtime details such as runtime stages and tool-boundary events. Off by default.')}
               />
             </section>
           ) : null}
@@ -252,7 +249,6 @@ export function AppSettingsModal(props: {
             <section className="app-settings-section">
               <div>
                 <strong>{t('语言', 'Language')}</strong>
-                <div className="helper-copy">{t('设置界面语言偏好。', 'Set the preferred interface language.')}</div>
               </div>
               <div className="segmented-options two-columns">
                 {([
@@ -353,7 +349,6 @@ export function AppSettingsModal(props: {
               <div className="settings-section-header">
                 <div>
                   <strong>{t('通知与提醒', 'Notifications and Reminders')}</strong>
-                  <div className="helper-copy">{t('这里显示 Agent 通过内置通知工具创建的提醒任务。', 'Shows reminder tasks created by the built-in notification tools.')}</div>
                 </div>
                 <Button size="sm" variant="secondary" leadingIcon={<RefreshCw size={14} aria-hidden="true" />} loading={props.isLoadingNotificationTasks} onClick={() => void props.onRefreshNotificationTasks()}>
                   {props.isLoadingNotificationTasks ? t('刷新中…', 'Refreshing…') : t('刷新', 'Refresh')}
@@ -403,7 +398,6 @@ export function AppSettingsModal(props: {
               <div className="settings-section-header">
                 <div>
                   <strong>{t('关于 Funplay', 'About Funplay')}</strong>
-                  <div className="helper-copy">{t('桌面端 AI 游戏创作工作台。', 'A desktop AI game creation workspace.')}</div>
                 </div>
               </div>
               <div className="app-settings-about-grid">
@@ -417,9 +411,6 @@ export function AppSettingsModal(props: {
                 <div className="app-update-header">
                   <div>
                     <strong>{t('软件更新', 'Software Update')}</strong>
-                    <div className="helper-copy">
-                      {t('自动检查新版本；发现更新后由你确认下载与重启安装。', 'Automatically checks for new versions; you choose when to download and restart to install.')}
-                    </div>
                   </div>
                   <span className={`app-update-status-pill ${props.appUpdateStatus?.status ?? 'idle'}`}>
                     {formatAppUpdateStatus(props.appUpdateStatus?.status ?? 'idle', language)}

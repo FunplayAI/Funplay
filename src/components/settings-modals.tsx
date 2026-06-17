@@ -29,32 +29,6 @@ const emptyPluginDraft: McpPluginDraft = {
   notes: ''
 };
 
-function describeMcpPreset(language: 'zh-CN' | 'en-US', presetId: string, fallback: string): string {
-  const map: Record<string, { zh: string; en: string }> = {
-    'unity-mcp': {
-      zh: 'GameBooom / FunseaAI Unity MCP 预设。',
-      en: 'GameBooom / FunseaAI Unity MCP preset.'
-    },
-    'custom-engine-mcp': {
-      zh: '任意兼容 MCP HTTP JSON-RPC 的 Server。',
-      en: 'Any server compatible with MCP HTTP JSON-RPC.'
-    },
-    'custom-asset-mcp': {
-      zh: '任意兼容 MCP HTTP JSON-RPC 的 Server。',
-      en: 'Any server compatible with MCP HTTP JSON-RPC.'
-    },
-    'custom-mcp': {
-      zh: '任意兼容 MCP HTTP JSON-RPC 的 Server。',
-      en: 'Any server compatible with MCP HTTP JSON-RPC.'
-    },
-    'custom-stdio-mcp': {
-      zh: '通过本地命令启动的 MCP stdio Server。',
-      en: 'MCP stdio server launched from a local command.'
-    }
-  };
-  return map[presetId] ? localize(language, map[presetId].zh, map[presetId].en) : fallback;
-}
-
 function parseLines(value: string): string[] {
   return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
 }
@@ -212,13 +186,10 @@ export function McpPluginModal(props: {
       setIsSaving(false);
     }
   }
-  const preset = MCP_PLUGIN_PRESETS.find((item) => item.id === draft.presetId) ?? MCP_PLUGIN_PRESETS[0];
-  const presetDescription = describeMcpPreset(language, preset.id, preset.description);
-
   return (
     <ModalShell
       title={props.plugin ? localize(language, '编辑 MCP 插件', 'Edit MCP Plugin') : localize(language, '添加 MCP 插件', 'Add MCP Plugin')}
-      subtitle={props.projectId ? localize(language, '这个 Server 只属于当前项目。', 'This server belongs only to the current project.') : localize(language, '这个 Server 会作为全局 MCP 供项目选择启用。', 'This server is registered globally and can be enabled by projects.')}
+      subtitle=""
       onClose={props.onClose}
       isDirty={isDirty && !isSaving}
       confirmCloseWhenDirty
@@ -227,7 +198,6 @@ export function McpPluginModal(props: {
         label={localize(language, '预设', 'Preset')}
         value={draft.presetId}
         options={MCP_PLUGIN_PRESETS.map((item) => ({ value: item.id, label: item.name }))}
-        helper={presetDescription}
         onValueChange={(value) => {
             const next = MCP_PLUGIN_PRESETS.find((item) => item.id === value);
             if (!next) return;
@@ -265,7 +235,6 @@ export function McpPluginModal(props: {
             label={localize(language, '参数', 'Arguments')}
             value={draft.argsText}
             placeholder={'--flag\nvalue'}
-            helper={localize(language, '每行一个参数。', 'One argument per line.')}
             onValueChange={(value) => setDraft((current) => ({ ...current, argsText: value }))}
           />
           <TextField
@@ -277,7 +246,6 @@ export function McpPluginModal(props: {
             label={localize(language, '环境', 'Environment')}
             value={draft.envText}
             placeholder="KEY=value"
-            helper={localize(language, '每行一个 KEY=value。', 'One KEY=value per line.')}
             onValueChange={(value) => setDraft((current) => ({ ...current, envText: value }))}
           />
         </>
@@ -290,9 +258,6 @@ export function McpPluginModal(props: {
       )}
       <div className="fp-field provider-compat-section">
         <div className="provider-compat-title">{localize(language, '工具权限策略', 'Tool Permission Policy')}</div>
-        <div className="helper-copy">
-          {localize(language, '默认使用自动推断；对高风险或特殊工具可用 JSON 覆盖。deny 会从 Agent 工具列表中隐藏并阻止通用调用。', 'Defaults use inference. Override high-risk or special tools with JSON. deny hides direct Agent tools and blocks generic calls.')}
-        </div>
         <SelectField
           label={localize(language, '默认权限', 'Default Permission')}
           value={draft.defaultToolPermission ?? 'infer'}
@@ -318,7 +283,6 @@ export function McpPluginModal(props: {
           label={localize(language, '工具覆盖 JSON', 'Tool Override JSON')}
           value={draft.toolPoliciesText}
           placeholder={'{\n  "unity.echo": { "permission": "ask", "risk": "write" }\n}'}
-          helper={localize(language, '键是 MCP 原始工具名；permission 支持 infer/allow/ask/deny，risk 支持 infer/read/write。', 'Keys are original MCP tool names; permission supports infer/allow/ask/deny, risk supports infer/read/write.')}
           onValueChange={(value) => {
             setDraft((current) => ({ ...current, toolPoliciesText: value }));
             validatePolicyText(value);
@@ -328,7 +292,6 @@ export function McpPluginModal(props: {
       </div>
       <CheckboxField
         label={localize(language, '启用 Server', 'Enable server')}
-        description={localize(language, '停用后项目不能调用这个 MCP。', 'Disabled servers cannot be called by projects.')}
         checked={draft.enabled ?? true}
         onCheckedChange={(checked) => setDraft((current) => ({ ...current, enabled: checked }))}
       />
@@ -355,7 +318,7 @@ export function McpPluginModal(props: {
   );
 }
 
-export function ModalShell(props: { title: string; subtitle: string; children: ReactNode; className?: string; onClose?: () => void; isDirty?: boolean; confirmCloseWhenDirty?: boolean }): JSX.Element {
+export function ModalShell(props: { title: string; subtitle?: string; children: ReactNode; className?: string; onClose?: () => void; isDirty?: boolean; confirmCloseWhenDirty?: boolean }): JSX.Element {
   const language = useUiLanguage();
   const titleId = useId();
   const subtitleId = useId();
@@ -388,7 +351,7 @@ export function ModalShell(props: { title: string; subtitle: string; children: R
         <div className="modal-header">
           <div>
             <div className="page-title" id={titleId}>{props.title}</div>
-            <div className="page-subtitle" id={subtitleId}>{props.subtitle}</div>
+            {props.subtitle ? <div className="page-subtitle" id={subtitleId}>{props.subtitle}</div> : null}
           </div>
           {props.onClose ? (
             <IconButton className="modal-close-button" icon={<X size={16} aria-hidden="true" />} label={localize(language, '关闭', 'Close')} onClick={requestClose} />

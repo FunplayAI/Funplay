@@ -159,17 +159,6 @@ export function ProjectAgentSettings(props: {
         </div>
       </Card>
       <Card title={t('Agent 模式', 'Agent Mode')}>
-        <div className="helper-copy">
-          {projectPermissionMode
-            ? t(
-                '当前项目已选择 Agent 模式；当前会话仍可在聊天输入区临时切换。',
-                'This project has an Agent mode selected; the current session can still switch from the chat composer.'
-              )
-            : t(
-                '为当前项目选择 Build 或 Plan。Build 用于直接开发；Plan 用于只读探索和方案规划。',
-                'Choose Build or Plan for this project. Build is for direct development; Plan is for read-only exploration and planning.'
-              )}
-        </div>
         <div className="segmented-options">
           {permissionOptions.map(([mode, label]) => (
             <Button

@@ -81,11 +81,7 @@ export function SessionChangesPanel(props: {
             </div>
           ) : null}
         </>
-      ) : (
-        <div className="session-changes-empty">
-          {localize(language, 'Agent 写入文件后，这里会显示本轮 diff 与恢复入口。', 'After Agent writes files, this panel shows diffs and restore controls.')}
-        </div>
-      )}
+      ) : null}
     </section>
   );
 }
@@ -101,10 +97,7 @@ export function RestoreCheckpointModal(props: {
   const skippedFileChanges = props.preview.skippedFileChanges ?? [];
 
   return (
-    <ModalShell
-      title={localize(language, '恢复会话检查点', 'Restore Session Checkpoint')}
-      subtitle={localize(language, '恢复前先确认这次回退会影响当前会话的哪些消息。', 'Review the impact before rolling the current session back.')}
-    >
+    <ModalShell title={localize(language, '恢复会话检查点', 'Restore Session Checkpoint')}>
       <div className="delete-project-stack">
         <div className="warning-banner">
           {localize(

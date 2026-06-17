@@ -20,7 +20,6 @@ export function AppSettingsAssetProviderSection(props: {
         <div className="app-settings-inline-editor">
           <div className="app-settings-inline-editor-header">
             <strong>{editingTarget ? t('编辑素材 Provider', 'Edit Asset Provider') : t('添加素材 Provider', 'Add Asset Provider')}</strong>
-            <div className="helper-copy">{t('为素材生成中心配置图片、3D、音频等外部生成服务。', 'Configure external generation services for the Asset Generation Center.')}</div>
           </div>
           <AssetProviderEditor
             provider={editingTarget}

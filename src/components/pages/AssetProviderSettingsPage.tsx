@@ -164,7 +164,6 @@ export function AssetProviderSettingsPage(props: {
       <div className={`settings-header ${props.embedded ? 'embedded' : ''}`}>
         <div>
           <h2>{t('素材 Provider', 'Asset Providers')}</h2>
-          <p>{t('配置图片、UI、动画、3D、音频等素材生成服务。API Key 会安全保存在本机，不会发送到界面层。', 'Configure providers for images, UI, animation, 3D, and audio generation. API keys are stored locally and are not exposed to the UI layer.')}</p>
           <div className="provider-settings-meta">
             <span>{t(`已配置 ${props.providers.length} 个素材 Provider`, `${props.providers.length} asset providers configured`)}</span>
             <span>{t(`启用 ${enabledCount} 个`, `${enabledCount} enabled`)}</span>
@@ -195,7 +194,7 @@ export function AssetProviderSettingsPage(props: {
           className="provider-settings-list-panel"
           items={providerItems}
           emptyTitle={t('暂无素材 Provider', 'No asset providers yet')}
-          emptyDescription={t('添加素材生成服务后，素材生成中心就可以使用。', 'Add an asset generation service to use it in the Asset Generation Center.')}
+          emptyDescription=""
           onOpenItem={setDetailProviderId}
           renderItemActions={(item) => {
             const provider = props.providers.find((candidate) => candidate.id === item.id);
@@ -276,7 +275,6 @@ export function AssetProviderEditor(props: {
         label={t('素材服务类型', 'Asset Provider Type')}
         value={draft.adapter}
         options={adapterOptions}
-        helper={localize(language, preset.descriptionZh, preset.descriptionEn)}
         onValueChange={(value) => {
           const nextPreset = presetForAdapter(value as AssetGenerationConfigurableProviderAdapterKind);
           setDraft((current) => ({
@@ -322,7 +320,6 @@ export function AssetProviderEditor(props: {
         <TextField
           label={t('音色 ID', 'Voice ID')}
           value={draft.voiceId ?? ''}
-          helper={t('填写后可生成 voice 类型素材；留空仍可生成音效和音乐。', 'Set this to enable voice assets; leave blank for sound effects and music only.')}
           onValueChange={(value) => setDraft((current) => ({ ...current, voiceId: value }))}
         />
       ) : null}
@@ -332,7 +329,6 @@ export function AssetProviderEditor(props: {
             label={t('工作流文件路径', 'Workflow File Path')}
             value={draft.workflowPath ?? ''}
             placeholder="/Users/me/comfy-workflow.json"
-            helper={t('可选；如果同时填写 JSON，会优先使用下面的 JSON。', 'Optional. Inline JSON below takes priority when both are set.')}
             onValueChange={(value) => setDraft((current) => ({ ...current, workflowPath: value }))}
           />
           <TextAreaField
@@ -346,7 +342,6 @@ export function AssetProviderEditor(props: {
       ) : null}
       <SwitchField
         label={t('启用素材 Provider', 'Enable Asset Provider')}
-        description={t('关闭后会保留配置，但不会出现在素材生成中心的可选服务里。', 'When disabled, the configuration is kept but hidden from Asset Generation Center choices.')}
         checked={draft.enabled ?? true}
         onCheckedChange={(checked) => setDraft((current) => ({ ...current, enabled: checked }))}
       />

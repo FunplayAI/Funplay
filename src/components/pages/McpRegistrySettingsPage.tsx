@@ -124,7 +124,6 @@ export function McpRegistrySettingsPage(props: {
       <div className="settings-header embedded">
         <div>
           <h2>{t('MCP Registry', 'MCP Registry')}</h2>
-          <p>{t('管理全局 MCP Server。项目设置里可以选择启用这些全局 Server，但不能删除它们。', 'Manage global MCP servers. Project settings can enable these servers, but cannot delete them.')}</p>
           <div className="provider-settings-meta">
             <span>{t(`已登记 ${props.plugins.length} 个 Server`, `${props.plugins.length} servers registered`)}</span>
             <span>{props.selectedPlugin ? t(`当前：${props.selectedPlugin.name}`, `Selected: ${props.selectedPlugin.name}`) : t('未选择', 'None selected')}</span>
@@ -212,7 +211,7 @@ export function McpRegistrySettingsPage(props: {
           className="mcp-settings-list-panel"
           items={pluginItems}
           emptyTitle={t('暂无全局 MCP Server', 'No global MCP servers yet')}
-          emptyDescription={t('添加 Server 后，可在项目设置中启用对应工具。', 'Add a server to enable its tools from project settings.')}
+          emptyDescription=""
           onOpenItem={(pluginId) => {
             const plugin = props.plugins.find((item) => item.id === pluginId);
             if (plugin) openPluginDetail(plugin);

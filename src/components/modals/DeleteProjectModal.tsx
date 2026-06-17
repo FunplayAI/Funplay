@@ -19,10 +19,7 @@ export function DeleteProjectModal(props: {
   const canDeleteSourceFiles = !!props.project.engine?.projectPath;
 
   return (
-    <ModalShell
-      title={localize(language, '删除项目', 'Delete Project')}
-      subtitle={localize(language, '先确认删除范围；默认只从 Funplay 移除项目记录。', 'Confirm the deletion scope first. By default, only the Funplay record is removed.')}
-    >
+    <ModalShell title={localize(language, '删除项目', 'Delete Project')}>
       <div className="delete-project-stack">
         <div className="warning-banner danger">
           {localize(language, `删除后会从顶栏和项目列表中移除《${props.project.name}》。`, `The project "${props.project.name}" will be removed from the top tabs and project list.`)}

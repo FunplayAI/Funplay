@@ -128,7 +128,6 @@ export function WebSearchSettingsPage(props: {
       <div className="settings-section-header">
         <div>
           <strong>Web Search</strong>
-          <div className="helper-copy">{t('配置搜索 provider、页面抽取 fallback、引用来源和运行指标。', 'Configure search providers, extraction fallback, citation sources, and runtime metrics.')}</div>
         </div>
         <div className="modal-actions compact">
           <Button variant="secondary" size="sm" onClick={() => void refreshMetrics()} disabled={isLoadingMetrics} leadingIcon={<RefreshCw size={14} aria-hidden="true" />}>
@@ -192,13 +191,11 @@ export function WebSearchSettingsPage(props: {
           checked={draft.browserFallbackEnabled}
           onCheckedChange={(browserFallbackEnabled) => setDraft((current) => ({ ...current, browserFallbackEnabled }))}
           label={t('启用 JS 渲染页面 fallback', 'Enable JS-rendered page fallback')}
-          description={t('用于需要浏览器执行脚本后才能抽取正文的网页。', 'Use a browser extractor when pages need client-side rendering.')}
         />
         <SwitchField
           checked={draft.telemetryEnabled}
           onCheckedChange={(telemetryEnabled) => setDraft((current) => ({ ...current, telemetryEnabled }))}
           label={t('启用搜索 telemetry', 'Enable search telemetry')}
-          description={t('记录搜索、抓取、缓存和 fallback 指标。', 'Track search, fetch, cache, and fallback metrics.')}
         />
       </div>
 
@@ -214,7 +211,6 @@ export function WebSearchSettingsPage(props: {
       <Surface className="web-search-quality-panel" density="compact">
         <div className="runtime-subheader">
           <strong>{t('搜索质量评测', 'Search Quality Evaluation')}</strong>
-          <span>{t('内置评测集会验证官方来源优先、引用数量和 provider 可用性。', 'Built-in cases validate official-source ranking, citation count, and provider availability.')}</span>
         </div>
         <div className="modal-actions compact">
           <Button variant="secondary" size="sm" onClick={() => void resetMetrics()} disabled={isLoadingMetrics} leadingIcon={<RotateCcw size={14} aria-hidden="true" />}>

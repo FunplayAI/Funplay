@@ -17,7 +17,6 @@ import type {
   ProjectFileEntry
 } from '../../../shared/types';
 import {
-  ASSET_GENERATION_IMAGE_DIMENSION_LIMITS,
   formatAssetGenerationImageDimensionValidation,
   isAssetGenerationImageDimensionConstrainedKind,
   validateAssetGenerationImageDimensions
@@ -116,10 +115,6 @@ export function AssetsPage(props: {
   const providers = props.assetGenerationProviders ?? [];
   const enabledProviders = providers.filter((provider) => provider.enabled && provider.supportedKinds.includes(generationKind));
   const selectedProvider = enabledProviders.find((provider) => provider.id === generationProviderId) ?? enabledProviders[0];
-  const generationDimensionHelper = t(
-    `最大边 ≤ ${ASSET_GENERATION_IMAGE_DIMENSION_LIMITS.maxEdge}px；宽高需为 ${ASSET_GENERATION_IMAGE_DIMENSION_LIMITS.multiple}px 倍数；比例 ≤ ${ASSET_GENERATION_IMAGE_DIMENSION_LIMITS.maxAspectRatio}:1；总像素 ${ASSET_GENERATION_IMAGE_DIMENSION_LIMITS.minPixels.toLocaleString('en-US')} - ${ASSET_GENERATION_IMAGE_DIMENSION_LIMITS.maxPixels.toLocaleString('en-US')}。`,
-    `Longest edge ≤ ${ASSET_GENERATION_IMAGE_DIMENSION_LIMITS.maxEdge}px; width/height must be multiples of ${ASSET_GENERATION_IMAGE_DIMENSION_LIMITS.multiple}px; ratio ≤ ${ASSET_GENERATION_IMAGE_DIMENSION_LIMITS.maxAspectRatio}:1; total pixels ${ASSET_GENERATION_IMAGE_DIMENSION_LIMITS.minPixels.toLocaleString('en-US')} - ${ASSET_GENERATION_IMAGE_DIMENSION_LIMITS.maxPixels.toLocaleString('en-US')}.`
-  );
   const generationJobs = [...(props.project?.assetGenerationJobs ?? [])].sort(
     (left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)
   );
@@ -327,7 +322,6 @@ export function AssetsPage(props: {
                 </span>
                 <span className="project-settings-nav-copy">
                   <strong>{category.label}</strong>
-                  <span>{category.description}</span>
                 </span>
                 <span className="project-settings-nav-badge">{category.count}</span>
               </Button>
@@ -350,7 +344,6 @@ export function AssetsPage(props: {
                 </span>
                 <span className="project-settings-nav-copy">
                   <strong>{category.label}</strong>
-                  <span>{category.description}</span>
                 </span>
                 <span className="project-settings-nav-badge">{category.count}</span>
               </Button>
@@ -416,8 +409,8 @@ export function AssetsPage(props: {
                 <div className="asset-generation-form-grid compact">
                   {isVisualGenerationKind(generationKind) ? (
                     <>
-                      <TextField label={t('宽度', 'Width')} value={generationWidth} inputMode="numeric" helper={generationDimensionHelper} onValueChange={setGenerationWidth} />
-                      <TextField label={t('高度', 'Height')} value={generationHeight} inputMode="numeric" helper={generationDimensionHelper} onValueChange={setGenerationHeight} />
+                      <TextField label={t('宽度', 'Width')} value={generationWidth} inputMode="numeric" onValueChange={setGenerationWidth} />
+                      <TextField label={t('高度', 'Height')} value={generationHeight} inputMode="numeric" onValueChange={setGenerationHeight} />
                     </>
                   ) : null}
                   {isAudioGenerationKind(generationKind) || generationKind === 'animation_3d' ? (
@@ -454,7 +447,6 @@ export function AssetsPage(props: {
                 {generationJobs.length === 0 ? (
                   <div className="asset-library-empty compact">
                     <strong>{t('还没有生成任务', 'No generation jobs yet')}</strong>
-                    <span>{t('提交后会在这里看到进度、输出路径和失败原因。', 'After submitting, progress, output paths, and failures appear here.')}</span>
                   </div>
                 ) : (
                   <div className="asset-generation-queue-list">
@@ -479,7 +471,6 @@ export function AssetsPage(props: {
               {generationJobs.length === 0 ? (
                 <div className="asset-library-empty">
                   <strong>{t('暂无生成记录', 'No generation jobs yet')}</strong>
-                  <span>{t('生成完成后会在这里查看输出文件、状态和导入记录。', 'Generated outputs, status, and imports will appear here.')}</span>
                 </div>
               ) : null}
               {generationJobs.map((job) => (
@@ -499,7 +490,6 @@ export function AssetsPage(props: {
             {visibleAssets.length === 0 ? (
               <div className="asset-library-empty">
                 <strong>{t('暂无素材', 'No assets yet')}</strong>
-                <span>{t('当前分类下还没有图片/UI、音频、模型/3D 或动画素材。', 'No image/UI, audio, model/3D, or animation assets in this category yet.')}</span>
               </div>
             ) : null}
             {visibleCategories.map((category) => (

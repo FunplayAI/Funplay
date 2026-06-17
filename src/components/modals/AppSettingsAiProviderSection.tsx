@@ -27,7 +27,6 @@ export function AppSettingsAiProviderSection(props: {
         <div className="app-settings-inline-editor">
           <div className="app-settings-inline-editor-header">
             <strong>{editingTarget ? t('编辑 Provider', 'Edit Provider') : t('添加 Provider', 'Add Provider')}</strong>
-            <div className="helper-copy">{t('直接在当前设置页内完成模型服务配置。', 'Configure model services directly inside this settings page.')}</div>
           </div>
           <ProviderEditor
             provider={editingTarget}

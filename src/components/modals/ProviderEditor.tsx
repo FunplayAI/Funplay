@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useState, type JSX } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { AI_PROVIDER_PRESETS, resolveProviderAvailableModels, resolveProviderTokenLimits } from '../../../shared/provider-catalog';
+import { AI_PROVIDER_PRESETS, resolveProviderAvailableModels } from '../../../shared/provider-catalog';
 import type { AiProvider, AiProviderApiMode, AiProviderAuthStyle, AiProviderInput, AiProviderModelListRequest, AiProviderModelListResult, AiProviderProtocol } from '../../../shared/types';
 import { localize, useUiLanguage } from '../../i18n';
 import { Badge, Button, CheckboxField, SelectField, TextAreaField, TextField } from '../ui/index';
@@ -9,7 +9,6 @@ import {
   createProviderDraft,
   createProviderInputFromDraft,
   describeProviderPreset,
-  formatCompactTokenLimit,
   formatPresetProtocol,
   formatStringRecord,
   mergeProviderModelCandidates,
@@ -49,18 +48,7 @@ export function ProviderEditor(props: {
   }, [initialDraft]);
 
   const preset = AI_PROVIDER_PRESETS.find((item) => item.id === draft.presetId) ?? AI_PROVIDER_PRESETS[0];
-  const presetDescription = describeProviderPreset(language, preset.id, preset.description);
   const apiKeyHint = providerApiKeyHint(language, preset.id, preset.apiKeyHint);
-  const draftTokenLimits = useMemo(() => resolveProviderTokenLimits({
-    name: draft.name,
-    protocol: draft.protocol,
-    baseUrl: draft.baseUrl,
-    model: draft.model,
-    upstreamModel: draft.upstreamModel,
-    availableModels: draft.availableModels,
-    contextWindowTokens: draft.contextWindowTokens,
-    maxOutputTokens: draft.maxOutputTokens
-  }), [draft.name, draft.protocol, draft.baseUrl, draft.model, draft.upstreamModel, draft.availableModels, draft.contextWindowTokens, draft.maxOutputTokens]);
   const resolvedModelChoices = useMemo(() => resolveProviderAvailableModels({
     name: draft.name,
     protocol: draft.protocol,
@@ -134,7 +122,6 @@ export function ProviderEditor(props: {
       <div className="provider-editor-section provider-preset-picker">
         <div className="provider-editor-section-header">
           <strong>{localize(language, '服务商预设', 'Provider Presets')}</strong>
-          <span>{presetDescription}</span>
         </div>
         <div className="provider-preset-card-grid" role="list">
           {AI_PROVIDER_PRESETS.map((item) => (
@@ -155,7 +142,6 @@ export function ProviderEditor(props: {
       <div className="provider-editor-section provider-core-config">
         <div className="provider-editor-section-header">
           <strong>{localize(language, '核心配置', 'Core Configuration')}</strong>
-          <span>{apiKeyHint}</span>
         </div>
         <TextField label={localize(language, '名称', 'Name')} value={draft.name} onValueChange={(value) => setDraft((current) => ({ ...current, name: value }))} />
         <TextField
@@ -177,7 +163,7 @@ export function ProviderEditor(props: {
               ? localize(language, '该认证方式需要填写 API Key 才能保存。', 'This auth style requires an API Key before you can save.')
               : props.provider?.hasStoredApiKey
                 ? localize(language, '留空将保留当前已保存的 API Key。', 'Leave blank to keep the currently saved API key.')
-                : localize(language, '填好上面的 API Key 一般就能用了，其余按预设自动配置。', 'Once the API Key above is set you are usually ready — everything else is auto-filled by the preset.')}
+                : undefined}
         />
         {baseUrlValue && draft.model.trim() && !baseUrlMalformed ? (
           <div className="provider-core-summary">
@@ -207,7 +193,7 @@ export function ProviderEditor(props: {
           onValueChange={(value) => setDraft((current) => ({ ...current, baseUrl: value }))}
           helper={baseUrlMalformed
             ? localize(language, 'Base URL 需以 http:// 或 https:// 开头。例如 https://api.openai.com/v1，按服务商要求包含 /v1 等路径。', 'Base URL must start with http:// or https://. For example https://api.openai.com/v1; include paths such as /v1 as the provider requires.')
-            : localize(language, '选了上面的预设后会自动填好；自定义端点时按服务商要求填写，例如 https://api.openai.com/v1。', 'Auto-filled when you pick a preset above; for a custom endpoint enter it as the provider requires, e.g. https://api.openai.com/v1.')}
+            : undefined}
         />
         <div className="provider-model-fetch-row">
           <TextField
@@ -215,17 +201,6 @@ export function ProviderEditor(props: {
             list={modelListId}
             value={draft.model}
             onValueChange={(value) => setDraft((current) => ({ ...current, model: value }))}
-            helper={draftTokenLimits.modelId
-              ? localize(
-                language,
-                `可直接输入自定义模型，也可从预设候选里选择。当前命中：${draftTokenLimits.displayName || draftTokenLimits.modelId}；默认上下文 ${formatCompactTokenLimit(draftTokenLimits.presetContextWindowTokens)}，默认单步输出 ${formatCompactTokenLimit(draftTokenLimits.presetMaxOutputTokens)}。`,
-                `You can type a custom model or choose a preset suggestion. Current match: ${draftTokenLimits.displayName || draftTokenLimits.modelId}; default context ${formatCompactTokenLimit(draftTokenLimits.presetContextWindowTokens)}, default max output ${formatCompactTokenLimit(draftTokenLimits.presetMaxOutputTokens)}.`
-              )
-              : localize(
-                language,
-                '可直接输入自定义模型，也可从预设候选里选择。当前模型没有命中内置预设；如果是代理、自定义别名或新模型，建议按服务商文档填写上下文窗口和单步输出上限。',
-                'You can type a custom model or choose a preset suggestion. This model does not match a built-in preset; for proxies, custom aliases, or newer models, set context window and max output limits from your provider docs.'
-              )}
           />
           <Button
             type="button"
@@ -271,7 +246,6 @@ export function ProviderEditor(props: {
           list={upstreamModelListId}
           value={draft.upstreamModel ?? ''}
           onValueChange={(value) => setDraft((current) => ({ ...current, upstreamModel: value }))}
-          helper={localize(language, '留空时使用默认模型；也可以手写真实上游模型 ID，或从已知候选里快速填入。', 'Leave this empty to use the default model; you can also type the real upstream model ID or pick a known suggestion.')}
         />
         <datalist id={upstreamModelListId}>
           {suggestedUpstreamModels.map((modelId) => <option key={modelId} value={modelId} />)}
@@ -302,11 +276,6 @@ export function ProviderEditor(props: {
             value={draft.apiMode ?? 'chat'}
             options={[{ value: 'responses', label: 'responses' }, { value: 'chat', label: 'chat completions' }]}
             onValueChange={(value) => setDraft((current) => ({ ...current, apiMode: value as AiProviderApiMode }))}
-            helper={localize(
-              language,
-              '不同服务商支持的协议不同；OpenAI 官方推荐 responses，国内兼容通道通常推荐 chat completions。',
-              'Different providers support different modes; official OpenAI prefers responses, while most domestic compatible gateways prefer chat completions.'
-            )}
           />
         ) : null}
         <SelectField
@@ -331,9 +300,6 @@ export function ProviderEditor(props: {
             value={typeof draft.contextWindowTokens === 'number' ? String(draft.contextWindowTokens) : ''}
             placeholder={localize(language, '留空使用预设', 'Empty uses preset')}
             onValueChange={(value) => setDraft((current) => ({ ...current, contextWindowTokens: parseOptionalInteger(value) }))}
-            helper={draftTokenLimits.presetContextWindowTokens
-              ? localize(language, `用于判断何时压缩会话历史；留空时当前模型默认按 ${formatCompactTokenLimit(draftTokenLimits.presetContextWindowTokens)} 处理。`, `Used to decide when to compact history; when empty, the current model defaults to ${formatCompactTokenLimit(draftTokenLimits.presetContextWindowTokens)}.`)
-              : localize(language, '用于判断何时压缩会话历史；代理或自定义模型建议按实际窗口填写。', 'Used to decide when to compact history; set the real window for proxy or custom models.')}
           />
           <TextField
             className="compact"
@@ -345,9 +311,6 @@ export function ProviderEditor(props: {
             value={typeof draft.maxOutputTokens === 'number' ? String(draft.maxOutputTokens) : ''}
             placeholder="32000"
             onValueChange={(value) => setDraft((current) => ({ ...current, maxOutputTokens: parseOptionalInteger(value) }))}
-            helper={draftTokenLimits.presetMaxOutputTokens
-              ? localize(language, `用于 Native Agent 每次流式请求的 max_tokens/max_output_tokens；留空时当前模型默认按 ${formatCompactTokenLimit(draftTokenLimits.presetMaxOutputTokens)} 处理。`, `Used for Native Agent max_tokens/max_output_tokens on each streamed request; when empty, the current model defaults to ${formatCompactTokenLimit(draftTokenLimits.presetMaxOutputTokens)}.`)
-              : localize(language, '用于 Native Agent 每次流式请求的 max_tokens/max_output_tokens。', 'Used for Native Agent max_tokens/max_output_tokens on each streamed request.')}
           />
           <TextField
             className="compact"
@@ -375,7 +338,6 @@ export function ProviderEditor(props: {
         </div>
         <CheckboxField
           label={localize(language, '禁用请求超时', 'Disable Request Timeout')}
-          description={localize(language, '默认 300000ms；只有服务商自己稳定处理超长连接时才建议关闭。', 'Default is 300000ms; disable only when the provider reliably handles very long connections.')}
           checked={draft.requestTimeoutMs === false}
           onCheckedChange={(checked) => setDraft((current) => ({ ...current, requestTimeoutMs: checked ? false : undefined }))}
         />
