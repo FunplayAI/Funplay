@@ -135,20 +135,11 @@ npm run build               # Rebuild native deps, type-check, and build Electro
 npm run test                # Run runtime tests with native ABI handling
 npm run test:runtime        # Same runtime test suite, explicit script
 npm run agent:e2e           # Deterministic scripted-provider agent E2E checks
-npm run agent:benchmark     # Agent benchmark gate used by release workflow
+npm run agent:benchmark     # Agent benchmark checks
 npm run ui:smoke            # Static desktop UI smoke checks
 npm run ui:electron-smoke   # Real Electron UI smoke scenarios
 npm run ui:maturity-gate    # UI maturity gate
 npm run runtime:maturity-gate # Runtime maturity gate
-npm run release:gate        # Full local release gate
-```
-
-Packaging:
-
-```bash
-npm run dist:mac:split
-npm run release:verify-mac-updates
-npm run dist:win:x64
 ```
 
 `better-sqlite3` must match either the Node ABI or Electron ABI. `npm run test:runtime` handles the switch automatically. If you run a single Node test manually, restore Electron ABI afterward:
@@ -156,18 +147,6 @@ npm run dist:win:x64
 ```bash
 npm run rebuild:native:force
 ```
-
-## Release Flow
-
-Releases are published from GitHub Actions by pushing a version tag:
-
-1. Bump `package.json` / `package-lock.json`.
-2. Update `CHANGELOG.md`.
-3. Run `npm run build`, `npm test`, `npm run agent:e2e`, and `npm run release:gate`.
-4. Commit, push `main`, create an annotated `vX.Y.Z` tag, and push the tag.
-5. The release workflow builds macOS arm64, macOS x64, and Windows x64 artifacts, then publishes a GitHub Release.
-
-Windows update metadata expects `Funplay-Setup-X.Y.Z.exe`; the release workflow also preserves the electron-builder dotted installer name for compatibility.
 
 ## Contributing
 
@@ -184,13 +163,6 @@ For UI changes, also run:
 npm run ui:smoke
 npm run ui:electron-smoke
 npm run ui:maturity-gate
-```
-
-For packaging or release changes, also run:
-
-```bash
-npm run release:audit
-npm run release:gate
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for repository boundaries and PR expectations.

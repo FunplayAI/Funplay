@@ -135,20 +135,11 @@ npm run build               # 重建 native 依赖、类型检查并构建 Elect
 npm run test                # 运行 runtime 测试，并处理 native ABI
 npm run test:runtime        # 同一套 runtime 测试的显式脚本
 npm run agent:e2e           # 确定性的 scripted-provider Agent E2E 检查
-npm run agent:benchmark     # 发布 workflow 使用的 Agent benchmark gate
+npm run agent:benchmark     # Agent benchmark 检查
 npm run ui:smoke            # 静态桌面 UI smoke 检查
 npm run ui:electron-smoke   # 真实 Electron UI smoke 场景
 npm run ui:maturity-gate    # UI 成熟度 gate
 npm run runtime:maturity-gate # Runtime 成熟度 gate
-npm run release:gate        # 完整本地发布 gate
-```
-
-打包相关：
-
-```bash
-npm run dist:mac:split
-npm run release:verify-mac-updates
-npm run dist:win:x64
 ```
 
 `better-sqlite3` 必须匹配 Node ABI 或 Electron ABI 二者之一。`npm run test:runtime` 会自动处理切换。如果手动运行单个 Node 测试文件，结束后需要恢复 Electron ABI：
@@ -156,18 +147,6 @@ npm run dist:win:x64
 ```bash
 npm run rebuild:native:force
 ```
-
-## 发布流程
-
-发布由 GitHub Actions 在推送版本 tag 后完成：
-
-1. 更新 `package.json` / `package-lock.json` 版本。
-2. 更新 `CHANGELOG.md`。
-3. 运行 `npm run build`、`npm test`、`npm run agent:e2e` 和 `npm run release:gate`。
-4. 提交并推送 `main`，创建 annotated `vX.Y.Z` tag，再推送 tag。
-5. Release workflow 会构建 macOS arm64、macOS x64 和 Windows x64 产物，然后发布 GitHub Release。
-
-Windows 更新元数据期望 `Funplay-Setup-X.Y.Z.exe`；release workflow 也会保留 electron-builder 原始的 dotted installer 名称用于兼容。
 
 ## 参与贡献
 
@@ -184,13 +163,6 @@ npm run test:runtime
 npm run ui:smoke
 npm run ui:electron-smoke
 npm run ui:maturity-gate
-```
-
-如果改了打包或发布流程，也建议运行：
-
-```bash
-npm run release:audit
-npm run release:gate
 ```
 
 更多仓库边界和 PR 要求见 [CONTRIBUTING.md](CONTRIBUTING.md)。
