@@ -1717,13 +1717,21 @@
 }
 
 .chat-rich-quote {
-  margin: 0.625rem 0;
-  padding: 0.5625rem 0.875rem;
-  border-left: 3px solid var(--fp-chat-quote-border);
-  border-radius: 0 0.75rem 0.75rem 0;
+  margin: 0.75rem 0;
+  padding: 0.5rem 0.9375rem;
+  border-left: 3px solid var(--fp-accent-primary);
+  border-radius: 0 0.625rem 0.625rem 0;
   background: var(--fp-chat-quote-bg);
   color: var(--fp-chat-quote-text);
-  line-height: 1.7;
+  line-height: 1.72;
+}
+
+.chat-rich-quote > :first-child {
+  margin-top: 0;
+}
+
+.chat-rich-quote > :last-child {
+  margin-bottom: 0;
 }
 
 .chat-rich-table-wrap {
@@ -1736,7 +1744,7 @@
 
 .chat-rich-table {
   width: 100%;
-  min-width: 520px;
+  min-width: max-content;
   border-collapse: collapse;
   font-size: 0.8125rem;
   line-height: 1.58;
@@ -1768,6 +1776,14 @@
 
 .chat-rich-table td {
   color: var(--fp-chat-table-body-text);
+}
+
+.chat-rich-table tbody tr:nth-child(even) td {
+  background: rgba(99, 102, 241, 0.045);
+}
+
+:root[data-theme='dark'] .chat-rich-table tbody tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .chat-inline-path {
@@ -1838,12 +1854,14 @@
 }
 
 .chat-inline-code {
-  padding: 1px 6px;
-  border-radius: 7px;
+  padding: 0.1em 0.4em;
+  border-radius: 6px;
   background: var(--fp-chat-inline-code-bg);
   color: var(--fp-chat-inline-code-text);
-  font-size: 12px;
+  font-size: 0.86em;
+  font-weight: 500;
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  word-break: break-word;
 }
 
 .chat-search-mark {

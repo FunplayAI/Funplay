@@ -71,6 +71,13 @@ const richMarkdownFixture = [
   '}',
   '```',
   '',
+  '> 这是一段引用块,用来检查引用样式与左侧强调边。',
+  '',
+  '| 列 A | 列 B | 列 C |',
+  '| --- | --- | --- |',
+  '| 1 | 一 | alpha |',
+  '| 2 | 二 | beta |',
+  '',
   '## 二级标题 Heading 2',
   '- 无序列表第一项',
   '- 第二项,带 `code`',
@@ -79,14 +86,7 @@ const richMarkdownFixture = [
   '### 三级标题 Heading 3',
   '1. 有序第一步',
   '2. 有序第二步',
-  '3. 有序第三步',
-  '',
-  '> 这是一段引用块,用来检查引用样式与左侧强调边。',
-  '',
-  '| 列 A | 列 B | 列 C |',
-  '| --- | --- | --- |',
-  '| 1 | 一 | alpha |',
-  '| 2 | 二 | beta |'
+  '3. 有序第三步'
 ].join('\n');
 const smokeChatMessages = Array.from({ length: 36 }, (_item, index) => {
   const ordinal = index + 1;
