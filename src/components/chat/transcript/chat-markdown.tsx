@@ -3,6 +3,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { localize, useUiLanguage } from '../../../i18n';
 import { Button } from '../../ui/index';
+import { highlightChatCode } from './chat-code-highlight';
 import {
   formatLocalFileLabel,
   highlightSearchText,
@@ -216,6 +217,7 @@ function ChatCodeBlock(props: { language?: string; content: string }): JSX.Eleme
   const language = useUiLanguage();
   const [copied, setCopied] = useState(false);
   const codeLanguage = props.language?.trim() || 'code';
+  const highlighted = useMemo(() => highlightChatCode(props.content, props.language), [props.content, props.language]);
 
   function handleCopy(): void {
     navigator.clipboard.writeText(props.content).then(() => {
@@ -232,7 +234,11 @@ function ChatCodeBlock(props: { language?: string; content: string }): JSX.Eleme
           {copied ? localize(language, '已复制', 'Copied') : localize(language, '复制', 'Copy')}
         </Button>
       </div>
-      <pre className="chat-code-block"><code>{props.content}</code></pre>
+      <pre className="chat-code-block">
+        {highlighted.highlighted
+          ? <code className="hljs" dangerouslySetInnerHTML={{ __html: highlighted.html }} />
+          : <code>{props.content}</code>}
+      </pre>
     </div>
   );
 }
