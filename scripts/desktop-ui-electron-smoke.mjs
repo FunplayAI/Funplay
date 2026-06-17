@@ -56,13 +56,44 @@ if (newestSrcMtime > bundleMtime) {
 }
 
 const now = new Date().toISOString();
+const richMarkdownFixture = [
+  'UI smoke assistant message 02:',
+  '',
+  '# 一级标题 Heading 1',
+  '这是一段正文,包含 **加粗**、*斜体*、`inline code` 和一个 [外部链接](https://example.com)。再补一句让段落更长一点,检查行高与换行表现是否舒适。',
+  '',
+  '## 二级标题 Heading 2',
+  '- 无序列表第一项',
+  '- 第二项,带 `code`',
+  '- 第三项,稍微长一点的文字看缩进对齐',
+  '',
+  '### 三级标题 Heading 3',
+  '1. 有序第一步',
+  '2. 有序第二步',
+  '3. 有序第三步',
+  '',
+  '```ts',
+  'function greet(name: string): string {',
+  "  const greeting = 'Hello, ' + name;",
+  '  return greeting;',
+  '}',
+  '```',
+  '',
+  '> 这是一段引用块,用来检查引用样式与左侧强调边。',
+  '',
+  '| 列 A | 列 B | 列 C |',
+  '| --- | --- | --- |',
+  '| 1 | 一 | alpha |',
+  '| 2 | 二 | beta |'
+].join('\n');
 const smokeChatMessages = Array.from({ length: 36 }, (_item, index) => {
   const ordinal = index + 1;
   const role = index % 2 === 0 ? 'user' : 'assistant';
+  const baseContent = `${role === 'user' ? 'UI smoke user message' : 'UI smoke assistant message'} ${String(ordinal).padStart(2, '0')}: ${'This long transcript fixture verifies the chat scroll container keeps working after UI platform migrations. '.repeat(5)}`;
   return {
     id: `ui_smoke_message_${ordinal}`,
     role,
-    content: `${role === 'user' ? 'UI smoke user message' : 'UI smoke assistant message'} ${String(ordinal).padStart(2, '0')}: ${'This long transcript fixture verifies the chat scroll container keeps working after UI platform migrations. '.repeat(5)}`,
+    content: role === 'assistant' && ordinal === 2 ? richMarkdownFixture : baseContent,
     createdAt: new Date(Date.now() - (36 - ordinal) * 60_000).toISOString(),
     ordinal
   };
