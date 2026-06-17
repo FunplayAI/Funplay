@@ -294,6 +294,46 @@ function syncCocos4McpEndpoint(state: AppState, url: string): void {
 
 // Resolve runtime state for a cocos4 project: ensure the managed headless
 // cocos-cli MCP server is running, sync the engine plugin to it, and probe it.
+interface CocosRuntimeResources {
+  availableResourceUris?: string[];
+  activeSceneSummary?: string;
+  currentSelectionSummary?: string;
+  recentConsoleSummary?: string;
+  recentBridgeLogs?: string;
+}
+
+// Read the live cocos:// resource layer (scene/selection/diagnostics/logs) from an
+// online Cocos MCP endpoint — shared by both the creator3 (GUI bridge) and cocos4
+// (headless cocos-cli) runtime-state paths so a refresh carries the same depth of
+// live editor state regardless of variant. cocos://errors/scripts is the Cocos
+// analogue of unity://errors/console. Best-effort: any read failure is swallowed.
+async function readCocosRuntimeResources(mcpUrl: string): Promise<CocosRuntimeResources> {
+  const result: CocosRuntimeResources = {};
+  try {
+    const resources = await listUnityResources(mcpUrl);
+    result.availableResourceUris = resources.map((resource) => resource.uri).filter(Boolean);
+    const readableResources = [
+      ['cocos://scene/active', (value: string) => void (result.activeSceneSummary = trimMultilineText(value, 10, 1400))],
+      ['cocos://selection/current', (value: string) => void (result.currentSelectionSummary = trimMultilineText(value, 10, 1200))],
+      ['cocos://errors/scripts', (value: string) => void (result.recentConsoleSummary = trimMultilineText(value, 10, 1400))],
+      ['cocos://mcp/interactions', (value: string) => void (result.recentBridgeLogs = trimMultilineText(value, 12, 1800))]
+    ] as const;
+    for (const [uri, assign] of readableResources) {
+      if (!result.availableResourceUris.includes(uri)) {
+        continue;
+      }
+      try {
+        assign(extractTextContent(await readUnityResource(mcpUrl, uri)));
+      } catch {
+        // best effort
+      }
+    }
+  } catch {
+    result.availableResourceUris = undefined;
+  }
+  return result;
+}
+
 async function resolveCocos4RuntimeState(state: AppState, normalizedProjectPath: string): Promise<ProjectRuntimeState> {
   const checkedAt = nowIso();
   const cocosProject = inspectCocosProject(normalizedProjectPath);
@@ -325,6 +365,11 @@ async function resolveCocos4RuntimeState(state: AppState, normalizedProjectPath:
     logEngineDebug('cocos-cli', `ensure cocos4 server failed for ${cocosProject.projectPath}`, error);
   }
 
+  // When the headless MCP server is online, read the same cocos:// resource layer
+  // as the creator3 branch so cocos4 refreshes carry live scene/selection state.
+  const cocosResources =
+    mcpUrl && bridgeHealth?.status === 'online' ? await readCocosRuntimeResources(mcpUrl) : {};
+
   return {
     checkedAt,
     projectExists: cocosProject.exists,
@@ -332,6 +377,7 @@ async function resolveCocos4RuntimeState(state: AppState, normalizedProjectPath:
     projectOpen: bridgeHealth?.status === 'online',
     bridgeInstalled: true,
     detectedDimension: 'unknown',
+    ...cocosResources,
     mcpSettings: mcpUrl
       ? { enabled: true, port: parseCocosMcpPort(mcpUrl), toolExportProfile: 'cocos', url: mcpUrl }
       : undefined,
@@ -1156,44 +1202,9 @@ export async function getProjectRuntimeState(
     const mcpUrl =
       bridgeProbe?.snapshot.baseUrl ?? buildCocosMcpConnectionConfig(state).baseUrl ?? DEFAULT_COCOS_MCP_BASE_URL;
 
-    // When the bridge is online, read the cocos:// resource layer into the runtime
-    // snapshot (scene/selection/diagnostics/logs) — mirroring the Unity branch so
-    // a Cocos refresh carries the same depth of live editor state. cocos://errors/
-    // scripts is the Cocos analogue of unity://errors/console. detectedDimension
-    // stays 'unknown': Cocos 3.x is a unified 2D/3D engine with no reliable
-    // project-file marker to recover the intended dimension post-hoc.
-    let availableResourceUris: string[] | undefined;
-    let activeSceneSummary: string | undefined;
-    let currentSelectionSummary: string | undefined;
-    let recentConsoleSummary: string | undefined;
-    let recentBridgeLogs: string | undefined;
-    if (bridgeHealth?.status === 'online') {
-      try {
-        const resources = await listUnityResources(mcpUrl);
-        availableResourceUris = resources.map((resource) => resource.uri).filter(Boolean);
-        const readableResources = [
-          ['cocos://scene/active', (value: string) => void (activeSceneSummary = trimMultilineText(value, 10, 1400))],
-          [
-            'cocos://selection/current',
-            (value: string) => void (currentSelectionSummary = trimMultilineText(value, 10, 1200))
-          ],
-          ['cocos://errors/scripts', (value: string) => void (recentConsoleSummary = trimMultilineText(value, 10, 1400))],
-          ['cocos://mcp/interactions', (value: string) => void (recentBridgeLogs = trimMultilineText(value, 12, 1800))]
-        ] as const;
-        for (const [uri, assign] of readableResources) {
-          if (!availableResourceUris.includes(uri)) {
-            continue;
-          }
-          try {
-            assign(extractTextContent(await readUnityResource(mcpUrl, uri)));
-          } catch {
-            // best effort
-          }
-        }
-      } catch {
-        availableResourceUris = undefined;
-      }
-    }
+    // detectedDimension stays 'unknown': Cocos 3.x is a unified 2D/3D engine with no
+    // reliable project-file marker to recover the intended dimension post-hoc.
+    const cocosResources = bridgeHealth?.status === 'online' ? await readCocosRuntimeResources(mcpUrl) : {};
 
     return {
       checkedAt,
@@ -1202,11 +1213,7 @@ export async function getProjectRuntimeState(
       projectOpen,
       bridgeInstalled,
       detectedDimension: 'unknown',
-      availableResourceUris,
-      activeSceneSummary,
-      currentSelectionSummary,
-      recentConsoleSummary,
-      recentBridgeLogs,
+      ...cocosResources,
       mcpSettings: bridgeInstalled
         ? {
             enabled: true,

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -108,7 +109,80 @@ test('installCocosCli aborts with the failing step when a subprocess exits non-z
       runStep: async (step) => (step.args.includes('init') ? { code: 1, stderrTail: 'boom' } : { code: 0 })
     });
     assert.equal(result.ok, false);
-    assert.match(result.message, /失败（exit 1）/);
+    assert.match(result.message, /失败（exit 1/);
+  } finally {
+    if (typeof previous === 'undefined') {
+      delete process.env.COCOS_CLI_DIR;
+    } else {
+      process.env.COCOS_CLI_DIR = previous;
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('installCocosCli retries a transiently-failing clone and clears a partial checkout', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-cli-retry-'));
+  const previous = process.env.COCOS_CLI_DIR;
+  try {
+    const cliDir = join(root, 'cocos-cli');
+    process.env.COCOS_CLI_DIR = cliDir;
+    // A leftover partial checkout from an earlier failed run.
+    await mkdir(cliDir, { recursive: true });
+    await writeFile(join(cliDir, 'STALE.txt'), 'leftover', 'utf8');
+
+    let cloneAttempts = 0;
+    const result = await installCocosCli({
+      userDataPath: root,
+      onStage: () => undefined,
+      runStep: async (step) => {
+        if (step.command === 'git' && step.args[0] === 'clone') {
+          cloneAttempts += 1;
+          await mkdir(cliDir, { recursive: true });
+          // First attempt fails transiently; the retry clears the dir and succeeds.
+          return cloneAttempts === 1 ? { code: 1, stderrTail: 'fatal: unable to access (transient)' } : { code: 0 };
+        }
+        if (step.command === 'npm' && step.args.includes('install')) {
+          await mkdir(join(cliDir, 'dist'), { recursive: true });
+          await writeFile(join(cliDir, 'dist', 'cli.js'), '', 'utf8');
+        }
+        return { code: 0 };
+      }
+    });
+
+    assert.equal(result.ok, true, result.message);
+    assert.equal(cloneAttempts, 2, 'clone is retried once');
+    assert.equal(existsSync(join(cliDir, 'STALE.txt')), false, 'pre-clean removes the partial checkout');
+  } finally {
+    if (typeof previous === 'undefined') {
+      delete process.env.COCOS_CLI_DIR;
+    } else {
+      process.env.COCOS_CLI_DIR = previous;
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('installCocosCli gives up after the retry cap and reports the captured error', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'funplay-cocos-cli-giveup-'));
+  const previous = process.env.COCOS_CLI_DIR;
+  try {
+    process.env.COCOS_CLI_DIR = join(root, 'cocos-cli');
+    let cloneAttempts = 0;
+    const result = await installCocosCli({
+      userDataPath: root,
+      onStage: () => undefined,
+      runStep: async (step) => {
+        if (step.command === 'git' && step.args[0] === 'clone') {
+          cloneAttempts += 1;
+          return { code: 128, stderrTail: 'fatal: repository not found' };
+        }
+        return { code: 0 };
+      }
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(cloneAttempts, 3, 'clone is retried up to the cap (3 attempts total)');
+    assert.match(result.message, /repository not found/);
   } finally {
     if (typeof previous === 'undefined') {
       delete process.env.COCOS_CLI_DIR;

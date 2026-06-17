@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { logEngineDebug, logEngineWarn } from './engine-log';
 
@@ -10,6 +11,7 @@ import { logEngineDebug, logEngineWarn } from './engine-log';
 // This module owns detection, prerequisite checks, and the staged install.
 const COCOS_CLI_REPO = 'https://github.com/cocos/cocos-cli.git';
 const MIN_NODE_MAJOR = 22;
+const MAX_STEP_ATTEMPTS = 3;
 
 export interface CocosCliInstallation {
   dir: string;
@@ -128,6 +130,13 @@ export async function installCocosCli(options: {
     return { ok: true, message: `cocos-cli 已安装：${existing.cliPath}`, cliPath: existing.cliPath };
   }
 
+  // After the valid-install short-circuit above, any directory still present is a
+  // partial/failed checkout from an earlier run. git clone refuses to write into a
+  // non-empty directory, so clear it before (re)starting.
+  if (existsSync(dir)) {
+    await rm(dir, { recursive: true, force: true });
+  }
+
   const steps: CocosCliInstallStep[] = [
     {
       stage: 'downloading',
@@ -157,12 +166,27 @@ export async function installCocosCli(options: {
 
   for (const step of steps) {
     onStage(step.stage, step.progress, step.message);
-    const result = await runStep(step);
+    let result = await runStep(step);
+    // Heavy network steps (clone / engine pull / npm install) fail transiently;
+    // retry up to MAX_STEP_ATTEMPTS, clearing a partial clone first since git
+    // clone won't write into a non-empty directory.
+    for (let attempt = 2; result.code !== 0 && attempt <= MAX_STEP_ATTEMPTS; attempt += 1) {
+      logEngineWarn(
+        'cocos-cli',
+        `install step failed, retrying (${attempt}/${MAX_STEP_ATTEMPTS}): ${step.command} ${step.args.join(' ')}`,
+        result.stderrTail
+      );
+      if (step.command === 'git' && step.args[0] === 'clone' && existsSync(dir)) {
+        await rm(dir, { recursive: true, force: true });
+      }
+      onStage(step.stage, step.progress, `${step.message.replace(/…$/, '')}（重试 ${attempt - 1}/${MAX_STEP_ATTEMPTS - 1}）…`);
+      result = await runStep(step);
+    }
     if (result.code !== 0) {
       logEngineWarn('cocos-cli', `install step failed: ${step.command} ${step.args.join(' ')}`, result.stderrTail);
       return {
         ok: false,
-        message: `${step.message.replace(/…$/, '')}失败（exit ${result.code}）。${result.stderrTail ? `\n${result.stderrTail.slice(-600)}` : ''}`
+        message: `${step.message.replace(/…$/, '')}失败（exit ${result.code}，已重试 ${MAX_STEP_ATTEMPTS - 1} 次）。${result.stderrTail ? `\n${result.stderrTail.slice(-600)}` : ''}`
       };
     }
   }
