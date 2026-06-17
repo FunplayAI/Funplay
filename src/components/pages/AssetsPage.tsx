@@ -384,7 +384,7 @@ export function AssetsPage(props: {
                     value={selectedProvider?.id ?? ''}
                     options={enabledProviders.map((provider) => ({
                       value: provider.id,
-                      label: `${provider.name}${provider.modelLabel ? ` · ${provider.modelLabel}` : ''}`
+                      label: `${provider.name}${provider.source === 'environment' ? t(' · 环境变量', ' · env') : provider.source === 'mcp' ? ' · MCP' : ''}${provider.modelLabel ? ` · ${provider.modelLabel}` : ''}`
                     }))}
                     placeholder={t('没有可用生成器', 'No provider')}
                     disabled={enabledProviders.length === 0}

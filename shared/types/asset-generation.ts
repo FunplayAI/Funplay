@@ -138,6 +138,7 @@ export interface AssetGenerationProviderProfile {
   notes?: string;
   requiresNetwork: boolean;
   supportsAsyncJobs: boolean;
+  source?: 'configured' | 'environment' | 'mcp';
 }
 
 export interface AssetGenerationProviderConfig {

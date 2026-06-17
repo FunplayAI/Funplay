@@ -63,6 +63,7 @@ export function AppSettingsModal(props: {
   providers: AiProvider[];
   assetGenerationProviderConfigs?: AssetGenerationProviderConfig[];
   providerTests: Record<string, AiTestResult>;
+  testingProviderIds?: Set<string>;
   mcpPlugins: McpPlugin[];
   selectedMcpPlugin: McpPlugin | null;
   serverInfo: UnityMcpServerInfo | null;
@@ -270,6 +271,7 @@ export function AppSettingsModal(props: {
             <AppSettingsAiProviderSection
               providers={props.providers}
               providerTests={props.providerTests}
+              testingProviderIds={props.testingProviderIds}
               selectedProjectId={props.selectedProjectId}
               onCreateProvider={props.onCreateProvider}
               onUpdateProvider={props.onUpdateProvider}

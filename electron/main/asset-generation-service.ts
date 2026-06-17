@@ -868,9 +868,9 @@ function buildExecutableAssetGenerationProviders(state: AppState): ExecutableAss
     }));
 
   return [
-    ...configuredProviders,
-    ...buildEnvironmentAssetGenerationProviders(),
-    ...mcpAssetProviders
+    ...configuredProviders.map((provider) => ({ ...provider, source: 'configured' as const })),
+    ...buildEnvironmentAssetGenerationProviders().map((provider) => ({ ...provider, source: 'environment' as const })),
+    ...mcpAssetProviders.map((provider) => ({ ...provider, source: 'mcp' as const }))
   ];
 }
 

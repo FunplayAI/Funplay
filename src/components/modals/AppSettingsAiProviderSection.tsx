@@ -7,6 +7,7 @@ import { ProviderEditor } from './ProviderEditor';
 export function AppSettingsAiProviderSection(props: {
   providers: AiProvider[];
   providerTests: Record<string, AiTestResult>;
+  testingProviderIds?: Set<string>;
   selectedProjectId?: string;
   onCreateProvider: (input: AiProviderInput) => Promise<void>;
   onUpdateProvider: (providerId: string, input: AiProviderInput) => Promise<void>;
@@ -56,6 +57,7 @@ export function AppSettingsAiProviderSection(props: {
       <ProviderSettingsPage
         providers={props.providers}
         providerTests={props.providerTests}
+        testingProviderIds={props.testingProviderIds}
         selectedProjectId={props.selectedProjectId}
         onAddProvider={() => {
           setEditingTarget(null);

@@ -123,12 +123,11 @@ function App(): JSX.Element {
     setAiSettings,
     agentSettings,
     setAgentSettings,
-    providerTests,
+    providerTests, testingProviderIds,
     handleCreateProvider,
     handleUpdateProvider,
     handleDeleteProvider,
-    handleTestProvider,
-    handleSetDefaultProvider
+    handleTestProvider, handleSetDefaultProvider
   } = useProviderManager();
 
   const onboarding = useOnboarding({
@@ -818,6 +817,7 @@ function App(): JSX.Element {
           providers={providers}
           assetGenerationProviderConfigs={assetGenerationProviderConfigs}
           providerTests={providerTests}
+          testingProviderIds={testingProviderIds}
           mcpPlugins={globalMcpPlugins}
           selectedMcpPlugin={selectedGlobalMcpPlugin}
           serverInfo={unityServerInfo}
