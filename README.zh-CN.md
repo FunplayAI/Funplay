@@ -25,13 +25,7 @@ Funplay 关心的是：一个游戏想法进入真实项目之后，怎样不被
 
 ## 产品预览
 
-| Agent 工作区 | 项目设置 |
-| --- | --- |
-| ![Funplay Agent 工作区，包含对话、项目文件和输入区](./assets/readme/agent-workspace.png) | ![Funplay 项目设置，包含引擎和运行配置面板](./assets/readme/project-settings.png) |
-
-| 素材生成 | Provider 设置 |
-| --- | --- |
-| ![Funplay 素材生成中心，包含排队中的图片生成任务](./assets/readme/asset-generation.png) | ![Funplay Provider 设置，包含模型服务商预设](./assets/readme/provider-settings.png) |
+![Funplay Cocos 引擎项目 Agent 工作区](./assets/readme/engine-workspace-zh.png)
 
 ## Funplay 能帮你做什么
 

@@ -25,13 +25,7 @@ The goal is simple: describe the game you want, connect the model and engine too
 
 ## Product Preview
 
-| Agent workspace | Project settings |
-| --- | --- |
-| ![Funplay agent workspace with chat, project files, and composer](./assets/readme/agent-workspace.png) | ![Funplay project settings with engine and runtime panels](./assets/readme/project-settings.png) |
-
-| Asset generation | Provider setup |
-| --- | --- |
-| ![Funplay asset generation center with a queued image generation job](./assets/readme/asset-generation.png) | ![Funplay provider settings with model provider presets](./assets/readme/provider-settings.png) |
+![Funplay engine project agent workspace for a Cocos project](./assets/readme/engine-workspace-en.png)
 
 ## What Funplay Helps With
 
