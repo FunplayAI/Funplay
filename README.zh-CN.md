@@ -23,13 +23,6 @@ Funplay 关心的是：一个游戏想法进入真实项目之后，怎样不被
 
 目标很直接：你描述想做的游戏，连接自己信任的模型和引擎工具，让 Agent 帮你规划、检查、编辑、运行验证、生成素材，并持续把项目推进到可玩的状态。
 
-## 当前状态
-
-- 最新公开版本：[`v0.3.10`](https://github.com/FunplayAI/Funplay/releases/tag/v0.3.10)。
-- Runtime：内置 `native` runtime 是当前唯一支持的 Agent runtime。Claude Code SDK runtime 已移除；Anthropic 模型仍通过常规 Anthropic API Provider 支持。
-- 引擎：Unity 和 Cocos 已是实装 adapter。Web、Godot、Unreal 目前作为结构化未来目标展示，会返回带 reason / next action 的 unsupported 能力状态。
-- 稳定性：Funplay 仍处于 pre-1.0 阶段，Provider 契约、引擎 adapter 和桌面端体验都还在快速迭代。
-
 ## Funplay 能帮你做什么
 
 - 把粗略游戏创意拆成可执行的开发计划。

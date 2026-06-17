@@ -23,13 +23,6 @@ Funplay helps game ideas survive contact with the actual project. It combines a 
 
 The goal is simple: describe the game you want, connect the model and engine tools you trust, and let the agent plan, inspect, edit, run checks, generate assets, and keep the project moving toward something playable.
 
-## Current Status
-
-- Latest public release: [`v0.3.10`](https://github.com/FunplayAI/Funplay/releases/tag/v0.3.10).
-- Runtime: the built-in `native` runtime is the only supported agent runtime. Claude Code SDK runtime support has been removed; Anthropic models are still supported through the normal Anthropic API provider.
-- Engines: Unity and Cocos are real adapters today. Web, Godot, and Unreal are visible as structured future targets and currently report unsupported capabilities with next actions.
-- Stability: Funplay is pre-1.0. Provider contracts, engine adapters, and desktop UX are still evolving quickly.
-
 ## What Funplay Helps With
 
 - Turn rough game concepts into scoped implementation plans.
