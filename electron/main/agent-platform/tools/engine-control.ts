@@ -118,6 +118,10 @@ const environmentActionIdSchema = z.enum([
   'create_cocos_project',
   'open_cocos_project',
   'install_cocos_bridge',
+  'create_godot_project',
+  'open_godot_project',
+  'open_godot_hub',
+  'install_godot_bridge',
   'verify_project_path'
 ]);
 

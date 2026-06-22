@@ -1274,13 +1274,13 @@ test('active verification failure reply includes omitted verification candidates
 });
 
 test('non-Unity engine adapter returns structured unsupported status', async () => {
-  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-godot-contract-'));
+  const projectPath = await mkdtemp(join(tmpdir(), 'funplay-unreal-contract-'));
   try {
     await mkdir(join(projectPath, 'project'), { recursive: true });
     const project = {
       ...buildProject(projectPath),
       engine: {
-        platform: 'godot' as const,
+        platform: 'unreal' as const,
         setupMode: 'import' as const,
         projectPath,
         dimension: 'unknown' as const
@@ -1288,13 +1288,13 @@ test('non-Unity engine adapter returns structured unsupported status', async () 
     };
     const result = await executeAgentToolAction(project, {
       type: 'open_engine_project',
-      platform: 'godot',
+      platform: 'unreal',
       projectPath
     });
 
     assert.equal(result.ok, false);
     assert.equal(result.isError, true);
-    assert.match(result.summary, /Engine platform: godot/);
+    assert.match(result.summary, /Engine platform: unreal/);
     assert.match(result.summary, /Capability: openProject/);
     assert.match(result.summary, /Capability matrix:/);
   } finally {

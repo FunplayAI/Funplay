@@ -78,6 +78,17 @@ import {
   openCocosProject
 } from './agent-platform/cocos-adapter';
 import {
+  DEFAULT_GODOT_MCP_BASE_URL,
+  createGodotProjectFromTemplate,
+  findGodotInstallation,
+  inspectGodotProject,
+  installGodotBridge,
+  isGodotBridgeInstalled,
+  isGodotProjectCurrentlyOpen,
+  openGodotProject,
+  openGodotProjectManager
+} from './agent-platform/godot-adapter';
+import {
   getMcpConnectionSnapshot,
   initializeMcpConnection,
   postMcpJsonRpcForConfig,
@@ -714,6 +725,335 @@ async function checkCocosMcpConnection(
   return result;
 }
 
+// --- Godot MCP plumbing (mirrors the Cocos-creator3 helpers; no engine variant) ---
+
+function isGodotEngineMcpPlugin(plugin: McpPlugin | undefined): plugin is McpPlugin {
+  return Boolean(plugin && plugin.kind === 'engine' && /\bgodot\b/i.test(`${plugin.name} ${plugin.notes ?? ''}`));
+}
+
+function resolveGodotMcpPlugin(state: AppState, enginePluginId?: string): McpPlugin | undefined {
+  const requestedPlugin = enginePluginId ? state.mcpPlugins.find((item) => item.id === enginePluginId) : undefined;
+  if (isGodotEngineMcpPlugin(requestedPlugin)) {
+    return requestedPlugin;
+  }
+  return (
+    state.mcpPlugins.find((item) => item.enabled && isGodotEngineMcpPlugin(item)) ??
+    state.mcpPlugins.find(isGodotEngineMcpPlugin)
+  );
+}
+
+function buildGodotMcpConnectionConfig(state: AppState, enginePluginId?: string): McpConnectionConfig {
+  const plugin = resolveGodotMcpPlugin(state, enginePluginId);
+  return plugin
+    ? {
+        id: plugin.id,
+        name: plugin.name,
+        transport: plugin.transport,
+        baseUrl: plugin.baseUrl,
+        command: plugin.command,
+        args: plugin.args,
+        cwd: plugin.cwd,
+        env: plugin.env
+      }
+    : {
+        name: 'Funplay Godot MCP',
+        transport: 'http',
+        baseUrl: DEFAULT_GODOT_MCP_BASE_URL
+      };
+}
+
+function parseGodotMcpPort(baseUrl: string): number {
+  try {
+    const parsed = new URL(baseUrl);
+    const port = Number(parsed.port);
+    if (Number.isFinite(port) && port > 0) {
+      return port;
+    }
+  } catch {
+    // Use the built-in addon default below.
+  }
+  return 8765;
+}
+
+async function readGodotMcpProjectPath(
+  config: McpConnectionConfig,
+  abortSignal: AbortSignal
+): Promise<string | undefined> {
+  try {
+    const projectInfo = await postMcpJsonRpcForConfig<unknown>(
+      config,
+      'tools/call',
+      {
+        name: 'get_project_info',
+        arguments: {}
+      },
+      false,
+      abortSignal,
+      1500
+    );
+    const projectPath = extractCocosProjectPath(projectInfo);
+    if (projectPath) {
+      return projectPath;
+    }
+  } catch {
+    // Older or narrowed tool profiles may not expose get_project_info.
+  }
+
+  try {
+    const projectContext = await postMcpJsonRpcForConfig<unknown>(
+      config,
+      'resources/read',
+      {
+        uri: 'godot://project/context'
+      },
+      false,
+      abortSignal,
+      1500
+    );
+    return extractCocosProjectPath(projectContext);
+  } catch {
+    return undefined;
+  }
+}
+
+function buildGodotBridgeHealth(
+  snapshot: McpConnectionSnapshot,
+  input: {
+    expectedProjectPath?: string;
+    detectedProjectPath?: string;
+  }
+): UnityHealthResult {
+  const serverLabel = snapshot.serverInfo
+    ? `${snapshot.serverInfo.name}${snapshot.serverInfo.version ? ` ${snapshot.serverInfo.version}` : ''}`
+    : 'Funplay Godot MCP';
+  if (snapshot.status !== 'online') {
+    return {
+      status: 'offline',
+      checkedAt: snapshot.lastCheckedAt ?? nowIso(),
+      url: snapshot.baseUrl,
+      projectPath: input.detectedProjectPath,
+      message: `Godot MCP 未连通${snapshot.lastError ? `：${snapshot.lastError}` : '。'}`
+    };
+  }
+
+  if (input.expectedProjectPath) {
+    if (!input.detectedProjectPath) {
+      return {
+        status: 'offline',
+        checkedAt: snapshot.lastCheckedAt ?? nowIso(),
+        url: snapshot.baseUrl,
+        message:
+          'Godot MCP 已响应，但还不能确认它连接的是当前项目。请在 Godot 的 Project Settings > Plugins 中启用 Funplay MCP for Godot，并确认 get_project_info / godot://project/context 可读取当前项目路径。'
+      };
+    }
+    if (!projectPathsMatch(input.detectedProjectPath, input.expectedProjectPath)) {
+      return {
+        status: 'offline',
+        checkedAt: snapshot.lastCheckedAt ?? nowIso(),
+        url: snapshot.baseUrl,
+        projectPath: input.detectedProjectPath,
+        message: `Godot MCP 已响应，但当前连接的是 ${input.detectedProjectPath}，不是目标项目 ${input.expectedProjectPath}。请在目标项目中启用 Funplay Godot MCP 插件后重新检测。`
+      };
+    }
+  }
+
+  return {
+    status: 'online',
+    checkedAt: snapshot.lastCheckedAt ?? nowIso(),
+    url: snapshot.baseUrl,
+    projectPath: input.detectedProjectPath ?? input.expectedProjectPath,
+    message: `Godot MCP 已连通：${serverLabel}${input.detectedProjectPath ? ` · ${input.detectedProjectPath}` : ''}。`
+  };
+}
+
+interface GodotHealthCacheEntry {
+  snapshot: McpConnectionSnapshot;
+  health: UnityHealthResult;
+  expiresAt: number;
+}
+// Short-TTL cache so the 2s onboarding + 5s runtime pollers don't re-initialize
+// and re-probe the live Godot MCP on every tick (Unity already caches this way).
+const godotHealthCache = new Map<string, GodotHealthCacheEntry>();
+const GODOT_HEALTH_TTL_ONLINE_MS = 4000;
+const GODOT_HEALTH_TTL_OFFLINE_MS = 1500;
+
+// Godot editor (with the Funplay MCP addon) listen ports, so a probe can recover
+// when the bridge moved off the configured/default port — mirroring Unity's
+// discoverUnityListenPorts and Cocos's discoverCocosListenPorts.
+async function discoverGodotListenPorts(): Promise<number[]> {
+  try {
+    const { stdout } = await execFileAsync('lsof', ['-nP', '-a', '-c', 'Godot', '-iTCP', '-sTCP:LISTEN'], {
+      timeout: 1500,
+      maxBuffer: 512 * 1024
+    });
+    const ports = [...stdout.matchAll(/(?:127\.0\.0\.1|\*|\[::1\]):(\d+)\s+\(LISTEN\)/g)]
+      .map((match) => Number(match[1]))
+      .filter((port) => Number.isInteger(port) && port > 0);
+    return [...new Set(ports)];
+  } catch (error) {
+    logEngineDebug('godot', 'lsof port discovery failed', error);
+    return [];
+  }
+}
+
+async function probeGodotMcpConfig(
+  config: McpConnectionConfig,
+  expectedProjectPath?: string
+): Promise<{ snapshot: McpConnectionSnapshot; health: UnityHealthResult }> {
+  let detectedProjectPath: string | undefined;
+  const controller = new AbortController();
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  // Bound the whole probe to the deadline even when initializeMcpConnection awaits
+  // a SHARED in-flight init from another caller (whose abort our controller can't
+  // cancel) — otherwise a slow/hung server could block this probe up to the 60s
+  // default request timeout.
+  const deadline = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      controller.abort();
+      reject(new Error('Godot MCP probe timed out.'));
+    }, 3500);
+    timeoutHandle.unref?.();
+  });
+  try {
+    await Promise.race([
+      (async () => {
+        await initializeMcpConnection(config, { abortSignal: controller.signal });
+        if (expectedProjectPath) {
+          detectedProjectPath = await readGodotMcpProjectPath(config, controller.signal);
+        }
+      })(),
+      deadline
+    ]);
+  } catch (error) {
+    // Snapshot below records the offline status; the underlying reason (timeout
+    // vs refused vs tool error) is only otherwise visible under the debug flag.
+    logEngineDebug('godot', `probe failed for ${config.baseUrl ?? config.transport}`, error);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+  const snapshot = getMcpConnectionSnapshot(config);
+  return { snapshot, health: buildGodotBridgeHealth(snapshot, { expectedProjectPath, detectedProjectPath }) };
+}
+
+async function checkGodotMcpConnection(
+  state: AppState,
+  enginePluginId?: string,
+  expectedProjectPath?: string,
+  options: { bypassCache?: boolean } = {}
+): Promise<{
+  snapshot: McpConnectionSnapshot;
+  health: UnityHealthResult;
+}> {
+  const config = buildGodotMcpConnectionConfig(state, enginePluginId);
+  const cacheKey = `${config.baseUrl ?? config.transport} ${expectedProjectPath ?? ''}`;
+  if (!options.bypassCache) {
+    const cached = godotHealthCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return { snapshot: cached.snapshot, health: cached.health };
+    }
+  }
+
+  let result = await probeGodotMcpConfig(config, expectedProjectPath);
+
+  // Port rediscovery: if the configured endpoint is offline and this is an
+  // HTTP-ish transport, try other Godot editor listen ports and adopt the first
+  // that responds (a port change is otherwise unrecoverable without reconfig).
+  if (
+    result.health.status !== 'online' &&
+    (config.transport === 'http' || config.transport === 'streamable-http' || config.transport === 'sse')
+  ) {
+    const configuredPort = parseGodotMcpPort(config.baseUrl ?? '');
+    const ports = (await discoverGodotListenPorts()).filter((port) => port !== configuredPort);
+    for (const port of ports) {
+      const candidate: McpConnectionConfig = { ...config, baseUrl: `http://127.0.0.1:${port}/` };
+      const candidateResult = await probeGodotMcpConfig(candidate, expectedProjectPath);
+      if (candidateResult.health.status === 'online') {
+        result = candidateResult;
+        break;
+      }
+    }
+  }
+
+  godotHealthCache.set(cacheKey, {
+    snapshot: result.snapshot,
+    health: result.health,
+    expiresAt: Date.now() + (result.health.status === 'online' ? GODOT_HEALTH_TTL_ONLINE_MS : GODOT_HEALTH_TTL_OFFLINE_MS)
+  });
+  return result;
+}
+
+// Read the live godot:// resource layer (scene/selection/diagnostics) from an
+// online Godot MCP endpoint so a refresh carries the same depth of live editor
+// state as the Unity/Cocos paths. godot://errors/scripts is the Godot analogue of
+// unity://errors/console. Best-effort: any read failure is swallowed.
+async function readGodotRuntimeResources(mcpUrl: string): Promise<CocosRuntimeResources> {
+  const result: CocosRuntimeResources = {};
+  try {
+    const resources = await listUnityResources(mcpUrl);
+    result.availableResourceUris = resources.map((resource) => resource.uri).filter(Boolean);
+    const readableResources = [
+      ['godot://scene/active', (value: string) => void (result.activeSceneSummary = trimMultilineText(value, 10, 1400))],
+      ['godot://selection', (value: string) => void (result.currentSelectionSummary = trimMultilineText(value, 10, 1200))],
+      ['godot://errors/scripts', (value: string) => void (result.recentConsoleSummary = trimMultilineText(value, 10, 1400))]
+    ] as const;
+    for (const [uri, assign] of readableResources) {
+      if (!result.availableResourceUris.includes(uri)) {
+        continue;
+      }
+      try {
+        assign(extractTextContent(await readUnityResource(mcpUrl, uri)));
+      } catch {
+        // best effort
+      }
+    }
+  } catch {
+    result.availableResourceUris = undefined;
+  }
+  return result;
+}
+
+// Resolve runtime state for a Godot project: inspect the project, check the addon
+// bridge on disk, probe the live MCP, and read the godot:// resource layer when
+// online. Mirrors the Cocos-creator3 branch of getProjectRuntimeState; Godot has
+// no variant so it routes purely on platform === 'godot'.
+async function resolveGodotRuntimeState(state: AppState, normalizedProjectPath: string): Promise<ProjectRuntimeState> {
+  const checkedAt = nowIso();
+  const godotProject = inspectGodotProject(normalizedProjectPath);
+  const bridgeInstalled = godotProject.valid && isGodotBridgeInstalled(godotProject.projectPath);
+  const bridgeProbe = bridgeInstalled ? await checkGodotMcpConnection(state, undefined, undefined) : undefined;
+  const bridgeHealth = bridgeProbe?.health;
+  const projectOpen = godotProject.valid
+    ? isGodotProjectCurrentlyOpen(godotProject.projectPath) || bridgeHealth?.status === 'online'
+    : false;
+  const mcpUrl =
+    bridgeProbe?.snapshot.baseUrl ?? buildGodotMcpConnectionConfig(state).baseUrl ?? DEFAULT_GODOT_MCP_BASE_URL;
+
+  // detectedDimension stays 'unknown': Godot is a unified 2D/3D engine with no
+  // reliable project-file marker to recover the intended dimension post-hoc.
+  const godotResources = bridgeHealth?.status === 'online' ? await readGodotRuntimeResources(mcpUrl) : {};
+
+  return {
+    checkedAt,
+    projectExists: godotProject.exists,
+    unityProjectValid: godotProject.valid,
+    projectOpen,
+    bridgeInstalled,
+    detectedDimension: 'unknown',
+    ...godotResources,
+    mcpSettings: bridgeInstalled
+      ? {
+          enabled: true,
+          port: parseGodotMcpPort(mcpUrl),
+          toolExportProfile: 'godot',
+          url: mcpUrl
+        }
+      : undefined,
+    bridgeHealth
+  };
+}
+
 function bridgePackageSpec(): { packageName: string; url: string } {
   return {
     packageName: 'com.gamebooom.unity.mcp',
@@ -980,6 +1320,12 @@ const COCOS_BRIDGE_LINKED_ACTION_IDS = new Set<EnvironmentActionKind>([
   'install_cocos_bridge'
 ]);
 
+const GODOT_BRIDGE_LINKED_ACTION_IDS = new Set<EnvironmentActionKind>([
+  'create_godot_project',
+  'open_godot_project',
+  'install_godot_bridge'
+]);
+
 const UNITY_BRIDGE_LINKED_ACTION_IDS = new Set<EnvironmentActionKind>([
   'create_unity_project',
   'import_unity_project',
@@ -999,6 +1345,7 @@ export async function listEnvironmentTasksForState(state: AppState): Promise<Env
   // routine reconciliation shares ONE health probe (no per-project distinction),
   // while Unity is project-scoped, so dedup distinct project paths.
   const cocosTaskPaths: string[] = [];
+  const godotTaskPaths: string[] = [];
   const unityProjectPaths = new Set<string>();
   for (const task of pendingTasks) {
     const pendingProjectPath = getEnvironmentTaskProjectPath(task.id);
@@ -1014,6 +1361,11 @@ export async function listEnvironmentTasksForState(state: AppState): Promise<Env
       if (project.valid && isCocosBridgeInstalled(project.projectPath)) {
         cocosTaskPaths.push(pendingProjectPath);
       }
+    } else if (GODOT_BRIDGE_LINKED_ACTION_IDS.has(task.actionId)) {
+      const project = inspectGodotProject(pendingProjectPath);
+      if (project.valid && isGodotBridgeInstalled(project.projectPath)) {
+        godotTaskPaths.push(pendingProjectPath);
+      }
     } else if (UNITY_BRIDGE_LINKED_ACTION_IDS.has(task.actionId)) {
       unityProjectPaths.add(pendingProjectPath);
     }
@@ -1023,7 +1375,7 @@ export async function listEnvironmentTasksForState(state: AppState): Promise<Env
   // by the slowest single probe, not the sum — distinct pending tasks no longer
   // serialize their network round-trips.
   const unityBaseUrl = state.settings.baseUrl || 'http://127.0.0.1:8765/';
-  const [cocosProbe, unityProbes] = await Promise.all([
+  const [cocosProbe, godotProbe, unityProbes] = await Promise.all([
     // Routine reconciliation: connection-health only. Passing no expectedProjectPath
     // skips the get_project_info tool call, so the external Cocos extension is never
     // poked into its blocking "project definition not found" modal (explicit diagnose
@@ -1031,6 +1383,14 @@ export async function listEnvironmentTasksForState(state: AppState): Promise<Env
     cocosTaskPaths.length > 0
       ? checkCocosMcpConnection(state, undefined, undefined).catch((error) => {
           logEngineDebug('cocos', 'task-reconciliation probe threw', error);
+          return undefined;
+        })
+      : Promise.resolve(undefined),
+    // Godot mirrors Cocos: one shared connection-health probe, no expectedProjectPath
+    // so the routine poll only checks connectivity, not project-match.
+    godotTaskPaths.length > 0
+      ? checkGodotMcpConnection(state, undefined, undefined).catch((error) => {
+          logEngineDebug('godot', 'task-reconciliation probe threw', error);
           return undefined;
         })
       : Promise.resolve(undefined),
@@ -1053,6 +1413,11 @@ export async function listEnvironmentTasksForState(state: AppState): Promise<Env
   if (cocosProbe?.health.status === 'online') {
     for (const projectPath of cocosTaskPaths) {
       reconcileBridgeConnectedTasks(cocosProbe.health.message, projectPath);
+    }
+  }
+  if (godotProbe?.health.status === 'online') {
+    for (const projectPath of godotTaskPaths) {
+      reconcileBridgeConnectedTasks(godotProbe.health.message, projectPath);
     }
   }
   for (const { projectPath, health } of unityProbes) {
@@ -1224,6 +1589,10 @@ export async function getProjectRuntimeState(
         : undefined,
       bridgeHealth
     };
+  }
+
+  if (platform === 'godot') {
+    return resolveGodotRuntimeState(state, normalizedProjectPath);
   }
 
   if (platform !== 'unity') {
@@ -1640,6 +2009,204 @@ export async function diagnoseEnvironment(
       checkedAt,
       projectPath: input.projectPath,
       enginePluginId: cocosEnginePlugin?.id,
+      selectedUnityVersion: selectedUnityEditorOption?.version,
+      availableUnityEditors,
+      checks,
+      ready: checks.every((check) => check.status === 'passed')
+    };
+  }
+
+  if (input.platform === 'godot') {
+    const godotDimension = formatCocosDimensionLabel(input.dimension);
+    const godotEnginePlugin = resolveGodotMcpPlugin(state, input.enginePluginId);
+    const installation = findGodotInstallation();
+    const godotInstalled = Boolean(installation);
+    const projectPathExists = existsSync(normalizedProjectPath);
+    const targetProjectPathExists = existsSync(targetProjectPath);
+    const hasProjectName = input.mode === 'import' ? true : !!input.projectName?.trim();
+    const godotProject = inspectGodotProject(targetProjectPath);
+    const bridgeInstalled = godotProject.valid && isGodotBridgeInstalled(godotProject.projectPath);
+    const bridgeProbe = bridgeInstalled
+      ? await checkGodotMcpConnection(state, godotEnginePlugin?.id, godotProject.projectPath, { bypassCache: true })
+      : null;
+    const bridgeHealth = bridgeProbe?.health;
+    const bridgeConnected = bridgeHealth?.status === 'online';
+    const projectAlreadyOpen = godotProject.valid ? isGodotProjectCurrentlyOpen(godotProject.projectPath) : false;
+    const projectEffectivelyOpen = projectAlreadyOpen || bridgeConnected;
+
+    checks.push({
+      id: 'godot-editor',
+      title: 'Godot Editor',
+      description: '用于打开 Godot 项目，并提供 2D / 3D 模板。需要 Godot 4.2+。',
+      status: godotInstalled ? 'passed' : 'failed',
+      detail: godotInstalled
+        ? [
+            `已检测到 Godot：${installation!.executablePath}`,
+            installation?.version ? `版本：${installation.version}` : '',
+            installation?.source ? `来源：${installation.source}` : ''
+          ]
+            .filter(Boolean)
+            .join('；')
+        : '未检测到 Godot 编辑器。请安装 Godot 4.2+（https://godotengine.org/download），或设置 GODOT_BIN 环境变量。',
+      actions: godotInstalled
+        ? [
+            {
+              id: 'open_godot_hub',
+              label: '打开项目管理器',
+              description: '以项目管理器模式启动 Godot，管理或新建项目。'
+            }
+          ]
+        : []
+    });
+
+    checks.push({
+      id: 'engine-project',
+      title: input.mode === 'create' ? 'Godot 项目创建' : 'Godot 项目导入',
+      description:
+        input.mode === 'create'
+          ? '使用 Godot 内置模板创建新的 2D / 3D 项目。'
+          : '选择并导入你已经存在的 Godot 项目目录。',
+      status:
+        input.mode === 'create'
+          ? godotProject.valid
+            ? 'passed'
+            : projectPathExists && hasProjectName
+              ? 'warning'
+              : 'pending'
+          : godotProject.valid
+            ? 'passed'
+            : targetProjectPathExists
+              ? 'warning'
+              : 'pending',
+      detail:
+        input.mode === 'create'
+          ? !projectPathExists
+            ? '请先选择用于创建新项目的目录。'
+            : !hasProjectName
+              ? '请先填写项目名称。'
+              : godotProject.valid
+                ? `已检测到已创建的 Godot ${godotDimension} 项目：${godotProject.projectPath}`
+                : targetProjectPathExists
+                  ? `目标目录已存在但还不是有效 Godot 项目：${targetProjectPath}`
+                  : `已选择创建目录：${input.projectPath}，项目名称：${input.projectName}，将生成最小可用的 Godot ${godotDimension} 项目。`
+          : targetProjectPathExists
+            ? godotProject.valid
+              ? `已检测到有效 Godot 项目：${godotProject.projectPath} · ${godotDimension}`
+              : `已检测到目录：${targetProjectPath}，但缺少 ${godotProject.missing.join('、') || 'Godot 项目标识'}。`
+            : '还没有检测到现有项目目录，请先选择正确的 Godot 项目路径。',
+      actions:
+        input.mode === 'create'
+          ? projectPathExists && hasProjectName
+            ? godotProject.valid
+              ? [
+                  {
+                    id: 'verify_project_path',
+                    label: '校验创建结果',
+                    description: '重新校验目标目录是否是有效 Godot 项目。',
+                    primary: true
+                  }
+                ]
+              : [
+                  {
+                    id: 'create_godot_project',
+                    label: '创建 Godot 模板项目',
+                    description: `生成最小可用的 Godot ${godotDimension} 项目。`,
+                    primary: true
+                  }
+                ]
+            : []
+          : targetProjectPathExists
+            ? [
+                {
+                  id: 'verify_project_path',
+                  label: '校验项目路径',
+                  description: '重新校验当前目录是否是有效 Godot 项目。',
+                  primary: true
+                }
+              ]
+            : []
+    });
+
+    checks.push({
+      id: 'engine-opened',
+      title: 'Godot 项目打开状态',
+      description: '如果当前项目已经由 Godot 打开，Funplay 不会重复触发打开动作。',
+      status: projectEffectivelyOpen ? 'passed' : godotProject.valid ? 'warning' : 'pending',
+      detail: projectAlreadyOpen
+        ? '已检测到该项目当前就在 Godot 中打开。'
+        : bridgeConnected
+          ? '已通过 Godot MCP 连通确认该项目已经打开。'
+          : godotProject.valid
+            ? '该 Godot 项目还没有检测到打开状态。'
+            : '等待先准备好有效的 Godot 项目。',
+      actions:
+        godotProject.valid && !projectEffectivelyOpen
+          ? [
+              {
+                id: 'open_godot_project',
+                label: '打开 Godot 项目',
+                description: '直接启动 Godot 打开该项目。',
+                primary: true
+              }
+            ]
+          : []
+    });
+
+    checks.push({
+      id: 'bridge-installed',
+      title: 'Funplay Godot MCP',
+      description: 'Funplay 会把 funplay-godot-mcp 插件安装到当前 Godot 项目的 addons 目录。',
+      status: bridgeInstalled ? 'passed' : godotProject.valid ? 'warning' : 'pending',
+      detail: bridgeInstalled
+        ? '已检测到项目中存在 funplay_mcp 插件。'
+        : godotProject.valid
+          ? '项目中还没有安装 funplay-godot-mcp 插件。'
+          : '等待先准备好有效的 Godot 项目。',
+      actions:
+        godotProject.valid && !bridgeInstalled
+          ? [
+              {
+                id: 'install_godot_bridge',
+                label: '安装 Godot MCP',
+                description: '克隆 FunplayAI/funplay-godot-mcp 到项目 addons/funplay_mcp 目录。',
+                primary: true
+              }
+            ]
+          : []
+    });
+
+    checks.push({
+      id: 'bridge-connected',
+      title: 'Godot MCP 连通性',
+      description: '插件安装完成并在 Godot 的 Project Settings > Plugins 中启用后，Funplay 会检测连通性。',
+      status: bridgeConnected ? 'passed' : bridgeInstalled ? 'warning' : 'pending',
+      detail: bridgeConnected
+        ? bridgeHealth.message
+        : bridgeInstalled
+          ? (bridgeHealth?.message ??
+            `插件已安装，但尚未连通 ${bridgeProbe?.snapshot.baseUrl ?? DEFAULT_GODOT_MCP_BASE_URL}。请在 Godot 的 Project Settings > Plugins 中启用 Funplay MCP for Godot 后重新检测。`)
+          : '等待先安装 funplay-godot-mcp 插件。',
+      actions: bridgeConnected
+        ? []
+        : godotProject.valid && !projectEffectivelyOpen
+          ? [
+              {
+                id: 'open_godot_project',
+                label: '打开 Godot 项目',
+                description: '打开项目后，在 Godot 的 Plugins 中启用 Funplay MCP for Godot。',
+                primary: true
+              }
+            ]
+          : []
+    });
+
+    return {
+      platform: input.platform,
+      mode: input.mode,
+      dimension: input.dimension,
+      checkedAt,
+      projectPath: input.projectPath,
+      enginePluginId: godotEnginePlugin?.id,
       selectedUnityVersion: selectedUnityEditorOption?.version,
       availableUnityEditors,
       checks,
@@ -2265,6 +2832,175 @@ export async function runEnvironmentAction(
           actionId: input.actionId,
           status: 'failed',
           message: '暂不支持该 Cocos 动作。'
+        };
+    }
+  }
+
+  if (input.platform === 'godot') {
+    switch (input.actionId) {
+      case 'open_godot_hub': {
+        const result = openGodotProjectManager();
+        return {
+          actionId: input.actionId,
+          status: result.ok ? 'opened' : 'failed',
+          message: result.summary
+        };
+      }
+      case 'create_godot_project': {
+        const task = createTask('create_godot_project', '创建 Godot 项目', '正在准备自动创建 Godot 项目…');
+        bindTaskProjectPath(task.id, targetProjectPath);
+        taskStageUpdate(task.id, {
+          stage: 'checking',
+          status: 'running',
+          progress: 8,
+          message: '正在检查项目名称和目标目录…',
+          log: `目标项目路径：${targetProjectPath}`
+        });
+        const projectName = input.projectName?.trim();
+        if (!projectName) {
+          completeTask(task.id, 'failed', '请先填写项目名称。');
+          return {
+            actionId: input.actionId,
+            status: 'failed',
+            message: '请先填写项目名称。',
+            taskId: task.id
+          };
+        }
+
+        taskStageUpdate(task.id, {
+          stage: 'installing',
+          status: 'running',
+          progress: 24,
+          message: `正在生成最小可用的 Godot ${formatCocosDimensionLabel(input.dimension)} 项目…`,
+          log: `开始创建 Godot ${formatCocosDimensionLabel(input.dimension)} 项目：${targetProjectPath}`
+        });
+        const created = createGodotProjectFromTemplate({
+          targetProjectPath,
+          projectName,
+          dimension: input.dimension
+        });
+        if (!created.ok) {
+          completeTask(task.id, 'failed', created.summary);
+          return {
+            actionId: input.actionId,
+            status: 'failed',
+            message: created.summary,
+            taskId: task.id
+          };
+        }
+
+        taskStageUpdate(task.id, {
+          stage: 'installing',
+          status: 'running',
+          progress: 64,
+          message: 'Godot 项目已创建，正在安装 funplay-godot-mcp 插件…',
+          log: created.summary
+        });
+        const bridge = installGodotBridge({ projectPath: targetProjectPath });
+        if (!bridge.ok) {
+          completeTask(task.id, 'failed', bridge.summary);
+          return {
+            actionId: input.actionId,
+            status: 'failed',
+            message: bridge.summary,
+            taskId: task.id
+          };
+        }
+
+        taskStageUpdate(task.id, {
+          stage: 'validating',
+          status: 'running',
+          progress: 86,
+          message: 'Godot 项目和 MCP 插件已准备好，正在尝试打开项目…',
+          log: bridge.summary
+        });
+        const opened = await openGodotProject({ projectPath: targetProjectPath });
+        completeTask(
+          task.id,
+          'needs_user',
+          opened.ok
+            ? 'Godot 项目已创建，funplay-godot-mcp 已安装，并已尝试打开项目。请在 Godot 的 Project Settings > Plugins 中启用 Funplay MCP for Godot，等连通性检测通过后流程才会完成。'
+            : `Godot 项目已创建，funplay-godot-mcp 已安装；请手动打开项目并启用 Funplay MCP for Godot 插件。${opened.summary}`,
+          opened.ok ? 92 : 88
+        );
+        return {
+          actionId: input.actionId,
+          status: 'opened',
+          message: opened.ok
+            ? 'Godot 项目已创建并打开，请在 Godot 的 Plugins 中启用 Funplay MCP for Godot。'
+            : 'Godot 项目已创建，请手动打开 Godot 项目并启用 Funplay MCP for Godot 插件。',
+          taskId: task.id
+        };
+      }
+      case 'open_godot_project': {
+        const task = createTask('open_godot_project', '打开 Godot 项目', '正在准备打开 Godot 项目…');
+        bindTaskProjectPath(task.id, targetProjectPath);
+        taskStageUpdate(task.id, {
+          stage: 'checking',
+          status: 'running',
+          progress: 12,
+          message: '正在检查 Godot 项目结构…',
+          log: `项目路径：${targetProjectPath}`
+        });
+        if (isGodotProjectCurrentlyOpen(targetProjectPath)) {
+          completeTask(
+            task.id,
+            'needs_user',
+            '已检测到该 Godot 项目当前就在 Godot 中打开，Funplay 不会重复打开同一个项目。请在 Godot 的 Project Settings > Plugins 中启用 Funplay MCP for Godot 后重新检测。',
+            72
+          );
+          return {
+            actionId: input.actionId,
+            status: 'opened',
+            message: '该 Godot 项目已经打开；请在 Godot 的 Plugins 中启用 Funplay MCP for Godot。',
+            taskId: task.id
+          };
+        }
+        const result = await openGodotProject({ projectPath: targetProjectPath });
+        completeTask(task.id, result.ok ? 'completed' : 'failed', result.summary);
+        return {
+          actionId: input.actionId,
+          status: result.ok ? 'opened' : 'failed',
+          message: result.summary,
+          taskId: task.id
+        };
+      }
+      case 'install_godot_bridge': {
+        const task = createTask('install_godot_bridge', '安装 Funplay Godot MCP', '正在准备安装 funplay-godot-mcp…');
+        bindTaskProjectPath(task.id, targetProjectPath);
+        taskStageUpdate(task.id, {
+          stage: 'checking',
+          status: 'running',
+          progress: 12,
+          message: '正在检查 Godot 项目和 addons 目录…',
+          log: `项目路径：${targetProjectPath}`
+        });
+        const result = installGodotBridge({ projectPath: targetProjectPath });
+        completeTask(task.id, result.ok ? 'completed' : 'failed', result.summary);
+        return {
+          actionId: input.actionId,
+          status: result.ok ? 'completed' : 'failed',
+          message: result.summary,
+          taskId: task.id
+        };
+      }
+      case 'verify_project_path': {
+        const project = inspectGodotProject(targetProjectPath);
+        return {
+          actionId: input.actionId,
+          status: project.valid ? 'completed' : 'failed',
+          message: project.valid
+            ? '项目路径校验通过，是有效的 Godot 项目。'
+            : project.exists
+              ? `目标目录存在，但还不是有效的 Godot 项目，缺少：${project.missing.join('、') || 'Godot 项目标识'}。`
+              : '目标项目路径不存在，请检查后重试。'
+        };
+      }
+      default:
+        return {
+          actionId: input.actionId,
+          status: 'failed',
+          message: '暂不支持该 Godot 动作。'
         };
     }
   }

@@ -329,11 +329,11 @@ test('unity hub detection accepts a custom app path', async () => {
 
 test('agent engine control tools use generic names and return unsupported for unfinished adapters', async () => {
   const project = {
-    ...buildProject('/tmp/funplay-godot-project'),
+    ...buildProject('/tmp/funplay-unreal-project'),
     engine: {
-      platform: 'godot' as const,
+      platform: 'unreal' as const,
       setupMode: 'import' as const,
-      projectPath: '/tmp/funplay-godot-project',
+      projectPath: '/tmp/funplay-unreal-project',
       dimension: '2d' as const
     }
   };
@@ -342,14 +342,14 @@ test('agent engine control tools use generic names and return unsupported for un
     type: 'diagnose_engine_status'
   });
   assert.equal(diagnosis.ok, true);
-  assert.match(diagnosis.summary, /Godot Adapter/);
+  assert.match(diagnosis.summary, /Unreal Adapter/);
   assert.match(diagnosis.summary, /还没有实现|尚未实现/);
 
   const opened = await executeAgentToolAction(project, {
     type: 'open_engine_project'
   });
   assert.equal(opened.ok, false);
-  assert.match(opened.summary, /Godot.*尚未实现/);
+  assert.match(opened.summary, /Unreal.*尚未实现/);
 });
 
 test('unity project opening requires the exact saved editor version', async () => {

@@ -104,6 +104,12 @@ import {
 import { createUnsupportedEngineResult, getEngineAdapter, type EngineAdapterCapability } from './engine-adapters';
 import { diagnoseCocosEnvironment, installCocosBridge, openCocosDashboard, openCocosProject } from './cocos-adapter';
 import {
+  diagnoseGodotEnvironment,
+  installGodotBridge,
+  openGodotProject,
+  openGodotProjectManager
+} from './godot-adapter';
+import {
   MAX_TREE_ITEMS,
   MAX_FILE_PREVIEW_CHARS,
   MAX_SEARCH_RESULTS,
@@ -1000,7 +1006,9 @@ function formatRuntimeState(runtimeState: ProjectRuntimeState, platform: Platfor
       ? `Unity project valid: ${runtimeState.unityProjectValid ? 'yes' : 'no'}`
       : platform === 'cocos'
         ? `Cocos project valid: ${runtimeState.unityProjectValid ? 'yes' : 'no'}`
-        : '',
+        : platform === 'godot'
+          ? `Godot project valid: ${runtimeState.unityProjectValid ? 'yes' : 'no'}`
+          : '',
     `Project open: ${runtimeState.projectOpen ? 'yes' : 'no'}`,
     `Bridge installed: ${runtimeState.bridgeInstalled ? 'yes' : 'no'}`,
     runtimeState.detectedDimension ? `Detected dimension: ${runtimeState.detectedDimension}` : '',
@@ -1235,6 +1243,84 @@ async function executeEngineControlAction(
     }
     if (capability === 'installBridge') {
       return installCocosBridge({
+        projectPath
+      });
+    }
+    return createUnsupportedEngineResult({
+      platform,
+      capability,
+      projectPath
+    });
+  }
+
+  // Godot mirrors the cocos special-case dispatch (no engine variant): route the
+  // capability set straight at the godot-adapter, enriching diagnose/refresh with a
+  // live getProjectRuntimeState probe. run_engine_environment_action is excluded
+  // above so the staged create/install/open flow reaches runEnvironmentAction by id.
+  if (platform === 'godot' && action.type !== 'run_engine_environment_action') {
+    const projectPath = resolveEngineProjectPath(project, 'projectPath' in action ? action.projectPath : undefined);
+    if (capability === 'diagnose') {
+      const diagnosis = diagnoseGodotEnvironment({
+        project,
+        projectPath
+      });
+      // Enrich the static install/structure diagnosis with a LIVE MCP connectivity
+      // probe so the agent learns whether the bridge is actually online (and on
+      // which discovered endpoint) — not just installed on disk — mirroring Unity's
+      // diagnose bridge-connected check. Offline is reported, not a hard failure.
+      const runtimeState = await getProjectRuntimeState(state, {
+        platform,
+        projectPath
+      });
+      await persistState();
+      const health = runtimeState.bridgeHealth;
+      const connectivityLine = health
+        ? `MCP health: ${health.status} - ${health.message}`
+        : 'MCP health: not checked';
+      return {
+        ...diagnosis,
+        summary: [diagnosis.summary, connectivityLine].join('\n')
+      };
+    }
+    if (capability === 'refresh') {
+      // refresh must return a LIVE runtime-state snapshot (projectOpen + bridge
+      // health), mirroring the Unity/Cocos refresh blocks — not the static
+      // filesystem blob diagnose produces.
+      const runtimeState = await getProjectRuntimeState(state, {
+        platform,
+        projectPath
+      });
+      await persistState();
+      return {
+        ok: true,
+        summary: formatRuntimeState(runtimeState, platform, projectPath)
+      };
+    }
+    if (capability === 'openHub') {
+      return openGodotProjectManager();
+    }
+    if (capability === 'openProject') {
+      const runtimeState = await getProjectRuntimeState(state, {
+        platform,
+        projectPath
+      });
+      await persistState();
+      if (runtimeState.projectOpen) {
+        return {
+          ok: true,
+          summary: [
+            formatRuntimeState(runtimeState, platform, projectPath),
+            '',
+            'Godot project is already open or connected through MCP; skipped launching another Godot editor instance.'
+          ].join('\n')
+        };
+      }
+      return await openGodotProject({
+        projectPath
+      });
+    }
+    if (capability === 'installBridge') {
+      return installGodotBridge({
         projectPath
       });
     }

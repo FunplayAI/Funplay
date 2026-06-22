@@ -1142,7 +1142,7 @@ export function getPlatformCards(language: LanguagePreference): Array<{
     },
     { id: 'unity', name: 'Unity', description: localize(language, '支持 2D / 3D', 'Supports 2D / 3D') },
     { id: 'cocos', name: 'Cocos', description: localize(language, '支持 2D / 3D', 'Supports 2D / 3D') },
-    { id: 'godot', name: 'Godot', description: localize(language, '即将支持', 'Coming soon'), disabled: true },
+    { id: 'godot', name: 'Godot', description: localize(language, '支持 2D / 3D', 'Supports 2D / 3D') },
     { id: 'unreal', name: 'Unreal', description: localize(language, '即将支持', 'Coming soon'), disabled: true }
   ];
 }

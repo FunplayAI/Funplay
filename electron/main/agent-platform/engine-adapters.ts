@@ -88,6 +88,27 @@ const cocosAdapter: EngineAdapter = {
   }
 };
 
+const godotAdapter: EngineAdapter = {
+  platform: 'godot',
+  displayName: 'Godot',
+  capabilities: {
+    diagnose: { supported: true },
+    refresh: { supported: true },
+    openHub: {
+      supported: true,
+      nextAction: 'Install Godot 4.2+ from https://godotengine.org/download or set GODOT_BIN if automatic discovery fails.'
+    },
+    openProject: {
+      supported: true,
+      nextAction: 'Install Godot 4.2+ or set GODOT_BIN if automatic discovery fails.'
+    },
+    installBridge: {
+      supported: true,
+      nextAction: 'Clone FunplayAI/funplay-godot-mcp into addons/funplay_mcp, then enable "Funplay MCP for Godot" in Project Settings > Plugins.'
+    }
+  }
+};
+
 const adapters = new Map<PlatformChoice, EngineAdapter>([
   ['unity', unityAdapter],
   ['web', {
@@ -95,11 +116,7 @@ const adapters = new Map<PlatformChoice, EngineAdapter>([
     displayName: 'Web',
     capabilities: unsupportedCapabilities('web')
   }],
-  ['godot', {
-    platform: 'godot',
-    displayName: 'Godot',
-    capabilities: unsupportedCapabilities('godot')
-  }],
+  ['godot', godotAdapter],
   ['unreal', {
     platform: 'unreal',
     displayName: 'Unreal',

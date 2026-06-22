@@ -33,6 +33,10 @@ export type EnvironmentActionKind =
   | 'open_cocos_project'
   | 'install_cocos_bridge'
   | 'install_cocos_cli'
+  | 'create_godot_project'
+  | 'open_godot_project'
+  | 'open_godot_hub'
+  | 'install_godot_bridge'
   | 'verify_project_path';
 export type EnvironmentTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'needs_user';
 export type EnvironmentTaskStage =
