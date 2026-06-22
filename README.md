@@ -34,7 +34,7 @@ The goal is simple: describe the game you want, connect the model and engine too
 - Run commands, read logs, inspect browser previews, search files, and recover from failed edits.
 - Use OpenAI-compatible providers, Anthropic, Google, Bedrock, Vertex, and custom endpoints.
 - Connect project-bound MCP servers and expose their tools/resources to the agent.
-- Work with Unity and Cocos projects through engine-aware diagnostics, bridge installation, open-project actions, and runtime state checks.
+- Work with Unity, Cocos, and Godot projects through engine-aware diagnostics, bridge installation, open-project actions, and runtime state checks.
 - Generate and manage game assets, including image, UI, texture, audio, 3D, and animation-oriented jobs.
 - Keep provider settings, secrets, projects, sessions, generated assets, and agent run history local.
 
@@ -45,8 +45,9 @@ The goal is simple: describe the game you want, connect the model and engine too
 | Unity | Real adapter | Unity Hub/Editor diagnostics, project opening, bridge installation, MCP connectivity, `unity://` resource reads, runtime state refresh. |
 | Cocos Creator | Real adapter | Creator 3 project import/create flow, 2D/3D onboarding, `funplay-cocos-mcp` installation, MCP connectivity checks, `cocos://` resource reads. |
 | Cocos4 / cocos-cli | Real adapter path | Headless project creation/opening through `cocos-cli`, supervised CLI server flow, prerequisite diagnostics, managed MCP startup. |
+| Godot | Real adapter | Godot 4 editor detection, macOS Spotlight fallback, guided editor install, 2D/3D project bootstrap, project opening, `funplay-godot-mcp` addon installation, and bridge diagnostics. |
 | Web / generic | Project inspector | Workspace/file/browser workflows and playable HTML preview guidance; no engine adapter side effects. |
-| Godot / Unreal | Contract stubs | Structured unsupported responses with platform, capability, reason, and next action. |
+| Unreal | Contract stub | Structured unsupported responses with platform, capability, reason, and next action. |
 
 ## Agent Runtime
 
@@ -110,6 +111,8 @@ Useful development environment variables:
 - `FUNPLAY_ALLOW_LOCAL_WEB_TOOLS=1` - allow local URL fetches in web-tool tests.
 - `BRAVE_SEARCH_API_KEY` / `BING_SEARCH_API_KEY` - enable web search providers.
 - `FUNPLAY_COCOS_MCP_LOCAL_SOURCE=/path/to/funplay-cocos-mcp` - install the Cocos bridge from a local checkout during development.
+- `FUNPLAY_GODOT_MCP_LOCAL_SOURCE=/path/to/funplay-godot-mcp` - install the Godot bridge addon from a local checkout during development.
+- `GODOT_BIN=/path/to/Godot` - point Funplay at a portable Godot editor binary when automatic discovery cannot find it.
 
 ## Development
 
@@ -127,9 +130,9 @@ On first launch:
 1. Open Application Settings.
 2. Add at least one AI provider.
 3. Create or import a project.
-4. Choose a workflow: Generic, Unity, or Cocos.
+4. Choose a workflow: Generic, Unity, Cocos, or Godot.
 5. For engine projects, complete the onboarding checklist and connect the engine bridge/MCP server.
-6. Start with a concrete goal such as "make a playable web prototype", "add a Unity level loop", or "create a Cocos 3D scene and verify the MCP connection."
+6. Start with a concrete goal such as "make a playable web prototype", "add a Unity level loop", "create a Cocos 3D scene", or "bootstrap a Godot 3D prototype and install the bridge."
 
 Common commands:
 

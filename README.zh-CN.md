@@ -34,7 +34,7 @@ Funplay 关心的是：一个游戏想法进入真实项目之后，怎样不被
 - 运行命令、读取日志、检查浏览器预览、搜索文件，并从失败编辑中恢复。
 - 使用 OpenAI 兼容 Provider、Anthropic、Google、Bedrock、Vertex 和自定义端点。
 - 连接项目绑定的 MCP Server，把工具和资源暴露给 Agent。
-- 通过引擎诊断、Bridge 安装、打开项目动作和运行状态检查来处理 Unity 与 Cocos 项目。
+- 通过引擎诊断、Bridge 安装、打开项目动作和运行状态检查来处理 Unity、Cocos 与 Godot 项目。
 - 生成并管理游戏素材，包括图片、UI、纹理、音频、3D 和动画相关任务。
 - 在本地保存 Provider 设置、密钥、项目、会话、生成素材和 Agent 运行历史。
 
@@ -45,8 +45,9 @@ Funplay 关心的是：一个游戏想法进入真实项目之后，怎样不被
 | Unity | 实装 adapter | Unity Hub / Editor 诊断、打开项目、安装 Bridge、MCP 连通性、`unity://` 资源读取、运行状态刷新。 |
 | Cocos Creator | 实装 adapter | Creator 3 项目导入/创建、2D/3D 引导、安装 `funplay-cocos-mcp`、MCP 连通性检查、`cocos://` 资源读取。 |
 | Cocos4 / cocos-cli | 实装 adapter 路径 | 通过 `cocos-cli` 无头创建/打开项目、受管 CLI server、前置条件诊断、受管 MCP 启动。 |
+| Godot | 实装 adapter | Godot 4 编辑器检测、macOS Spotlight fallback、引导安装编辑器、2D/3D 项目 bootstrap、打开项目、安装 `funplay-godot-mcp` addon，以及 Bridge 诊断。 |
 | Web / 通用项目 | 项目检查器 | 文件、浏览器和 HTML 预览工作流；没有引擎 adapter 副作用。 |
-| Godot / Unreal | 契约占位 | 返回包含 platform、capability、reason 和 next action 的结构化 unsupported 状态。 |
+| Unreal | 契约占位 | 返回包含 platform、capability、reason 和 next action 的结构化 unsupported 状态。 |
 
 ## Agent Runtime
 
@@ -110,6 +111,8 @@ API Key 由主进程密钥存储管理，不会发送给渲染进程。渲染进
 - `FUNPLAY_ALLOW_LOCAL_WEB_TOOLS=1` - 允许 Web 工具测试访问本地 URL。
 - `BRAVE_SEARCH_API_KEY` / `BING_SEARCH_API_KEY` - 启用 Web Search Provider。
 - `FUNPLAY_COCOS_MCP_LOCAL_SOURCE=/path/to/funplay-cocos-mcp` - 开发时从本地 checkout 安装 Cocos bridge。
+- `FUNPLAY_GODOT_MCP_LOCAL_SOURCE=/path/to/funplay-godot-mcp` - 开发时从本地 checkout 安装 Godot bridge addon。
+- `GODOT_BIN=/path/to/Godot` - 自动发现找不到 Godot 时，手动指定 portable Godot 编辑器二进制。
 
 ## 本地开发
 
@@ -127,9 +130,9 @@ npm run dev
 1. 打开应用设置。
 2. 添加至少一个 AI Provider。
 3. 创建或导入项目。
-4. 选择工作流：通用项目、Unity 或 Cocos。
+4. 选择工作流：通用项目、Unity、Cocos 或 Godot。
 5. 如果是引擎项目，完成 onboarding checklist，并连接 engine bridge / MCP server。
-6. 从具体目标开始，例如“做一个可玩的 Web 原型”、“给 Unity 项目添加关卡循环”或“创建一个 Cocos 3D 场景并验证 MCP 连接”。
+6. 从具体目标开始，例如“做一个可玩的 Web 原型”、“给 Unity 项目添加关卡循环”、“创建一个 Cocos 3D 场景”或“bootstrap 一个 Godot 3D 原型并安装 bridge”。
 
 常用命令：
 
