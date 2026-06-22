@@ -33,6 +33,7 @@ export type EnvironmentActionKind =
   | 'open_cocos_project'
   | 'install_cocos_bridge'
   | 'install_cocos_cli'
+  | 'install_godot_editor'
   | 'create_godot_project'
   | 'open_godot_project'
   | 'open_godot_hub'

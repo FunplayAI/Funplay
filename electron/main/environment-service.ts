@@ -36,6 +36,11 @@ import {
   getCocosCliDir,
   installCocosCli
 } from './cocos-cli-installer';
+import {
+  findManagedGodotInstallation,
+  getGodotManagedDir,
+  installGodotEditor
+} from './godot-installer';
 import { ensureCocosCliServer, createCocosProjectViaCli } from './cocos-cli-server';
 import { nowIso, makeId } from '../../shared/utils';
 import {
@@ -272,6 +277,32 @@ function resolveCocosCliUserDataPath(): string {
     return electron.app.getPath('userData');
   } catch {
     return '';
+  }
+}
+
+function resolveGodotUserDataPath(): string {
+  try {
+    return electron.app.getPath('userData');
+  } catch {
+    return '';
+  }
+}
+
+// Godot is detected purely from the environment (GODOT_BIN / system scan). When no
+// system or explicit Godot exists but Funplay previously installed a managed copy,
+// surface it through GODOT_BIN so the adapter's open/diagnose paths find it without
+// threading a managed path through every call site. No-op when a real install wins.
+function hydrateManagedGodotBin(): void {
+  if (findGodotInstallation()) {
+    return;
+  }
+  const userDataPath = resolveGodotUserDataPath();
+  if (!userDataPath) {
+    return;
+  }
+  const managed = findManagedGodotInstallation(userDataPath);
+  if (managed) {
+    process.env.GODOT_BIN = managed.executablePath;
   }
 }
 
@@ -2019,8 +2050,15 @@ export async function diagnoseEnvironment(
   if (input.platform === 'godot') {
     const godotDimension = formatCocosDimensionLabel(input.dimension);
     const godotEnginePlugin = resolveGodotMcpPlugin(state, input.enginePluginId);
+    hydrateManagedGodotBin();
+    const managedGodotDir = getGodotManagedDir(resolveGodotUserDataPath());
     const installation = findGodotInstallation();
     const godotInstalled = Boolean(installation);
+    const godotSourceLabel = installation
+      ? installation.executablePath.startsWith(managedGodotDir)
+        ? 'Funplay 托管安装'
+        : installation.source
+      : '';
     const projectPathExists = existsSync(normalizedProjectPath);
     const targetProjectPathExists = existsSync(targetProjectPath);
     const hasProjectName = input.mode === 'import' ? true : !!input.projectName?.trim();
@@ -2043,11 +2081,11 @@ export async function diagnoseEnvironment(
         ? [
             `已检测到 Godot：${installation!.executablePath}`,
             installation?.version ? `版本：${installation.version}` : '',
-            installation?.source ? `来源：${installation.source}` : ''
+            godotSourceLabel ? `来源：${godotSourceLabel}` : ''
           ]
             .filter(Boolean)
             .join('；')
-        : '未检测到 Godot 编辑器。请安装 Godot 4.2+（https://godotengine.org/download），或设置 GODOT_BIN 环境变量。',
+        : '未检测到 Godot 编辑器。可让 Funplay 自动下载安装最新稳定版 Godot（约 100MB），或手动安装 Godot 4.2+（https://godotengine.org/download）并设置 GODOT_BIN。',
       actions: godotInstalled
         ? [
             {
@@ -2056,7 +2094,14 @@ export async function diagnoseEnvironment(
               description: '以项目管理器模式启动 Godot，管理或新建项目。'
             }
           ]
-        : []
+        : [
+            {
+              id: 'install_godot_editor',
+              label: '下载并安装 Godot',
+              description: '自动下载最新稳定版 Godot 便携版（约 100MB）并由 Funplay 托管，无需手动配置。',
+              primary: true
+            }
+          ]
     });
 
     checks.push({
@@ -2837,7 +2882,40 @@ export async function runEnvironmentAction(
   }
 
   if (input.platform === 'godot') {
+    hydrateManagedGodotBin();
     switch (input.actionId) {
+      case 'install_godot_editor': {
+        const task = createTask('install_godot_editor', '下载并安装 Godot', '正在准备下载 Godot…');
+        taskStageUpdate(task.id, {
+          stage: 'checking',
+          status: 'running',
+          progress: 5,
+          message: '正在解析最新稳定版 Godot…'
+        });
+        const userDataPath = resolveGodotUserDataPath();
+        // The download is ~80-120MB; run it in the background and return the task
+        // immediately so the IPC call doesn't block. On success, hydrate GODOT_BIN
+        // so the very next diagnose finds the managed editor without a restart.
+        void installGodotEditor({
+          userDataPath,
+          onStage: (stage, progress, message) => taskStageUpdate(task.id, { stage, status: 'running', progress, message })
+        })
+          .then((installResult) => {
+            if (installResult.ok && installResult.executablePath && !process.env.GODOT_BIN) {
+              process.env.GODOT_BIN = installResult.executablePath;
+            }
+            completeTask(task.id, installResult.ok ? 'completed' : 'failed', installResult.message);
+          })
+          .catch((error) => {
+            completeTask(task.id, 'failed', `Godot 安装异常：${error instanceof Error ? error.message : String(error)}`);
+          });
+        return {
+          actionId: input.actionId,
+          status: 'opened',
+          message: 'Godot 下载已开始：将自动下载最新稳定版便携版（约 100MB）并由 Funplay 托管，可在任务列表查看进度。',
+          taskId: task.id
+        };
+      }
       case 'open_godot_hub': {
         const result = openGodotProjectManager();
         return {
