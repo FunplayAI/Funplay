@@ -6,6 +6,18 @@ This project follows a pre-1.0 release flow. Minor versions may include breaking
 
 ## Unreleased
 
+## 0.4.0 - 2026-06-22
+
+### Added
+
+- Added Godot as a real engine adapter backed by `FunplayAI/funplay-godot-mcp`, including engine-neutral tool routing, project detection, bridge install/open flows, and runtime diagnostics.
+- Added guided Godot editor installation on macOS, with stable-release download, extraction, and environment-service actions for users who do not have Godot installed yet.
+- Added Spotlight fallback detection for macOS Godot editor installs when standard application paths and command-line discovery do not find the editor.
+
+### Changed
+
+- Refreshed the README preview to a single engine-project workspace screenshot, with separate English and Chinese images.
+
 ## 0.3.10 - 2026-06-17
 
 ### Added
