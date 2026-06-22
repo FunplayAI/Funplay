@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   createGodotProjectFromTemplate,
+  detectGodotInstallations,
   findGodotInstallation,
   inspectGodotProject,
   installGodotBridge,
@@ -32,6 +33,25 @@ test('findGodotInstallation prefers an explicit GODOT_BIN override', async () =>
     assert.equal(installation?.version, '4.3.1');
   });
 });
+
+test(
+  'detectGodotInstallations finds a Spotlight-located Godot.app outside the Applications roots',
+  { skip: process.platform !== 'darwin' ? 'macOS-only detection path' : false },
+  async () => {
+    await withTempRoot(async (root) => {
+      // A Godot.app kept somewhere unusual (e.g. ~/Downloads) — only Spotlight
+      // would surface it; the fixed /Applications scan never would.
+      const appBin = join(root, 'Godot.app', 'Contents', 'MacOS', 'Godot');
+      await mkdir(dirname(appBin), { recursive: true });
+      await writeFile(appBin, '#!/bin/sh\n', 'utf8');
+
+      const installations = detectGodotInstallations({}, { spotlightApps: () => [join(root, 'Godot.app')] });
+      const spotlightHit = installations.find((installation) => installation.source === 'macos:spotlight');
+      assert.ok(spotlightHit, 'a Spotlight-located app should be detected');
+      assert.equal(spotlightHit?.executablePath, appBin);
+    });
+  }
+);
 
 test('inspectGodotProject treats project.godot as the validity marker', async () => {
   await withTempRoot(async (root) => {

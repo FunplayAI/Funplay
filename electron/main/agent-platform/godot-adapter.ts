@@ -156,7 +156,34 @@ function godotFromPath(): string | undefined {
   return undefined;
 }
 
-export function detectGodotInstallations(env: NodeJS.ProcessEnv = process.env): GodotInstallation[] {
+// macOS only: a Godot.app is portable, so users routinely keep it in ~/Downloads
+// or a custom folder we'd never scan. Spotlight finds it wherever it lives; the
+// bundle id is stable across Godot 3/4 and the mono build. Best-effort (Spotlight
+// may be disabled / the binary unindexed), so failures fall back to the dir scan.
+function godotAppsFromSpotlight(): string[] {
+  if (process.platform !== 'darwin') {
+    return [];
+  }
+  try {
+    const out = execFileSync('mdfind', ["kMDItemCFBundleIdentifier == 'org.godotengine.godot'"], {
+      encoding: 'utf8',
+      timeout: 4000
+    });
+    return out
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.toLowerCase().endsWith('.app'));
+  } catch {
+    return [];
+  }
+}
+
+export function detectGodotInstallations(
+  env: NodeJS.ProcessEnv = process.env,
+  // The Spotlight runner is injectable so tests can exercise the discovery path
+  // without a real Godot.app on the machine.
+  options?: { spotlightApps?: () => string[] }
+): GodotInstallation[] {
   const installations: GodotInstallation[] = [];
   for (const key of GODOT_ENV_KEYS) {
     const value = normalizePath(env[key]);
@@ -170,6 +197,9 @@ export function detectGodotInstallations(env: NodeJS.ProcessEnv = process.env): 
       for (const app of scanForGodotApps(root)) {
         pushInstallation(installations, app, 'macos:applications');
       }
+    }
+    for (const app of (options?.spotlightApps ?? godotAppsFromSpotlight)()) {
+      pushInstallation(installations, app, 'macos:spotlight');
     }
   } else if (process.platform === 'win32') {
     for (const root of uniqueValues([
